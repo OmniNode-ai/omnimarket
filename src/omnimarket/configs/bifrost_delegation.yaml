@@ -360,6 +360,37 @@ backends:
       - code_generation
       - reasoning
       - research
+  # OMN-19432: the GLM ladder's second rung. Operator ruling 2026-09-30T14:37:39Z
+  # (amending the "stop using flash" rulings): flash first, then the next higher
+  # model on a failed quality gate or a capacity refusal (429 code 1302).
+  # `cloud-glm` above stays glm-5.3-flash; this backend is the SAME account, the
+  # SAME Coding Plan endpoint and the SAME key (`llm.glm.api_key`), pinned to the
+  # exact id `glm-5.3`. Requests reach it with the documented request settings
+  # (inference_protocols.v1.yaml, profile cloud-glm-5-3-thinking): glm-5.3 always
+  # reasons, so the switch that used to be sent is not honoured, only cut short
+  # (measured: 188 reasoning tokens on a six-item classification with thinking
+  # "disabled"). routing_tiers.yaml declares it directly after flash in
+  # cheap_cloud, so the port's same-tier sibling hop lands here after a gate
+  # rejection or a capacity refusal on flash, ahead of every Gemini rung.
+  - backend_id: cloud-glm-5-3
+    provider: glm
+    # Same complete Coding Plan URL as `cloud-glm`, enforced by
+    # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
+    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    model_name: "glm-5.3"
+    secret_ref: llm.glm.api_key
+    tier: cheap_cloud
+    # Same 300 s as every backend with a 64k output budget (OMN-13170). On the
+    # runtime path the effect node's own contract clamps the call to
+    # `model_timeout_seconds` (glm-5.3: 150 s, measured), on the in-process path
+    # this is the call timeout and the task class's execution ceiling still bounds
+    # the whole delegation.
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
   - backend_id: cloud-glm-judge
     provider: gemini
     # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
@@ -674,6 +705,55 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432 (RULING 2026-09-30T15:09:11Z): a second FREE OpenRouter model, the
+  # same-tier sibling of the ultra rung above. The free tier answers 503 ("Service
+  # temporarily unavailable") when its one upstream is busy: 11 of the 34 OpenRouter
+  # attempts in the 24h to 2026-09-30 were that error, so one free model is one point
+  # of refusal, and the ladder climbed to the metered tier on it. nvidia/nemotron-3-
+  # super-120b-a12b:free is priced 0/0 in GET https://openrouter.ai/api/v1/models
+  # (read 2026-09-30), 262144-token window, 235929 output cap. On the delegate's own
+  # gate, judge off, over 28 of the 2026-09-30 delegated tasks it passed 23 at p50
+  # 19 s (ultra 26 at p50 33 s), 4 of 5 review and 3 of 3 reasoning. It is a routing
+  # sibling, so a failed or refused call on ultra retries it inside cheap_frontier
+  # before the ladder pays for the next tier. Only :free slugs: zero marginal cost.
+  - backend_id: openrouter-nemotron-super
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "nvidia/nemotron-3-super-120b-a12b:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
+  # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
+  # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
+  # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
+  # weak on code_review (2 of 5), so the tier entry leaves that class off. Declared last
+  # in the free tier: a refusal on the first two retries it before any metered tier.
+  - backend_id: openrouter-north-mini-code
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "cohere/north-mini-code:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 64000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
   # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
   # takes a program state plus one typed question (choice, noul or score) and
   # returns a typed answer with calibrated probabilities, on TypeSafe's own
@@ -893,6 +973,34 @@ provider_quota_policy:
           disposition: disable_until_reset
           reset_from: message_reset_timestamp
           fallback_cooldown_seconds: 3600
+          alert: false
+        # OMN-19432: the other two plan windows. z.ai's error-code page
+        # (docs.z.ai/api-reference/api-code, read 2026-09-30) lists 1308 as
+        # "Usage limit reached for {number} {unit}. Your limit will reset at
+        # {next_flush_time}" -- the 5-hour credit window, same message shape as
+        # 1310, and shared by every model on the plan, so it disables the
+        # provider (flash and glm-5.3 alike) until the stated reset. glm-5.3
+        # spends about six times flash's credits per task, so this window is the
+        # one the second rung reaches first.
+        - code: "1308"
+          disposition: disable_until_reset
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        # 1302 "Rate limit reached for requests" and 1305 "The service may be
+        # temporarily overloaded" are CAPACITY signals, not quality verdicts and
+        # not plan caps: nothing is disabled (a retry after a short wait works),
+        # the failing rung is excluded for THIS request, and the ladder moves to
+        # the next rung (flash -> glm-5.3 -> the rest of the tier). The
+        # attempt is recorded with failure_class rate_limited, which the
+        # projection counts as a capacity refusal (quota_refusal_count) and
+        # never as a quality miss. Declared rather than left to the default so a
+        # receipt reads "declared retryable" instead of "unmapped code".
+        - code: "1302"
+          disposition: retryable
+          alert: false
+        - code: "1305"
+          disposition: retryable
           alert: false
         # Live-observed on the PAY-AS-YOU-GO surface (/api/paas/v4), verbatim:
         #   {"error":{"code":"1113","message":"Insufficient balance or no

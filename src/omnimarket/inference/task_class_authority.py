@@ -122,6 +122,33 @@ class ModelQualityRule(BaseModel):
             "rule is not stated to the model."
         ),
     )
+    waived_when_prompt_matches: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Case-insensitive `re` patterns for prompts whose OWN output layout "
+            'contradicts this rule (OMN-19432). A prompt that says "one line per '
+            'item" or "answer only JSON" cannot also be asked for numbered '
+            "steps or line citations: the model obeyed the task and the gate "
+            "refused the obedience, or obeyed the injected directive and the "
+            "task's own format failed. A match removes the rule from the "
+            "request's HEURISTIC band, so the directive is neither stated to the "
+            "model nor enforced by the gate. The deterministic floor is never "
+            "waived by a prompt."
+        ),
+    )
+
+    @field_validator("waived_when_prompt_matches")
+    @classmethod
+    def _waiver_patterns_compile(cls, patterns: tuple[str, ...]) -> tuple[str, ...]:
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(
+                    f"waived_when_prompt_matches pattern {pattern!r} is not a "
+                    f"valid regular expression: {exc}"
+                ) from exc
+        return patterns
 
 
 class ModelReasoningPreamblePolicy(BaseModel):

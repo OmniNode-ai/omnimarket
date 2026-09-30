@@ -16,6 +16,7 @@ never touched the Linear API. This is fixed two ways:
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -69,6 +70,20 @@ query GetTeamByName($name: String!) {
 }
 """
 
+_BACKLOG_STATE_QUERY = """
+query GetBacklogState($teamId: ID!) {
+  workflowStates(filter: { team: { id: { eq: $teamId } }, name: { eq: "Backlog" } }) {
+    nodes { id }
+  }
+}
+"""
+
+_VIEWER_QUERY = """
+query GetViewer {
+  viewer { id }
+}
+"""
+
 _ISSUE_BY_IDENTIFIER_QUERY = """
 query GetIssueByIdentifier($identifier: String!) {
   issue(id: $identifier) { id }
@@ -76,17 +91,70 @@ query GetIssueByIdentifier($identifier: String!) {
 """
 
 _ISSUE_CREATE_MUTATION = """
-mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String) {
+mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String) {
   issueCreate(input: {
     teamId: $teamId,
     title: $title,
     description: $description,
-    parentId: $parentId
+    parentId: $parentId,
+    stateId: $stateId,
+    assigneeId: $assigneeId
   }) {
     issue { identifier url }
   }
 }
 """
+
+
+_PILLAR_OWNERS_RELPATH = Path(
+    "omnibase_internal/src/omnibase_internal/pillar_owners.yaml"
+)
+
+
+def _pillar_owners_path() -> Path:
+    """Locate the shared pillar owner map (OMN-17427), failing fast when unresolvable.
+
+    ``ONEX_PILLAR_OWNERS_PATH`` overrides; otherwise the omnibase_internal clone that sits in the
+    parent of ``$OMNI_HOME`` (``OMNIBASE_INTERNAL_PATH`` overrides that clone). No default.
+    """
+    override = os.environ.get("ONEX_PILLAR_OWNERS_PATH")
+    if override:
+        return Path(override)
+    clone = os.environ.get("OMNIBASE_INTERNAL_PATH")
+    if clone:
+        return Path(clone) / "src/omnibase_internal/pillar_owners.yaml"
+    home = os.environ.get("OMNI_HOME")
+    if not home:
+        raise RuntimeError(
+            "pillar_owners map not locatable: set OMNI_HOME, OMNIBASE_INTERNAL_PATH or "
+            "ONEX_PILLAR_OWNERS_PATH"
+        )
+    return Path(home).parent / _PILLAR_OWNERS_RELPATH
+
+
+def _resolve_pillar_owner(pillar: str | None, path: Path) -> str | None:
+    """Return the Linear user id for the ticket's pillar, or None for the creator default.
+
+    Operator rulings 2026-09-30 (OMN-17427): dashboard (including its data layer) and onboarding
+    tickets go to their pillar's owner; everything else to the creator. The pillar is the explicit
+    request field; a ticket with none goes to the creator. Owners are
+    Linear user ids from omnibase_internal's ``pillar_owners.yaml``, the file the create-ticket
+    skill reads. A pillar that applies and has no declared owner raises.
+    """
+    if not pillar:
+        return None
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"pillar_owners map unreadable at {path}: {exc}") from exc
+    if not isinstance(document, dict):
+        raise RuntimeError(f"pillar_owners map at {path} must be a mapping")
+    pillars = document.get("pillars")
+    entry = pillars.get(pillar) if isinstance(pillars, dict) else None
+    owner = entry.get("owner_linear_user_id") if isinstance(entry, dict) else None
+    if not isinstance(owner, str) or not owner.strip():
+        raise RuntimeError(f"pillar {pillar!r} has no owner_linear_user_id in {path}")
+    return owner.strip()
 
 
 class ModelCreateTicketRequest(BaseModel):
@@ -106,6 +174,13 @@ class ModelCreateTicketRequest(BaseModel):
     allow_arch_violation: bool = Field(
         default=False,
         description="Bypass architecture dependency validation (contract input).",
+    )
+    pillar: str | None = Field(
+        default=None,
+        description=(
+            "Ticket pillar (dashboard, onboarding) that sets the assignee from the shared "
+            "pillar owner map; none means the creator."
+        ),
     )
 
 
@@ -173,9 +248,18 @@ class LinearTicketClientProtocol(Protocol):
     """
 
     def create_ticket(
-        self, *, title: str, description: str, team: str, parent: str | None
+        self,
+        *,
+        title: str,
+        description: str,
+        team: str,
+        parent: str | None,
+        assignee_id: str | None,
     ) -> tuple[str, str]:
-        """Create a Linear issue and return ``(ticket_id, ticket_url)``."""
+        """Create a Linear issue and return ``(ticket_id, ticket_url)``.
+
+        ``assignee_id`` is a Linear user id; ``None`` assigns the API key's own user (the creator).
+        """
         ...
 
 
@@ -231,7 +315,13 @@ class LinearTicketHttpGateway:
         return data
 
     def create_ticket(
-        self, *, title: str, description: str, team: str, parent: str | None
+        self,
+        *,
+        title: str,
+        description: str,
+        team: str,
+        parent: str | None,
+        assignee_id: str | None,
     ) -> tuple[str, str]:
         """Create a new Linear issue and return ``(identifier, url)``."""
         team_data = self._post(_TEAM_QUERY, {"name": team})
@@ -240,11 +330,34 @@ class LinearTicketHttpGateway:
             raise RuntimeError(f"Linear team {team!r} not found")
         team_id = team_nodes[0]["id"]
 
+        # Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        # created in the Backlog with NO project. The state is set explicitly
+        # rather than trusting the team default, and no projectId is ever sent.
+        state_data = self._post(_BACKLOG_STATE_QUERY, {"teamId": team_id})
+        state_nodes = (
+            state_data.get("data", {}).get("workflowStates", {}).get("nodes", [])
+        )
+        if not state_nodes:
+            raise RuntimeError(
+                f"Linear team {team!r} has no 'Backlog' workflow state; refusing "
+                "to create a ticket outside the Backlog (operator ruling "
+                "2026-09-30T14:30:05Z, OMN-17427)"
+            )
+
         variables: dict[str, object] = {
             "teamId": team_id,
             "title": title,
             "description": description,
+            "stateId": state_nodes[0]["id"],
         }
+        if not assignee_id:
+            viewer = self._post(_VIEWER_QUERY, {}).get("data", {}).get("viewer", {})
+            assignee_id = str(viewer.get("id", ""))
+            if not assignee_id:
+                raise RuntimeError(
+                    "Linear viewer id unavailable; cannot assign the creator"
+                )
+        variables["assigneeId"] = assignee_id
         if parent:
             parent_data = self._post(_ISSUE_BY_IDENTIFIER_QUERY, {"identifier": parent})
             parent_uuid = parent_data.get("data", {}).get("issue", {}).get("id", "")
@@ -271,8 +384,13 @@ class HandlerCreateTicket:
           directly, bypassing all secret resolution.
     """
 
-    def __init__(self, linear_client: LinearTicketClientProtocol | None = None) -> None:
+    def __init__(
+        self,
+        linear_client: LinearTicketClientProtocol | None = None,
+        pillar_owners_path: Path | None = None,
+    ) -> None:
         self._injectable_client = linear_client
+        self._pillar_owners_path = pillar_owners_path
 
     def _get_client(self) -> LinearTicketClientProtocol:
         if self._injectable_client is not None:
@@ -326,12 +444,20 @@ class HandlerCreateTicket:
         contract_completeness = "full" if is_seam else "stub"
         description_body = _generate_description_body(request)
 
+        assignee_id = (
+            _resolve_pillar_owner(
+                request.pillar, self._pillar_owners_path or _pillar_owners_path()
+            )
+            if request.pillar
+            else None
+        )
         client = self._get_client()
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,
             description=description_body,
             team=request.team,
             parent=request.parent,
+            assignee_id=assignee_id,
         )
 
         # Fail-closed (OMN-14547): a "created" result with no id is a lie —

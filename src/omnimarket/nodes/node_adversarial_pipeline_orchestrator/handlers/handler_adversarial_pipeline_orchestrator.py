@@ -61,7 +61,6 @@ class HandlerAdversarialPipelineOrchestrator:
             design_result = self._design_adapter.create_plan(
                 {
                     "topic": request.topic,
-                    "linear_project": request.linear_project,
                     "no_launch": request.no_launch,
                 }
             )
@@ -104,7 +103,6 @@ class HandlerAdversarialPipelineOrchestrator:
             {
                 "topic": request.topic,
                 "plan_path": plan_path,
-                "linear_project": request.linear_project,
                 "findings_count": findings_count,
                 "findings_summary": findings_summary,
             }

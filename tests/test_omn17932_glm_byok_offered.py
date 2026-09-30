@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-17932: ``glm`` is an OFFERED BYOK provider, bound to the Coding-Plan surface.
+"""OMN-17932: ``glm`` is an OFFERED BYOK provider, bound to the general API (OMN-20157).
 
 Lifted out of ``not_offered`` on 2026-09-06. Two facts have to hold together,
 and pinning only one of them is what let this get wrong twice before:
@@ -9,12 +9,16 @@ and pinning only one of them is what let this get wrong twice before:
    ``POST /v1/tenants/me/inference-credentials`` accepts ``provider: "glm"``.
    Without this the intake model refuses the registration at validation time
    and no tenant can ever bring a z.ai key.
-2. The row's endpoint is the **Coding Plan** surface
-   (``/api/coding/paas/v4``), never the pay-as-you-go one (``/api/paas/v4``).
-   Those are two different z.ai PRODUCTS (OMN-6790). A row pointing at the
-   wrong one authenticates against a product this account does not hold and
-   reads as a billing failure — which is exactly how OMN-16891 concluded the
-   rung was unfundable and OMN-17987 concluded it was unbindable.
+2. The row's endpoint is the **general API** surface (``/api/paas/v4``), never
+   the Coding Plan one (``/api/coding/paas/v4``). Those are two different z.ai
+   PRODUCTS (OMN-6790), and OMN-20157 moved the customer default from the
+   Coding Plan to the general API: z.ai's subscription terms bar Coding Plan
+   quota from third-party systems (knowledge-base-internal
+   ``reference/zai-glm-coding-plan-terms.md``), so a customer's key is never
+   routed to the Coding Plan endpoint. Before that change this file pinned the
+   opposite binding, because a row pointing at the wrong product authenticates
+   against a product the key does not hold and reads as a billing failure
+   (OMN-16891, OMN-17987).
 
 The general parity gate lives in ``tests/test_omn17353_provider_catalogue.py``;
 this module pins the specific binding that gate cannot express.
@@ -36,13 +40,12 @@ from omnimarket.routing.byok_provider_backends import (
 
 pytestmark = pytest.mark.unit
 
-#: The Coding-Plan base path. The single authority is
-#: ``configs/bifrost_delegation.yaml``'s ``cloud-glm`` rung; this constant is a
-#: prefix assertion, not a second declaration of the URL.
+#: The Coding-Plan base path, which no customer route may address. The platform's
+#: own ``cloud-glm`` rung in ``configs/bifrost_delegation.yaml`` is the only
+#: place it is bound; this constant is a prefix assertion, not a declaration.
 CODING_PLAN_PREFIX = "https://api.z.ai/api/coding/paas/v4"
 
-#: The pay-as-you-go product. Present here ONLY so the negative assertion can
-#: name what must not appear.
+#: The general API (pay-as-you-go) product the customer route addresses.
 PAY_AS_YOU_GO_PREFIX = "https://api.z.ai/api/paas/v4"
 
 
@@ -61,16 +64,15 @@ def test_glm_is_no_longer_declared_not_offered() -> None:
     )
 
 
-def test_glm_row_is_bound_to_the_coding_plan_surface() -> None:
+def test_glm_row_is_bound_to_the_general_api_surface() -> None:
     row = load_byok_provider_catalog()["glm"]
-    assert row.endpoint_url.startswith(CODING_PLAN_PREFIX), (
-        f"the BYOK glm row points at {row.endpoint_url!r}. The z.ai Coding Plan "
-        f"is served ONLY at {CODING_PLAN_PREFIX} (OMN-6790, settled)."
+    assert row.endpoint_url.startswith(PAY_AS_YOU_GO_PREFIX + "/"), (
+        f"the BYOK glm row points at {row.endpoint_url!r}. A customer's z.ai key "
+        f"is served at {PAY_AS_YOU_GO_PREFIX} (OMN-20157)."
     )
-    assert not row.endpoint_url.startswith(PAY_AS_YOU_GO_PREFIX + "/"), (
-        "the BYOK glm row points at the pay-as-you-go product, which this "
-        "account does not hold. That misroute is what OMN-16891 recorded as a "
-        "billing gap."
+    assert not row.endpoint_url.startswith(CODING_PLAN_PREFIX), (
+        "the BYOK glm row points at the Coding Plan, whose terms bar quota use "
+        "from third-party systems (OMN-20157). Never route a customer there."
     )
 
 

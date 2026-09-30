@@ -16,8 +16,8 @@ header chrome rather than in the fine print, because on an auto-refreshing page
 the only thing standing between an operator and a stale read is that line.
 
 This module is the render half of that ruling. It is **server-rendered off the
-same in-process SnapshotCache the JSON routes serve** — no client fetch, no
-client-side SQL, no client-side state derivation, no new database handle. The
+same materialized projection tables the JSON routes read** (OMN-20152) — no
+client fetch, no client-side SQL, no client-side state derivation. The
 page is HTML because HTML is always up: it needs no bundle, no build, no
 session gate, and no separate deployable, so it cannot repeat the OMN-14440
 failure mode where the projection is live and nothing renders it.
@@ -54,7 +54,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
-from omnimarket.projection.snapshot_cache import SnapshotCache
+from omnimarket.projection.table_reader import ProtocolProjectionPageView
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 # --------------------------------------------------------------------------
@@ -273,7 +273,7 @@ class ModelMorningPage(BaseModel):
 def read_projection(
     topic: str,
     topic_map: dict[str, ProjectionTableConfig],
-    cache: SnapshotCache,
+    cache: ProtocolProjectionPageView,
     *,
     limit: int,
     tenant_id: UUID | None = None,
@@ -330,9 +330,9 @@ def read_projection(
             state=EnumPanelState.REFUSED,
             reason_code="not_yet_bus_backed",
             reason_detail=(
-                "this exposure has not converted to the bus-fed serving path; "
-                "the projection API holds no database handle, so there is no "
-                "second place it could read from"
+                "no writer is declared as materializing this exposure "
+                "(projection_api.bus_backed is false), so there is no table "
+                "the projection API could read it from"
             ),
             migration_ticket=_TICKET_NOT_BUS_BACKED,
             rows=(),
@@ -360,15 +360,15 @@ def read_projection(
             cached_row_count=0,
         )
 
-    if not cache.is_bootstrapped(topic):
+    unavailable = cache.unavailable_reason(topic)
+    if unavailable is not None:
+        # OMN-20152: the reason is the read's own -- a table the page could
+        # not read names why, rather than a code this page invents.
         return ModelProjectionRead(
             topic=topic,
             state=EnumPanelState.REFUSED,
-            reason_code="snapshot_bootstrap_incomplete",
-            reason_detail=(
-                "the snapshot consumer has not finished its initial replay of "
-                "the compacted topic"
-            ),
+            reason_code=unavailable[0],
+            reason_detail=unavailable[1],
             migration_ticket=None,
             rows=(),
             latest_event_at=None,
@@ -397,8 +397,8 @@ def read_projection(
             ""
             if rows
             else (
-                "the exposure is bus-backed and bootstrapped, and its compacted "
-                "snapshot topic currently holds no rows"
+                "the exposure's writer is declared and its table was read, "
+                "and it currently holds no rows"
             )
         ),
         migration_ticket=None,
@@ -582,7 +582,7 @@ def build_savings_panel(reads: tuple[ModelProjectionRead, ...]) -> ModelSavingsP
 
 
 def build_inventory(
-    topic_map: dict[str, ProjectionTableConfig], cache: SnapshotCache
+    topic_map: dict[str, ProjectionTableConfig], cache: ProtocolProjectionPageView
 ) -> tuple[ModelInventoryRow, ...]:
     """Every discovered exposure and what the serving path would answer for it.
 
@@ -610,7 +610,7 @@ def build_inventory(
 
 def read_backend_projection(
     topic_map: dict[str, ProjectionTableConfig],
-    cache: SnapshotCache,
+    cache: ProtocolProjectionPageView,
     *,
     reader_id: str,
     projection_slot: str,
@@ -655,7 +655,7 @@ def read_backend_projection(
 
 def build_morning_page(
     topic_map: dict[str, ProjectionTableConfig],
-    cache: SnapshotCache,
+    cache: ProtocolProjectionPageView,
     *,
     service_name: str,
     refresh_seconds: int = DEFAULT_REFRESH_SECONDS,
@@ -1058,9 +1058,8 @@ def render_morning_page(page: ModelMorningPage) -> str:
         f'<span class="meta">{page.bus_backed_count}/{page.exposure_count} '
         "exposures bus-backed</span></header>"
         f"<main>{''.join(sections)}</main>"
-        "<footer>Server-rendered from this process&rsquo;s in-memory snapshot "
-        "cache, which is fed by the compacted "
-        "<code>onex.snapshot.projection.*</code> topics. No database handle, no "
+        "<footer>Server-rendered from the materialized projection tables the "
+        "projection writers persist. No "
         "client-side fetch, no client-side derivation: every verdict on this "
         "page was written by the reducer that owns it. A panel that could not be "
         "served says so and names its ticket &mdash; it never renders a zero it "

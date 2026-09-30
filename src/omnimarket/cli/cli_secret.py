@@ -41,7 +41,14 @@ from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
     revoke_local_byok_credential,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
+from omnimarket.routing.byok_plan_detection import detect_byok_plan
+from omnimarket.routing.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+    byok_provider_plans,
+    byok_routable_plans,
+    require_byok_plan_permitted,
+    resolve_byok_provider_backend,
+)
 from omnimarket.routing.local_byok_route import house_provider_slug
 
 __all__ = ["secret_group"]
@@ -68,6 +75,88 @@ def _offered_provider(secret_ref: str) -> str | None:
     if slug is None or resolve_byok_provider_backend(slug) is None:
         return None
     return slug
+
+
+def _refuse_plan_not_permitted(provider: str, plan: str) -> None:
+    """Stop with the plan's typed refusal when ``plan`` is detection-only.
+
+    OMN-20157. The catalogue declares z.ai's Coding Plan ``customer_routable:
+    false`` because the provider's terms bar its quota from third-party systems
+    (knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``), so a
+    key for it is never stored or routed. The message carries the typed code and
+    says what to register instead.
+    """
+    try:
+        require_byok_plan_permitted(provider, plan)
+    except ByokPlanNotPermittedError as refusal:
+        raise click.ClickException(f"{refusal} Nothing was stored.") from refusal
+
+
+def _resolve_plan(
+    provider: str | None, value: str, plan_option: str | None
+) -> str | None:
+    """The plan this key registers under, decided BEFORE anything is stored.
+
+    OMN-20157. ``None`` for a provider that is not offered or has one plan:
+    nothing to choose. Otherwise the named plan, checked against the catalogue,
+    or the plan detection finds. When neither yields one the command stops and
+    stores nothing, because a key filed under the wrong product routes to an
+    endpoint that refuses it and reads as a billing failure.
+
+    A plan the catalogue declares detection-only (z.ai's Coding Plan) is refused
+    with its typed code whether it is named with ``--plan`` (no network is used)
+    or found by detection: a customer's Coding Plan key is never stored or routed.
+
+    The key is sent only to the provider's own declared endpoints, by
+    :func:`detect_byok_plan`, and is never echoed.
+    """
+    if provider is None:
+        if plan_option is not None:
+            raise click.ClickException(
+                "--plan applies to a provider the catalogue offers; this "
+                "reference names none."
+            )
+        return None
+    declared = byok_provider_plans(provider)
+    routable = byok_routable_plans(provider)
+    if plan_option is not None:
+        named = plan_option.strip().lower()
+        if named not in declared:
+            raise click.ClickException(
+                f"{provider} has no plan {plan_option!r}. Choose one of: "
+                f"{', '.join(routable)}. Nothing was stored."
+            )
+        _refuse_plan_not_permitted(provider, named)
+        return named
+    if len(declared) <= 1:
+        return None
+    click.echo(
+        f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
+        "key with a one-token request to find which is yours."
+    )
+    detection = asyncio.run(detect_byok_plan(provider, value))
+    if detection.refused_plan is not None:
+        _refuse_plan_not_permitted(provider, detection.refused_plan)
+    if detection.plan is not None:
+        _refuse_plan_not_permitted(provider, detection.plan)
+        click.echo(f"Detected plan: {detection.plan}.")
+        return detection.plan
+    if detection.outcome == "rejected":
+        raise click.ClickException(
+            f"every {provider} plan refused that key. Check that you copied the "
+            "whole key from the provider's key page. Nothing was stored."
+        )
+    if detection.outcome == "ambiguous":
+        raise click.ClickException(
+            f"more than one {provider} plan accepts that key, and they are metered "
+            "differently, so this command will not choose for you. Run it again "
+            f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
+        )
+    raise click.ClickException(
+        f"could not tell which {provider} plan that key belongs to (a plan could "
+        "not be reached, or answered with a throttle). Run the command again "
+        f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
+    )
 
 
 def _stdin_is_tty() -> bool:
@@ -125,12 +214,27 @@ def secret_group() -> None:  # stub-ok: a click group's body IS its subcommands
     default=False,
     help="Replace a value already stored under this reference.",
 )
-def set_secret(secret_ref: str, force: bool) -> None:
+@click.option(
+    "--plan",
+    "plan_option",
+    default=None,
+    help=(
+        "The provider product this key belongs to, for a provider that has more "
+        "than one (glm: general_api). Omit it and the key is tried to find out. "
+        "A key for a plan the provider's terms bar from third-party systems (glm "
+        "Coding Plan) is refused, never stored."
+    ),
+)
+def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
     """Store the value for SECRET_REF, read from stdin.
 
     The value is never taken from an argument. Pipe it in
     (``printf %s "$KEY" | onex secret set <ref>``) or let the command prompt
     for it with the input hidden.
+
+    For a provider with more than one plan, the plan is detected by sending the
+    key to the provider's endpoints as a one-token request, or named with --plan
+    (which sends nothing).
     """
     store = LocalByokCredentialStore()
     if not force and asyncio.run(store.get_secret(secret_ref)) is not None:
@@ -148,16 +252,18 @@ def set_secret(secret_ref: str, force: bool) -> None:
             "read from a command-line argument."
         )
 
+    provider = _offered_provider(secret_ref)
+    plan = _resolve_plan(provider, value, plan_option)
     asyncio.run(store.set_secret(secret_ref, value))
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
-    provider = _offered_provider(secret_ref)
     if provider is not None:
         # The same key, under the tenant-shaped reference the customer route
         # carries. Replaces any earlier one for this provider (one key each).
         route_ref = register_local_byok_credential(
-            provider, value, db_path=store.db_path
+            provider, value, plan=plan, db_path=store.db_path
         )
-        click.echo(f"Registered it as your {provider} route key: {route_ref}.")
+        suffix = f" (plan: {plan})" if plan is not None else ""
+        click.echo(f"Registered it as your {provider} route key{suffix}: {route_ref}.")
 
 
 @secret_group.command("list")

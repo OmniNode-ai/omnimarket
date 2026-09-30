@@ -9,7 +9,7 @@ Contains:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ModelFrictionTriageRequest(BaseModel):
@@ -48,9 +48,25 @@ class ModelFrictionTriageRequest(BaseModel):
         description="Linear team name to create tickets in.",
     )
     linear_project: str = Field(
-        default="Active Sprint",
-        description="Linear project name to assign new tickets to.",
+        default="",
+        description=(
+            "REFUSED when non-empty: new tickets are created in the Backlog "
+            "with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)."
+        ),
     )
+
+    @field_validator("linear_project")
+    @classmethod
+    def _refuse_project(cls, value: str | None) -> str | None:
+        """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        created in the Backlog with NO project. Fail loud, never drop it."""
+        if value is not None and value.strip():
+            raise ValueError(
+                f"linear_project={value!r} refused: every new ticket is created in the "
+                "Backlog with no project (operator ruling 2026-09-30T14:30:05Z, "
+                "OMN-17427). Moving a ticket into a sprint is the operator's call."
+            )
+        return value
 
 
 class ModelFrictionTriageResult(BaseModel):

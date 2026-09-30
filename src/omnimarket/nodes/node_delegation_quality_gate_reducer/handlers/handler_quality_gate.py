@@ -1452,11 +1452,49 @@ def _joined_words(text: str) -> str:
     return " " + " ".join(word for word, _, _ in _words_with_spans(text)) + " "
 
 
+# OMN-19432: words that carry no fact and vary between a sentence and its
+# restatement ("is unverified" / "remains unverified", "is armed" / "was armed").
+# They are dropped from the CONTEXT windows only, on both sides of the
+# comparison, never from the hedging phrase itself. Kept short and closed on
+# purpose: every word added here makes the quote test more permissive.
+_QUOTE_CONTEXT_FILLER: frozenset[str] = frozenset(
+    {
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "remains",
+        "remain",
+        "remained",
+        "stays",
+        "stay",
+        "still",
+        "currently",
+        "yet",
+        "as",
+    }
+)
+
+
+def _core_words(words: list[str]) -> list[str]:
+    """``words`` without the filler that varies between a sentence and its restatement."""
+    return [word for word in words if word not in _QUOTE_CONTEXT_FILLER]
+
+
+def _core_joined(source_words: str) -> str:
+    """The space-padded source run with the same filler removed."""
+    return " " + " ".join(_core_words(source_words.split())) + " "
+
+
 def _is_quoted_from_source(
     words: list[tuple[str, int, int]],
     start: int,
     end: int,
     source_words: str,
+    source_core: str | None = None,
 ) -> bool:
     """Whether the phrase at ``[start, end)`` sits in context copied from the source.
 
@@ -1464,6 +1502,12 @@ def _is_quoted_from_source(
     it, must appear contiguously in the source. Near the edge of the answer the
     side with fewer words uses what it has, but never fewer than one word: a
     bare phrase with nothing beside it cannot be tied to any source sentence.
+
+    OMN-19432: when the verbatim windows do not match, the same test runs with
+    ``_QUOTE_CONTEXT_FILLER`` removed from both sides, so an answer that
+    restates the input's own uncertainty with another copula ("is unverified"
+    became "remains unverified") is still tied to the sentence it restates. The
+    phrase and the content words beside it must still match in order.
     """
     covered = [
         index
@@ -1480,6 +1524,17 @@ def _is_quoted_from_source(
     after = [word for word, _, _ in words[last + 1 : last + 1 + _QUOTE_CONTEXT_WORDS]]
     for window in (before + phrase, phrase + after):
         if len(window) > len(phrase) and f" {' '.join(window)} " in source_words:
+            return True
+    if source_core is None:
+        return False
+    core_before = _core_words([word for word, _, _ in words[:first]])[
+        -_QUOTE_CONTEXT_WORDS:
+    ]
+    core_after = _core_words([word for word, _, _ in words[last + 1 :]])[
+        :_QUOTE_CONTEXT_WORDS
+    ]
+    for window in (core_before + phrase, phrase + core_after):
+        if len(window) > len(phrase) and f" {' '.join(window)} " in source_core:
             return True
     return False
 
@@ -1511,19 +1566,36 @@ def _dangling_tail_is_quoted(content: str, grounding_source: str | None) -> bool
     return re.search(pattern, grounding_source.lower()) is not None
 
 
+def _is_gate_marker(lowered: str, start: int, end: int) -> bool:
+    """Whether the phrase at ``[start, end)`` is the parenthesised marker ``(unverified)``.
+
+    OMN-19432. The ``claims_grounded`` directive tells the model "if a state is
+    essential and not given, write (unverified) right after it", and the
+    grounding checks treat that marker as the sanctioned way to flag one. An
+    answer that followed the directive was vetoed here for the same word, so
+    the gate refused an answer for obeying the gate. Only the exact bracketed
+    form counts; a bare "unverified" in prose is still the answer's own.
+    """
+    return start > 0 and lowered[start - 1] == "(" and lowered[end : end + 1] == ")"
+
+
 def _unquoted_offsets(
     lowered: str,
     phrase: str,
     words: list[tuple[str, int, int]],
     source_words: str | None,
+    source_core: str | None = None,
 ) -> list[int]:
     """Offsets of every occurrence of ``phrase`` that the answer did not quote."""
     offsets: list[int] = []
     start = lowered.find(phrase)
     while start != -1:
         end = start + len(phrase)
+        if _is_gate_marker(lowered, start, end):
+            start = lowered.find(phrase, end)
+            continue
         if source_words is None or not _is_quoted_from_source(
-            words, start, end, source_words
+            words, start, end, source_words, source_core
         ):
             offsets.append(start)
         start = lowered.find(phrase, end)
@@ -1559,9 +1631,10 @@ def _check_accurate(content: str, grounding_source: str | None = None) -> str | 
     source_words = (
         _joined_words(grounding_source) if grounding_source is not None else None
     )
+    source_core = _core_joined(source_words) if source_words is not None else None
     detected: list[str] = []
     for phrase in _ACCURACY_UNCERTAINTY_PHRASES:
-        offsets = _unquoted_offsets(lowered, phrase, words, source_words)
+        offsets = _unquoted_offsets(lowered, phrase, words, source_words, source_core)
         if offsets:
             detected.append(f"{phrase}@offset={offsets[0]}")
     if detected:

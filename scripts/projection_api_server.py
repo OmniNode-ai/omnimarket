@@ -4,7 +4,7 @@ from omnimarket.projection.api_server import (  # noqa: F401
     _cors_origins_from_env,
     app,
     compute_freshness,
-    get_snapshot_cache,
+    get_row_source,
     get_topic_map,
     main,
     resolve_effective_limit,

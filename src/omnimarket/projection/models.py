@@ -181,6 +181,16 @@ class ProjectionTableConfig(BaseModel):
     topic: str
     table: str
     schema_name: str = "public"
+    # OMN-20152: the PHYSICAL schema of ``table`` in the dashboard database,
+    # which the table read path (``projection/table_reader.py``) reads.
+    # ``schema_name`` is what projection_api declares, and for the exposures
+    # whose relation lives in ``omninode_internal`` it records the DATABASE
+    # (``omnidash_analytics``) instead, because ALLOWED_SCHEMAS admits no
+    # other value (see node_projection_work_events' contract, OMN-17772).
+    # Discovery resolves this from the writer's own db_io declaration of the
+    # same table in that case, and leaves it None when nothing declares one,
+    # which the read path refuses rather than guessing.
+    relation_schema: str | None = None
     # tuple[str, ...] for declared columns; tuple[Literal["*"]] for SELECT *
     columns: tuple[str, ...] | tuple[Literal["*"]]
     json_columns: tuple[str, ...] = ()

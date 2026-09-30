@@ -44,6 +44,7 @@ Design notes (mirrors ``generation_publisher.py``, OMN-13004)
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Literal, Protocol, cast
 
@@ -56,15 +57,23 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
 )
+from omnimarket.routing.byok_plan_detection import (
+    ModelByokPlanDetection,
+    detect_byok_plan,
+)
 from omnimarket.routing.byok_provider_backends import (
     ByokCatalogError,
+    byok_provider_plans,
+    byok_routable_plans,
     customer_provider_catalogue,
+    require_byok_plan_permitted,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
@@ -166,6 +175,32 @@ class ProviderCatalogueUnavailableError(RuntimeError):
     """
 
 
+class CredentialPlanUndeterminedError(ValueError):
+    """The provider has several plans and this key's plan could not be decided.
+
+    OMN-20157. Raised by :func:`register_inference_credential` BEFORE anything is
+    stored or published, so a key is never filed under a product that refuses it.
+    Carries the detection outcome (``rejected`` or ``inconclusive``) and the
+    plans on offer; never the key. The intake route maps it to a 422 that asks
+    the customer to name the plan.
+    """
+
+    def __init__(self, provider: str, outcome: str, plans: tuple[str, ...]) -> None:
+        self.provider = provider
+        self.outcome = outcome
+        self.plans = plans
+        if outcome == "rejected":
+            detail = "every plan refused the key"
+        elif outcome == "ambiguous":
+            detail = "more than one plan accepts the key"
+        else:
+            detail = "a plan could not be reached or answered with a throttle"
+        super().__init__(
+            f"could not decide which {provider} plan this key belongs to "
+            f"({detail}). Submit it again naming one of: {', '.join(plans)}."
+        )
+
+
 class ModelInferenceCredentialCreateRequest(BaseModel):
     """Typed body of ``POST /v1/tenants/me/inference-credentials``."""
 
@@ -193,6 +228,20 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         description=(
             "Raw customer API key. Held in-process only long enough to reach "
             "set_secret(); never logged, never re-serialized, never returned."
+        ),
+    )
+
+    plan: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description=(
+            "OMN-20157. The provider product this key belongs to, for a provider "
+            "that has more than one (glm: 'general_api'). Omit it and intake "
+            "tries the key against the provider's plans to find out. A plan the "
+            "provider's terms bar from third-party systems (glm: 'coding_plan') "
+            "is refused with a typed code, never routed."
         ),
     )
 
@@ -241,6 +290,32 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
             )
         return provider
 
+    @model_validator(mode="after")
+    def _plan_must_be_one_the_provider_declares(
+        self,
+    ) -> ModelInferenceCredentialCreateRequest:
+        """A named plan must be one the catalogue declares for that provider.
+
+        Runs after the provider field's own catalogue check, so ``provider`` is
+        already known offered here. An unknown plan is refused rather than
+        widened to the default: a key filed under the wrong product routes to an
+        endpoint that refuses it.
+
+        A DECLARED plan passes here even when it is detection-only (z.ai's Coding
+        Plan), so that ``register_inference_credential`` refuses it with the
+        plan's typed code (``BYOK_CODING_PLAN_NOT_PERMITTED``) and not as a
+        generic validation failure. The plans this message offers back are the
+        routable ones.
+        """
+        if self.plan is None:
+            return self
+        if self.plan not in byok_provider_plans(self.provider):
+            raise ValueError(
+                f"{self.plan!r} is not a plan of provider {self.provider!r}. "
+                f"Plans: {', '.join(byok_routable_plans(self.provider))}."
+            )
+        return self
+
 
 class ModelInferenceCredentialResponse(BaseModel):
     """Response body of the create route -- ref + metadata, NEVER the value."""
@@ -250,6 +325,10 @@ class ModelInferenceCredentialResponse(BaseModel):
     api_key_ref: str
     name: str
     provider: str
+    #: OMN-20157. The plan the credential was registered under: the one the
+    #: customer named or detection found. ``None`` for a provider with a single
+    #: plan, where there was nothing to choose.
+    plan: str | None = None
     created_at: datetime
 
 
@@ -485,14 +564,59 @@ def _build_secret_store(*, allow_delete: bool = False) -> ProtocolSecretStore:
     )
 
 
+async def _resolve_registration_plan(
+    request: ModelInferenceCredentialCreateRequest,
+    plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]],
+) -> str | None:
+    """The plan a registration files under, or ``None`` for a single-plan provider.
+
+    OMN-20157: a plan the catalogue declares detection-only (z.ai's Coding Plan,
+    whose terms bar third-party use) is never filed. It is refused with the
+    plan's typed ``refusal_code`` (:class:`ByokPlanNotPermittedError`) when the
+    customer names it, when detection finds the key answers only there, and when
+    a detector names it, before anything is stored or published.
+
+    Raises:
+        ByokPlanNotPermittedError: the plan is detection-only.
+        CredentialPlanUndeterminedError: no plan could be decided.
+    """
+    if request.plan is not None:
+        require_byok_plan_permitted(request.provider, request.plan)
+        return request.plan
+    # Every DECLARED plan counts here: a provider with one routable plan and one
+    # detection-only plan still needs its key tried to tell which it holds.
+    if len(byok_provider_plans(request.provider)) <= 1:
+        return None
+    detection = await plan_detector(request.provider, request.key_value)
+    if detection.refused_plan is not None:
+        require_byok_plan_permitted(request.provider, detection.refused_plan)
+    if detection.plan is None:
+        raise CredentialPlanUndeterminedError(
+            request.provider,
+            detection.outcome,
+            byok_routable_plans(request.provider),
+        )
+    require_byok_plan_permitted(request.provider, detection.plan)
+    return detection.plan
+
+
 async def register_inference_credential(
     request: ModelInferenceCredentialCreateRequest,
     *,
     tenant_id: str,
     secret_store: ProtocolSecretStore | None = None,
     event_bus: ProtocolCredentialEventBus | None = None,
+    plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]] = detect_byok_plan,
 ) -> ModelInferenceCredentialResponse:
     """Perform the value->ref exchange and thin-publish credential-registered.
+
+    OMN-20157: for a provider with more than one plan, the plan is the request's
+    own ``plan`` or, when omitted, the one ``plan_detector`` finds by trying the
+    key against each plan's endpoint. It is decided BEFORE the key is stored or
+    anything is published, and recorded on the event's ``metadata`` so the
+    projection mints the route for that plan's endpoint. When it cannot be
+    decided :class:`CredentialPlanUndeterminedError` is raised and nothing is
+    stored.
 
     ``key_value`` exists in this process for exactly one line: the
     ``set_secret`` call below. It is never assigned to any other variable,
@@ -519,6 +643,7 @@ async def register_inference_credential(
         CredentialStoreUnavailableError: store configured but unauthenticated.
         CredentialStoreWriteRejectedError: the store declined the write.
     """
+    plan = await _resolve_registration_plan(request, plan_detector)
     api_key_ref = mint_api_key_ref(tenant_id, request.provider)
 
     owns_store = secret_store is None
@@ -544,6 +669,7 @@ async def register_inference_credential(
         provider=request.provider,
         name=request.name,
         api_key_ref=api_key_ref,
+        metadata={"plan": plan} if plan is not None else {},
     )
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
@@ -572,6 +698,7 @@ async def register_inference_credential(
         api_key_ref=api_key_ref,
         name=request.name,
         provider=request.provider,
+        plan=plan,
         created_at=envelope.envelope_timestamp,
     )
 

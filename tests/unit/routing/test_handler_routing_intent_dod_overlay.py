@@ -119,11 +119,23 @@ def test_no_reader_wired_decides_exactly_as_before() -> None:
     assert decision.rationale == static.rationale
 
 
+class _EvalLine:
+    """OMN-19797: the class's eval readout, fixed to one line verdict."""
+
+    def __init__(self, verdict: str | None) -> None:
+        self.verdict = verdict
+
+    def read_false_pass_line(self, *, task_class: str, tenant_id: str) -> str | None:
+        return self.verdict
+
+
 @pytest.mark.unit
 def test_dod_suppressed_tier_moves_the_deployed_decision() -> None:
     reader = _Reader([_joined(outcome="refused") for _ in range(5)])
     handler = HandlerRoutingIntent(
-        tenant_overlay_db=_NoTenantOverlay(), dod_outcome_reader=reader
+        tenant_overlay_db=_NoTenantOverlay(),
+        dod_outcome_reader=reader,
+        eval_line_reader=_EvalLine("met"),
     )
 
     decision = handler.handle(_intent())
@@ -131,6 +143,25 @@ def test_dod_suppressed_tier_moves_the_deployed_decision() -> None:
     assert reader.calls == [(TASK_TYPE, TENANT_ID)]
     assert decision.tier_name != "local"
     assert "ROI-demoted past ['local']" in decision.rationale
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("line", ["refused", "missed", None])
+def test_eval_not_met_is_unknown_on_the_deployed_decision(line: str | None) -> None:
+    """OMN-19797 AC1 on the deployed consumer: a class whose line is not MET
+    (or has no readout) never suppresses a tier, however bad its DoD rate."""
+    intent = _intent()
+    handler = HandlerRoutingIntent(
+        tenant_overlay_db=_NoTenantOverlay(),
+        dod_outcome_reader=_Reader([_joined(outcome="refused") for _ in range(5)]),
+        eval_line_reader=_EvalLine(line),
+    )
+
+    decision = handler.handle(intent)
+    static = routing.delta(intent.payload, surface=routing.EnumDelegationSurface.CLOUD)
+
+    assert decision.tier_name == static.tier_name == "local"
+    assert "ROI-demoted" not in decision.rationale
 
 
 @pytest.mark.unit

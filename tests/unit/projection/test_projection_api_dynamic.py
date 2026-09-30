@@ -25,10 +25,11 @@ from fastapi.testclient import TestClient
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from scripts.projection_api_server import (
     app,
-    get_snapshot_cache,
+    get_row_source,
     get_topic_map,
     topic_supports_correlation_id_filter,
 )
+from tests.helpers.cache_row_source import CacheRowSource
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -131,8 +132,8 @@ def _with_overrides(
     cache: MagicMock,
     topic_map: dict[str, ProjectionTableConfig],
 ) -> Generator[TestClient, None, None]:
-    """Override both get_snapshot_cache and get_topic_map; yield a TestClient."""
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    """Override both get_row_source and get_topic_map; yield a TestClient."""
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: topic_map
     client = TestClient(app, raise_server_exceptions=True)
     try:

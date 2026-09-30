@@ -42,10 +42,22 @@ class _MockLinearTicketClient:
         self.create_ticket_calls: list[dict[str, object]] = []
 
     def create_ticket(
-        self, *, title: str, description: str, team: str, parent: str | None
+        self,
+        *,
+        title: str,
+        description: str,
+        team: str,
+        parent: str | None,
+        assignee_id: str | None = None,
     ) -> tuple[str, str]:
         self.create_ticket_calls.append(
-            {"title": title, "description": description, "team": team, "parent": parent}
+            {
+                "title": title,
+                "description": description,
+                "team": team,
+                "parent": parent,
+                "assignee_id": assignee_id,
+            }
         )
         return self._created_id, self._created_url
 

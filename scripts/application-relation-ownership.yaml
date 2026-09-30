@@ -163,6 +163,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-19790: tenant-scoped labels, corrected by newer observations.
+    - name: delegation_eval_items
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_delegation_eval/migrations/0000_create_delegation_eval_items.sql
+      access: read_write
+      role: delegation_eval_labels
     # OMN-19833 (task T11 of the PR landing workflow plan): the two read
     # models of node_projection_pr_landing, one row per (repository, pull
     # request) and one append-only row per (repository, pull request, seq).
@@ -1086,6 +1093,14 @@ database_objects:
     database_ref: application
     schema: omninode_internal
     domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19790: BIGSERIAL requires a separately declared sequence grant.
+  - name: delegation_eval_items_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   # OMN-19833: the sequences behind the projection_cursor of the two PR

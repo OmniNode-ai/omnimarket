@@ -47,6 +47,74 @@ profiles:
       thinking:
         type: disabled
 
+  # OMN-19432 (glm-usage-audit and glm-chain, 2026-09-30): glm-5.3 AND glm-5.3-flash
+  # are called the way z.ai documents them, not with the thinking-off option above.
+  #
+  # z.ai's thinking-mode guide (docs.z.ai/guides/capabilities/thinking-mode, read
+  # 2026-09-30) says GLM-5.3 and GLM-5.3-FLASH "use forced thinking and cannot be
+  # disabled", and the flash guide (docs.z.ai/guides/llm/glm-5.3-flash) recommends
+  # temperature 1, top_p 0.95 and reasoning_effort max, which is the model's own
+  # default. The profile above still sent `thinking: disabled` and the effect
+  # default temperature 0.3 to both. On glm-5.3 that request still spent 188
+  # reasoning tokens on a six-item classification: a stunted think, not an off
+  # switch.
+  #
+  # Same 30 lineup-eval tasks, same delegate-built messages, two answers per task
+  # per config, graded blind (knowledge-base-internal reports/2026-09-30-glm-lineup-eval.md
+  # and reports/2026-09-30-glm-flash-first-ladder.md):
+  #   glm-5.3,      thinking disabled (old request)          44/60 correct
+  #   glm-5.3,      documented settings                      56/60 correct
+  #   glm-5.3-flash, thinking disabled (old request)         43/60 correct, 0.42 credits/task, p50 5 s
+  #   glm-5.3-flash, documented settings                     51/60 correct, 2.78 credits/task, p50 28 s
+  #   local Qwen3.8-27B, production no-think request         44/60 correct
+  # glm-5.3 spends about 6.3 credits a task. Flash on the documented settings is the
+  # first GLM rung: 85% correct at under half of glm-5.3's credits. About one answer
+  # in eight from either model needs more than 120 s, which the effect's per-call
+  # ceiling fails closed as TIMEOUT and the ladder escalates; glm-5.3, the rung that
+  # takes over, has its own 150 s ceiling in the effect node's contract
+  # (`model_timeout_seconds`), flash keeps 120 s.
+  #
+  # Profiles merge in file order, so this one's request_options override the
+  # `thinking` key set above. Its `default_temperature` replaces the effect
+  # request's default temperature when the caller sent none; `top_p` rides
+  # provider_request_options, which are applied to the payload after it. The
+  # served-as aliases and every other glm-* id (glm-5.2, glm-5.3-flashx) keep the
+  # thinking-off profile until measured.
+  - profile_id: cloud-glm-5-3-thinking
+    enabled: true
+    model_name_patterns:
+      - "glm-5.3"
+      - "*/glm-5.3"
+      - "glm-5.3-flash"
+      - "*/glm-5.3-flash"
+    task_types:
+      - "code_generation"
+      - "code_review"
+      - "refactor"
+      - "reasoning"
+      - "complex_reasoning"
+      - "research"
+      - "document"
+      - "documentation"
+      - "summarization"
+      - "review"
+      - "planning"
+      - "test"
+    directive:
+      placement: system_suffix
+      separator: "\n\n"
+      apply_once: true
+      text: "Answer with the requested deliverable directly."
+    # `temperature` is a reserved wire key (one producer per key), so it is a
+    # profile field, resolved as caller, else this default, else the task class
+    # default. Written through request_options it raised
+    # "provider request options cannot override: temperature" on the first call.
+    default_temperature: 1.0
+    request_options:
+      thinking:
+        type: enabled
+      top_p: 0.95
+
   # OMN-13335: Gemini ceiling thinking-suppression for the code escalation path.
   #
   # The code_generation escalation ceiling routes to gemini-2.5-flash

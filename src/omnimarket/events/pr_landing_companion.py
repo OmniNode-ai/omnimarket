@@ -79,6 +79,10 @@ class EnumPrLandingCompanionDeclineCode(StrEnum):
     ALREADY_BOUND        the product body already names a companion.
     STAMP_REBOUND        the product body was re-pointed at the proven companion.
     DRY_RUN              the producer ran without side effects.
+    WINDOW_IN_FLIGHT     the member was not pushed to its repository's batch
+                         window because the window's change-control run is in
+                         flight or the window is armed and green; it binds on
+                         the first rebuild after that run settles (OMN-20042).
     UNCLASSIFIED         a reason this seam does not recognise. It is typed and
                          visible, never dropped; a recorded line that lands here
                          fails the mapping's corpus test.
@@ -98,6 +102,7 @@ class EnumPrLandingCompanionDeclineCode(StrEnum):
     NO_RED_DERIVABLE_CHECK = "NO_RED_DERIVABLE_CHECK"
     LEASE_HELD = "LEASE_HELD"
     TICKET_LEASE_HELD = "TICKET_LEASE_HELD"
+    WINDOW_IN_FLIGHT = "WINDOW_IN_FLIGHT"
     UNCLASSIFIED = "UNCLASSIFIED"
 
 

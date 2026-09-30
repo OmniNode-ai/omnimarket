@@ -64,6 +64,7 @@ from pathlib import Path
 from typing import Final
 
 from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.routing.byok_provider_backends import require_byok_plan_permitted
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
@@ -79,7 +80,8 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     secret_ref     TEXT PRIMARY KEY,
     provider       TEXT NOT NULL,
     secret_value   TEXT NOT NULL,
-    registered_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    plan           TEXT
 )
 """
 
@@ -165,6 +167,16 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
     conn.row_factory = sqlite3.Row
     conn.execute(_LOCAL_CREDENTIAL_DDL)
+    # OMN-20157: a database created before plans existed has no ``plan`` column.
+    # ``CREATE TABLE IF NOT EXISTS`` leaves it as it was, so add the column the
+    # one time it is missing. Nullable: a row with no plan resolves the
+    # provider's default plan, which is what every earlier row meant.
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
+    }
+    if "plan" not in columns:
+        conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN plan TEXT")
     conn.commit()
     return conn
 
@@ -173,6 +185,7 @@ def register_local_byok_credential(
     provider: str,
     secret_value: str,
     *,
+    plan: str | None = None,
     db_path: Path | None = None,
 ) -> str:
     """Store ``secret_value`` under a freshly minted ref and return the ref.
@@ -189,6 +202,12 @@ def register_local_byok_credential(
             against the declared BYOK catalogue by the routing half.
         secret_value: the key itself, read by the caller from stdin. Never
             read from ``sys.argv`` by this function or any caller of it.
+        plan: OMN-20157. The provider product the key belongs to (for glm,
+            ``general_api``), recorded with the credential so the routing half
+            addresses that product's endpoint. ``None`` records nothing and
+            resolves the provider's default plan. A plan the catalogue declares
+            detection-only (glm ``coding_plan``, barred from third-party systems
+            by z.ai's terms) is refused.
         db_path: the local database. Defaults to the existing
             ``~/.omninode/delegation/delegation.sqlite``.
 
@@ -197,10 +216,14 @@ def register_local_byok_credential(
 
     Raises:
         LocalByokCredentialError: the provider or the value is empty.
+        ByokPlanNotPermittedError: ``plan`` is a detection-only plan. Nothing is
+            written.
     """
     normalized = provider.strip().lower()
     if not normalized:
         raise LocalByokCredentialError("provider must be a non-empty string")
+    if plan:
+        require_byok_plan_permitted(normalized, plan)
     if not secret_value or not secret_value.strip():
         raise LocalByokCredentialError(
             f"no value supplied for provider {normalized!r}; a blank credential "
@@ -216,8 +239,13 @@ def register_local_byok_credential(
         )
         conn.execute(
             f"INSERT INTO {LOCAL_CREDENTIAL_TABLE} "
-            "(secret_ref, provider, secret_value) VALUES (?, ?, ?)",
-            (ref, normalized, secret_value.strip()),
+            "(secret_ref, provider, secret_value, plan) VALUES (?, ?, ?, ?)",
+            (
+                ref,
+                normalized,
+                secret_value.strip(),
+                plan.strip().lower() if plan else None,
+            ),
         )
         conn.commit()
     finally:
@@ -276,6 +304,32 @@ def resolve_local_byok_credential_ref(
     finally:
         conn.close()
     return str(row["secret_ref"]) if row is not None else None
+
+
+def resolve_local_byok_credential_plan(
+    provider: str, *, db_path: Path | None = None
+) -> str | None:
+    """Return the plan recorded with the registered credential for ``provider``.
+
+    OMN-20157. ``None`` when no credential is registered or none recorded a plan;
+    both mean "resolve the provider's default plan". Never returns a value.
+    """
+    normalized = provider.strip().lower()
+    if not normalized:
+        return None
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return None
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT plan FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? "
+            "ORDER BY registered_at DESC LIMIT 1",
+            (normalized,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return str(row["plan"]) if row is not None and row["plan"] else None
 
 
 def registered_local_byok_providers(*, db_path: Path | None = None) -> tuple[str, ...]:
@@ -458,6 +512,7 @@ __all__: list[str] = [
     "mint_local_byok_credential_ref",
     "register_local_byok_credential",
     "registered_local_byok_providers",
+    "resolve_local_byok_credential_plan",
     "resolve_local_byok_credential_ref",
     "revoke_local_byok_credential",
 ]

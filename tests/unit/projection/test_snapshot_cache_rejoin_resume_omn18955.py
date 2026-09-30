@@ -30,9 +30,7 @@ from typing import Any
 
 import pytest
 from aiokafka import TopicPartition
-from fastapi.testclient import TestClient
 
-from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
@@ -340,20 +338,3 @@ async def test_start_assigns_every_partition_instead_of_subscribing(
     # The cache's own resume path is still callable and still counts.
     cache.on_partitions_assigned(set())
     assert cache._assignment_count == 1
-
-
-def test_ready_reports_the_rejoin_count() -> None:
-    consumer = _FakeConsumer(end=1000)
-    cache = _cache(consumer)
-    cache.on_partitions_assigned(set(consumer.assignment()))
-    cache.on_partitions_assigned(set(consumer.assignment()))
-    topic_map = {_BUSY_TOPIC: _cfg(_BUSY_TOPIC), _IDLE_TOPIC: _cfg(_IDLE_TOPIC)}
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
-    app.dependency_overrides[get_topic_map] = lambda: topic_map
-    try:
-        response = TestClient(app).get("/ready")
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 503  # nothing replayed yet; unchanged gate
-    assert response.json()["consumer_reassignments"] == 1

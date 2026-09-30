@@ -45,6 +45,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import re
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -115,12 +116,14 @@ from omnimarket.routing.backend_placement import (
     apply_backend_placements,
     load_bound_bifrost_placements,
     spread_groups,
-    spread_index,
+    spread_pick,
+    spread_weights,
 )
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     house_credential_refs,
+    lab_backend_hosts,
     refuse_keyless_customer_on_cloud,
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
@@ -348,6 +351,7 @@ def _select_model_for_task(
     require_credential: bool = True,
     spread_key: str | None = None,
     spread_peers: dict[str, tuple[str, ...]] | None = None,
+    spread_member_weights: dict[str, float] | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -355,7 +359,8 @@ def _select_model_for_task(
     OMN-19215 AC4: when ``spread_key`` is given and ``spread_peers`` names
     spread-mode placed backends for the chosen rung, the choice becomes one
     member of the group ``[rung, *eligible peers]``, picked by
-    :func:`~omnimarket.routing.backend_placement.spread_index` over the key.
+    :func:`~omnimarket.routing.backend_placement.spread_pick` over the key, each
+    member taking the share its placement ``weight`` declares (the rung's is 1.0).
     A peer is eligible under the same rules the first choice met: not
     excluded, declares ``task_type``, fits ``estimated_tokens`` and its backend
     is routable. Only :func:`delta` passes a key, so the availability probes
@@ -402,7 +407,14 @@ def _select_model_for_task(
             group.append(member)
     if len(group) == 1:
         return selected
-    return group[spread_index(spread_key, len(group))]
+    member_weights = spread_member_weights or {}
+    return group[
+        spread_pick(
+            spread_key,
+            [1.0]
+            + [member_weights.get(member.backend_ref, 1.0) for member in group[1:]],
+        )
+    ]
 
 
 def _select_primary_model_for_task(
@@ -561,10 +573,12 @@ _config: ModelDelegationConfig | None = None
 _config_spread_peers: (
     tuple[ModelDelegationConfig, dict[str, tuple[str, ...]]] | None
 ) = None
+# The peers' declared weights, bound to the same config object.
+_config_spread_weights: tuple[ModelDelegationConfig, dict[str, float]] | None = None
 
 
 def _get_config() -> ModelDelegationConfig:
-    global _config, _config_spread_peers
+    global _config, _config_spread_peers, _config_spread_weights
     if _config is None:
         # OMN-16200: an unbound DELEGATION_ROUTING_TIERS_PATH resolves to the
         # packaged tiers file with a logged bootstrap_default provenance line
@@ -600,12 +614,21 @@ def _get_config() -> ModelDelegationConfig:
             parse_delegation_config_yaml(yaml_text), placed
         )
         _config_spread_peers = (_config, spread_groups(placed))
+        _config_spread_weights = (_config, spread_weights(placed))
     return _config
 
 
 def _spread_peers_for(config: ModelDelegationConfig) -> dict[str, tuple[str, ...]]:
     """The spread groups recorded for ``config`` by :func:`_get_config`, or ``{}``."""
     recorded = _config_spread_peers
+    if recorded is None or recorded[0] is not config:
+        return {}
+    return recorded[1]
+
+
+def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
+    """The spread peers' declared weights recorded for ``config``, or ``{}``."""
+    recorded = _config_spread_weights
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
@@ -1267,6 +1290,40 @@ def _class_declares_heuristic_for_shape(
     return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
 
 
+def _prompt_waived_rules(
+    contract: dict[str, object] | None,
+    heuristic: tuple[str, ...],
+    prompt: str,
+) -> tuple[str, ...]:
+    """Heuristic rules whose own declaration says this prompt's layout waives them.
+
+    OMN-19432. A rule declares ``waived_when_prompt_matches`` under
+    ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
+    what the model is told and what the gate enforces stay one list. Returns the
+    waived names in band order. A rule the contract does not declare, or a
+    malformed declaration, waives nothing: an unreadable waiver must never
+    silently drop a veto (the fail-closed default of ``resolve_quality_rule``).
+    """
+    if not isinstance(contract, dict):
+        return ()
+    rules = contract.get("quality_rules")
+    if not isinstance(rules, dict):
+        return ()
+    waived: list[str] = []
+    for name in heuristic:
+        rule = rules.get(name)
+        if not isinstance(rule, dict):
+            continue
+        patterns = rule.get("waived_when_prompt_matches")
+        if not isinstance(patterns, list):
+            continue
+        for pattern in patterns:
+            if isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE):
+                waived.append(name)
+                break
+    return tuple(waived)
+
+
 def resolve_task_class_dod_resolution(
     task_type: str,
     prompt: str | None = None,
@@ -1315,12 +1372,22 @@ def resolve_task_class_dod_resolution(
         dod_deterministic = deterministic_override
         deterministic_source = EnumDodBandSource.CLASS_SHAPE_OVERRIDES
 
+    # OMN-19432: a rule the prompt's own layout contradicts leaves the HEURISTIC
+    # band, applied last so it holds whichever band (class, class shape override,
+    # contract default) supplied the rule. The deterministic floor is untouched.
+    waived_rules = _prompt_waived_rules(contract, dod_heuristic, prompt)
+    if waived_rules:
+        dod_heuristic = tuple(
+            name for name in dod_heuristic if name not in waived_rules
+        )
+
     return ModelDodResolution(
         deterministic=dod_deterministic,
         heuristic=dod_heuristic,
         requested_shape=shape,
         deterministic_source=deterministic_source,
         heuristic_source=heuristic_source,
+        waived_rules=waived_rules,
     )
 
 
@@ -1798,6 +1865,7 @@ def backend_id_for_tier(
         require_credential=require_credential,
         spread_key=spread_key,
         spread_peers=_spread_peers_for(config),
+        spread_member_weights=_spread_weights_for(config),
     )
     if selected is None:
         return None
@@ -2583,6 +2651,9 @@ def delta(
             api_key_env=None,
             backend_ref=overlay_decision.selected_backend_ref,
             house_refs=house_credential_refs(_load_bifrost_endpoints()),
+            # INV-068: the destination is checked as well as the credential.
+            endpoint_url=overlay_decision.endpoint_url,
+            lab_hosts=lab_backend_hosts(_load_bifrost_endpoints()),
             # The route is the customer's OWN declared backend, so an absent
             # secret_ref means "this endpoint of mine needs no auth" — their
             # infrastructure, their cost — not "fall back to OmniNode".
@@ -2621,6 +2692,7 @@ def delta(
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
     spread_peers = _spread_peers_for(config)
+    spread_member_weights = _spread_weights_for(config)
     spread_members = frozenset(spread_peers).union(*spread_peers.values())
 
     contract = _get_task_class_contract()
@@ -2705,6 +2777,7 @@ def delta(
                     # peers, one member per correlation id.
                     spread_key=str(request.correlation_id),
                     spread_peers=spread_peers,
+                    spread_member_weights=spread_member_weights,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
@@ -2794,6 +2867,8 @@ def delta(
                 api_key_env=backend.api_key_env,
                 backend_ref=selected.backend_ref,
                 house_refs=house_credential_refs(bifrost_backends),
+                endpoint_url=backend.endpoint_url,
+                lab_hosts=lab_backend_hosts(bifrost_backends),
             )
 
             return ModelRoutingDecision(

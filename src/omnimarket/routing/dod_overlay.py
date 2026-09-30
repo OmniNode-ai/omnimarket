@@ -44,6 +44,15 @@ Thresholds are the OMN-14001 ones, read through the same resolvers and env vars
 (minimum sample, floor, OMN-14019 recency window and lookback), so one knob set
 governs both reads.
 
+Routing learns from a class only while its false-pass line is MET (OMN-19797,
+EV.9 of the delegation evals plan). The per-class eval readout, the latest
+``delegation_eval_results`` row of the task class (stratum ``all``, arm
+``replayed``: the gate the lane has installed), is the one accuracy readout this
+read consults before a stored outcome may suppress a tier. A class whose line is
+MISSED or REFUSED, a class with no readout, a lane with no readout wired, and an
+unreadable readout all give ``unknown``: the overlay keeps its counts for the
+decision log and suppresses nothing, so routing keeps the static tiers.
+
 Tenancy (OMN-16092 posture, unchanged): the read runs under exactly one tenant,
 filtered explicitly on ``delegation_events.tenant_id`` AND with ``app.tenant_id``
 set for the RLS policy, so it is correct whether or not the table's RLS is
@@ -110,6 +119,18 @@ _ENV_VERDICT_DSN = "OMNINODE_INTERNAL_DB_URL"
 
 _CONNECT_TIMEOUT_SECONDS = 3
 
+#: The eval line verdict (``omnimarket.ranges``) under which routing may learn.
+EVAL_LINE_MET = "met"
+
+#: Recorded when no readout row exists for the class, or no reader is wired.
+EVAL_LINE_MISSING = "missing"
+
+#: Recorded when the readout could not be read. Treated as not MET.
+EVAL_LINE_UNREADABLE = "unreadable"
+
+#: The EV.4 results relation the eval line is read from.
+DELEGATION_EVAL_RESULTS_RELATION = "public.delegation_eval_results"
+
 _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -153,6 +174,13 @@ class ModelRoutingDodOverlay(BaseModel):
         description="Of those, verdicts that decided nothing (skipped, "
         "unresolved, pending), so the log shows why a rate has no samples.",
     )
+    eval_line_verdict: str | None = Field(
+        default=None,
+        description="OMN-19797: the class's latest false-pass line verdict "
+        "(met, missed, refused, missing or unreadable), set by "
+        "resolve_dod_overlay. Anything but met suppresses no tier. None only "
+        "for the pure fold, before the gate is applied.",
+    )
 
     def describe(self) -> str:
         """One log-friendly clause naming every (tier, model) rate and the gate."""
@@ -170,7 +198,8 @@ class ModelRoutingDodOverlay(BaseModel):
             f"undecided={self.undecided_verdict_count} "
             f"suppressed_tiers={sorted(self.roi_overlay.suppressed_tiers)} "
             f"min_samples={self.roi_overlay.min_samples} "
-            f"floor={self.roi_overlay.success_floor:.3f}"
+            f"floor={self.roi_overlay.success_floor:.3f} "
+            f"eval_line={self.eval_line_verdict or 'ungated'}"
         )
 
 
@@ -317,6 +346,149 @@ def build_dod_overlay(
         ),
         model_signals=model_signals,
     )
+
+
+def gate_overlay_on_eval_line(
+    overlay: ModelRoutingDodOverlay, eval_line_verdict: str
+) -> ModelRoutingDodOverlay:
+    """Apply the EV.9 condition: suppress tiers only while the class's line is MET.
+
+    Pure. Any verdict but ``met`` returns the overlay with every tier signal
+    unsuppressed, keeping its counts for the decision log.
+    """
+    verdict = eval_line_verdict.strip().lower() or EVAL_LINE_MISSING
+    if verdict == EVAL_LINE_MET:
+        return overlay.model_copy(update={"eval_line_verdict": verdict})
+    unsuppressed = tuple(
+        signal.model_copy(update={"suppressed": False})
+        for signal in overlay.roi_overlay.signals
+    )
+    return overlay.model_copy(
+        update={
+            "eval_line_verdict": verdict,
+            "roi_overlay": overlay.roi_overlay.model_copy(
+                update={"signals": unsuppressed}
+            ),
+        }
+    )
+
+
+class ProtocolEvalLineReader(Protocol):
+    """Reads the latest false-pass line verdict of one task class (EV.4 readout)."""
+
+    def read_false_pass_line(self, *, task_class: str, tenant_id: str) -> str | None:
+        """The verdict (met, missed, refused), or None when the class has no row."""
+        ...
+
+
+class PostgresEvalLineReader:
+    """Read-only reader of the per-class eval readout (psycopg2).
+
+    Reads the newest ``delegation_eval_results`` row of the class for stratum
+    ``all`` and arm ``replayed`` under one tenant, with ``app.tenant_id`` set
+    for the table's forced RLS and the tenant filtered explicitly.
+    """
+
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        connect_timeout: int = _CONNECT_TIMEOUT_SECONDS,
+        relation: str = DELEGATION_EVAL_RESULTS_RELATION,
+    ) -> None:
+        if not dsn:
+            raise ValueError("PostgresEvalLineReader requires a non-empty DSN")
+        if not _RELATION_PATTERN.match(relation):
+            raise ValueError(f"unsafe relation identifier: {relation!r}")
+        self._dsn = dsn
+        self._connect_timeout = connect_timeout
+        self._sql = (
+            "SELECT false_pass_line_verdict "
+            f"FROM {relation} "
+            "WHERE tenant_id = %(tenant_id)s::uuid "
+            "AND task_class = %(task_class)s "
+            "AND stratum = 'all' AND arm = 'replayed' "
+            "ORDER BY observed_at DESC LIMIT 1"
+        )
+        self._conn: psycopg2.extensions.connection | None = None
+
+    def _get_conn(self) -> psycopg2.extensions.connection:
+        if self._conn is None or self._conn.closed:
+            from omnimarket.projection.postgres_read_database import (
+                connect_read_only,
+            )
+
+            self._conn = connect_read_only(
+                self._dsn, connect_timeout=self._connect_timeout
+            )
+        return self._conn
+
+    def read_false_pass_line(self, *, task_class: str, tenant_id: str) -> str | None:
+        conn = self._get_conn()
+        conn.autocommit = False
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant_id))
+                cur.execute(
+                    self._sql, {"tenant_id": tenant_id, "task_class": task_class}
+                )
+                row = cur.fetchone()
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.autocommit = True
+        if row is None or row[0] is None:
+            return None
+        return str(row[0])
+
+    def close(self) -> None:
+        if self._conn is not None and not self._conn.closed:
+            self._conn.close()
+        self._conn = None
+
+
+def resolve_eval_line_reader() -> PostgresEvalLineReader | None:
+    """The live eval readout reader, gated on the projection DSN.
+
+    ``None`` when ``OMNIDASH_ANALYTICS_DB_URL`` is unset or the reader cannot be
+    constructed; the routing read then records ``missing`` and suppresses
+    nothing.
+    """
+    dsn = os.environ.get(_ENV_DSN, "").strip()
+    if not dsn:
+        return None
+    try:
+        return PostgresEvalLineReader(dsn)
+    except Exception:
+        _logger.warning(
+            "resolve_eval_line_reader failed to construct a reader from %s; "
+            "routing learns from no class (static tiers)",
+            _ENV_DSN,
+            exc_info=True,
+        )
+        return None
+
+
+def _read_eval_line(
+    reader: ProtocolEvalLineReader | None, *, task_class: str, tenant_id: str
+) -> str:
+    if reader is None:
+        return EVAL_LINE_MISSING
+    try:
+        verdict = reader.read_false_pass_line(
+            task_class=task_class, tenant_id=tenant_id
+        )
+    except Exception:
+        _logger.warning(
+            "eval readout unreadable for task_class=%s; routing learns nothing "
+            "from this class (static tiers)",
+            task_class,
+            exc_info=True,
+        )
+        return EVAL_LINE_UNREADABLE
+    return EVAL_LINE_MISSING if verdict is None else verdict
 
 
 class ProtocolDodOutcomeReader(Protocol):
@@ -529,6 +701,7 @@ def resolve_dod_overlay(
     *,
     task_type: str,
     tenant_id: object = None,
+    eval_line_reader: ProtocolEvalLineReader | None = None,
     min_samples: int | None = None,
     success_floor: float | None = None,
     lookback_rows: int | None = None,
@@ -540,6 +713,10 @@ def resolve_dod_overlay(
     under enforcement propagates ``TenantContextMissingError``. An unmapped
     tenant value, or any failure of the read itself, returns ``None`` (static
     tier order).
+
+    OMN-19797: the folded overlay then passes the class's eval line
+    (``eval_line_reader``). No reader, no row, an unreadable readout or a line
+    that is not MET all leave every tier unsuppressed.
     """
     try:
         tenant = resolve_dod_read_tenant(tenant_id)
@@ -565,7 +742,7 @@ def resolve_dod_overlay(
             exc_info=True,
         )
         return None
-    return build_dod_overlay(
+    overlay = build_dod_overlay(
         rows,
         task_type=task_type,
         tenant_id=tenant,
@@ -574,10 +751,15 @@ def resolve_dod_overlay(
         lookback_rows=lookback_rows,
         window_seconds=window_seconds,
     )
+    return gate_overlay_on_eval_line(
+        overlay,
+        _read_eval_line(eval_line_reader, task_class=task_type, tenant_id=tenant),
+    )
 
 
 def dod_roi_overlay_reader(
     reader: ProtocolDodOutcomeReader,
+    eval_line_reader: ProtocolEvalLineReader | None = None,
 ) -> Callable[[str], ModelRoutingRoiOverlay | None]:
     """Adapt the DoD read to the local dispatch port's ``roi_overlay_reader`` seam.
 
@@ -587,7 +769,9 @@ def dod_roi_overlay_reader(
     """
 
     def _read(task_type: str) -> ModelRoutingRoiOverlay | None:
-        overlay = resolve_dod_overlay(reader, task_type=task_type)
+        overlay = resolve_dod_overlay(
+            reader, task_type=task_type, eval_line_reader=eval_line_reader
+        )
         if overlay is None:
             return None
         _logger.info(
@@ -602,18 +786,26 @@ def dod_roi_overlay_reader(
 
 
 __all__ = [
+    "DELEGATION_EVAL_RESULTS_RELATION",
     "DELEGATION_EVENTS_RELATION",
     "DOD_DECIDED_STATUSES",
     "DOD_DONE_OUTCOME",
     "DOD_VERIFY_RUNS_RELATION",
+    "EVAL_LINE_MET",
+    "EVAL_LINE_MISSING",
+    "EVAL_LINE_UNREADABLE",
     "ModelDodModelSignal",
     "ModelRoutingDodOverlay",
     "PostgresDodOutcomeReader",
+    "PostgresEvalLineReader",
     "ProtocolDodOutcomeReader",
+    "ProtocolEvalLineReader",
     "build_dod_overlay",
     "dod_roi_overlay_reader",
+    "gate_overlay_on_eval_line",
     "join_delegations_to_verdicts",
     "resolve_dod_outcome_reader",
     "resolve_dod_overlay",
     "resolve_dod_read_tenant",
+    "resolve_eval_line_reader",
 ]

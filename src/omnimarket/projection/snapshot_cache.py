@@ -645,6 +645,19 @@ class SnapshotCache:
             )
             state.rows = dict(newest_first[:max_rows])
 
+    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
+        """Why ``topic`` cannot be read yet, or ``None`` when it can.
+
+        The status page's read surface (``ProtocolProjectionPageView``).
+        """
+        if self.is_bootstrapped(topic):
+            return None
+        return (
+            "snapshot_bootstrap_incomplete",
+            "the snapshot consumer has not finished its initial replay of the "
+            "compacted topic",
+        )
+
     def get_rows(
         self,
         topic: str,

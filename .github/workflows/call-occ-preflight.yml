@@ -91,7 +91,7 @@ jobs:
     # gives the second go. Do not quietly advance this pin to @main as part
     # of unrelated maintenance -- that is the fleet propagation, and it needs
     # that ticket and that go.
-    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@a9f2bb87841cc86a0c813b62b29fb5458cdac7e6
+    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@52851458622f368c3b596c82bf810bc6acce1d5e
     with:
       contracts-dir: contracts
       receipts-dir: drift/dod_receipts

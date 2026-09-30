@@ -48,3 +48,12 @@ class ModelDodResolution(BaseModel):
         default=EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
         description="Contract key that supplied `heuristic`.",
     )
+    waived_rules: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Heuristic rules removed from the class band because the CALLER's "
+            "prompt sets an output layout the rule contradicts (OMN-19432). "
+            "Empty when nothing was waived. Recorded so a verdict that lacks a "
+            "class rule can be read back rather than inferred."
+        ),
+    )

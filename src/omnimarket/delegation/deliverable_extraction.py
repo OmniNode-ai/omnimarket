@@ -184,10 +184,10 @@ def extract_deliverable(
                     (),
                 )
             marker_start, marker_end = marker_span
-            if (
-                contract.output_shape is EnumDelegationOutputShape.MARKDOWN
-                and raw_content[marker_start:marker_end].strip()
-                != contract.render_start_marker
+            if contract.output_shape is EnumDelegationOutputShape.MARKDOWN and (
+                contract.render_start_marker is None
+                or _normalize_marker_line(raw_content[marker_start:marker_end])
+                != _normalize_marker_line(contract.render_start_marker)
             ):
                 start = marker_start
             else:
@@ -330,13 +330,37 @@ def canonical_deliverable_contract_sha256(contract: ModelDeliverableContract) ->
     return sha256(canonical_bytes).hexdigest()
 
 
+# OMN-19432: characters a model wraps around a marker line it was asked to write
+# ("**### ANSWER**", "`### ANSWER`"). Stripped from both the line and the declared
+# marker before they are compared; never from the middle of either.
+_MARKER_DECORATION = "*_` \t"
+_HEADING_PREFIX = re.compile(r"^(#{1,6})[ \t]*(.*)$")
+
+
+def _normalize_marker_line(line: str) -> str:
+    """One comparable form of a marker line: case, emphasis, colon and heading level folded.
+
+    ``### Answer``, ``## ANSWER``, ``**### ANSWER**`` and ``### ANSWER:`` all read as
+    the declared ``### ANSWER``. Words are never dropped or added, so a line that only
+    CONTAINS the marker text ("### ANSWER TO THE QUESTION", "The ANSWER is below")
+    stays a different line, and a bare ``ANSWER`` (no heading) stays different from a
+    heading marker.
+    """
+    text = line.strip().strip(_MARKER_DECORATION).rstrip(":").strip(_MARKER_DECORATION)
+    heading = _HEADING_PREFIX.match(text)
+    if heading is not None:
+        text = f"# {heading.group(2)}"
+    return " ".join(text.split()).casefold()
+
+
 def _last_marker_span(
     raw_content: str, markers: tuple[str, ...]
 ) -> tuple[int, int] | None:
+    normalized = {_normalize_marker_line(marker) for marker in markers}
     offset = 0
     last: tuple[int, int] | None = None
     for line in raw_content.splitlines(keepends=True):
-        if line.strip() in markers:
+        if line.strip() in markers or _normalize_marker_line(line) in normalized:
             last = (offset, offset + len(line))
         offset += len(line)
     return last

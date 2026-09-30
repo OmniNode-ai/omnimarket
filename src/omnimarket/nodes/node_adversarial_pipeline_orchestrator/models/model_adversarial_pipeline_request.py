@@ -9,7 +9,7 @@ Contains:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ModelAdversarialPipelineRequest(BaseModel):
@@ -42,8 +42,25 @@ class ModelAdversarialPipelineRequest(BaseModel):
     )
     linear_project: str | None = Field(
         default=None,
-        description="Linear project name to assign created tickets to.",
+        description=(
+            "REFUSED when non-empty: new tickets are created in the Backlog "
+            "with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)."
+        ),
     )
+
+    @field_validator("linear_project")
+    @classmethod
+    def _refuse_project(cls, value: str | None) -> str | None:
+        """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        created in the Backlog with NO project. Fail loud, never drop it."""
+        if value is not None and value.strip():
+            raise ValueError(
+                f"linear_project={value!r} refused: every new ticket is created in the "
+                "Backlog with no project (operator ruling 2026-09-30T14:30:05Z, "
+                "OMN-17427). Moving a ticket into a sprint is the operator's call."
+            )
+        return value
+
     no_launch: bool = Field(
         default=False,
         description="When true, pass --no-launch to design_to_plan (skip browser launch).",

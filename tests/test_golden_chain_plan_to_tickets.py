@@ -293,3 +293,15 @@ class TestPlanToTicketsDispatchBoundary:
         result = handler.handle(payload)
 
         assert result.status == "parsed"
+
+
+def test_a_project_is_refused_naming_the_ruling() -> None:
+    """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): Backlog, no project."""
+    import pytest
+    from pydantic import ValidationError
+
+    from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
+
+    assert ModelPlanToTicketsStartCommand(plan_path="p.md").project == ""
+    with pytest.raises(ValidationError, match="OMN-17427"):
+        ModelPlanToTicketsStartCommand(plan_path="p.md", project="Sprint X")

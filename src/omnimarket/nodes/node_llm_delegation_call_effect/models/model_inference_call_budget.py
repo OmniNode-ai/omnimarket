@@ -42,6 +42,7 @@ _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml
 _IO_OPERATIONS_KEY = "io_operations"
 _HTTP_OPERATION_TYPE = "http_request"
 _TIMEOUT_KEY = "timeout_seconds"
+_MODEL_TIMEOUTS_KEY = "model_timeout_seconds"
 
 # ``ModelInferenceIntent.timeout_seconds`` is bounded ``le=600.0`` in
 # omnibase_core. A ceiling at or above that admits every value the wire can
@@ -61,6 +62,23 @@ class ModelInferenceCallBudget(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     max_inference_duration_seconds: int = Field(ge=1, le=3600)
+    model_timeout_seconds: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "OMN-19432. Per-model ceilings, in seconds, for models whose measured "
+            "latency does not fit the default. Each value is at least the default "
+            "and strictly below the wire maximum; a model not listed gets the default."
+        ),
+    )
+
+    def ceiling_for(self, model: str) -> int:
+        """The seconds one provider call to ``model`` may occupy.
+
+        The provider prefix a router may add (``zai/glm-5.3``) is ignored, so a
+        prefixed id neither escapes its own model's ceiling nor borrows another's.
+        """
+        bare = model.rsplit("/", 1)[-1]
+        return self.model_timeout_seconds.get(bare, self.max_inference_duration_seconds)
 
 
 def load_inference_call_budget(
@@ -83,12 +101,14 @@ def load_inference_call_budget(
         raise ValueError(f"{contract_path} missing {_IO_OPERATIONS_KEY} list")
 
     declared: object = None
+    declared_models: object = None
     for operation in operations:
         if (
             isinstance(operation, dict)
             and operation.get("operation_type") == _HTTP_OPERATION_TYPE
         ):
             declared = operation.get(_TIMEOUT_KEY)
+            declared_models = operation.get(_MODEL_TIMEOUTS_KEY)
             break
     else:
         raise ValueError(
@@ -103,18 +123,58 @@ def load_inference_call_budget(
             f"{_TIMEOUT_KEY}"
         )
 
-    budget = ModelInferenceCallBudget(max_inference_duration_seconds=int(declared))
-
-    if budget.max_inference_duration_seconds >= WIRE_TIMEOUT_CEILING_SECONDS:
+    if int(declared) >= WIRE_TIMEOUT_CEILING_SECONDS:
         raise ValueError(
             f"{_IO_OPERATIONS_KEY}.{_HTTP_OPERATION_TYPE}.{_TIMEOUT_KEY} "
-            f"({budget.max_inference_duration_seconds}s) must be strictly less "
+            f"({int(declared)}s) must be strictly less "
             f"than the wire model's own maximum "
             f"({WIRE_TIMEOUT_CEILING_SECONDS}s); a ceiling that admits every "
             "value the wire can carry clamps nothing (OMN-18852)"
         )
 
+    budget = ModelInferenceCallBudget(
+        max_inference_duration_seconds=int(declared),
+        model_timeout_seconds=_validated_model_timeouts(
+            declared_models, default_seconds=int(declared), contract_path=contract_path
+        ),
+    )
+
     return budget
+
+
+def _validated_model_timeouts(
+    declared: object, *, default_seconds: int, contract_path: Path
+) -> dict[str, int]:
+    """Read ``model_timeout_seconds``, refusing an entry that lengthens nothing or binds nothing.
+
+    A per-model ceiling below the default would shorten a call the default already
+    allowed, and one at or above the wire maximum clamps nothing: the same two
+    inert shapes the default itself is refused for.
+    """
+    if declared is None:
+        return {}
+    where = f"{contract_path} {_HTTP_OPERATION_TYPE}.{_MODEL_TIMEOUTS_KEY}"
+    if not isinstance(declared, dict):
+        raise ValueError(f"{where} must be a mapping of model id to seconds")
+    checked: dict[str, int] = {}
+    for model, seconds in declared.items():
+        if not isinstance(model, str) or not model:
+            raise ValueError(f"{where} keys must be non-empty model id strings")
+        if isinstance(seconds, bool) or not isinstance(seconds, int):
+            raise ValueError(f"{where}[{model!r}] must be an integer number of seconds")
+        if seconds < default_seconds:
+            raise ValueError(
+                f"{where}[{model!r}] ({seconds}s) is shorter than the default "
+                f"ceiling ({default_seconds}s); an entry exists to lengthen it"
+            )
+        if seconds >= WIRE_TIMEOUT_CEILING_SECONDS:
+            raise ValueError(
+                f"{where}[{model!r}] ({seconds}s) must be strictly less than the "
+                f"wire model's own maximum ({WIRE_TIMEOUT_CEILING_SECONDS}s); a "
+                "ceiling that admits every value the wire can carry clamps nothing"
+            )
+        checked[model] = seconds
+    return checked
 
 
 __all__ = [
