@@ -829,10 +829,9 @@ def build_backfill_receipt(
         "runner": RUNNER,
         "verifier": VERIFIER,
         "probe_command": (
-            f"gh api repos/{pr_facts.repo}/commits/{pr_facts.head_sha}"
-            "/check-runs --paginate --jq "
-            '\'[.check_runs[]|select(.conclusion|IN("success","skipped",'
-            '"neutral")|not)]|length\''
+            f"gh api 'repos/{pr_facts.repo}/commits/{pr_facts.head_sha}"
+            "/check-runs?per_page=100' --paginate --slurp  "
+            "# judged on the latest attempt of each check name"
         ),
         "probe_stdout": pr_facts.checks_probe_stdout,
         "actual_output": (
@@ -1248,6 +1247,55 @@ def _gh_json(args: Sequence[str]) -> Any:
         return None
 
 
+def conclude_check_runs(pages: Any) -> tuple[str, str] | None:
+    """Judge a head's CI from ``gh api --paginate --slurp`` check-run pages.
+
+    Returns ``(conclusion, probe_stdout)``, or ``None`` when the pages are not
+    the shape ``--slurp`` produces, which the caller records as UNREADABLE.
+
+    Only the LATEST attempt of each check name counts. A head accumulates a
+    cancelled copy for every superseded run and a failed copy for every red
+    that a rerun turned green; counting those marked a green head failing
+    (omnibase_core#1812 head 5fa8f79: 307 runs over four pages, eight stale
+    non-success copies, none on the latest attempt of any check).
+    """
+    if not isinstance(pages, list):
+        return None
+    latest: dict[str, dict[str, Any]] = {}
+    total = 0
+    for page in pages:
+        if not isinstance(page, dict) or not isinstance(page.get("check_runs"), list):
+            return None
+        for entry in page["check_runs"]:
+            if not isinstance(entry, dict):
+                continue
+            total += 1
+            name = str(entry.get("name") or "")
+            ordering = (str(entry.get("started_at") or ""), int(entry.get("id") or 0))
+            held = latest.get(name)
+            if held is None or ordering >= (
+                str(held.get("started_at") or ""),
+                int(held.get("id") or 0),
+            ):
+                latest[name] = entry
+    failing = sorted(
+        name
+        for name, entry in latest.items()
+        if str(entry.get("conclusion") or "") not in _NON_FAILING_CHECK_CONCLUSIONS
+    )
+    conclusion = "success" if not failing else "failure"
+    probe_stdout = json.dumps(
+        {
+            "total": total,
+            "latest": len(latest),
+            "failing": len(failing),
+            "names": failing[:8],
+        },
+        sort_keys=True,
+    )
+    return conclusion, probe_stdout
+
+
 def resolve_pr_facts(ref: ProductPrRef) -> ProductPrFacts | None:
     """Read back everything the decision needs about one product PR."""
     view = _gh_json(
@@ -1287,28 +1335,21 @@ def resolve_pr_facts(ref: ProductPrRef) -> ProductPrFacts | None:
     conclusion = ""
     probe_stdout = ""
     if head_sha:
-        runs = _gh_json(
+        # ``--slurp`` wraps every page in ONE JSON array. ``--paginate --jq``
+        # printed one array per page back to back, which ``json.loads`` refuses
+        # ("Extra data"), so every head with more than one page of check-runs
+        # read as UNREADABLE and minted PENDING (run 36673843859, OCC#11887).
+        pages = _gh_json(
             [
                 "api",
-                f"repos/{ref.repo}/commits/{head_sha}/check-runs",
+                f"repos/{ref.repo}/commits/{head_sha}/check-runs?per_page=100",
                 "--paginate",
-                "--jq",
-                ".check_runs",
+                "--slurp",
             ]
         )
-        if isinstance(runs, list):
-            failing = [
-                str(entry.get("name"))
-                for entry in runs
-                if isinstance(entry, dict)
-                and str(entry.get("conclusion") or "")
-                not in _NON_FAILING_CHECK_CONCLUSIONS
-            ]
-            conclusion = "success" if not failing else "failure"
-            probe_stdout = json.dumps(
-                {"total": len(runs), "failing": len(failing), "names": failing[:8]},
-                sort_keys=True,
-            )
+        judged = conclude_check_runs(pages)
+        if judged is not None:
+            conclusion, probe_stdout = judged
 
     return ProductPrFacts(
         repo=ref.repo,
