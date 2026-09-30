@@ -86,7 +86,11 @@ from omnibase_spi.protocols.runtime import ProtocolDispatchEngine
 # (tests/conftest.py's OMN-8726 guard rejects EventBusInmemory there, and it is
 # right to). This gate is deliberately broker-free, so it lives outside that
 # tree and is marked `unit` — it needs no service of any kind.
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("stub_provider_quota_reader"),
+]
 
 # The platform quarantine sink. A chain that dies silently ends up here, which is
 # exactly how OMN-16767 hid behind green CI.

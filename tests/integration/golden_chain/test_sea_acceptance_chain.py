@@ -56,6 +56,8 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # ---------------------------------------------------------------------------
 # Fixture paths
 # ---------------------------------------------------------------------------
