@@ -7,9 +7,19 @@ from omnimarket.nodes.node_projection_delegation_eval.models.model_delegation_ev
     ModelDelegationEvalProjectionResult,
     ModelDelegationEvalRow,
 )
+from omnimarket.nodes.node_projection_delegation_eval.models.model_delegation_eval_run import (
+    ModelDelegationEvalItemVerdictRow,
+    ModelDelegationEvalResultsRow,
+    ModelDelegationEvalRunProjectionRequest,
+    ModelDelegationEvalRunProjectionResult,
+)
 
 __all__ = [
+    "ModelDelegationEvalItemVerdictRow",
     "ModelDelegationEvalProjectionRequest",
     "ModelDelegationEvalProjectionResult",
+    "ModelDelegationEvalResultsRow",
     "ModelDelegationEvalRow",
+    "ModelDelegationEvalRunProjectionRequest",
+    "ModelDelegationEvalRunProjectionResult",
 ]

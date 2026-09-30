@@ -90,6 +90,7 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
+    byok_declared_price_per_1m,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -276,10 +277,14 @@ def _compute_cost(
     tokens_in: int,
     tokens_out: int,
     model_tier: str = "unknown",
+    endpoint_url: str | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
     """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
 
     Pricing is resolved in priority order:
+      0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
+         a free model inside a metered tier is booked at its own zero, never at
+         the tier's rate)
       1. routing_tiers.yaml registry lookup by tier name (authoritative)
       2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
       3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
@@ -287,7 +292,12 @@ def _compute_cost(
     The registry path gracefully degrades to fallback when the YAML file is
     missing or the tier is not declared.
     """
-    registry_price = _get_tier_price_per_1m(model_tier)
+    declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+    registry_price = (
+        declared_price
+        if declared_price is not None
+        else _get_tier_price_per_1m(model_tier)
+    )
     if registry_price is not None:
         price_in, price_out = registry_price
     else:
@@ -304,7 +314,11 @@ def _compute_cost(
             + Decimal(tokens_out) * _OPUS_PRICE_OUT_PER_1M
         ) / Decimal("1000000")
         savings = opus_equiv - actual
-        cost_basis = EnumCostBasis.CLOUD_API_COST
+        cost_basis = (
+            EnumCostBasis.ZERO_MARGINAL_API_COST
+            if declared_price is not None and actual == 0
+            else EnumCostBasis.CLOUD_API_COST
+        )
     except InvalidOperation:
         actual = Decimal("0")
         opus_equiv = Decimal("0")
@@ -826,7 +840,11 @@ class HandlerLlmDelegationCall:
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
-            request.model_id, tokens_in, tokens_out, model_tier=request.model_tier
+            request.model_id,
+            tokens_in,
+            tokens_out,
+            model_tier=request.model_tier,
+            endpoint_url=endpoint_url,
         )
 
         result = ModelLlmDelegationCallResult(

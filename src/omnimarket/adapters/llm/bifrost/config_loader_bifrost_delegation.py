@@ -36,6 +36,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.inference.provider_surfaces import load_provider_surfaces
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     AUTHORITATIVE_BACKEND_FIELDS,
     EnumBifrostFieldSource,
@@ -639,25 +640,82 @@ def reject_backends_off_a_declared_provider_surface(
             URL, the required prefix, the declared hint, and ``source``.
     """
     rules = [r for r in provider_rules if r.get("required_path_prefix")]
-    if not rules:
+    # OMN-20154: a host can serve a second, separately metered surface (z.ai's
+    # general API beside the Coding Plan). The surface declares the ONLY models
+    # admitted under its path prefix (provider_surfaces.v1.yaml): a model outside
+    # the list is refused by name, because no paid balance is approved there.
+    surfaces = [surface.as_rule() for surface in load_provider_surfaces()]
+    if not rules and not surfaces:
         return
 
+    def _host_of(backend: Mapping[str, Any]) -> tuple[str | None, str | None]:
+        url = backend.get("endpoint_url")
+        if not isinstance(url, str) or not url:
+            return None, None
+        parsed = urlparse(url)
+        return parsed.hostname, parsed.path
+
     offenders: list[str] = []
+    for surface_rule in surfaces:
+        prefix = cast(str, surface_rule["match_path_prefix"])
+        host = surface_rule.get("match_endpoint_host")
+        allowed = list(surface_rule.get("allowed_model_names") or [])
+        hint = surface_rule.get("allowed_model_names_hint") or ""
+        # The host's primary surface, when the contract names one, is where every
+        # other model is served: say so, so a repointed paid backend reads as the
+        # wrong-surface defect it is.
+        primary = next(
+            (
+                r
+                for r in rules
+                if r.get("required_path_prefix")
+                and r.get("match_endpoint_host") == host
+            ),
+            None,
+        )
+        primary_note = ""
+        if primary is not None:
+            primary_hint = primary.get("required_path_prefix_hint") or ""
+            primary_note = (
+                f" Every other model on this host requires path prefix "
+                f"{primary['required_path_prefix']!r}"
+                + (f" — {primary_hint}" if primary_hint else "")
+            )
+        for backend in backends:
+            backend_host, path = _host_of(backend)
+            if backend_host != host or path is None or not path.startswith(prefix):
+                continue
+            if backend.get("model_name") in allowed:
+                continue
+            offenders.append(
+                f"backend {backend.get('backend_id')!r} -> {backend.get('endpoint_url')} "
+                f"carries model {backend.get('model_name')!r}; provider "
+                f"{surface_rule.get('provider_id')!r} admits only {allowed} under path "
+                f"prefix {prefix!r}" + (f" — {hint}" if hint else "") + primary_note
+            )
+
     for rule in rules:
-        prefix = cast(str, rule["required_path_prefix"])
+        prefix_required = rule.get("required_path_prefix")
+        if not prefix_required:
+            continue
+        prefix = cast(str, prefix_required)
         host = rule.get("match_endpoint_host")
         hint = rule.get("required_path_prefix_hint") or ""
         for backend in backends:
-            url = backend.get("endpoint_url")
-            if not isinstance(url, str) or not url:
+            backend_host, path = _host_of(backend)
+            if backend_host != host or path is None:
                 continue
-            parsed = urlparse(url)
-            if parsed.hostname != host:
+            if path.startswith(prefix):
                 continue
-            if parsed.path.startswith(prefix):
+            if any(
+                backend_host == surface.get("match_endpoint_host")
+                and path.startswith(cast(str, surface["match_path_prefix"]))
+                for surface in surfaces
+            ):
+                # An admitted second surface: judged above by model name.
                 continue
             offenders.append(
-                f"backend {backend.get('backend_id')!r} -> {url} "
+                f"backend {backend.get('backend_id')!r} -> {backend.get('endpoint_url')} "
                 f"(provider {rule.get('provider_id')!r} requires path prefix "
                 f"{prefix!r})" + (f" — {hint}" if hint else "")
             )

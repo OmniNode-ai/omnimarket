@@ -58,6 +58,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.inference.provider_quota_policy import (
     ModelQuotaVerdict,
     load_provider_quota_policy,
+    provider_rule_for_endpoint,
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumQuotaDisposition,
@@ -105,10 +106,11 @@ def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
         # Degrading to host-keying here keeps routing working; a genuinely
         # missing policy still fails loud where it is loaded for classification.
         return f"host:{host}"
-    for provider in policy.providers:
-        match = provider.match_endpoint_host.lower()
-        if host == match or host.endswith(f".{match}"):
-            return provider.provider_id
+    # Host first, then the declared path prefix (OMN-20154): z.ai's general API
+    # and Coding Plan share a host and a key but not a counter.
+    provider = provider_rule_for_endpoint(policy.providers, endpoint_url)
+    if provider is not None:
+        return provider.provider_id
     return f"host:{host}"
 
 

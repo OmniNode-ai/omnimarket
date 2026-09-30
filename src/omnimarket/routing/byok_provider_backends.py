@@ -88,6 +88,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -230,6 +231,26 @@ class ModelByokModelPreference(BaseModel):
         return tuple(int(part) for part in re.findall(r"[0-9]+", raw))
 
 
+class ModelByokPricing(BaseModel):
+    """The per-1M-token price of a row's model, when it differs from its tier's.
+
+    A call is booked at its tier's rate unless its model declares a price here
+    (OMN-20154): z.ai's general API serves ``glm-4.5-flash`` free inside a
+    catalogue whose other entries are metered, and a zero-price model booked at a
+    tier rate is a phantom paid delegation.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The model id this price is for. A row resolves its model per key from the
+    #: provider's list (OMN-20157), so the price names the model it is true of.
+    model_name: str = Field(min_length=1)
+    input_per_1m_usd: Decimal = Field(ge=0)
+    output_per_1m_usd: Decimal = Field(ge=0)
+    #: Where the price was read. Required: an unsourced zero reads like a fact.
+    source: str = Field(min_length=1)
+
+
 class ModelByokProviderBackend(BaseModel):
     """One declared BYOK backend binding, keyed by ``(provider, plan)``.
 
@@ -288,6 +309,8 @@ class ModelByokProviderBackend(BaseModel):
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
     limit_model: ModelByokLimitModel
+    #: OMN-20154. Declared only when the model's price is not its tier's.
+    pricing: ModelByokPricing | None = None
 
     @model_validator(mode="after")
     def _a_detection_only_row_declares_its_refusal(self) -> ModelByokProviderBackend:
@@ -742,6 +765,31 @@ def byok_backend_max_retries(backend_ref: str | None) -> int | None:
     return backend.max_retries if backend is not None else None
 
 
+def byok_declared_price_per_1m(
+    endpoint_url: str | None, model_name: str
+) -> tuple[Decimal, Decimal] | None:
+    """Return the declared ``(input, output)`` USD per 1M tokens, or ``None``.
+
+    Keyed on the endpoint and the model together, because a model id alone does
+    not say which product answered (z.ai serves ``glm-4.5-flash`` free on the
+    general API only). ``None`` means no price is declared and the caller books
+    at the tier rate; it never means free.
+    """
+    if not endpoint_url:
+        return None
+    for backend in load_byok_plan_catalog().values():
+        if (
+            backend.pricing is not None
+            and backend.endpoint_url == endpoint_url
+            and backend.pricing.model_name == model_name
+        ):
+            return (
+                backend.pricing.input_per_1m_usd,
+                backend.pricing.output_per_1m_usd,
+            )
+    return None
+
+
 def byok_limit_counter_key(
     tenant_id: str,
     api_key_ref: str,
@@ -824,9 +872,11 @@ __all__: list[str] = [
     "ModelByokLimitWindow",
     "ModelByokModelPreference",
     "ModelByokNotOfferedProvider",
+    "ModelByokPricing",
     "ModelByokProviderBackend",
     "ModelCatalogueParityGap",
     "byok_backend_max_retries",
+    "byok_declared_price_per_1m",
     "byok_limit_counter_key",
     "byok_provider_plans",
     "byok_routable_plans",

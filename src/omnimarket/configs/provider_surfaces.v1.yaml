@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# provider_surfaces.v1.yaml — a provider host that serves a second, separately
+# metered product under its own path (OMN-20154).
+#
+# z.ai serves two products on api.z.ai: the GLM Coding Plan under
+# /api/coding/paas/v4 and a general pay-as-you-go API under /api/paas/v4. They
+# share a host and a key and nothing else: separate balances, separate quota
+# counters, separate terms. A surface declared here
+#
+#   * selects the provider_quota_policy rule named by `provider_id` for any
+#     endpoint under `match_path_prefix` (its own quota domain, its own reading of
+#     each error code), and
+#   * lists the ONLY models a backend under that prefix may carry. The bifrost
+#     loader refuses any other model id by name: no paid balance is approved on
+#     the general API, and a paid id answers 429 code 1113 there.
+#
+# The general API is reached only as a tenant's own BYOK credential (the
+# glm/general_api row of byok_provider_backends.v1.yaml); no house backend
+# addresses it (INV-068). Do not add a paid id to `allowed_model_names`.
+#
+# Kept out of bifrost_delegation.yaml on purpose: the provider_quota_policy
+# block is a wire payload model that released consumers decode with extra keys
+# forbidden, so a new key there would need a consumer-first release.
+
+schema_version: "provider_surfaces.v1"
+
+surfaces:
+  - provider_id: zai-general
+    match_endpoint_host: "api.z.ai"
+    match_path_prefix: "/api/paas/v4"
+    allowed_model_names:
+      - "glm-4.5-flash"
+    allowed_model_names_hint: >-
+      Only glm-4.5-flash is free on the z.ai general API, and no paid balance
+      is approved. A paid id here answers 429 code 1113. Fix the model id;
+      do not fund the account and do not add a paid id to this list.

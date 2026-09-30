@@ -9,6 +9,10 @@ description: >
   (tenant_id, item_key, rater_role, rubric_version). A newer label replaces
   the existing row. Prompt/response content lives on the lab table only
   because omnimarket is public. Applied notifications omit snapshot content.
+  OMN-19793 (EV.4). A run-completed event writes one delegation_eval_item_verdicts
+  row per labelled item and one delegation_eval_results row per task class,
+  stratum and arm, keyed by the eval run id, so a redelivered run adds no row.
+  The results table is served on the acceptance-eval projection snapshot topic.
 handler:
   module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
   class: HandlerProjectionDelegationEval
@@ -29,6 +33,7 @@ golden_path:
   - "Derive item_key from correlation_id and attempt_index"
   - "Upsert under the event tenant, refusing duplicate or older observations"
   - "Return row count and identities for the runtime to publish"
+  - "Receive a content-free run-completed event and upsert its verdict and results rows under the eval run id"
 dod_evidence:
   - test: tests/test_golden_chain_projection_delegation_eval.py::test_one_row_per_label_key
     description: "A replacement keeps one row; another rater creates a second row"
@@ -36,6 +41,12 @@ dod_evidence:
     description: "The runtime dispatches the effect writer"
   - test: tests/test_golden_chain_projection_delegation_eval.py::test_fold_determinism_and_envelope_timestamp
     description: "Replay derives identical rows without consulting a clock"
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_run_completed_writes_verdict_and_results_rows
+    description: "A run-completed event yields one results row per class, stratum and arm and one verdict row per item"
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_redelivered_run_writes_the_same_rows_and_no_more
+    description: "A redelivered run command writes the same rows and no more"
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_run_completed_row_count_never_zero_for_a_non_empty_result
+    description: "The writer never reports zero rows handled for a non-empty result"
 db_io:
   db_tables:
     - name: delegation_eval_items
@@ -44,16 +55,89 @@ db_io:
       migration: "0000_create_delegation_eval_items.sql"
       access: read_write
       role: delegation_eval_labels
+    - name: delegation_eval_item_verdicts
+      database_ref: application
+      schema: public
+      migration: "0003_create_delegation_eval_item_verdicts.sql"
+      access: read_write
+      role: delegation_eval_item_verdicts
+    - name: delegation_eval_results
+      database_ref: application
+      schema: public
+      migration: "0004_create_delegation_eval_results.sql"
+      access: read_write
+      role: delegation_eval_results
   dedupe_key: [tenant_id, item_key, rater_role, rubric_version]
   ordering_key: observed_at
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.delegation-eval-item-labelled.v1
+    - onex.evt.omnimarket.delegation-eval-run-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-eval-applied.v1
+    # Projection-API snapshot topic: the results table is served by the projection API.
+    - onex.snapshot.projection.delegation.acceptance-eval.v1  # onex-topic-allow: projection snapshot topic
   dlq_topics:
     - onex.dlq.omnimarket.projection-delegation-eval-malformed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-delegation-eval-applied.v1
+  - onex.snapshot.projection.delegation.acceptance-eval.v1  # onex-topic-allow: projection snapshot topic
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.delegation.acceptance-eval.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
+      table: delegation_eval_results
+      schema: public
+      columns:
+        - tenant_id
+        - eval_run_id
+        - task_class
+        - stratum
+        - arm
+        - manifest_id
+        - gate_version
+        - rater_role
+        - rubric_version
+        - total_n
+        - accepted_n
+        - false_pass_count
+        - false_pass_rate
+        - false_pass_upper_bound
+        - false_pass_wilson_low
+        - false_pass_wilson_high
+        - false_pass_line_verdict
+        - false_pass_required_n
+        - refused_n
+        - false_refusal_count
+        - false_refusal_rate
+        - false_refusal_upper_bound
+        - false_refusal_wilson_low
+        - false_refusal_wilson_high
+        - false_refusal_line_verdict
+        - undetermined_n
+        - undetermined_share
+        - observed_at
+        - projection_cursor
+      order_by: "observed_at DESC, projection_cursor DESC"
+      cursor_column: projection_cursor
+      freshness_column: observed_at
+      # Served from the bus: the writer publishes one keyed row delta per
+      # results row it upserts, keyed by the table's own conflict key.
+      bus_backed: true
+      key_columns:
+        - tenant_id
+        - eval_run_id
+        - task_class
+        - stratum
+        - arm
+      tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        The omnidash acceptance-eval reader is the EV.8 dashboard task
+        (OMN-19796); that change adds the reader and deletes this opt-out. The
+        routing read (EV.9) reads the table through the evidence-database seam.
 metadata:
   transport_type: kafka
+  widget_topics:
+    - onex.snapshot.projection.delegation.acceptance-eval.v1  # onex-topic-allow: projection snapshot topic
