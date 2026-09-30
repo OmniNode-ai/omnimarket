@@ -7,11 +7,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -56,14 +58,22 @@ def plant_bad_pin(hint: str) -> str:
     return planted
 
 
-def build_env(home: Path) -> dict[str, str]:
+def build_env(home: Path, passthrough: Sequence[str] = ()) -> dict[str, str]:
     # An allowlist also excludes future provider credentials and uv/XDG overrides.
-    return {
+    # `passthrough` names the few build variables a documented install path
+    # needs (Intel macOS builds from source with OPENSSL_DIR); each must be set.
+    env = {
         "HOME": str(home),
         "PATH": str(home / ".local/bin")
         + os.pathsep
         + os.environ.get("PATH", os.defpath),
     }
+    for name in passthrough:
+        value = os.environ.get(name)
+        if not value:
+            raise CanaryError(f"pass-env: {name} is not set in the environment")
+        env[name] = value
+    return env
 
 
 def write_bifrost_overrides(home: Path, port: int) -> None:
@@ -139,12 +149,20 @@ def run_command(
     return output
 
 
+def _tail(path: Path, limit: int = 2000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError as exc:
+        return f"(unreadable: {exc})"
+
+
 def wait_for_stub(stub: subprocess.Popen[bytes], port_file: Path) -> int:
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if stub.poll() is not None:
             raise CanaryError(
-                f"stub_start: process exited {stub.returncode}; see stub.log"
+                f"stub_start: process exited {stub.returncode}; stub.log:\n"
+                + _tail(port_file.with_name("stub.log"))
             )
         if port_file.is_file():
             value = port_file.read_text(encoding="utf-8").strip()
@@ -154,7 +172,10 @@ def wait_for_stub(stub: subprocess.Popen[bytes], port_file: Path) -> int:
                     raise CanaryError("stub_start: invalid port")
                 return port
         time.sleep(0.05)
-    raise CanaryError("stub_start: port file was not written within 15s; see stub.log")
+    raise CanaryError(
+        "stub_start: port file was not written within 15s; stub.log:\n"
+        + _tail(port_file.with_name("stub.log"))
+    )
 
 
 def main() -> int:
@@ -162,12 +183,20 @@ def main() -> int:
     parser.add_argument("--marketplace-json", required=True, type=Path)
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--plant-bad-pin", action="store_true")
+    parser.add_argument(
+        "--pass-env",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="copy this variable into the install environment (repeatable)",
+    )
     parser.add_argument("--summary-json", required=True, type=Path)
     args = parser.parse_args()
     stages: list[Stage] = []
     summary: dict[str, object] = {
         "hint": "",
         "plant_bad_pin": args.plant_bad_pin,
+        "platform": f"{platform.system()} {platform.machine()}",
         "stages": stages,
         "failed_stage": None,
     }
@@ -183,7 +212,7 @@ def main() -> int:
         ).resolve()
         work.mkdir(parents=True, exist_ok=True)
         home = Path(tempfile.mkdtemp(prefix="home-", dir=work))
-        env = build_env(home)
+        env = build_env(home, args.pass_env)
         marketplace = json.loads(args.marketplace_json.read_text(encoding="utf-8"))
         if not isinstance(marketplace, dict):
             raise CanaryError("marketplace: expected a JSON object")
