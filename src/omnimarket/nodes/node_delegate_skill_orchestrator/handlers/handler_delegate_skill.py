@@ -1049,6 +1049,39 @@ class HandlerDelegateSkill:
                     + execution_budget.terminal_delivery_margin_seconds
                 ),
             )
+        except asyncio.CancelledError:
+            # OMN-20117: the runtime is shutting down under this run (a
+            # redeploy, restart or stop). The runtime drains running dispatches
+            # first and cancels the ones still running while its producer is
+            # open, so this is the last moment the caller can be told. Letting
+            # the cancellation escape returns nothing for the wiring to publish,
+            # which is how a collaborator's request on 2026-09-29 waited out its
+            # 300 s window in silence. The terminal is returned instead, and
+            # handle() records it against the delivery, so a redelivery of the
+            # same record answers with it rather than running the delegation
+            # again. The cancellation is consumed deliberately: the run is over
+            # and this terminal is its outcome.
+            current = asyncio.current_task()
+            if current is not None:
+                current.uncancel()
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    "the runtime running this delegation shut down (redeploy, "
+                    "restart or stop) before it finished; nothing was lost on the "
+                    "caller's side and the request can be sent again (OMN-20117)"
+                ),
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.RUNTIME_SHUTDOWN
+                ),
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+                budget_evidence=budget_evidence,
+            )
         except TimeoutError:
             # OMN-15504/OMN-19619: the handler's own budget expired. This is not
             # routed through resolve_terminal_failure_cause(), because no
