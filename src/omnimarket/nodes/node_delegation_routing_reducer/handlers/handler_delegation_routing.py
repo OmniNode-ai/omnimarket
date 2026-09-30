@@ -45,6 +45,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import re
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -1267,6 +1268,40 @@ def _class_declares_heuristic_for_shape(
     return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
 
 
+def _prompt_waived_rules(
+    contract: dict[str, object] | None,
+    heuristic: tuple[str, ...],
+    prompt: str,
+) -> tuple[str, ...]:
+    """Heuristic rules whose own declaration says this prompt's layout waives them.
+
+    OMN-19432. A rule declares ``waived_when_prompt_matches`` under
+    ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
+    what the model is told and what the gate enforces stay one list. Returns the
+    waived names in band order. A rule the contract does not declare, or a
+    malformed declaration, waives nothing: an unreadable waiver must never
+    silently drop a veto (the fail-closed default of ``resolve_quality_rule``).
+    """
+    if not isinstance(contract, dict):
+        return ()
+    rules = contract.get("quality_rules")
+    if not isinstance(rules, dict):
+        return ()
+    waived: list[str] = []
+    for name in heuristic:
+        rule = rules.get(name)
+        if not isinstance(rule, dict):
+            continue
+        patterns = rule.get("waived_when_prompt_matches")
+        if not isinstance(patterns, list):
+            continue
+        for pattern in patterns:
+            if isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE):
+                waived.append(name)
+                break
+    return tuple(waived)
+
+
 def resolve_task_class_dod_resolution(
     task_type: str,
     prompt: str | None = None,
@@ -1315,12 +1350,22 @@ def resolve_task_class_dod_resolution(
         dod_deterministic = deterministic_override
         deterministic_source = EnumDodBandSource.CLASS_SHAPE_OVERRIDES
 
+    # OMN-19432: a rule the prompt's own layout contradicts leaves the HEURISTIC
+    # band, applied last so it holds whichever band (class, class shape override,
+    # contract default) supplied the rule. The deterministic floor is untouched.
+    waived_rules = _prompt_waived_rules(contract, dod_heuristic, prompt)
+    if waived_rules:
+        dod_heuristic = tuple(
+            name for name in dod_heuristic if name not in waived_rules
+        )
+
     return ModelDodResolution(
         deterministic=dod_deterministic,
         heuristic=dod_heuristic,
         requested_shape=shape,
         deterministic_source=deterministic_source,
         heuristic_source=heuristic_source,
+        waived_rules=waived_rules,
     )
 
 

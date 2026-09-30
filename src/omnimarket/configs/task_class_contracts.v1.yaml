@@ -338,6 +338,19 @@ quality_rules:
     model_directive: >-
       Cite the exact line of the provided code each finding refers to (for
       example `line 1`).
+    # OMN-19432: a `review`-classed prompt is often a classification that
+    # prescribes its own layout ("Answer with only one JSON object", "Answer one
+    # word then one sentence", "Answer one line per item"). Measured 2026-09-30
+    # (GLM lineup audit correction): the four glm-5.3 answers that asked for the
+    # code, and the JSON classifications the gate refused for "missing specific
+    # line citations", were the model obeying the task while this rule demanded
+    # a citation of code the prompt never supplied. A code review ("Reply in 5
+    # lines max", "List each bug with the line") sets a length, not a layout that
+    # excludes the citation, and matches none of these.
+    waived_when_prompt_matches:
+      - "\\bonly (?:one |a )?json\\b"
+      - "\\banswer one word then\\b"
+      - "\\bone line per\\b"
     rationale: >-
       The code-review counterpart of cites_sources. A review that points at
       nothing specific cannot be acted on.
@@ -380,6 +393,21 @@ quality_rules:
     model_directive: >-
       Show how the answer is reached as numbered steps (1., 2., ...), then
       state the conclusion.
+    # OMN-19432: nine of the sixty "wrong" glm-5.3 answers in the 2026-09-30
+    # lineup audit were the model obeying THIS directive on a task whose own
+    # prompt said "one line per item", "under 90 words, plain prose, no list" or
+    # "output only the lines", and the gate holds the same rule as a veto, so an
+    # answer that obeyed the task's layout was refused for lacking numbered
+    # steps. A prompt that prescribes its own layout waives the rule; an open
+    # question ("explain why", "compare") matches none of these and keeps it.
+    waived_when_prompt_matches:
+      - "\\bone line per\\b"
+      - "\\bunder \\d+ words\\b"
+      - "\\b(?:no|without) (?:bullet )?lists?\\b"
+      - "\\bplain prose\\b"
+      - "\\b(?:answer|reply|respond|output)(?: with)? only\\b"
+      - "\\banswer one word then\\b"
+      - "\\bone (?:short |plain )?sentence\\b"
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking
