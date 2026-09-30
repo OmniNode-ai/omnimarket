@@ -53,6 +53,7 @@ generously is a machine for manufacturing evidence:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -1626,3 +1627,71 @@ def test_a_pr_that_is_not_open_refuses_the_self_bind(tmp_path: Path) -> None:
     assert all(
         item["id"] != "occ-self-bind-pr-8525" for item in data.get("dod_evidence", [])
     )
+
+
+def _run(name: str, conclusion: str, started_at: str, run_id: int) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "name": name,
+        "conclusion": conclusion,
+        "started_at": started_at,
+    }
+
+
+def test_multi_page_check_runs_are_read_not_reported_unreadable() -> None:
+    """``--paginate --slurp`` pages are flattened into one judgement.
+
+    MEASURED 2026-09-30 (run 36673843859): the old ``--paginate --jq
+    .check_runs`` read printed one array per page, ``json.loads`` refused the
+    concatenation, and all five mints of that run recorded UNREADABLE, so each
+    receipt was PENDING and every open PR citing those tickets failed
+    occ-preflight eligibility.
+    """
+    pages = [
+        {"check_runs": [_run("lint", "success", "2026-09-30T04:00:00Z", 1)]},
+        {"check_runs": [_run("tests", "success", "2026-09-30T04:00:00Z", 2)]},
+    ]
+    judged = backfill.conclude_check_runs(pages)
+    assert judged is not None
+    conclusion, probe_stdout = judged
+    assert conclusion == "success"
+    assert json.loads(probe_stdout)["total"] == 2
+
+
+def test_only_the_latest_attempt_of_each_check_is_judged() -> None:
+    """A cancelled or failed copy that a later attempt superseded is not red."""
+    pages = [
+        {
+            "check_runs": [
+                _run("tests", "failure", "2026-09-30T04:00:00Z", 10),
+                _run("tests", "success", "2026-09-30T04:10:00Z", 11),
+                _run("wheel", "cancelled", "2026-09-30T04:00:00Z", 12),
+            ]
+        },
+        {"check_runs": [_run("wheel", "success", "2026-09-30T04:05:00Z", 13)]},
+    ]
+    judged = backfill.conclude_check_runs(pages)
+    assert judged is not None
+    assert judged[0] == "success"
+
+
+def test_a_red_latest_attempt_still_fails_the_head() -> None:
+    pages = [
+        {
+            "check_runs": [
+                _run("tests", "success", "2026-09-30T04:00:00Z", 20),
+                _run("tests", "failure", "2026-09-30T04:10:00Z", 21),
+            ]
+        }
+    ]
+    judged = backfill.conclude_check_runs(pages)
+    assert judged is not None
+    conclusion, probe_stdout = judged
+    assert conclusion == "failure"
+    assert json.loads(probe_stdout)["names"] == ["tests"]
+
+
+def test_an_unrecognised_page_shape_is_unreadable_not_green() -> None:
+    assert backfill.conclude_check_runs(None) is None
+    assert backfill.conclude_check_runs([{"no_runs": []}]) is None
+    assert backfill.conclude_check_runs([[{"name": "x"}]]) is None
