@@ -311,6 +311,17 @@ providers:
     max_retries: 2
     timeout_ms: 300000
     max_tokens: 65536
+    # OMN-20154: the model is free, so a call to it is booked at zero rather than
+    # at a metered tier's rate. Free-tier capacity is low: sustained runs of real
+    # tasks drew 159 capacity refusals (429 code 1302) in 257 attempts, so this is
+    # a low-priority route, not a workhorse. The lab's own z.ai key reaches it as
+    # the lab tenant's BYOK credential, the same intake a customer uses.
+    pricing:
+      input_per_1m_usd: 0
+      output_per_1m_usd: 0
+      source: >-
+        docs.z.ai/guides/overview/pricing, read 2026-09-30: glm-4.5-flash input,
+        cached input and output all Free.
     limit_model:
       billing: pay_as_you_go
       counter_scope: model
