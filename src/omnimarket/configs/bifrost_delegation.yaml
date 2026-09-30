@@ -972,6 +972,39 @@ provider_quota_policy:
             pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
             The Coding Plan path is /api/coding/paas/v4 (direct calls parked, OMN-20173).
             This is a routing defect, never a billing action.
+    # OMN-20154: z.ai's GENERAL API is a second product on the same host as the
+    # Coding Plan rule above, metered separately and served under its own path.
+    # No house backend addresses it (we offer no inference to customers, INV-068);
+    # a tenant's own BYOK credential does, through the glm/general_api row of
+    # byok_provider_backends.v1.yaml. This rule gives that surface its own quota
+    # domain (a spent Coding Plan window must not bar it, and the reverse) and its
+    # own reading of 1113. provider_surfaces.v1.yaml makes this rule win over the
+    # host-wide `zai` rule for any /api/paas/v4 endpoint and lists the only model
+    # admitted there: no paid balance is approved.
+    - provider_id: zai-general
+      match_endpoint_host: "api.z.ai"
+      codes:
+        # Capacity signals, not quality verdicts and not plan caps: measured
+        # 2026-09-30, glm-4.5-flash answers 1302 above 2 requests in flight, and
+        # a sustained run of real tasks drew 159 refusals in 257 attempts. A
+        # retry after a short wait works; nothing is disabled.
+        - code: "1302"
+          disposition: retryable
+          alert: false
+        - code: "1305"
+          disposition: retryable
+          alert: false
+        # 1113 on this surface is NOT the Coding Plan wrong-endpoint signal. A
+        # free model needs no balance, so the code means a model that is not
+        # free was addressed, or z.ai changed the free model's status.
+        - code: "1113"
+          disposition: disable_until_billing
+          alert: true
+          alert_hint: >-
+            z.ai 1113 on the general API means the model addressed is not free
+            or its free status changed; glm-4.5-flash is the only model admitted
+            here and no paid balance is approved. Check the model id against
+            z.ai's pricing page. This is never a funding action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
       # The free tier is rate-limited with no SLA and no structured code; its

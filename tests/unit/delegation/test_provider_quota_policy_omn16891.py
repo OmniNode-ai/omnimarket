@@ -40,7 +40,10 @@ _ZAI_1113 = {
     }
 }
 
-_ZAI_URL = "https://api.z.ai/api/paas/v4/chat/completions"
+# OMN-20154: these codes (1310 weekly cap, 1113 on the Coding Plan reading) are the
+# Coding Plan's. The general API is its own rule (zai-general), pinned in
+# test_omn20154_glm_45_flash_general_api_rung.py.
+_ZAI_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
