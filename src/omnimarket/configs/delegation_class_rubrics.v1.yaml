@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation_class_rubrics.v1.yaml: per-task-class computable correctness
+# criteria for delegated answers.
+#
+# Read by node_delegation_rubric_check_compute. Every threshold and trigger a
+# criterion uses lives here, never in the handler. Each criterion returns
+# pass, fail or undetermined; undetermined never counts as a pass. v1 records
+# the verdict only: it decides nothing until a class's rubric has been
+# measured against labelled items and turned on.
+#
+# A class absent from `classes` resolves to an empty rubric, which yields an
+# undetermined verdict with reason no_rubric_for_class.
+
+rubric_version: delegation-class-rubrics.v1
+
+x-shared:
+  ticket_id_pattern: &ticket_id_pattern '\b(?!(?:UTF|SHA|ISO)-)[A-Z][A-Z0-9]+-\d+\b'
+  test_target_pattern: &test_target_pattern '(?<![\w/])(?:tests/[\w./-]+\.py(?:::[\w.\[\]-]+)*|test_\w+)'
+  declared_format: &declared_format
+    criterion_id: declared_format_met
+    description: Explicitly requested finding line, JSON, fence count and first line are met.
+    params:
+      finding_phrases:
+      - FINDING |
+      json_phrases:
+      - json only
+      - return json
+      fence_allow_phrases:
+      - fences allowed
+      - fence allowed
+      - may use a fence
+      - one fenced
+      # "one fenced python block per file" declares a block per file, not one block.
+      one_fence_pattern: '\bone fenced\s+([\w+-]+)\s+(?:code\s+)?block\b(?!\s+(?:per|for each|each)\b)'
+      # "<...>" in the declared first line is a placeholder matching any text.
+      first_line_pattern: 'first line(?: of each block)?\s*(?:is|must be|:|=)?\s*(?:a comment\s*)?["`]([^"`\n]+)["`]'
+
+x-review-criteria: &review_criteria
+- criterion_id: cited_lines_exist
+  description: Each cited path is a file of the supplied diff, its line falls in a hunk, and an attached quote occurs in that file's hunks (whitespace-insensitive).
+  params:
+    line_tolerance: 0
+    min_quote_chars: 8
+    no_findings_sentinels:
+    - NO FINDINGS
+- criterion_id: named_symbols_exist
+  description: Backticked code identifiers named in the answer occur in the supplied context.
+  params:
+    ignore_python_builtins: true
+    ignore_symbols:
+    - defaultdict
+    max_missing_fraction: 0.0
+- criterion_id: named_test_passes
+  description: Tests the answer names have caller-supplied passing execution results.
+  params:
+    target_pattern: *test_target_pattern
+- *declared_format
+
+x-code-criteria: &code_criteria
+- criterion_id: code_parses
+  description: Python, YAML and JSON code in the answer parses, without executing it.
+  params:
+    code_field_names:
+    - code
+    - source
+    - content
+    no_fence_phrases:
+    - without fences
+    - no fence
+    - no fences
+    - unfenced
+    python_phrases:
+    - python
+    yaml_phrases:
+    - yaml
+    json_phrases:
+    - json
+- *declared_format
+- criterion_id: stated_test_passes
+  description: Test targets named in the request or answer have caller-supplied passing execution results.
+  params:
+    target_pattern: *test_target_pattern
+- criterion_id: ids_traceable
+  description: Ticket-shaped identifiers in the answer occur in the request or supplied context.
+  params:
+    ticket_id_pattern: *ticket_id_pattern
+
+classes:
+  code_review: *review_criteria
+  review: *review_criteria
+  summarization:
+  - criterion_id: claims_traceable
+    description: Ticket ids, PR refs, paths, backticked tokens, long quotes and multi-digit numbers in each answer unit occur in the source.
+    params:
+      ticket_id_pattern: *ticket_id_pattern
+      min_quote_words: 3
+      min_number_digits: 2
+      max_facts: 20
+  - criterion_id: id_coverage
+    description: When the request asks for every commitment or ticket id, every ticket id in the source appears in the answer.
+    params:
+      ticket_id_pattern: *ticket_id_pattern
+      trigger_patterns:
+      - '\b(?:every|all|each)\s+(?:concrete\s+)?(?:commitments?|ticket(?:\s+ids?)?s?)\b'
+      - '\bkeeping ticket ids\b'
+  code_generation: *code_criteria
+  test: *code_criteria
