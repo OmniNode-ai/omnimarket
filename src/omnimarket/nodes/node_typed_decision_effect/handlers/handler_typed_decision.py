@@ -19,7 +19,11 @@ Order of operations, and why:
 1. The work unit's repository must be public, resolved live. A missing
    attribution, a private or absent repository, and any resolution failure all
    refuse, and nothing is sent to the decision backend. This is the
-   public-repository-only scoping the third-party call requires.
+   public-repository-only scoping the third-party call requires. The read
+   carries a GitHub token when the secret store resolves one (anonymous reads
+   are capped at 60 an hour), and a real 200 that reports the repository public
+   is remembered for the contract's TTL. Only that positive answer is ever
+   remembered, so a miss always falls through to a live read (OMN-20149).
 2. The backend and its key must resolve; otherwise refuse.
 3. One POST, verbatim, to the resolved endpoint. Any HTTP, transport or shape
    failure hands the decision to the optional incumbent, or returns no answer
@@ -32,6 +36,7 @@ Order of operations, and why:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +49,10 @@ from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
+)
+from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_typed_decision_effect.handlers.visibility_cache import (
+    VisibilityCache,
 )
 from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision import (
     EnumTypedDecisionDecider,
@@ -82,6 +91,7 @@ class ModelWorkUnitScoping(BaseModel):
 
     require_public_repository: bool
     visibility_timeout_ms: int = Field(..., ge=100, le=60000)
+    visibility_cache_ttl_seconds: int = Field(..., ge=0, le=86400)
 
 
 def _load_contract_block(name: str) -> dict[str, Any]:
@@ -102,6 +112,8 @@ class HandlerTypedDecision:
         secret_store: ProtocolSecretStore | None = None,
         bifrost_config_path: Path | None = None,
         bifrost_overlay_path: Path | None = None,
+        visibility_cache_path: Path | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self._transport = transport
         self._secret_store = secret_store
@@ -113,6 +125,13 @@ class HandlerTypedDecision:
         self._scoping = ModelWorkUnitScoping.model_validate(
             _load_contract_block("work_unit_scoping")
         )
+        self._visibility_cache = VisibilityCache(
+            ttl_seconds=self._scoping.visibility_cache_ttl_seconds,
+            clock=clock,
+            path=visibility_cache_path,
+        )
+        self._github_token: str | None = None
+        self._github_token_resolved = False
 
     def handle(self, request: ModelTypedDecisionRequest) -> ModelTypedDecisionResult:
         refusal = self._refuse_unless_public(request)
@@ -216,18 +235,22 @@ class HandlerTypedDecision:
                 EnumTypedDecisionReason.NO_REPOSITORY_ATTRIBUTION,
                 detail="the request names no work-unit repository",
             )
-        # Unauthenticated on purpose: GitHub answers an anonymous read with 200
-        # only for a public repository, and with 404 for a private or absent
-        # one, so no credential can widen what counts as public.
+        if self._visibility_cache.is_public(request.work_unit_repository):
+            return None
+        # A token only widens what the read can SEE, never what counts as
+        # public: the verdict below is the ``private`` field of a 200, so an
+        # authenticated 200 for a private repository is still a refusal.
         url = f"{GITHUB_REST_URL}/repos/{request.work_unit_repository}"
+        headers = {"Accept": "application/vnd.github+json"}
+        token = self._visibility_token()
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
         try:
             with httpx.Client(
                 transport=self._transport,
                 timeout=self._scoping.visibility_timeout_ms / 1000.0,
             ) as client:
-                response = client.get(
-                    url, headers={"Accept": "application/vnd.github+json"}
-                )
+                response = client.get(url, headers=headers)
         except httpx.HTTPError as exc:
             return self._visibility_unresolved(request, type(exc).__name__)
         if response.status_code == 404:
@@ -252,7 +275,27 @@ class HandlerTypedDecision:
                 EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC,
                 detail=f"{request.work_unit_repository} is not reported public",
             )
+        self._visibility_cache.record_public(request.work_unit_repository)
         return None
+
+    def _visibility_token(self) -> str | None:
+        """The GitHub token for the visibility read, or None to read anonymously.
+
+        Optional by contract: no token, or a store that cannot answer, means an
+        anonymous read, which is the same guard at the lower rate cap.
+        """
+        if not self._github_token_resolved:
+            self._github_token_resolved = True
+            try:
+                secret = resolve_api_key_loop_safe(
+                    contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN"),
+                    store=self._secret_store,
+                    required=False,
+                )
+            except SecretResolutionError:
+                secret = None
+            self._github_token = secret.get_secret_value() if secret else None
+        return self._github_token
 
     def _visibility_unresolved(
         self, request: ModelTypedDecisionRequest, detail: str

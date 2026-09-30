@@ -54,6 +54,23 @@ work_unit_scoping:
   # repository, and any failure to resolve visibility are all refusals.
   require_public_repository: true
   visibility_timeout_ms: 5000
+  # A real 200 that reports a repository public is remembered this long, in
+  # process and on disk (OMN-20149). Only that positive answer is ever kept: a
+  # refusal, a 404, a rate limit or a transport failure is read again next
+  # time. A repository that turns private is served from the cache for at most
+  # this long, so it stays short. 0 disables the cache.
+  visibility_cache_ttl_seconds: 600
+
+secrets:
+  # OMN-20149: the visibility read carries this token when the secret store
+  # resolves it, which lifts the read from GitHub's anonymous 60 an hour to the
+  # authenticated allowance. Optional: with none the read is anonymous and the
+  # cache above is what keeps a burst under the cap. A token can widen what a
+  # read can SEE, never what counts as public: the guard admits only a 200
+  # whose ``private`` field is false.
+  GITHUB_TOKEN:
+    description: "GitHub token for the repository-visibility read (optional, read-only)."
+    required: false
 
 descriptor:
   node_archetype: effect
