@@ -1,31 +1,30 @@
-"""Projection Query API Server (OMN-10461 / OMN-10490 / OMN-15800).
+"""Projection Query API Server (OMN-10461 / OMN-10490 / OMN-15800 / OMN-20152).
 
 FastAPI server on port 3002 serving typed projection snapshots.
 
-OMN-15800 (2026-08-09 operator ruling: "It should be accessing the
-projections from the event bus not from a database. Nothing should be
-connecting to a database other than the runtime."): this process holds ZERO
-database driver and ZERO DSN. Every route is served from an in-memory
-:class:`~omnimarket.projection.snapshot_cache.SnapshotCache` fed by a
-background Kafka consumer reading the contract-declared, compacted
-``onex.snapshot.projection.*`` topics.
+OMN-20152 (operator, 2026-09-30: "One delegation row is bullshit because
+everything should be gathered from projections all that information is in the
+fucking database."): every route reads the materialized projection table the
+exposure's writer persists, through
+:class:`~omnimarket.projection.table_reader.TableRowSource`. The in-memory
+Kafka-fed ``SnapshotCache`` this process used to serve from (OMN-15800) lost
+every row on a restart once it resumed from committed offsets, and it could
+not answer until the broker's partition metadata resolved; neither can happen
+to a read of the writer's durable table. This process holds no Kafka consumer.
 
-Topic configuration is still contract-driven: each projection node's
-contract.yaml declares a ``projection_api`` section. Conversion is a
-strangler migration, per-exposure: a family is served from the bus only once
-its contract declares ``projection_api.bus_backed: true`` (and the writer-
-side reducer publishes to its snapshot topic). A family that has not
-converted yet returns an explicit ``503 not_yet_bus_backed`` — never a stale
-DB read, never a silent empty ``200`` (the failure mode OMN-15797 hid behind).
+Topic configuration is contract-driven: each projection node's contract.yaml
+declares a ``projection_api`` section. An exposure is served once its contract
+declares ``projection_api.bus_backed: true`` -- the declaration that a writer is
+deployed and materializing it. An exposure whose writer is not declared yet
+returns an explicit ``503 not_yet_bus_backed``, never a silent empty ``200``
+(the failure mode OMN-15797 hid behind).
 
 OMN-15797 AC2: an exposure whose contract declares ``projection_api.
 tenant_column`` is served ONLY under a resolved tenant. A request whose tenant
 context cannot be resolved returns ``422 tenant_context_unresolved``, and a
 ``?tenant=`` on an exposure with no tenant column returns ``422
-unsupported_filter`` rather than being silently dropped. Between those two,
-the serving path has no way to answer ``200`` with rows it could not honestly
-scope — the property that let the original OMN-15797 defect survive
-undetected.
+unsupported_filter`` rather than being silently dropped. The table read scopes
+by the row's own tenant column and sets ``app.tenant_id`` for RLS.
 
 There is no hardcoded topic whitelist. The single source of truth is the
 contract.yaml files discovered via ``onex.nodes`` entry points.
@@ -62,14 +61,15 @@ from omnimarket.projection.models import (
 )
 from omnimarket.projection.morning_page import (
     DEFAULT_REFRESH_SECONDS,
+    PAGE_TENANT_UUID,
     build_morning_page,
     render_morning_page,
 )
-from omnimarket.projection.runner import (
-    KAFKA_BROKERS_ENV,
-    projection_runtime_binding_from_overlay_env,
+from omnimarket.projection.table_reader import (
+    ProjectionReadError,
+    ProtocolProjectionRowSource,
+    TableRowSource,
 )
-from omnimarket.projection.snapshot_cache import SnapshotCache
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
     resolve_serving_tenant,
@@ -91,39 +91,6 @@ _TENANT_CONTEXT_DEGRADED_REASON = (
     "this exposure is tenant-scoped and no tenant context was resolved for the "
     "request; supply ?tenant=<id>"
 )
-
-
-def _staleness_block(
-    cache: SnapshotCache, topic: str, last_applied_event_at: str | None
-) -> dict[str, object]:
-    """The per-exposure freshness fact a client cannot derive for itself.
-
-    OMN-18905. ``latest_event_at`` is the timestamp of the newest record this
-    cache has APPLIED, so when the cache stops following a topic that
-    timestamp freezes too and a panel rendering it shows a confident, wrong
-    "last updated". Only the offsets can tell the two apart, so they are
-    stated here beside the verdict rather than left to be inferred.
-    """
-    report = cache.lag_report(topic) or {}
-    last_dropped = cache.last_dropped_event_at(topic)
-    return {
-        "stale": cache.is_stale(topic),
-        "lag_records": report.get("lag"),
-        "applied_offset": report.get("applied_offset"),
-        "end_offset": report.get("end_offset"),
-        "partitions_measured": report.get("partitions", 0),
-        "last_applied_event_at": last_applied_event_at,
-        # OMN-18905 follow-up. Deltas consumed and then discarded as stale
-        # replays since this exposure last applied one. A cache reading every
-        # record and dropping it is at lag ZERO with rows standing still, so
-        # these two are the only fields that separate it from a genuinely
-        # caught-up exposure -- the lag numbers above cannot.
-        "dropped_since_apply": report.get("dropped_since_apply", 0),
-        "dropped_total": report.get("dropped_total", 0),
-        "last_dropped_event_at": (
-            last_dropped.isoformat() if last_dropped is not None else None
-        ),
-    }
 
 
 def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
@@ -248,7 +215,7 @@ def _effective_order_by_spec(
     ``order_by`` override -- see :func:`_base_order_by_spec`).
 
     Single source of truth for both the actual row order (fed to
-    ``SnapshotCache.get_rows(order_by_override=...)``) and the reported
+    the row source's ``rows(order_spec=...)``) and the reported
     ``ordering`` string (:func:`_reported_ordering`) -- computed once so the
     two can never diverge (CodeRabbit, OMN-15800: a caller-requested ``order``
     previously changed only the reported string, not the returned rows).
@@ -483,71 +450,31 @@ def resolve_tenant_scope(
 # ---------------------------------------------------------------------------
 
 _topic_map: dict[str, ProjectionTableConfig] = {}
-_snapshot_cache: SnapshotCache | None = None
-
-
-def _kafka_bootstrap_servers() -> str:
-    """Resolve the Kafka bootstrap servers for the SnapshotCache's consumer.
-
-    Same resolution order as :class:`omnimarket.projection.runner.BaseProjectionRunner`
-    (overlay -> env -> Settings) so the serving process and the writer
-    reducers agree on which broker to reach without either hardcoding a host.
-
-    Raises ``RuntimeError`` when every source is empty (CodeRabbit,
-    OMN-15800) -- fail fast with a clear configuration error rather than
-    handing an empty broker list to ``AIOKafkaConsumer``, which fails far
-    less legibly deep inside the client.
-    """
-    binding = projection_runtime_binding_from_overlay_env()
-    if binding is not None and binding.kafka_bootstrap_servers.strip():
-        return binding.kafka_bootstrap_servers
-
-    from omnimarket.config.settings import Settings
-
-    settings = Settings()
-    resolved = (
-        os.environ.get(KAFKA_BROKERS_ENV, "").strip()
-        or settings.kafka_bootstrap_servers.strip()
-        or settings.kafka_broker.strip()
-    )
-    if not resolved:
-        raise RuntimeError(
-            "projection-api requires Kafka bootstrap servers; none resolved "
-            f"from a runtime binding overlay, {KAFKA_BROKERS_ENV}, or Settings"
-        )
-    return resolved
+_row_source: TableRowSource | None = None
 
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
-    global _topic_map, _snapshot_cache
+    global _topic_map, _row_source
 
     _topic_map = build_projection_topic_map()
-    bus_backed_count = sum(1 for c in _topic_map.values() if c.bus_backed)
+    served_count = sum(1 for c in _topic_map.values() if c.bus_backed)
     log.info(
         "Projection topic map built at startup (restart required to refresh): "
-        "%d topic(s) registered, %d bus_backed",
+        "%d topic(s) registered, %d served from their materialized tables",
         len(_topic_map),
-        bus_backed_count,
+        served_count,
     )
-
-    cache = SnapshotCache(_topic_map, bootstrap_servers=_kafka_bootstrap_servers())
-
+    # OMN-20152: constructing the row source connects to nothing, so the HTTP
+    # server answers from its first second. A database that is down makes
+    # reads refuse by name; it never holds startup.
+    _row_source = TableRowSource()
     try:
-        # Assign the module global BEFORE start() (CodeRabbit, OMN-15800): if
-        # the broker is unreachable, self._consumer.start() raises after the
-        # AIOKafkaConsumer object already exists. Assigning first, INSIDE this
-        # try, means the `finally` below always reaches `cache` (via the same
-        # module global) and stops the partially-started consumer instead of
-        # leaking it -- a `finally` always runs when an exception propagates
-        # through its `try` body, including one raised before `yield`.
-        _snapshot_cache = cache
-        await cache.start()
         yield
     finally:
-        if _snapshot_cache is not None:
-            await _snapshot_cache.stop()
-            _snapshot_cache = None
+        if _row_source is not None:
+            await _row_source.close()
+            _row_source = None
 
 
 app = FastAPI(
@@ -599,10 +526,23 @@ def get_topic_map() -> dict[str, ProjectionTableConfig]:
     return _topic_map
 
 
-def get_snapshot_cache() -> SnapshotCache:
-    if _snapshot_cache is None:
-        raise RuntimeError("SnapshotCache not initialised")
-    return _snapshot_cache
+def get_row_source() -> ProtocolProjectionRowSource:
+    if _row_source is None:
+        raise RuntimeError("projection row source not initialised")
+    return _row_source
+
+
+def _read_refusal(topic: str, exc: ProjectionReadError) -> JSONResponse:
+    """The typed refusal for a read the table could not answer (OMN-20152)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "degraded",
+            "error": exc.code,
+            "topic": topic,
+            "detail": exc.detail,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -612,86 +552,27 @@ def get_snapshot_cache() -> SnapshotCache:
 
 @app.get("/health")
 async def health(
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
 ) -> JSONResponse:
-    """Liveness only. OMN-15800: no DB to probe; reports the bus-backed
-    topics this process's SnapshotCache is tracking."""
-    return JSONResponse(
-        {
-            "status": "ok",
-            "bus_backed_topics": sorted(cache.bus_backed_topics),
-        }
-    )
+    """Liveness only: the process is up. Touches no database and no broker."""
+    return JSONResponse(source.health(topic_map))
 
 
 @app.get("/ready")
 async def readiness(
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
 ) -> JSONResponse:
-    """Fail closed unless every bus_backed exposure's SnapshotCache has
-    finished its initial bootstrap replay AND the consumer feeding that cache
-    is still alive (OMN-15800; replaces the removed ``SELECT 1`` Postgres
-    probe; OMN-15876 adds the liveness half and the two diagnostic fields).
+    """Fail closed unless every served exposure can be read.
 
-    OMN-15876 makes this endpoint answer a question it could previously only
-    pose. ``bootstrapped=False`` had exactly one rendering for two unrelated
-    conditions -- "assigned, still replaying" and "never assigned a partition,
-    so this can never become True" -- and telling them apart cost five
-    consecutive staging rollout failures plus a bespoke read-only probe
-    workflow. ``assigned_partitions`` is the discriminator: on a broker with
-    auto-create off, ``0`` for a topic means the broker offered no partition
-    for that name, which is a MISSING DEPENDENCY, not slow progress.
-
-    ``consumer_failure`` closes the fail-OPEN half. The cache's consume task
-    is fire-and-forget; when an exception ended it, asyncio never logged the
-    traceback (the Task is strongly referenced for the process lifetime, so it
-    is never collected) and this endpoint would answer 200 the moment every
-    topic's INITIAL replay had finished -- serving a frozen cache as live
-    state. A dead consumer now refuses readiness on its own, whatever the
-    per-topic map says.
-
-    The gate is not weakened in any direction: every condition here is a new
-    reason to refuse, never a new reason to allow.
+    OMN-20152: an exposure is readable when the relation its writer
+    materializes can be selected from through the DSN it is bound to. Each
+    exposure that cannot is named with the reason, so the answer to "which
+    panel is dark and why" is this response, not a trip to the database.
     """
-    bus_backed_topics = sorted(t for t, cfg in topic_map.items() if cfg.bus_backed)
-    bootstrap_status = {
-        topic: cache.is_bootstrapped(topic) for topic in bus_backed_topics
-    }
-    assigned_partitions = {
-        topic: cache.assigned_partition_count(topic) for topic in bus_backed_topics
-    }
-    consumer_failure = cache.consume_failure
-    # OMN-18905: bootstrap_complete is a one-way latch, so a cache that
-    # caught up once and then stopped following its topics kept reporting
-    # every topic true with no consumer failure -- observed live on the .201
-    # dev lane serving rows nine hours old at 200. Lag is a LIVE quantity and
-    # is now part of readiness, named per topic with its numbers so the next
-    # reader does not have to go to the broker to find out which one stopped.
-    lagging_topics = {
-        topic: cache.lag_report(topic) or {"lag": -1, "partitions": 0}
-        for topic in bus_backed_topics
-        if cache.is_stale(topic)
-    }
-    ready = (
-        bool(bus_backed_topics)
-        and all(bootstrap_status.values())
-        and consumer_failure is None
-        and not lagging_topics
-    )
-    return JSONResponse(
-        {
-            "status": "ready" if ready else "not_ready",
-            "bus_backed_topics": bootstrap_status,
-            "assigned_partitions": assigned_partitions,
-            "consumer_failure": consumer_failure,
-            "lagging_topics": lagging_topics,
-            # OMN-18955: group rejoins since start. Context, not a gate: a
-            # rejoin resumes where the cache left off.
-            "consumer_reassignments": cache.reassignment_count,
-        },
-        status_code=200 if ready else 503,
-    )
+    ready, body = await source.readiness(topic_map)
+    return JSONResponse(body, status_code=200 if ready else 503)
 
 
 @app.post("/api/generate")
@@ -738,6 +619,15 @@ async def list_projections(
             "bus_backed": cfg.bus_backed,
             "key_columns": list(cfg.key_columns),
             "backing": "bus" if cfg.bus_backed else "not_yet_bus_backed",
+            # OMN-20152: ``backing`` keeps naming the writer class (a bus-fed
+            # writer is deployed) because clients classify reachability on it;
+            # this names where a read of the exposure is answered from.
+            "served_from": "table" if cfg.bus_backed else None,
+            "relation": (
+                f"{cfg.relation_schema}.{cfg.table}"
+                if cfg.relation_schema is not None
+                else None
+            ),
             # OMN-15797 AC2: a client must be able to discover that an
             # exposure needs ?tenant= from the catalogue, not from a 422 in
             # production.
@@ -749,10 +639,10 @@ async def list_projections(
     return JSONResponse({"topics": topics})
 
 
-def _render_status_page(
+async def _render_status_page(
     refresh: int,
     topic_map: dict[str, ProjectionTableConfig],
-    cache: SnapshotCache,
+    source: ProtocolProjectionRowSource,
 ) -> HTMLResponse:
     """Build and render the status page (OMN-17197, always-on per OMN-17346).
 
@@ -761,9 +651,12 @@ def _render_status_page(
     is this process's own service identity — a page cannot be asked to claim a
     lane it is not running in.
     """
+    # OMN-20152: every exposure the page renders is read from its table once,
+    # up front, so the page itself stays a synchronous render of that data.
+    view = await source.page_view(topic_map, tenant_id=str(PAGE_TENANT_UUID))
     page = build_morning_page(
         topic_map,
-        cache,
+        view,
         service_name=(
             os.environ.get("OTEL_SERVICE_NAME")
             or "projection-api (OTEL_SERVICE_NAME unset)"
@@ -777,7 +670,7 @@ def _render_status_page(
 async def status_page(
     refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> HTMLResponse:
     """The standing ONEX status page, at the root (OMN-17346).
 
@@ -786,7 +679,7 @@ async def status_page(
     to answer ``404``, which meant the one always-up render of the live
     projections was reachable only by an operator who already knew a path — the
     OMN-14440 failure mode wearing a different hat. It is served from the same
-    in-memory SnapshotCache every JSON route reads, because that is the only
+    materialized tables every JSON route reads, because that is the only
     surface with no build step, no bundle, no session gate and no separate
     deployable between the projection and a human.
 
@@ -795,14 +688,14 @@ async def status_page(
     refused would hide the six panels that are fine — the page IS the report,
     so it must render even when most of what it reports on is refusing.
     """
-    return _render_status_page(refresh, topic_map, cache)
+    return await _render_status_page(refresh, topic_map, source)
 
 
 @app.get("/morning", response_class=HTMLResponse)
 async def morning_page(
     refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> HTMLResponse:
     """Alias of ``GET /`` kept for the links already on tickets (OMN-17346).
 
@@ -810,7 +703,7 @@ async def morning_page(
     already-published deep links behind a hop and would turn one request into
     two on a page that reloads itself every 30s.
     """
-    return _render_status_page(refresh, topic_map, cache)
+    return await _render_status_page(refresh, topic_map, source)
 
 
 @app.get("/projection/{topic:path}")
@@ -823,7 +716,7 @@ async def projection_query(
     order_by: str | None = Query(default=None),
     tenant: str | None = Query(default=None),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> JSONResponse:
     if topic not in topic_map:
         return JSONResponse(
@@ -856,14 +749,11 @@ async def projection_query(
             },
         )
 
-    if not cache.is_bootstrapped(topic):
+    unavailable = source.unavailable(topic)
+    if unavailable is not None:
         return JSONResponse(
             status_code=503,
-            content={
-                "status": "degraded",
-                "error": "snapshot_bootstrap_incomplete",
-                "topic": topic,
-            },
+            content={"status": "degraded", "error": unavailable[0], "topic": topic},
         )
 
     scope_tenant, tenant_refusal = resolve_tenant_scope(cfg, topic, tenant)
@@ -918,16 +808,27 @@ async def projection_query(
     # caller-supplied order_by replaces that default entirely, rank included.
     order_rank = cfg.order_rank if order_by is None else None
     pagination_order_spec = _pagination_order_spec(cfg, order_by_spec)
-    # OMN-17215: every cached row, not the contract limit -- the `since` filter
-    # and the truncation test below must see the whole set, or no page at the
-    # contract limit advertises a cursor and no walk passes that many rows.
-    all_rows = cache.get_rows(
-        topic,
-        unbounded=True,
-        order_by_override=pagination_order_spec,
-        tenant_column=cfg.tenant_column,
-        tenant_id=scope_tenant,
-    )
+    # OMN-17215: the whole served window, not the contract limit -- the
+    # `since` filter and the truncation test below must see the whole set, or
+    # no page at the contract limit advertises a cursor and no walk passes that
+    # many rows. OMN-20152: the window is read from the writer's table.
+    try:
+        all_rows = await source.rows(
+            cfg,
+            order_spec=pagination_order_spec,
+            tenant_id=scope_tenant,
+            since=since,
+            correlation_id=correlation_id,
+        )
+        latest_event_at = await source.latest_event_at(
+            cfg,
+            tenant_id=scope_tenant,
+            window_rows=(
+                all_rows if since is None and correlation_id is None else None
+            ),
+        )
+    except ProjectionReadError as exc:
+        return _read_refusal(topic, exc)
     filtered_rows = _filter_rows(
         all_rows,
         cursor_column=cfg.cursor_column,
@@ -959,7 +860,6 @@ async def projection_query(
         return _unranked_order_value_refusal(topic, exc)
     truncated = len(filtered_rows) > effective_limit
 
-    latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
     freshness = (
         "unknown"
@@ -1000,16 +900,12 @@ async def projection_query(
             "page_selection": "order_by" if ranked_window else "cursor",
             "truncated": truncated,
             "rows": serialisable_rows,
-            "backing": "bus",
-            # OMN-18905. The rows are still served -- an exposure the cache
-            # has stopped following holds the last state it did see, and that
-            # is more useful to a panel than nothing -- but they can no longer
-            # be mistaken for live. ``stale`` is per EXPOSURE: an idle
-            # producer sits at lag zero and stays false, so a frozen topic is
-            # reported without taking every other panel dark. A client that
-            # renders ``latest_event_at`` as freshness MUST read this, because
-            # that timestamp freezes with the cache and cannot say so itself.
-            "staleness": _staleness_block(cache, topic, latest_ts),
+            "backing": source.backing,
+            # OMN-18905 / OMN-20152: whether the serving path has fallen
+            # behind its source. A table read is the writer's durable state at
+            # request time, so it states that; how far the writer is behind
+            # shows in ``data_freshness``.
+            "staleness": source.staleness(topic, latest_ts),
             # The tenant these rows are scoped to, or None for an exposure
             # that declares no tenant_column. Stated on the response so a
             # caller never has to assume which of the two it received.
@@ -1028,9 +924,9 @@ async def evidence_pipeline_dashboard(
     pr_number: int | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=500),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> JSONResponse:
-    return _evidence_projection_response(
+    return await _evidence_projection_response(
         topic="onex.snapshot.projection.evidence_pipeline.stages.v1",  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
         cursor=cursor,
         correlation_id=correlation_id,
@@ -1039,7 +935,7 @@ async def evidence_pipeline_dashboard(
         pr_number=pr_number,
         limit=limit,
         topic_map=topic_map,
-        cache=cache,
+        source=source,
     )
 
 
@@ -1053,9 +949,9 @@ async def evidence_pipeline_correlation_traces(
     pr_number: int | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=500),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> JSONResponse:
-    return _evidence_projection_response(
+    return await _evidence_projection_response(
         topic="onex.snapshot.projection.evidence_pipeline.correlations.v1",  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
         cursor=cursor,
         correlation_id=correlation_id,
@@ -1064,7 +960,7 @@ async def evidence_pipeline_correlation_traces(
         pr_number=pr_number,
         limit=limit,
         topic_map=topic_map,
-        cache=cache,
+        source=source,
     )
 
 
@@ -1077,9 +973,9 @@ async def evidence_pipeline_readiness(
     pr_number: int | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=500),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> JSONResponse:
-    return _evidence_projection_response(
+    return await _evidence_projection_response(
         topic="onex.snapshot.projection.evidence_pipeline.readiness.v1",  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
         cursor=cursor,
         correlation_id=correlation_id,
@@ -1088,7 +984,7 @@ async def evidence_pipeline_readiness(
         pr_number=pr_number,
         limit=limit,
         topic_map=topic_map,
-        cache=cache,
+        source=source,
     )
 
 
@@ -1101,9 +997,9 @@ async def evidence_pipeline_live_events(
     pr_number: int | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=500),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+    source: ProtocolProjectionRowSource = Depends(get_row_source),  # noqa: B008
 ) -> JSONResponse:
-    return _evidence_projection_response(
+    return await _evidence_projection_response(
         topic="onex.snapshot.projection.evidence_pipeline.live_events.v1",  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
         cursor=cursor,
         correlation_id=correlation_id,
@@ -1112,7 +1008,7 @@ async def evidence_pipeline_live_events(
         pr_number=pr_number,
         limit=limit,
         topic_map=topic_map,
-        cache=cache,
+        source=source,
     )
 
 
@@ -1131,7 +1027,7 @@ async def evidence_pipeline_event_stream() -> StreamingResponse:
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
-def _evidence_projection_response(
+async def _evidence_projection_response(
     *,
     topic: str,
     cursor: str | None,
@@ -1141,7 +1037,7 @@ def _evidence_projection_response(
     pr_number: int | None,
     limit: int | None,
     topic_map: dict[str, ProjectionTableConfig],
-    cache: SnapshotCache,
+    source: ProtocolProjectionRowSource,
 ) -> JSONResponse:
     cfg = topic_map.get(topic)
     if cfg is None:
@@ -1177,14 +1073,11 @@ def _evidence_projection_response(
                 "topic": topic,
             },
         )
-    if not cache.is_bootstrapped(topic):
+    unavailable = source.unavailable(topic)
+    if unavailable is not None:
         return JSONResponse(
             status_code=503,
-            content={
-                "status": "degraded",
-                "error": "snapshot_bootstrap_incomplete",
-                "topic": topic,
-            },
+            content={"status": "degraded", "error": unavailable[0], "topic": topic},
         )
 
     # OMN-15797 AC2: these routes expose no ``tenant`` query parameter, so an
@@ -1206,15 +1099,26 @@ def _evidence_projection_response(
     )
 
     pagination_order_spec = _pagination_order_spec(cfg, cfg.order_by_spec)
-    # OMN-17215: every cached row, for the same reason as projection_query --
-    # the cursor and content filters must run before the page is cut.
-    all_rows = cache.get_rows(
-        topic,
-        unbounded=True,
-        order_by_override=pagination_order_spec,
-        tenant_column=cfg.tenant_column,
-        tenant_id=scope_tenant,
-    )
+    # OMN-17215: the whole served window, for the same reason as
+    # projection_query -- the cursor and content filters must run before the
+    # page is cut. OMN-20152: read from the writer's table.
+    try:
+        all_rows = await source.rows(
+            cfg,
+            order_spec=pagination_order_spec,
+            tenant_id=scope_tenant,
+            since=cursor,
+            correlation_id=correlation_id,
+        )
+        latest_event_at = await source.latest_event_at(
+            cfg,
+            tenant_id=scope_tenant,
+            window_rows=(
+                all_rows if cursor is None and correlation_id is None else None
+            ),
+        )
+    except ProjectionReadError as exc:
+        return _read_refusal(topic, exc)
     filtered_rows = _filter_rows(
         all_rows,
         cursor_column=cfg.cursor_column,
@@ -1232,7 +1136,6 @@ def _evidence_projection_response(
     except UnrankedOrderValueError as exc:
         return _unranked_order_value_refusal(topic, exc)
 
-    latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
     latest_row = serialisable_rows[0] if serialisable_rows else {}
     # OMN-18035: the test is truncation, not non-emptiness. A complete page that happens to
@@ -1279,16 +1182,9 @@ def _evidence_projection_response(
             "row_count": len(serialisable_rows),
             "rows": serialisable_rows,
             "sse_authority": "advisory_only",
-            "backing": "bus",
-            # OMN-18905. The rows are still served -- an exposure the cache
-            # has stopped following holds the last state it did see, and that
-            # is more useful to a panel than nothing -- but they can no longer
-            # be mistaken for live. ``stale`` is per EXPOSURE: an idle
-            # producer sits at lag zero and stays false, so a frozen topic is
-            # reported without taking every other panel dark. A client that
-            # renders ``latest_event_at`` as freshness MUST read this, because
-            # that timestamp freezes with the cache and cannot say so itself.
-            "staleness": _staleness_block(cache, topic, latest_ts),
+            "backing": source.backing,
+            # OMN-18905 / OMN-20152: see projection_query.
+            "staleness": source.staleness(topic, latest_ts),
         }
     )
 

@@ -29,12 +29,13 @@ from contextlib import contextmanager
 import pytest
 from fastapi.testclient import TestClient
 
-from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
+from omnimarket.projection.api_server import app, get_row_source, get_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_cache import (
     DEFAULT_STALE_DROP_STREAK,
     SnapshotCache,
 )
+from tests.helpers.cache_row_source import CacheRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -95,7 +96,7 @@ def _mark_caught_up(cache: SnapshotCache, *, applied: int = 50) -> None:
 
 @contextmanager
 def _client_for(cache: SnapshotCache) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: {_TOPIC: _CFG}
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -255,32 +256,3 @@ def test_the_served_exposure_reports_its_drops() -> None:
     assert staleness["lag_records"] == 0
     assert staleness["dropped_since_apply"] == DEFAULT_STALE_DROP_STREAK + 1
     assert staleness["last_dropped_event_at"] == "2026-09-20T15:00:00+00:00"
-
-
-def test_ready_refuses_on_a_drop_streak_too() -> None:
-    """Readiness has to see this class, not only the lag class."""
-    cache = _cache()
-    _mark_caught_up(cache)
-    # The first delta for a new key APPLIES, so N sends leave N-1 drops;
-    # two over the bound is what puts the streak strictly past it.
-    for _ in range(DEFAULT_STALE_DROP_STREAK + 2):
-        _apply(
-            cache,
-            _delta(
-                runner="omninode-runner-1",
-                status="busy",
-                observed_at="2026-09-20T15:00:00+00:00",
-                source_offset=0,
-            ),
-        )
-
-    with _client_for(cache) as client:
-        response = client.get("/ready")
-
-    assert response.status_code == 503
-    body = response.json()
-    assert _TOPIC in body["lagging_topics"]
-    assert body["lagging_topics"][_TOPIC]["lag"] == 0
-    assert body["lagging_topics"][_TOPIC]["dropped_since_apply"] == (
-        DEFAULT_STALE_DROP_STREAK + 1
-    )

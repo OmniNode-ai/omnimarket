@@ -22,7 +22,7 @@ test rather than three independent unit suites:
   ``SnapshotCache.apply_message`` -- the same method the live consumer loop
   calls, not a test-only stand-in.
 
-  Seam C (cache -> HTTP): the REAL FastAPI app, with ``get_snapshot_cache``
+  Seam C (cache -> HTTP): the REAL FastAPI app, with ``get_row_source``
   overridden to that cache and NO asyncpg pool anywhere, serves
   ``GET /projection/{topic}`` and the full envelope is asserted field-by-field
   against the row the reducer wrote.
@@ -71,7 +71,8 @@ from omnimarket.nodes.node_projection_registration.handlers.handler_registration
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.snapshot_cache import SnapshotCache
-from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
+from scripts.projection_api_server import app, get_row_source, get_topic_map
+from tests.helpers.cache_row_source import CacheRowSource
 
 REGISTRATION_TOPIC = "onex.snapshot.projection.registration.v1"
 INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
@@ -109,7 +110,7 @@ def _fake_producer() -> tuple[MagicMock, list[dict[str, Any]]]:
 def _with_cache(
     cache: SnapshotCache, topic: str, cfg: Any
 ) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: {topic: cfg}
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -331,50 +332,18 @@ class TestLiveEventsEventToHttpReadback:
 
 
 @pytest.mark.unit
-def test_api_server_module_graph_reaches_no_asyncpg_or_psycopg2() -> None:
-    """OMN-15800: the projection-api process holds zero DB driver.
+def test_api_server_import_never_loads_the_kafka_snapshot_cache() -> None:
+    """OMN-20152 (supersedes OMN-15800 AC6): the read path holds no consumer.
 
-    Asserts both statically (source text) and dynamically (the module's own
-    imported names) that api_server.py never references asyncpg/psycopg2.
-    """
-    import inspect
-
-    import omnimarket.projection.api_server as api_server_module
-
-    source = inspect.getsource(api_server_module)
-    assert "asyncpg" not in source
-    assert "psycopg2" not in source
-
-    module_vars = vars(api_server_module)
-    assert "asyncpg" not in module_vars
-    assert "get_pool" not in module_vars
-    assert "_dsn" not in module_vars
-    assert "ModelProjectionDatabaseBinding" not in module_vars
-
-
-@pytest.mark.unit
-def test_api_server_import_never_loads_asyncpg_or_psycopg2_in_sys_modules() -> None:
-    """OMN-15800 AC6: importing api_server must not pull asyncpg/psycopg2 in.
-
-    The source/namespace check above only inspects ``api_server.py``'s own
-    text and top-level names -- it cannot see a transitive eager import
-    pulled in by a name api_server.py imports from elsewhere (e.g.
-    ``omnimarket.projection.runner`` importing ``AsyncpgAdapter`` at module
-    scope). It is also blind in-process: once any earlier test in the same
-    pytest session imports asyncpg for any reason, ``sys.modules`` already
-    has it before this test runs, so even a ``sys.modules`` assertion taken
-    in-process would be contaminated.
-
-    This test runs in a fresh subprocess that imports ONLY
-    ``omnimarket.projection.api_server`` and reports whether asyncpg/
-    psycopg2 ended up in ``sys.modules`` -- the only way to observe the
-    real, isolated import graph the deployed projection-api process has.
+    The projection API reads the materialized tables, so importing it must not
+    load the Kafka-fed ``SnapshotCache``. Checked in a fresh subprocess that
+    imports ONLY ``omnimarket.projection.api_server``: in-process,
+    ``sys.modules`` is contaminated by whatever earlier tests imported.
     """
     probe = (
         "import sys\n"
         "import omnimarket.projection.api_server\n"
-        "print('asyncpg' in sys.modules)\n"
-        "print('psycopg2' in sys.modules)\n"
+        "print('omnimarket.projection.snapshot_cache' in sys.modules)\n"
     )
     completed = subprocess.run(
         [sys.executable, "-c", probe],
@@ -383,12 +352,7 @@ def test_api_server_import_never_loads_asyncpg_or_psycopg2_in_sys_modules() -> N
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
-    has_asyncpg, has_psycopg2 = completed.stdout.strip().splitlines()
-    assert has_asyncpg == "False", (
-        "asyncpg landed in sys.modules via the api_server import graph "
-        f"(subprocess stdout: {completed.stdout!r})"
-    )
-    assert has_psycopg2 == "False", (
-        "psycopg2 landed in sys.modules via the api_server import graph "
-        f"(subprocess stdout: {completed.stdout!r})"
+    assert completed.stdout.strip() == "False", (
+        "the Kafka-fed SnapshotCache landed in sys.modules via the api_server "
+        f"import graph (subprocess stdout: {completed.stdout!r})"
     )

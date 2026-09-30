@@ -47,7 +47,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
-from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
+from scripts.projection_api_server import app, get_row_source, get_topic_map
+from tests.helpers.cache_row_source import CacheRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -120,7 +121,7 @@ def _client(
     rows: list[dict[str, Any]], topic: str = _TOPIC
 ) -> Generator[TestClient, None, None]:
     cfg = _cfg(topic)
-    app.dependency_overrides[get_snapshot_cache] = lambda: _cache(rows)
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(_cache(rows))
     app.dependency_overrides[get_topic_map] = lambda: {cfg.topic: cfg}
     try:
         yield TestClient(app, raise_server_exceptions=True)

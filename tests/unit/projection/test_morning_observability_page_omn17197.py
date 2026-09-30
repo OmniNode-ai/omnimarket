@@ -31,7 +31,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
+from omnimarket.projection.api_server import app, get_row_source, get_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.morning_page import (
     DEFAULT_REFRESH_SECONDS,
@@ -53,6 +53,7 @@ from omnimarket.projection.morning_page import (
     render_morning_page,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+from tests.helpers.cache_row_source import CacheRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -197,6 +198,14 @@ class _FakeCache:
 
     def is_bootstrapped(self, topic: str) -> bool:
         return topic not in self._unbootstrapped
+
+    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
+        if self.is_bootstrapped(topic):
+            return None
+        return (
+            "snapshot_bootstrap_incomplete",
+            "the snapshot consumer has not finished its initial replay",
+        )
 
     def latest_event_at(self, topic: str) -> datetime | None:
         return self._latest if self._rows.get(topic) else None
@@ -598,7 +607,7 @@ class TestMorningRoute:
         topic_map = _live_topic_map()
         cache = _FakeCache({TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS})
         app.dependency_overrides[get_topic_map] = lambda: topic_map
-        app.dependency_overrides[get_snapshot_cache] = lambda: cache
+        app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
         try:
             client = TestClient(app, raise_server_exceptions=True)
             response = client.get("/morning")
@@ -612,7 +621,9 @@ class TestMorningRoute:
     def test_route_renders_200_even_when_every_exposure_refuses(self) -> None:
         """The page IS the report: a 5xx would hide the panels that are fine."""
         app.dependency_overrides[get_topic_map] = lambda: {}
-        app.dependency_overrides[get_snapshot_cache] = lambda: _FakeCache({})
+        app.dependency_overrides[get_row_source] = lambda: CacheRowSource(
+            _FakeCache({})
+        )
         try:
             client = TestClient(app, raise_server_exceptions=True)
             response = client.get("/morning")
@@ -641,7 +652,7 @@ class TestStatusRootRoute:
         topic_map = _live_topic_map()
         cache = _FakeCache({TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS})
         app.dependency_overrides[get_topic_map] = lambda: topic_map
-        app.dependency_overrides[get_snapshot_cache] = lambda: cache
+        app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
         try:
             client = TestClient(app, raise_server_exceptions=True)
             return client.get(path, **kwargs)
@@ -728,7 +739,9 @@ class TestStatusRootRoute:
 
     def test_root_renders_200_even_when_every_exposure_refuses(self) -> None:
         app.dependency_overrides[get_topic_map] = lambda: {}
-        app.dependency_overrides[get_snapshot_cache] = lambda: _FakeCache({})
+        app.dependency_overrides[get_row_source] = lambda: CacheRowSource(
+            _FakeCache({})
+        )
         try:
             client = TestClient(app, raise_server_exceptions=True)
             response = client.get("/")
