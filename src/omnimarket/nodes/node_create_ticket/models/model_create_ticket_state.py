@@ -16,6 +16,7 @@ class ModelCreateTicketStartCommand(BaseModel):
     blocked_by: str = ""
     project: str = ""
     team: str = "Omninode"
+    pillar: str = ""
     allow_arch_violation: bool = False
 
     @field_validator("project")

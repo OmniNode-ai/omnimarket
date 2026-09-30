@@ -65,6 +65,10 @@ inputs:
     description: "Linear team name (default: Omninode)"
     required: false
     default: "Omninode"
+  pillar:
+    type: str
+    description: "Ticket pillar (dashboard, onboarding); assigns the pillar owner from omnibase_internal pillar_owners.yaml, else the creator (operator rulings 2026-09-30, OMN-17427)"
+    required: false
   allow_arch_violation:
     type: bool
     description: "Bypass architecture dependency validation"
