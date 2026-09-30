@@ -162,6 +162,14 @@ def test_every_recorded_decline_names_its_companion_when_the_line_does() -> None
             None,
         ),
         (
+            "skip:WINDOW_IN_FLIGHT — OmniNode-ai/omnimarket#2974 was not pushed to "
+            "the OmniNode-ai/omnimarket batch window companion: OCC#11963 head "
+            "0123abcd has 2 check run(s) still running (OMN-20042)",
+            EnumPrLandingCompanionDeclineCode.WINDOW_IN_FLIGHT,
+            None,
+            None,
+        ),
+        (
             "[dry-run] would author OCC companion for OMN-1 on OmniNode-ai/x#1 "
             "(no side effects performed)",
             EnumPrLandingCompanionDeclineCode.DRY_RUN,
