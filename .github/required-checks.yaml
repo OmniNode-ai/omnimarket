@@ -91,7 +91,7 @@ gates:
     # OMN-18647 canary pin; reverts to @main under OMN-18884. Kept in step with
     # call-occ-preflight.yml deliberately: this field is the asserted intent and a
     # stale one reads as a gate nobody moved.
-    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@a9f2bb87841cc86a0c813b62b29fb5458cdac7e6"
+    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@52851458622f368c3b596c82bf810bc6acce1d5e"
     skip_semantics: never
     rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
 

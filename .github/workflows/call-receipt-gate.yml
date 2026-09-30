@@ -32,4 +32,4 @@ permissions:
 
 jobs:
   verify:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@7f8efa07b8d33fa1640ba0aca4c2adb22708837d # OMN-20132: immutable SHA pin, the squash commit of omnibase_core#1814 on that repo's dev branch. It advances the inner validator ref past ModelDodReceipt.tree_sha, so receipts carrying tree_sha no longer fail with extra_forbidden. A 40-hex pin is the intended long-term form. NO PUBLISHED RELEASE CONTAINS THIS: re-point at the first release that carries omnibase_core#1814
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@52851458622f368c3b596c82bf810bc6acce1d5e # OMN-20161: immutable SHA pin, the squash commit of omnibase_core#1820 on that repo's dev branch. It carries the OCC writer app pin-only exemption and still carries the inner validator ref past ModelDodReceipt.tree_sha (omnibase_core#1814, OMN-20132). A 40-hex pin is the intended long-term form. NO PUBLISHED RELEASE CONTAINS THIS: re-point at the first release that carries omnibase_core#1820
