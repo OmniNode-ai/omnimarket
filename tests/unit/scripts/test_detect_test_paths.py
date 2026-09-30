@@ -4,10 +4,16 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 ADJACENCY_PATH = (
     Path(__file__).parents[3] / "scripts" / "ci" / "test_selection_adjacency.yaml"
@@ -145,7 +151,7 @@ def test_smart_selection_non_shared_module() -> None:
     assert len(sel.matrix) == sel.split_count
 
 
-def test_unknown_src_module_falls_back_to_full_tests() -> None:
+def test_unknown_src_module_escalates_to_full_suite() -> None:
     sel = compute_selection(
         changed_files=["src/omnimarket/unknown_module/foo.py"],
         adjacency_path=ADJACENCY_PATH,
@@ -153,8 +159,9 @@ def test_unknown_src_module_falls_back_to_full_tests() -> None:
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    assert sel.is_full_suite is False
-    assert "tests/" in sel.selected_paths
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.UNMAPPED_MODULE
+    assert sel.selected_paths == ["tests/"]
 
 
 def test_cli_entrypoint_produces_json(tmp_path: Path) -> None:
@@ -486,5 +493,180 @@ def test_always_selected_paths_not_unioned_into_full_tests_root() -> None:
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    if sel.is_full_suite is False and sel.selected_paths == ["tests/"]:
-        assert "tests/gates/" not in sel.selected_paths
+    assert sel.is_full_suite is True
+    assert sel.selected_paths == ["tests/"]
+
+
+# OMN-20180: protected surfaces and unmapped source modules must fail closed.
+
+
+@pytest.fixture(scope="module")
+def tracked_paths() -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ADJACENCY_PATH.parents[2],
+        env=scrub_git_location_env(os.environ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.rstrip("\0").split("\0")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/omnimarket/delegation/__init__.py",
+        "src/omnimarket/delegated_test_loop/__init__.py",
+        "src/omnimarket/inference/__init__.py",
+        "src/omnimarket/cost/__init__.py",
+        "src/omnimarket/configs/routing_tiers.yaml",
+        "src/omnimarket/configs/bifrost_delegation.yaml",
+        "src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py",
+        "src/omnimarket/nodes/node_delegation_quality_gate_reducer/contract.yaml",
+        "src/omnimarket/nodes/node_model_router/handlers/handler_model_router.py",
+        "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
+        "src/omnimarket/nodes/node_ab_compare_orchestrator/contract.yaml",
+        "src/omnimarket/nodes/node_judge_verdict_parse_compute/contract.yaml",
+        "src/omnimarket/nodes/node_projection_savings/contract.yaml",
+        "src/omnimarket/nodes/node_projection_llm_cost/contract.yaml",
+        "src/omnimarket/nodes/node_routing_policy_engine/contract.yaml",
+        "src/omnimarket/nodes/node_house_routing_overlay_effect/contract.yaml",
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
+        "src/omnimarket/nodes/node_pr_delegated_fix_effect/contract.yaml",
+        "src/omnimarket/nodes/node_adr_segmentation_llm_effect/contract.yaml",
+        "src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/contract.yaml",
+    ],
+)
+def test_protected_surface_escalates(path: str, tracked_paths: list[str]) -> None:
+    assert path in tracked_paths, "fixture must reference a real tracked file"
+    sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.PROTECTED_SURFACE
+    assert sel.selected_paths == ["tests/"]
+    assert sel.split_count == 20
+
+
+def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
+    path = "src/omnimarket/nodes/node_code_embedding_effect/handlers/handler_code_embedding_effect.py"
+    assert path in tracked_paths
+    sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
+    assert sel.is_full_suite is False
+    assert sel.full_suite_reason is None
+    assert sel.selected_paths == ["tests/gates/", "tests/nodes/"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/omnimarket/cloud/completion_bound.py",
+        "src/omnimarket/codegen/models.py",
+        "src/omnimarket/__init__.py",
+    ],
+)
+def test_unmapped_source_with_mapped_module_escalates(
+    path: str, tracked_paths: list[str]
+) -> None:
+    assert path in tracked_paths
+    sel = compute_selection(
+        [path, "src/omnimarket/nodes/node_code_embedding_effect/contract.yaml"],
+        ADJACENCY_PATH,
+        ref_name="jonah/feature",
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.UNMAPPED_MODULE
+    assert sel.selected_paths == ["tests/"]
+
+
+@pytest.mark.parametrize(
+    ("ref_name", "event_name", "feature_flag_enabled", "extra_paths", "reason"),
+    [
+        ("main", "push", True, [], EnumFullSuiteReason.MAIN_BRANCH),
+        ("feature", "merge_group", True, [], EnumFullSuiteReason.MERGE_GROUP),
+        ("feature", "schedule", True, [], EnumFullSuiteReason.SCHEDULED),
+        ("feature", "pull_request", False, [], EnumFullSuiteReason.FEATURE_FLAG_OFF),
+        (
+            "feature",
+            "pull_request",
+            True,
+            ["tests/conftest.py"],
+            EnumFullSuiteReason.TEST_INFRASTRUCTURE,
+        ),
+    ],
+)
+def test_existing_full_suite_checks_precede_protected_and_unmapped_checks(
+    ref_name: str,
+    event_name: str,
+    feature_flag_enabled: bool,
+    extra_paths: list[str],
+    reason: EnumFullSuiteReason,
+) -> None:
+    sel = compute_selection(
+        [
+            "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml",
+            "src/omnimarket/cloud/completion_bound.py",
+            *extra_paths,
+        ],
+        ADJACENCY_PATH,
+        ref_name=ref_name,
+        event_name=event_name,
+        feature_flag_enabled=feature_flag_enabled,
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == reason
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/unit/delegation/test_something.py",
+        "tests/delegation_golden/test_something.py",
+    ],
+)
+def test_delegation_test_directory_change_still_narrows(path: str) -> None:
+    sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
+    assert sel.is_full_suite is False
+    assert sel.full_suite_reason is None
+    assert path.startswith(tuple(sel.selected_paths))
+
+
+def _assert_globs_match_tracked_paths(globs: list[str], paths: list[str]) -> None:
+    unmatched = [glob for glob in globs if not any(fnmatchcase(p, glob) for p in paths)]
+    assert not unmatched, f"protection globs match no tracked paths: {unmatched}"
+
+
+def test_every_protection_glob_matches_a_tracked_path(tracked_paths: list[str]) -> None:
+    from scripts.ci.test_selection_loader import load_adjacency_map
+
+    config = load_adjacency_map(ADJACENCY_PATH)
+    assert config.full_suite_path_globs, (
+        "protected surface configuration must not be empty"
+    )
+    _assert_globs_match_tracked_paths(config.full_suite_path_globs, tracked_paths)
+
+
+def test_typo_in_protection_glob_is_caught(tracked_paths: list[str]) -> None:
+    with pytest.raises(AssertionError, match="protection globs match no tracked paths"):
+        _assert_globs_match_tracked_paths(
+            ["src/omnimarket/nodes/node_delegtion_*/**"], tracked_paths
+        )
+
+
+def test_protection_globs_default_to_empty_list() -> None:
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+
+    raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
+    raw.pop("full_suite_path_globs")
+    assert ModelAdjacencyMap.model_validate(raw).full_suite_path_globs == []
+
+
+@pytest.mark.parametrize("invalid", ["src/**", ("src/**",), [123], [None]])
+def test_protection_globs_reject_invalid_types(invalid: object) -> None:
+    from pydantic import ValidationError
+
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+
+    raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
+    raw["full_suite_path_globs"] = invalid
+    with pytest.raises(ValidationError):
+        ModelAdjacencyMap.model_validate(raw)
