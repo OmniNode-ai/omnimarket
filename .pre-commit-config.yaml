@@ -262,7 +262,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
+      # This verbatim captured prompt intentionally contains merge-marker text.
       - id: check-merge-conflict
+        exclude: ^tests/fixtures/delegation/omn19523/prompts/run_6bfe152a_t2a\.txt$
       - id: check-added-large-files
         args: [--maxkb=1000]
 
@@ -483,6 +485,20 @@ repos:
         language: system
         entry: uv run python -m omnimarket.validators.key_grain_declared
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/key_grain_declared\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-19833: the runtime counts a projection write only under `rows_upserted`
+      # and reads any other key as zero rows, so a writer reporting `rows_written`
+      # wrote its rows and drove projection_apply_divergence DEGRADED. A pure fold
+      # routed beside an in-process writer is handed the raw event it cannot
+      # validate. Syntax-tree and YAML reads only; also run in CI by
+      # tests/validators/test_projection_writer_contract_omn19833.py.
+      - id: projection-writer-contract
+        name: Projection writers report rows_upserted and route no pure fold (OMN-19833)
+        language: system
+        entry: uv run python -m omnimarket.validators.projection_writer_contract
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/projection_writer_contract\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

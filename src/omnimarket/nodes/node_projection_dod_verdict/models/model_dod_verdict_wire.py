@@ -31,6 +31,7 @@ counts, and they arrive as counts.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,6 +82,12 @@ class ModelDodVerdictWire(BaseModel):
             "the delegation_events key it joins on."
         ),
     )
+    goal_id: UUID | None = Field(default=None)
+    parent_goal_id: UUID | None = Field(default=None)
+    level: Literal["delegate_call", "workflow_lane", "interactive_session"] | None = (
+        None
+    )
+    contract_revision: UUID | None = Field(default=None)
 
     started_at: datetime = Field(..., description="When the run started.")
     completed_at: datetime = Field(

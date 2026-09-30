@@ -145,6 +145,11 @@ def _bound(db: _RecordingDb) -> dict[str, Any]:
         "projected_at",
         # OMN-19514: the delegation run the verification judged.
         "delegation_correlation_id",
+        # OMN-20025: the goal identity and exact contract revision judged.
+        "goal_id",
+        "parent_goal_id",
+        "level",
+        "contract_revision",
     )
     assert len(args) == len(names), f"bind count moved: {len(args)} vs {len(names)}"
     return dict(zip(names, args, strict=True))
@@ -217,6 +222,33 @@ def test_ac1_the_row_carries_the_event_clock_and_never_a_wall_clock() -> None:
             first_bound[field] == second_bound[field] == CAPTURED_PAYLOAD_TIMES[field]
         )
     assert first["dod_verdict_rows"] == second["dod_verdict_rows"]
+
+
+def test_goal_identity_and_contract_revision_reach_the_immutable_write() -> None:
+    goal_id = UUID("747a3ba5-2ae9-4fa3-8c98-4d7475ce30c5")
+    parent_goal_id = UUID("8bdb32d3-11c0-4748-bdde-76a9ec73c673")
+    contract_revision = UUID("00000000-0000-4000-8000-000000000001")
+
+    _report, bound = _write(
+        goal_id=str(goal_id),
+        parent_goal_id=str(parent_goal_id),
+        level="workflow_lane",
+        contract_revision=str(contract_revision),
+    )
+
+    assert bound["goal_id"] == goal_id
+    assert bound["parent_goal_id"] == parent_goal_id
+    assert bound["level"] == "workflow_lane"
+    assert bound["contract_revision"] == contract_revision
+
+
+def test_legacy_ticket_verification_writes_null_goal_identity() -> None:
+    _report, bound = _write()
+
+    assert bound["goal_id"] is None
+    assert bound["parent_goal_id"] is None
+    assert bound["level"] is None
+    assert bound["contract_revision"] is None
 
 
 # --------------------------------------------------------------------------
