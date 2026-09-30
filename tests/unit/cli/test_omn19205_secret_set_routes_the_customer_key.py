@@ -88,7 +88,7 @@ def test_the_documented_registration_substitutes_the_customer_route() -> None:
 
     routed = substitute_local_byok_route(_house_glm_rung())
 
-    assert routed.backend_id == "byok-glm"
+    assert routed.backend_id == "byok-glm-general"
     assert routed.secret_ref is not None
     assert is_tenant_credential_ref(routed.secret_ref)
     assert (

@@ -39,6 +39,7 @@ from omnimarket.routing.byok_provider_backends import (
     load_byok_not_offered_providers,
     load_byok_plan_catalog,
     load_byok_provider_catalog,
+    resolve_byok_declared_plan,
     resolve_byok_provider_backend,
 )
 
@@ -126,18 +127,21 @@ class TestGlmHasTwoPlans:
     def test_glm_declares_exactly_the_coding_plan_and_the_general_api(self) -> None:
         assert byok_provider_plans("glm") == ("coding_plan", "general_api")
 
-    def test_the_default_plan_is_the_coding_plan_so_existing_routes_do_not_move(
+    def test_the_default_plan_is_the_general_api_not_the_coding_plan(
         self,
     ) -> None:
+        # OMN-20157: z.ai's terms bar Coding Plan quota from third-party systems
+        # (knowledge-base-internal reference/zai-glm-coding-plan-terms.md), so the
+        # plan a customer key gets when none is named is the general API.
         default = resolve_byok_provider_backend("glm")
         assert default is not None
-        assert default.plan == "coding_plan"
-        assert default.backend_id == "byok-glm"
-        assert default.endpoint_url == CODING_PLAN_ENDPOINT
+        assert default.plan == "general_api"
+        assert default.backend_id == "byok-glm-general"
+        assert default.endpoint_url == GENERAL_API_ENDPOINT
         assert load_byok_provider_catalog()["glm"] == default
 
-    def test_each_plan_resolves_its_own_endpoint_and_backend(self) -> None:
-        coding = resolve_byok_provider_backend("glm", plan="coding_plan")
+    def test_each_declared_plan_resolves_its_own_endpoint_and_backend(self) -> None:
+        coding = resolve_byok_declared_plan("glm", "coding_plan")
         general = resolve_byok_provider_backend("glm", plan="general_api")
         assert coding is not None
         assert general is not None
@@ -145,6 +149,8 @@ class TestGlmHasTwoPlans:
         assert general.endpoint_url == GENERAL_API_ENDPOINT
         assert coding.backend_id != general.backend_id
         assert general.backend_id == "byok-glm-general"
+        # Declared for detection; never routable (see test_omn20157_glm_general_api_default).
+        assert resolve_byok_provider_backend("glm", plan="coding_plan") is None
 
     def test_an_unknown_plan_resolves_to_nothing_and_never_to_the_default(
         self,
@@ -153,6 +159,7 @@ class TestGlmHasTwoPlans:
 
     def test_a_plan_of_another_provider_resolves_to_nothing(self) -> None:
         assert resolve_byok_provider_backend("gemini", plan="coding_plan") is None
+        assert resolve_byok_declared_plan("gemini", "coding_plan") is None
 
     def test_plan_match_is_trimmed_and_lowercased_like_the_provider(self) -> None:
         assert resolve_byok_provider_backend(
@@ -170,7 +177,7 @@ class TestGlmHasTwoPlans:
         general = resolve_byok_provider_backend("glm", plan="general_api")
         assert general is not None
         assert general.limit_model.billing == "pay_as_you_go"
-        coding = resolve_byok_provider_backend("glm", plan="coding_plan")
+        coding = resolve_byok_declared_plan("glm", "coding_plan")
         assert coding is not None
         assert coding.limit_model.billing == "flat_rate_quota"
 
@@ -209,7 +216,7 @@ class TestEveryRowDeclaresALimitModel:
     def test_the_coding_plan_declares_the_five_hour_and_weekly_credit_windows(
         self,
     ) -> None:
-        coding = resolve_byok_provider_backend("glm", plan="coding_plan")
+        coding = resolve_byok_declared_plan("glm", "coding_plan")
         assert coding is not None
         windows = {w.window_hours: w for w in coding.limit_model.windows}
         assert set(windows) == {5, 168}
@@ -225,7 +232,7 @@ class TestEveryRowDeclaresALimitModel:
 
     def test_gemini_counts_per_model_and_the_coding_plan_pools_per_plan(self) -> None:
         gemini = resolve_byok_provider_backend("gemini")
-        coding = resolve_byok_provider_backend("glm", plan="coding_plan")
+        coding = resolve_byok_declared_plan("glm", "coding_plan")
         assert gemini is not None
         assert coding is not None
         assert gemini.limit_model.counter_scope == "model"
@@ -254,7 +261,7 @@ class TestLimitCounterKey:
     def test_a_plan_scoped_row_drops_the_model_so_models_pool_one_counter(
         self,
     ) -> None:
-        row = resolve_byok_provider_backend("glm", plan="coding_plan")
+        row = resolve_byok_declared_plan("glm", "coding_plan")
         assert row is not None
         assert byok_limit_counter_key("acme", "cred_acme_glm_1", row) == (
             "acme",
@@ -275,7 +282,7 @@ class TestLimitCounterKey:
         assert len(keys) == 3
 
     def test_the_two_glm_plans_never_share_a_counter(self) -> None:
-        coding = resolve_byok_provider_backend("glm", plan="coding_plan")
+        coding = resolve_byok_declared_plan("glm", "coding_plan")
         general = resolve_byok_provider_backend("glm", plan="general_api")
         assert coding is not None
         assert general is not None

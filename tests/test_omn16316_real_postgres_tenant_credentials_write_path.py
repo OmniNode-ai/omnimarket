@@ -415,22 +415,28 @@ class TestRealPostgresRoutingOverlayWritePath:
     async def test_the_registered_plan_selects_which_glm_endpoint_the_row_addresses(
         self,
     ) -> None:
-        """OMN-20157: one provider, two plans, two routes, one writer.
+        """OMN-20157: one provider, one customer route, never the Coding Plan.
 
         The plan rides the event's ``metadata``; the overlay row records it
-        through the ``backend_id`` it is minted with. Against a real connection
-        because the plan-selected values flow through the same typed
+        through the ``backend_id`` it is minted with. A general-API credential,
+        and an event from before plans existed (no plan), mint the general-API
+        route. A credential naming the Coding Plan mints NO route: z.ai's terms
+        bar that quota from third-party systems, so the writer leaves the
+        credential catalogued and unrouted. Against a real connection because
+        the plan-selected values flow through the same typed
         ``INSERT ... SELECT`` the OMN-15905 class of defect lives in.
         """
-        expected = {
-            "coding_plan": ("byok-glm", "/api/coding/paas/v4/"),
+        expected: dict[str | None, tuple[str, str] | None] = {
             "general_api": ("byok-glm-general", "/api/paas/v4/"),
+            None: ("byok-glm-general", "/api/paas/v4/"),
+            "coding_plan": None,
         }
-        for plan, (backend_id, path) in expected.items():
+        for plan, minted in expected.items():
             async with _provisioned_runner() as (runner, admin_conn, _schema):
                 ref = f"cred_{BYOK_TENANT}_glm_{uuid4().hex[:12]}"
                 event = self._register(ref, provider="glm")
-                event["metadata"] = {"plan": plan}
+                if plan is not None:
+                    event["metadata"] = {"plan": plan}
                 assert await runner.project_event(
                     TOPIC_REGISTERED,
                     event,
@@ -444,10 +450,18 @@ class TestRealPostgresRoutingOverlayWritePath:
                     "FROM delegation_routing_tenant_overlay WHERE tenant_id = $1",
                     BYOK_TENANT,
                 )
+                if minted is None:
+                    assert row is None, (
+                        "a Coding Plan credential must mint no customer route "
+                        "(OMN-20157, z.ai subscription terms section 4)"
+                    )
+                    continue
+                backend_id, path = minted
                 assert row is not None
                 assert row["backend_id"] == backend_id
                 assert row["provider"] == "glm"
                 assert path in row["endpoint_url"]
+                assert "/api/coding/" not in row["endpoint_url"]
                 assert row["secret_ref"] == ref
 
     async def test_redelivery_converges_to_one_row(self) -> None:

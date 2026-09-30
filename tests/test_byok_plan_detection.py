@@ -5,8 +5,13 @@
 A customer registering a z.ai key does not know, and should not need to know,
 whether it belongs to the Coding Plan or the general API: the two are separate
 products on separate endpoints, and a key presented to the wrong one is
-refused. Detection tries the key against each declared plan's endpoint with a
-one-token request and records which one answers.
+refused. Detection tries the key against the general API first with a
+one-token request. A key that answers there is a general key, and the Coding
+Plan endpoint is never contacted. Only a key the general API refused is tried
+on the Coding Plan surface, and one that answers there alone is refused with a
+typed ``BYOK_CODING_PLAN_NOT_PERMITTED``: z.ai's subscription terms bar Coding
+Plan quota from third-party systems (knowledge-base-internal
+``reference/zai-glm-coding-plan-terms.md``), so no customer route may use it.
 
 Every transport here is a mock. No network, no key value in any assertion
 message, and one test proves the key never appears in the result or the logs.
@@ -99,67 +104,84 @@ async def _detect(
 
 
 class TestDetection:
-    async def test_a_coding_plan_key_is_detected_when_the_general_surface_is_down(
-        self,
-    ) -> None:
-        # A surface that could not be reached is no evidence the key also
-        # belongs there, so the one plan that answered is the plan.
-        result, seen = await _detect({CODING: _ok(), GENERAL: _err(500)})
-        assert result.outcome == "detected"
-        assert result.plan == "coding_plan"
-        # Every plan is probed, in a fixed order: the default plan first.
-        assert seen == [CODING, GENERAL]
-
-    async def test_a_general_api_key_is_detected_after_the_coding_plan_refuses_it(
-        self,
-    ) -> None:
-        result, seen = await _detect({CODING: _err(401, "1001"), GENERAL: _ok()})
+    async def test_a_general_api_key_is_detected_and_routes_general(self) -> None:
+        result, seen = await _detect({GENERAL: _ok(), CODING: _err(401, "1001")})
         assert result.outcome == "detected"
         assert result.plan == "general_api"
-        assert seen == [CODING, GENERAL]
+        assert result.refused_plan is None
+        # The general API answered, so the Coding Plan surface is never touched.
+        assert seen == [GENERAL]
 
-    async def test_a_coding_plan_key_on_the_general_surface_is_not_general(
+    async def test_a_coding_plan_only_key_is_refused_with_the_typed_code(
         self,
     ) -> None:
         # OMN-6790: 1113 is the pay-as-you-go surface refusing a Coding-Plan key.
-        result, _ = await _detect({CODING: _ok(), GENERAL: _err(429, "1113")})
-        assert result.outcome == "detected"
-        assert result.plan == "coding_plan"
+        result, seen = await _detect({GENERAL: _err(429, "1113"), CODING: _ok()})
+        assert result.outcome == "not_permitted"
+        assert result.plan is None
+        assert result.refused_plan == "coding_plan"
+        assert result.refusal_code == "BYOK_CODING_PLAN_NOT_PERMITTED"
+        # The general API is asked first; the Coding Plan only after it refused.
+        assert seen == [GENERAL, CODING]
 
-    async def test_a_key_that_both_surfaces_answer_is_ambiguous_and_never_chosen(
+    async def test_a_key_both_surfaces_answer_is_a_general_key_never_refused(
         self,
     ) -> None:
-        # The plans meter differently; picking one is a guess about whose money
-        # is spent, so detection refuses and the caller asks the customer.
-        result, _ = await _detect({CODING: _ok(), GENERAL: _ok()})
-        assert result.outcome == "ambiguous"
-        assert result.plan is None
-        assert [p.verdict for p in result.probes] == ["answered", "answered"]
+        # The platform's own z.ai key answers on both surfaces. A key the
+        # general API accepts is usable there whatever else it can do.
+        result, seen = await _detect({GENERAL: _ok(), CODING: _ok()})
+        assert result.outcome == "detected"
+        assert result.plan == "general_api"
+        assert result.refusal_code is None
+        assert seen == [GENERAL], "the Coding Plan endpoint must not be contacted"
 
-    async def test_an_exhausted_window_still_proves_the_plan(self) -> None:
-        # 1310: the key authenticated on the coding surface and is capped. That
-        # is the plan, not a failure to detect one.
+    async def test_an_exhausted_coding_window_still_proves_the_key_is_coding_only(
+        self,
+    ) -> None:
+        # 1310: the key authenticated on the coding surface and is capped. It is
+        # still a Coding Plan key, and still not permitted.
         result, _ = await _detect(
             {
-                CODING: _err(429, "1310", "Weekly/Monthly Limit Exhausted"),
                 GENERAL: _err(429, "1113"),
+                CODING: _err(429, "1310", "Weekly/Monthly Limit Exhausted"),
             }
         )
-        assert result.plan == "coding_plan"
+        assert result.outcome == "not_permitted"
+        assert result.refused_plan == "coding_plan"
+
+    async def test_an_exhausted_general_window_is_still_a_general_key(self) -> None:
+        result, seen = await _detect(
+            {GENERAL: _err(429, "1308", "window spent"), CODING: _ok()}
+        )
+        assert result.outcome == "detected"
+        assert result.plan == "general_api"
+        assert seen == [GENERAL]
+
+    async def test_a_general_surface_that_could_not_answer_never_refuses_the_key(
+        self,
+    ) -> None:
+        # A throttled or unreachable general API is no evidence the key is not a
+        # general key, so a Coding Plan answer alone must not refuse it.
+        result, _ = await _detect({GENERAL: _err(500), CODING: _ok()})
+        assert result.outcome == "inconclusive"
+        assert result.plan is None
+        assert result.refused_plan is None
+        assert result.refusal_code is None
 
     async def test_a_key_both_surfaces_refuse_is_reported_rejected(self) -> None:
         result, _ = await _detect(
-            {CODING: _err(401, "1001"), GENERAL: _err(401, "1001")}
+            {GENERAL: _err(401, "1001"), CODING: _err(401, "1001")}
         )
         assert result.outcome == "rejected"
         assert result.plan is None
+        assert result.refusal_code is None
 
     async def test_a_200_carrying_a_provider_error_body_is_not_an_answer(
         self,
     ) -> None:
         # OMN-18265: a provider can wrap an error in an HTTP 200.
         wrapped = httpx.Response(200, json={"error": {"code": 401, "message": "no"}})
-        result, _ = await _detect({CODING: wrapped, GENERAL: _err(401)})
+        result, _ = await _detect({GENERAL: wrapped, CODING: _err(401)})
         assert result.plan is None
         assert result.outcome == "rejected"
 
@@ -167,7 +189,7 @@ class TestDetection:
         self,
     ) -> None:
         result, _ = await _detect(
-            {CODING: httpx.ConnectError("boom"), GENERAL: _err(503)}
+            {GENERAL: httpx.ConnectError("boom"), CODING: _err(503)}
         )
         assert result.outcome == "inconclusive"
         assert result.plan is None
@@ -177,33 +199,34 @@ class TestDetection:
     ) -> None:
         # The surface that could not be reached might be the right one.
         result, _ = await _detect(
-            {CODING: httpx.ReadTimeout("slow"), GENERAL: _err(401)}
+            {GENERAL: httpx.ReadTimeout("slow"), CODING: _err(401)}
         )
         assert result.outcome == "inconclusive"
 
     async def test_a_capacity_429_is_inconclusive(self) -> None:
-        result, _ = await _detect({CODING: _err(429, "1302"), GENERAL: _err(401)})
+        result, _ = await _detect({GENERAL: _err(429, "1302"), CODING: _err(401)})
         assert result.outcome == "inconclusive"
 
 
 class TestProbeRequest:
-    async def test_the_probe_is_one_token_bearer_auth_to_the_declared_endpoint(
+    async def test_the_probe_is_one_token_bearer_auth_to_the_general_endpoint_first(
         self,
     ) -> None:
         calls: list[dict[str, Any]] = []
         await detect_byok_plan(
             "glm",
             KEY,
-            post=_post({CODING: _err(401), GENERAL: _err(401)}, [], calls),
+            post=_post({GENERAL: _err(401), CODING: _err(401)}, [], calls),
         )
         first = calls[0]
-        assert first["url"] == CODING
+        assert first["url"] == GENERAL
         assert first["headers"] == {"Authorization": f"Bearer {KEY}"}
         body = first["payload"]
         assert body["max_tokens"] == 1
-        assert body["model"] == "glm-5.3-flash"
+        assert body["model"] == "glm-4.5-flash"
         assert body["stream"] is False
-        assert calls[1]["payload"]["model"] == "glm-4.5-flash"
+        assert calls[1]["url"] == CODING
+        assert calls[1]["payload"]["model"] == "glm-5.3-flash"
 
 
 class TestNoKeyLeak:
@@ -212,7 +235,7 @@ class TestNoKeyLeak:
     ) -> None:
         caplog.set_level(logging.DEBUG)
         result, _ = await _detect(
-            {CODING: httpx.ConnectError(f"boom {KEY}"), GENERAL: _err(401)}
+            {GENERAL: httpx.ConnectError(f"boom {KEY}"), CODING: _err(401)}
         )
         assert KEY not in result.model_dump_json()
         assert KEY not in caplog.text

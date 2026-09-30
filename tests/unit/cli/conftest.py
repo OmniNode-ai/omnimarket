@@ -20,11 +20,11 @@ def _no_network_plan_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     the detection behaviour itself, over a mock transport.
     """
 
-    async def _coding(
+    async def _general(
         provider: str, api_key: object, **_: object
     ) -> ModelByokPlanDetection:
         return ModelByokPlanDetection(
-            provider=provider, plan="coding_plan", outcome="detected"
+            provider=provider, plan="general_api", outcome="detected"
         )
 
-    monkeypatch.setattr("omnimarket.cli.cli_secret.detect_byok_plan", _coding)
+    monkeypatch.setattr("omnimarket.cli.cli_secret.detect_byok_plan", _general)
