@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Enums for omnimarket."""
 
+from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_acceptance import (
@@ -16,6 +17,9 @@ from omnimarket.enums.enum_dispatch_queue_phase import (
 from omnimarket.enums.enum_dispatch_terminal_reason import (
     EnumDispatchTerminalDisposition,
     EnumDispatchTerminalReason,
+)
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
 )
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
@@ -37,6 +41,7 @@ from omnimarket.enums.enum_usage_source import EnumUsageSource
 __all__ = [
     "IN_FLIGHT_PHASES",
     "NON_RETRYABLE_CAUSES",
+    "EnumBackendPlacementMode",
     "EnumCheckProofClass",
     "EnumCostBasis",
     "EnumDelegationAcceptanceDecision",
@@ -45,6 +50,7 @@ __all__ = [
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",
     "EnumDispatchTerminalReason",
+    "EnumDodVerifyExecutionAudience",
     "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",
     "EnumMintFailureClass",

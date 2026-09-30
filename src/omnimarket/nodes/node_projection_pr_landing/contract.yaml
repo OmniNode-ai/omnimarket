@@ -3,11 +3,6 @@ name: projection_pr_landing
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-# Experimental until the consumer declaration lands with the orchestrator's
-# publish declaration (see event_bus below). The node-drift gate reads this
-# annotation and refuses a projection that publishes but subscribes to nothing
-# unless it is marked so; the commit that adds the four subscriptions removes it.
-lifecycle: experimental
 input_model: omnimarket.nodes.node_projection_pr_landing.models.model_pr_landing_projection_request.ModelPrLandingProjectionRequest
 description: >
   OMN-19833, task T11 of the PR landing workflow (epic OMN-19822). Materializes
@@ -101,20 +96,18 @@ db_io:
 event_bus:
   # THE CONSUMER DECLARATION LANDS WITH ITS PUBLISHER. This node consumes the
   # four topics node_pr_landing_orchestrator owns (events/topics.py,
-  # PR_LANDING_*_TOPIC_V1; the writer's TOPIC_EVENT_KIND maps each one). No
-  # contract publishes them until the orchestrator handler (OMN-19829) declares
-  # them, and the HARD contract-topic-graph gate refuses a subscription nobody
-  # publishes (ORPHANED_CONSUMER) exactly as it refuses a publication nobody
-  # consumes (ORPHANED_PRODUCER). So neither declaration can be committed
-  # alone: the four lines below are added in the same commit as the
-  # orchestrator's publish declaration, and
+  # PR_LANDING_*_TOPIC_V1; the writer's TOPIC_EVENT_KIND maps each one). They
+  # were declared in the same commit as the orchestrator's publish
+  # declaration, because the HARD contract-topic-graph gate refuses a
+  # subscription nobody publishes (ORPHANED_CONSUMER) exactly as it refuses a
+  # publication nobody consumes (ORPHANED_PRODUCER), and
   # test_the_consumer_declaration_lands_with_its_publisher holds the two
-  # together from then on.
-  #   - onex.evt.omnimarket.pr-landing-transitioned.v1
-  #   - onex.evt.omnimarket.pr-landing-agent-needed.v1
-  #   - onex.evt.omnimarket.pr-landing-merged.v1
-  #   - onex.evt.omnimarket.pr-landing-closed.v1
-  subscribe_topics: []
+  # together.
+  subscribe_topics:
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-pr-landing-applied.v1
   dlq_topics:

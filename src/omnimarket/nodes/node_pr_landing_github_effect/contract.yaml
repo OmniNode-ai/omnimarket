@@ -9,17 +9,15 @@
 # first, and run attempts on check reads (plan revision 1, knowledge-base#94,
 # R4 and section 6).
 #
-# STILL UNWIRED. The contract declares no event_bus, runtime_dispatch or
-# handler_routing block, and the node has no onex.nodes entry point, so no
-# runtime discovery path (the entry-point walk or a package contract scan) can
-# subscribe or dispatch it. The frozen topic names stay in the `seam` block and
-# in omnimarket.events.topics; they move under event_bus in the wave-3 compose
-# step, together with the orchestrator that publishes the command, and run in
-# dry_run (shadow) first. An event_bus block with no publisher of its command
-# is the declared-but-unwired defect the contract topic graph gate refuses.
+# 1.2.0 (wave-3 compose, OMN-19829) wires it: the frozen topic names move from
+# the seam block to event_bus, published_events and handler_routing, and the
+# node gains its onex.nodes entry point, in the same commit as
+# node_pr_landing_orchestrator's declaration that publishes the command and
+# consumes both results. Either half alone is a defect the hard contract topic
+# graph gate refuses. The orchestrator sends mutations in dry_run by default
+# (shadow mode, plan 5.5); only the conditional reads are sent live.
 name: node_pr_landing_github_effect
-lifecycle: experimental
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -83,8 +81,13 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 30000
-  runtime_profiles:
-    - effects
+
+# main, not effects, beside the orchestrator: the dev lane's effects runtime
+# declares no ONEX_RUNTIME_LANE (read on .201, 2026-09-27), so a compose-dev
+# scoped contract there is a fail-closed discovery error. The main runtime
+# declares compose-dev and carries the same GITHUB_TOKEN.
+runtime_profiles:
+  - main
 
 runtime_lanes:
   - compose-dev
@@ -96,22 +99,38 @@ secrets:
     description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
     required: true
 
-seam:
-  # Frozen names for the PR landing workflow (plan section 5.3). Not a runtime
-  # declaration: nothing here is read by discovery or by the topic graph.
-  handlers_by: OMN-19831
-  handler:
-    module: omnimarket.nodes.node_pr_landing_github_effect.handlers.handler_pr_landing_github
-    class: HandlerPrLandingGithubEffect
-  wired_by: wave-3-compose
-  command_topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
-  result_topics:
-    - topic: onex.evt.omnimarket.pr-landing-github-completed.v1
-      event_type: ModelPrLandingGithubCompleted
-      module: omnimarket.events.pr_landing_github.model_pr_landing_github_completed
-    - topic: onex.evt.omnimarket.pr-landing-github-failed.v1
-      event_type: ModelPrLandingGithubFailed
-      module: omnimarket.events.pr_landing_github.model_pr_landing_github_failed
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+
+published_events:
+  - event_type: "PrLandingGithubCompleted"
+    topic: onex.evt.omnimarket.pr-landing-github-completed.v1
+    description: "The operation ran (or, in dry_run, the requests it would send), with the quota reading from its response headers."
+  - event_type: "PrLandingGithubFailed"
+    topic: onex.evt.omnimarket.pr-landing-github-failed.v1
+    description: "The operation was refused or failed, with a typed reason; no mutation was sent after a refusal."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pr_landing.github"
+      message_category: "command"
+      handler:
+        name: "HandlerPrLandingGithubEffect"
+        module: "omnimarket.nodes.node_pr_landing_github_effect.handlers.handler_pr_landing_github"
+      event_model:
+        name: "ModelPrLandingGithubRequest"
+        module: "omnimarket.events.pr_landing_github.model_pr_landing_github_request"
+      topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+      description: "One GitHub landing operation from the orchestrator; answered by one completed or failed event."
 
 metadata:
   transport_type: kafka

@@ -13,64 +13,51 @@
 # state_io, class-name routing of typed terminals) with a pure definition-B
 # reducer beside it (node_pr_landing_reducer).
 #
-# WAVE 2 (OMN-19829): the handler exists (handlers/handler_pr_landing_orchestrator.py,
-# its leg logic in orchestration/core.py) and calls node_pr_landing_reducer in
-# process. The runtime wiring it will declare (runtime_profiles, runtime_lanes,
-# state_io codec, event_bus, published_events, handler_routing) is held in
-# tests/fixtures/pr_landing/orchestrator_wiring.yaml and staged by the seam
-# test until the siblings that close its edges land with it: the GitHub
-# landing effect handler (OMN-19831), the producer's typed companion outcome
-# (OMN-19832) and the landing projection (OMN-19833). The wave-1 reasons below
-# still hold until then.
+# WIRED (wave-3 compose, OMN-19829). The runtime wiring wave 2 held in a test
+# fixture is declared here, in the same commit as the edges it closes: the
+# GitHub landing effect consumes the request and publishes its two results
+# (OMN-19831), node_pr_lifecycle_fix_effect publishes the companion outcome
+# (OMN-19832), and node_projection_pr_landing consumes the four owned events
+# (OMN-19833). The hard contract-topic-graph gate (omnimarket scope) refuses
+# any one of those declarations alone; together the graph closes, and
+# tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_contract_wiring.py
+# holds it closed with the gate's own defect finder.
 #
-# WAVE-1 SEAM. This contract freezes the machine, the row, and the names. It
-# deliberately declares no handler_routing, no handler, no event_bus and no
-# published_events yet:
-#
-#   * Runtime auto-wiring (omnibase_infra runtime/auto_wiring) prepares a
-#     contract with no handler_routing as SKIPPED, with no subscription, on every
-#     runtime profile. Both wave-1 nodes are therefore discovered and wired to
-#     nothing until the orchestrator handler lands in wave 2. The conformance
-#     test runs that wiring code over the whole node tree and asserts it.
-#   * The contract-topic-graph gate (hard, omnimarket scope) refuses a
-#     subscription with no handler_routing (DECLARED_BUT_UNWIRED), a subscription
-#     nobody publishes, and a publication nobody consumes. The bus edges this
-#     node will have close only when the handler, the GitHub landing effect, the
-#     companion outcome and the landing projection exist, so they are declared
-#     with them. The exact names are frozen now: events/topics.py for the four
-#     this node owns, event_topics.py for the class routing, and the bus_seam
-#     section of tests/fixtures/pr_landing/fsm_transitions.yaml for the rest.
-#   * runtime_lanes is not declared: a lane-scoped contract on a runtime that
-#     names no lane is a fail-closed discovery error (a DEGRADED health
-#     dimension), and the cluster runtimes declare no ONEX_RUNTIME_LANE. Wave 2
-#     scopes the lane when the node has something to attach.
+#   * runtime_profiles is main, not the effects profile plan section 5.5 names:
+#     the dev lane's effects runtime declares no ONEX_RUNTIME_LANE (read on
+#     .201, 2026-09-27), so a lane-scoped contract there is a fail-closed
+#     discovery error. The main runtime declares compose-dev. The orchestrator
+#     holds no GitHub credential, so it needs nothing the effects runtime has.
+#   * runtime_lanes is compose-dev: lab first (plan 5.5). A runtime that names
+#     another lane, or none, does not attach it.
+#   * Shadow mode by default: PrLandingOrchestratorConfig.github_mode is
+#     dry_run, so every GitHub mutation request and every companion command
+#     carries dry_run, and only the conditional reads are sent live.
 #   * completion_bound (the runtime-enforced block) is not declared: its only
 #     policy terminalises the row as failed, while plan 5.1 hands an expired PR
 #     to an agent (NEEDS_AGENT, reason stalled). The per-state bounds are the
-#     state_machine's timeout_ms; the runtime policy is a wave-2 decision.
-#     Each bound is tied to the (episode, state_entry_generation) it was set
-#     for, and PARKED has none (revision 1, R2a and R2b).
-#   * contract_version 0.2.0 / state_machine 2.0.0: the table is revision 1 of
+#     state_machine's timeout_ms, enforced by the handler per
+#     (episode, state_entry_generation); PARKED has none (revision 1, R2a and
+#     R2b).
+#   * contract_version 0.3.0 / state_machine 2.0.0: the table is revision 1 of
 #     plan section 5.1 (public knowledge-base,
-#     plans/2026-09-27-pr-landing-state-machine-revision.md, section 3), which
-#     replaces the table of 0.1.0 after model checking.
-#   * state_io names its table and key; the codec lands with the handler.
+#     plans/2026-09-27-pr-landing-state-machine-revision.md, section 3); 0.3.0
+#     adds the runtime wiring and changes no transition.
+#   * state_io's table is created by the omnibase_infra forward migration for
+#     pr_landing_workflow_state, with the runtime's grant; the codec is
+#     state_codec.StateIoCodec.
 name: "node_pr_landing_orchestrator"
 contract_name: "node_pr_landing_orchestrator"
 node_name: "node_pr_landing_orchestrator"
 contract_version:
   major: 0
-  minor: 2
+  minor: 3
   patch: 0
 node_version:
   major: 0
   minor: 1
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
-# Wave-1 seam: no handler yet, so the node is experimental until the wave-2
-# handler lands and wires it. The node-drift and state-coverage gates read
-# this annotation; wave 2 removes it together with adding handler_routing.
-lifecycle: experimental
 description: >
   Per-PR landing workflow orchestrator. Keyed by (repository, pr_number) as the
   landing_key owner/repo#123, it folds each normalized ModelPrLandingObservation
@@ -79,8 +66,7 @@ description: >
   landing effect requests), and emits one transitioned event per transition, an
   agent-needed event for real reds, declined companions, spent budgets and
   stalls, and exactly one merged or closed terminal per PR. It never merges:
-  GitHub merges an armed or enqueued PR when its required contexts pass. Wave 1
-  declares the state machine, the state_io row and the models only.
+  GitHub merges an armed or enqueued PR when its required contexts pass.
 input_model:
   name: "ModelPrLandingObservation"
   module: "omnimarket.nodes.node_pr_landing_orchestrator.models"
@@ -90,11 +76,16 @@ output_model:
   module: "omnimarket.nodes.node_pr_landing_orchestrator.models"
   description: "The transition taken, with its per-key seq and intents."
 runtime_profiles:
-  - effects
+  - main
+runtime_lanes:
+  - compose-dev
 state_io:
   database: "omnibase_infra"
   table: "pr_landing_workflow_state"
   key: "landing_key"
+  codec:
+    module: "omnimarket.nodes.node_pr_landing_orchestrator.state_codec"
+    name: "StateIoCodec"
 state_machine:
   version: {major: 2, minor: 0, patch: 0}
   state_machine_name: pr_landing_workflow
@@ -655,6 +646,101 @@ state_machine:
       from_state: NEEDS_AGENT
       to_state: NEEDS_AGENT
       trigger: completion_bound_expired
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    # I1: a product push or ready flip. A prompt, not a snapshot (section 6).
+    - onex.cmd.omnimarket.occ-autobind.v1
+    # I2: the Actions merged producers.
+    - onex.evt.github.pr-merged.v1
+    # The producer's typed answer to a companion command (T5, T10).
+    - onex.evt.omnimarket.pr-landing-companion-outcome.v1
+    # The GitHub landing effect's answers (T4, T9).
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+  publish_topics:
+    # Companion commands (op derive, regenerate, verify) to the producer.
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
+published_events:
+  - event_type: "PrLandingTransitioned"
+    topic: onex.evt.omnimarket.pr-landing-transitioned.v1
+    description: "One per transition, with the per-key seq the landing projection orders by."
+  - event_type: "PrLandingAgentNeeded"
+    topic: onex.evt.omnimarket.pr-landing-agent-needed.v1
+    description: "A PR only an agent can move; at most one per (head, reason)."
+  - event_type: "PrLandingMerged"
+    topic: onex.evt.omnimarket.pr-landing-merged.v1
+    description: "Terminal: GitHub merged the PR; one per (PR, episode)."
+  - event_type: "PrLandingClosed"
+    topic: onex.evt.omnimarket.pr-landing-closed.v1
+    description: "Terminal: the PR was closed unmerged; one per (PR, episode)."
+  - event_type: "PrLandingGithubRequest"
+    topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+    description: "One GitHub effect, sent only when no other effect for the PR is in flight (R4)."
+  - event_type: "PrLifecycleFixCommand"
+    topic: onex.cmd.omnimarket.occ-autobind.v1
+    description: "A companion command (op derive, regenerate or verify) to the change-control producer."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pr_landing.orchestrate.prompt"
+      message_category: "command"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingAutobindPrompt"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.cmd.omnimarket.occ-autobind.v1
+      description: "A push prompt issues a conditional read_pr_state; the workflow's own companion commands are ignored."
+    - operation: "pr_landing.orchestrate.merged"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingMergedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.github.pr-merged.v1
+      description: "Merged moves any non-terminal row to MERGED and emits its terminal once per episode."
+    - operation: "pr_landing.orchestrate.companion_outcome"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingCompanionOutcomeIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-companion-outcome.v1
+      description: "A companion outcome correlated to the command in flight (F5); any other is dropped."
+    - operation: "pr_landing.orchestrate.github_completed"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingGithubCompletedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-github-completed.v1
+      description: "The effect in flight answered: a snapshot, a check read or a confirmed arm; frees the PR for the next effect."
+    - operation: "pr_landing.orchestrate.github_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingGithubFailedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-github-failed.v1
+      description: "The effect in flight failed with a typed reason; frees the PR, and the next tick re-reads."
 metadata:
   description: "Deterministic per-PR landing workflow: change-control companion, re-runs, update-branch and arming as one FSM."
   author: "OmniNode Team"

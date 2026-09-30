@@ -356,13 +356,19 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # .pr_landing_state and .pr_landing_transitions = 75. The ownership
     # declarations and the node's own migration land in ONE omnimarket pull
     # request, so the declared count below moves with this one.
+    # +1 for OMN-19550's node-owned node_projection_session_content
+    # /0001_create_session_content.sql, which creates
+    # omninode_internal.session_content -- the span-scrubbed full-content
+    # capture projection = 76. This is step 3 of the forced order above
+    # (omnimarket#2905): the node package and its own create migration land
+    # here, after the step-1 declaration (omnimarket#2937) reached dev.
     # +2 for OMN-19513's node-owned node_projection_claude_hook_events
     # /0000_create_claude_hook_events.sql, which creates both
-    # claude_hook_events and claude_agent_spans = 77. The ownership declaration
+    # claude_hook_events and claude_agent_spans = 78. The ownership declaration
     # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
     # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
     # source_declared_tables.
-    assert census["source_created_tables"] == 77
+    assert census["source_created_tables"] == 78
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -491,6 +497,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # step 1 of the forced three-part order and carries the declaration
     # alone. The create migration it names arrives with the node package in
     # step 3, omnimarket#2905, which is what moves source_created_tables.
+    # omnimarket#2905 (step 3) does not move it again: the node's own
+    # contract.yaml names the same session_content table the service manifest
+    # already declares, and the declared count is a union over both.
     # OMN-19716 declares topic_activity beside its owning CREATE: +1 = 82.
     # +2 for OMN-19513's claude_hook_events and claude_agent_spans ownership
     # declarations = 84. This step moves declared only, not created: the
@@ -572,11 +581,16 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # 11 as of OMN-19833: two more source-created tables, so the same
     # max(0, 86 - source_created_tables) arithmetic drops the bound by two.
     # Still a LOWER bound, not a claim about the live database.
-    # 9 as of OMN-19513: claude_hook_events and claude_agent_spans are two
+    # 10 as of omnimarket#2905 (step 3 of OMN-19550): session_content is one
+    # more source-created table, so the same arithmetic drops the bound by
+    # one, from 11 to 10. Same caveat as every entry above -- the census was
+    # observed 2026-07-29 and this table did not exist then, so this remains
+    # a LOWER bound.
+    # 8 as of OMN-19513: claude_hook_events and claude_agent_spans are two
     # more source-created tables, so the same arithmetic drops the bound by
-    # two again. Same caveat -- a lower bound, not a claim about the live
-    # database.
-    assert census["minimum_unreconciled_live_base_tables"] == 9
+    # two again, from 10 to 8. Same caveat -- a lower bound, not a claim about
+    # the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 8
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

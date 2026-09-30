@@ -82,6 +82,15 @@ DEFAULT_STALE_LAG_RECORDS = 100
 # hours, so a streak in the tens is already conclusive while a handful is
 # ordinary redelivery.
 DEFAULT_STALE_DROP_STREAK = 10
+# OMN-15904: how long start() waits for a topic's partition metadata to appear
+# before refusing. Bounded, not infinite: a topic that never appears must still
+# fail the pod rather than hang it, because a consumer stuck waiting forever is
+# indistinguishable at /ready from one replaying slowly. Chosen against the lab
+# boot gate, which waits ~32 minutes for the runtime family -- so this has to be
+# comfortably inside that, while long enough for a cold lane's producers to
+# start and create their topics.
+_ASSIGN_METADATA_TIMEOUT_SECONDS = 300.0
+_ASSIGN_METADATA_POLL_SECONDS = 2.0
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # OMN-15876: batch size for the post-bootstrap-poll consume loop's
@@ -771,21 +780,81 @@ class SnapshotCache:
         if consumer is None:  # pragma: no cover - start() sets it first
             raise RuntimeError("SnapshotCache._assign_and_resume before start")
 
+        # WAIT for metadata, do not refuse on its first absence.
+        #
+        # The first cut of this raised the moment any topic had no partitions,
+        # and that DEADLOCKED a cold lane. Measured on the OMN-15904 candidate,
+        # delivery run 36344681102: `omnimarket-projection-api` stayed 0/1 for
+        # the boot gate's full 32-minute wait and
+        # `onex.snapshot.projection.consumer-flow.v1` was reported ABSENT, while
+        # the same gate on the pre-change candidate (run 36328593981, 15:10Z)
+        # had it 1/1 Ready.
+        #
+        # The cycle: on a fresh cluster the snapshot topics do not exist yet.
+        # `partitions_for_topic` therefore returns nothing, the refusal fired,
+        # `start()` raised, the pod never became Ready -- and because the topics
+        # are created by their PRODUCERS, a consumer that refuses to start can
+        # never be the thing that brings them into existence. The consumer
+        # refused because the topic was absent; the topic stayed absent because
+        # the consumer refused.
+        #
+        # `subscribe()` did not have this problem, which is why the swap
+        # introduced it and why onex-dev never showed it: there the topics
+        # already exist, so the very first metadata read resolves.
+        #
+        # ABSENT-NOW and ABSENT-FOREVER are different findings and the bound is
+        # what separates them. A topic whose producer has not started yet
+        # appears within seconds of it doing so; a topic that is genuinely
+        # misnamed or unprovisioned never appears. Waiting distinguishes them
+        # without giving up the fail-closed property: after the bound this still
+        # raises, so the cache never assigns nothing and then reports itself
+        # bootstrapped.
+        deadline = time.monotonic() + _ASSIGN_METADATA_TIMEOUT_SECONDS
         assignment: list[TopicPartition] = []
         unresolved: list[str] = []
-        for topic in self.subscription_topics:
-            partitions = consumer.partitions_for_topic(topic)
-            if not partitions:
-                unresolved.append(topic)
-                continue
-            assignment.extend(TopicPartition(topic, p) for p in sorted(partitions))
-        if unresolved:
-            raise RuntimeError(
-                "SnapshotCache: no partition metadata for "
-                f"{sorted(unresolved)}; refusing to assign a partial view of a "
-                "full-topic cache. Assigning nothing would latch "
-                "bootstrap_complete over an empty cache and serve zero rows at "
-                "HTTP 200 (OMN-15904, OMN-18905)."
+        waited = False
+        while True:
+            # `topics()` forces a metadata refresh; `partitions_for_topic` is a
+            # local read of whatever the last refresh returned, so without this
+            # the loop would re-read the same empty snapshot forever.
+            await consumer.topics()
+            assignment = []
+            unresolved = []
+            for topic in self.subscription_topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if not partitions:
+                    unresolved.append(topic)
+                    continue
+                assignment.extend(TopicPartition(topic, p) for p in sorted(partitions))
+            if not unresolved:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "SnapshotCache: no partition metadata for "
+                    f"{sorted(unresolved)} after "
+                    f"{_ASSIGN_METADATA_TIMEOUT_SECONDS:g}s; refusing to assign "
+                    "a partial view of a full-topic cache. Assigning nothing "
+                    "would latch bootstrap_complete over an empty cache and "
+                    "serve zero rows at HTTP 200 (OMN-15904, OMN-18905). On a "
+                    "cold lane this means the topics' producers never started; "
+                    "on a warm one it means the names are wrong."
+                )
+            if not waited:
+                logger.info(
+                    "SnapshotCache: waiting up to %gs for partition metadata on "
+                    "%d topic(s) not yet present: %s. A cold lane creates these "
+                    "when their producers first publish (OMN-15904).",
+                    _ASSIGN_METADATA_TIMEOUT_SECONDS,
+                    len(unresolved),
+                    sorted(unresolved),
+                )
+                waited = True
+            await asyncio.sleep(_ASSIGN_METADATA_POLL_SECONDS)
+
+        if waited:
+            logger.info(
+                "SnapshotCache: partition metadata resolved for every topic "
+                "after waiting (OMN-15904)."
             )
 
         consumer.assign(assignment)

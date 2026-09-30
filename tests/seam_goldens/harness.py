@@ -89,6 +89,9 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_canary_
 from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_cloud_bus_config import (
     ModelGatewayCloudBusConfig,
 )
+from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_egress_metadata_scrub import (
+    ModelGatewayEgressMetadataScrub,
+)
 from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_egress_redaction import (
     ModelGatewayEgressRedaction,
 )
@@ -452,6 +455,30 @@ def gateway_egress_redaction() -> ModelGatewayEgressRedaction:
     )
 
 
+@lru_cache(maxsize=1)
+def gateway_egress_metadata_scrub() -> ModelGatewayEgressMetadataScrub:
+    """The contract-declared egress metadata-scrub policy.
+
+    The forwarder config requires mirrored delegation terminal topics to be
+    paired with a policy that reduces their payloads to metadata. Read the
+    scrubbed topics and retained fields from the packaged wheel alongside the
+    mirror topics so the goldens exercise the deployed declaration and observe
+    changes when the pinned dependency's contract changes.
+    """
+
+    raw = _gateway_forwarder_block()["egress_metadata_scrub"]
+    if not isinstance(raw, dict):
+        raise TypeError("gateway contract egress_metadata_scrub block is not a mapping")
+    scrubbed = raw["scrubbed_topics"]
+    retained = raw["retained_payload_fields"]
+    if not isinstance(scrubbed, list) or not isinstance(retained, list):
+        raise TypeError("gateway contract egress_metadata_scrub sets are not lists")
+    return ModelGatewayEgressMetadataScrub(
+        scrubbed_topics=tuple(str(t) for t in scrubbed),
+        retained_payload_fields=tuple(str(f) for f in retained),
+    )
+
+
 def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderConfig:
     """Assemble the real forwarder config from the real packaged contract.
 
@@ -484,6 +511,7 @@ def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderC
         mirror_topics=gateway_mirror_topics(),
         canary=gateway_canary(),
         egress_redaction=gateway_egress_redaction(),
+        egress_metadata_scrub=gateway_egress_metadata_scrub(),
         dedupe_store_path=dedupe_store_path,
     )
 

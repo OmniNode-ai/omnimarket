@@ -13,8 +13,10 @@ windows, in the omnibase_infra series this helper is ported from:
 * v0.38.11 tagged 2026-08-28T00:49:31Z; dev sat at 0.38.11 until an unrelated PR
   bumped it 2026-08-28T02:27:16Z — ~1h38m armed.
 
-Under release-on-merge (OMN-18010) that window would recur on EVERY merge instead
-of once per hand-cut release, which is what makes the port load-bearing here.
+``release-on-merge.yml`` (which made that window recur on every merge) is
+retired; ``release-cut.yml``, the explicit-trigger workflow it was replaced by
+(same ticket, OMN-18010), calls this module in ``--released`` mode as its own
+disarm step, once per manual cut.
 
 Properties under test, each a leg of that failure:
 
@@ -25,8 +27,6 @@ Properties under test, each a leg of that failure:
   * **final-only**   -- an rc/pre-release version is refused, never patch-bumped
   * **narrow write** -- only ``[project].version`` moves; a ``version`` key under
                         any other table is byte-identical afterwards
-  * **--set mode**   -- OMN-18010's addition: put dev at an EXACT version, and
-                        never move dev backwards
 """
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ from scripts.ci.post_release_dev_bump import (
     BumpConfigError,
     apply_decision,
     decide,
-    decide_target,
     next_patch,
     parse_final_version,
     read_project_version,
@@ -148,38 +147,6 @@ def test_decision_target_satisfies_the_release_identity_invariant() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The --set decision (OMN-18010)
-# ---------------------------------------------------------------------------
-
-
-def test_set_moves_dev_up_to_the_requested_version() -> None:
-    decision = decide_target(dev_version="0.4.18", target_version="0.4.19")
-    assert decision.action == ACTION_BUMP
-    assert decision.target_version == "0.4.19"
-
-
-def test_set_is_a_noop_when_dev_already_states_the_target() -> None:
-    # arm-dev must converge on a re-run of the same drifted merge rather than
-    # opening a second bump PR.
-    decision = decide_target(dev_version="0.4.19", target_version="0.4.19")
-    assert decision.action == ACTION_NOOP
-
-
-def test_set_never_moves_dev_backwards() -> None:
-    # Lowering dev would RE-ARM the release-identity gate this flow exists to
-    # keep disarmed, so a dev version above the target is a noop, not a rewrite.
-    decision = decide_target(dev_version="0.4.25", target_version="0.4.19")
-    assert decision.action == ACTION_NOOP
-    assert decision.target_version == "0.4.25"
-
-
-@pytest.mark.parametrize("target", ["0.4.19rc1", "0.4", "", "latest"])
-def test_set_refuses_a_non_final_target(target: str) -> None:
-    with pytest.raises(BumpConfigError):
-        decide_target(dev_version="0.4.18", target_version=target)
-
-
-# ---------------------------------------------------------------------------
 # The write
 # ---------------------------------------------------------------------------
 
@@ -224,7 +191,7 @@ def test_read_refuses_a_pyproject_with_no_project_version(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# The CLI the release-on-merge jobs actually invoke
+# The CLI the release-cut workflow's reopen-dev job actually invokes
 # ---------------------------------------------------------------------------
 
 
@@ -258,22 +225,10 @@ def test_cli_without_apply_decides_but_does_not_write(tmp_path: Path) -> None:
     assert read_project_version(path) == "0.4.19"
 
 
-def test_cli_set_mode_writes_the_exact_version(tmp_path: Path) -> None:
+def test_cli_requires_released(tmp_path: Path) -> None:
     path = _write_pyproject(tmp_path, "0.4.18")
-    result = _run(["--set", "0.4.19", "--pyproject", str(path), "--apply"])
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
-    assert payload["action"] == ACTION_BUMP
-    assert payload["target_version"] == "0.4.19"
-    assert read_project_version(path) == "0.4.19"
-
-
-def test_cli_requires_exactly_one_mode(tmp_path: Path) -> None:
-    path = _write_pyproject(tmp_path, "0.4.18")
-    neither = _run(["--pyproject", str(path)])
-    assert neither.returncode == 2
-    both = _run(["--released", "v0.4.18", "--set", "0.4.19", "--pyproject", str(path)])
-    assert both.returncode == 2
+    result = _run(["--pyproject", str(path)])
+    assert result.returncode == 2
 
 
 def test_cli_exits_2_on_a_prerelease_tag(tmp_path: Path) -> None:

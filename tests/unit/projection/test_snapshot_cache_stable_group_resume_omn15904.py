@@ -121,7 +121,12 @@ class _FakeConsumer:
         partitions: int = _PARTITIONS,
         commit_raises: BaseException | None = None,
         topics_without_metadata: frozenset[str] = frozenset(),
+        metadata_after_refreshes: int = 0,
     ) -> None:
+        #: OMN-15904 cold lane: how many metadata refreshes must happen before
+        #: topics resolve. 0 = already present (a warm lane, e.g. onex-dev).
+        self._metadata_after_refreshes = metadata_after_refreshes
+        self.metadata_refreshes = 0
         self._end = end
         self._partitions = partitions
         self._topics_without_metadata = topics_without_metadata
@@ -134,8 +139,18 @@ class _FakeConsumer:
         self.subscribed: Any = None
 
     # -- assignment ------------------------------------------------------
+    async def topics(self) -> set[str]:
+        """Force a metadata refresh, as the real client does."""
+        self.metadata_refreshes += 1
+        await asyncio.sleep(0)
+        return {_TOPIC_A, _TOPIC_B}
+
     def partitions_for_topic(self, topic: str) -> set[int] | None:
         if topic in self._topics_without_metadata:
+            return None
+        if self.metadata_refreshes < self._metadata_after_refreshes:
+            # A cold lane: the topic does not exist yet because its producer
+            # has not published. Resolves once enough refreshes have happened.
             return None
         return set(range(self._partitions))
 
@@ -411,6 +426,73 @@ async def test_committed_position_is_readable_for_the_live_readback() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def _short_metadata_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the refusal cases from waiting the real 300s bound."""
+    import omnimarket.projection.snapshot_cache as module
+
+    monkeypatch.setattr(module, "_ASSIGN_METADATA_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(module, "_ASSIGN_METADATA_POLL_SECONDS", 0.01)
+
+
+@pytest.mark.usefixtures("_short_metadata_bound")
+async def test_a_cold_lane_waits_for_metadata_instead_of_refusing() -> None:
+    """THE REGRESSION THIS FILE MISSED THE FIRST TIME.
+
+    On a fresh cluster the snapshot topics do not exist yet, so the first
+    metadata read returns nothing. The original code raised there, `start()`
+    failed, the pod never became Ready -- and because these topics are created
+    by their PRODUCERS, a consumer that refuses to start can never be the thing
+    that brings them into existence. Measured on candidate delivery 36344681102:
+    `omnimarket-projection-api` 0/1 for the boot gate's full 32-minute wait with
+    `onex.snapshot.projection.consumer-flow.v1` ABSENT, against 1/1 Ready on the
+    pre-change candidate (run 36328593981).
+
+    onex-dev never showed it because the topics already exist there, which is
+    exactly why a unit test had to.
+    """
+    consumer = _FakeConsumer(metadata_after_refreshes=3)
+    cache = _cache(consumer)
+    await cache._assign_and_resume()
+
+    assert consumer.metadata_refreshes >= 3, (
+        "start() gave up before the topics could appear"
+    )
+    assert set(consumer.assigned) == {
+        TopicPartition(topic, p)
+        for topic in cache.subscription_topics
+        for p in range(_PARTITIONS)
+    }
+
+
+@pytest.mark.usefixtures("_short_metadata_bound")
+async def test_metadata_that_never_appears_still_refuses() -> None:
+    """The bound is what separates ABSENT-NOW from ABSENT-FOREVER.
+
+    Waiting must not become waiting forever: a topic that is misnamed or
+    unprovisioned has to fail the pod, because a consumer hung on metadata is
+    indistinguishable at /ready from one replaying slowly.
+    """
+    consumer = _FakeConsumer(topics_without_metadata=frozenset({_TOPIC_B}))
+    cache = _cache(consumer)
+    with pytest.raises(RuntimeError, match="no partition metadata"):
+        await cache._assign_and_resume()
+    assert consumer.assigned == []
+
+
+async def test_a_warm_lane_does_not_wait_at_all() -> None:
+    """onex-dev's shape: topics already exist, so one refresh resolves them.
+
+    A wait that fired on a warm lane would add latency to every ordinary
+    restart, which is the thing this whole ticket exists to reduce.
+    """
+    consumer = _FakeConsumer()
+    cache = _cache(consumer)
+    await cache._assign_and_resume()
+    assert consumer.metadata_refreshes == 1
+
+
+@pytest.mark.usefixtures("_short_metadata_bound")
 async def test_a_topic_with_no_partition_metadata_refuses_to_start() -> None:
     """Assigning nothing would serve zero rows at HTTP 200.
 
@@ -426,6 +508,7 @@ async def test_a_topic_with_no_partition_metadata_refuses_to_start() -> None:
     assert consumer.assigned == [], "nothing may be assigned on the refusal path"
 
 
+@pytest.mark.usefixtures("_short_metadata_bound")
 async def test_the_refusal_names_the_topic_that_could_not_resolve() -> None:
     consumer = _FakeConsumer(topics_without_metadata=frozenset({_TOPIC_B}))
     cache = _cache(consumer)

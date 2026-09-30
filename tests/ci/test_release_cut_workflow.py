@@ -1,25 +1,29 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Structural proof for .github/workflows/release-on-merge.yml (OMN-18010).
+"""Structural proof for .github/workflows/release-cut.yml (OMN-18010).
 
 A release workflow is the one workflow whose defects are hardest to observe: it
-does not run on pull requests, so a mistake in it is invisible until a merge
-either publishes the wrong thing or silently publishes nothing. The unit tests in
-``tests/unit/scripts/test_decide_release_on_merge.py`` pin the DECISION; this
-module pins the parts of the wiring that no unit test can reach — the trigger,
-the concurrency contract, the job graph, and the pin ratchet.
+does not run on pull requests, so a mistake in it is invisible until a real cut
+either publishes the wrong thing or silently publishes nothing. The unit tests
+in tests/unit/scripts/test_decide_release_cut.py pin the DECISION; this module
+pins the parts of the wiring that no unit test can reach — the trigger, the
+concurrency contract, the job graph, and the pin ratchet.
 
-Every assertion here corresponds to a measured failure:
+release-cut.yml replaced release-on-merge.yml (OMN-18010): it fires only on
+workflow_dispatch, never on a push to dev, because the operator ruled releases
+happen when something is ready to use, not on every merge. Every assertion here
+corresponds to a measured failure carried over from the retired workflow, or to
+the explicit-trigger property that replaced its per-merge one:
 
   * ``cancel-in-progress: false`` — a cancelled release can leave a pushed tag
     with nothing published behind it.
-  * a ``paths:`` filter AND a re-derived changed set — a push can carry several
-    commits, so the filter alone is not sufficient (it is the cheap pre-check).
-  * the ``[release-on-merge]`` self-push marker on the reopen commit and NOT on
-    the arm-dev commit — the reopen commit touches pyproject.toml and so matches
-    this workflow's own filter; without the marker it re-enters the trigger and
-    releases an empty version once per merge, forever. arm-dev's commit must
-    re-enter, which is how a deferred release actually happens.
+  * the trigger is `workflow_dispatch` ONLY — a `push` trigger here is exactly
+    the regression this ticket exists to prevent.
+  * a not-ready decision FAILS the run rather than opening a bump PR — the
+    retired workflow's `arm-dev` job existed only to make the per-merge race
+    safe, and re-adding an automatic bump PR here would reintroduce the noise
+    the operator ruled out (13 of 44 omnimarket PRs on 2026-09-27 were bump
+    PRs).
   * ``sync-main`` is a separate job with ``continue-on-error`` and NOTHING needs
     it — omnibase_core run 34030901325 published v0.47.4, failed on the
     main-sync app-token mint, failed the whole release job, and silently SKIPPED
@@ -41,17 +45,13 @@ import yaml
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release-on-merge.yml"
+WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release-cut.yml"
 LEGACY_RELEASE_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 # PyYAML parses the bare key `on` as the boolean True (YAML 1.1), so the trigger
-# block is addressed by that key, not by the string "on". Typed `Any` because a
-# `dict[str, Any]` subscripted by a `bool` is a mypy --strict index error, and
-# the alternative (re-typing every workflow mapping as `dict[Any, Any]`) would
-# lose the key typing everywhere else in this module for one lookup.
+# block is addressed by that key, not by the string "on".
 ON_KEY: Any = True
 
-SELF_PUSH_MARKER = "[release-on-merge]"
 _SHA_PIN = re.compile(r"^[0-9a-fA-F]{40}$")
 _USES = re.compile(r"""^\s*(?:-\s*)?uses:\s*["']?([^"'#\s]+)["']?""", re.MULTILINE)
 
@@ -70,55 +70,51 @@ def raw() -> str:
     return WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Trigger
-# ---------------------------------------------------------------------------
-
-
 def _executable_lines(raw: str) -> str:
-    """The workflow with every comment line removed.
-
-    Both of the assertions below are about what the workflow DOES, and this
-    file's own prose has to be free to name the broken shape it is pinning
-    against — the comment in `release-on-merge.yml` that records why the
-    `--unset-all` shape was removed would otherwise trip the very test that
-    forbids it. Dropping lines whose first non-space character is `#` covers
-    YAML comments and the shell comments inside `run:` blocks alike; neither
-    class executes.
-    """
+    """The workflow with every comment line removed (neither YAML nor shell
+    comments execute, and this file's prose has to be free to name the shapes
+    it forbids without tripping the very test that forbids them)."""
     return "\n".join(
         line for line in raw.splitlines() if not line.lstrip().startswith("#")
     )
+
+
+# ---------------------------------------------------------------------------
+# Trigger — the whole point of this ticket
+# ---------------------------------------------------------------------------
 
 
 def test_workflow_file_exists() -> None:
     assert WORKFLOW_PATH.exists(), f"workflow not found: {WORKFLOW_PATH}"
 
 
-def test_triggers_only_on_a_push_to_dev(workflow: dict[str, Any]) -> None:
-    triggers = workflow[ON_KEY]
-    assert set(triggers) == {"push"}, (
-        "release-on-merge must fire on a push to dev and nothing else; a "
-        f"pull_request or schedule trigger would publish from an unmerged tree. Got {set(triggers)}"
+def test_the_retired_per_merge_workflow_is_actually_gone() -> None:
+    retired = REPO_ROOT / ".github" / "workflows" / "release-on-merge.yml"
+    assert not retired.exists(), (
+        "release-on-merge.yml still exists alongside release-cut.yml — a "
+        "repository cannot have two workflows that can both publish the same "
+        "release, and this repo's App-token tag push does not reliably "
+        "suppress the other one firing on the same push."
     )
-    assert triggers["push"]["branches"] == ["dev"]
 
 
-def test_paths_filter_covers_exactly_the_packaged_roots(
-    workflow: dict[str, Any],
-) -> None:
-    # SYNC with PACKAGED_PREFIXES / PACKAGED_FILES in
-    # scripts/ci/decide_release_on_merge.py. The filter is the cheap pre-check;
-    # the script re-derives the changed set because a push can carry several
-    # commits.
-    paths = workflow[ON_KEY]["push"]["paths"]
-    assert set(paths) == {"src/**", "pyproject.toml", "uv.lock"}
+def test_triggers_only_on_workflow_dispatch(workflow: dict[str, Any]) -> None:
+    triggers = workflow[ON_KEY]
+    assert set(triggers) == {"workflow_dispatch"}, (
+        "release-cut must fire ONLY on an explicit human (or skill-issued) "
+        "dispatch. A push, pull_request or schedule trigger here is exactly "
+        "the automatic-release-on-merge regression this ticket retired. Got "
+        f"{set(triggers)}"
+    )
 
 
-def test_the_changed_set_is_re_derived_not_trusted_to_the_filter(raw: str) -> None:
-    assert "decide_release_on_merge.py" in raw
-    assert "--before" in raw
-    assert "--after" in raw
+def test_the_decision_script_takes_no_push_range(raw: str) -> None:
+    # decide_release_cut.py reads the checked-out tree directly; there is no
+    # before/after push range to re-derive a changed set from, because there is
+    # no push trigger to have carried one.
+    assert "decide_release_cut.py" in raw
+    assert "--before" not in raw
+    assert "--after" not in raw
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +126,7 @@ def test_concurrency_is_per_repository_and_never_cancels(
     workflow: dict[str, Any],
 ) -> None:
     concurrency = workflow["concurrency"]
-    assert "release-on-merge-" in concurrency["group"]
+    assert "release-cut-" in concurrency["group"]
     assert "github.repository" in concurrency["group"]
     assert concurrency["cancel-in-progress"] is False, (
         "a cancelled release can leave a pushed tag with nothing published behind it"
@@ -143,15 +139,10 @@ def test_the_release_job_can_actually_create_a_github_release(
     """`softprops/action-gh-release` runs as GITHUB_TOKEN and needs contents:write.
 
     Measured in run 34066508864 (v0.4.20, 2026-09-06T23:30:26Z): under the
-    workflow-level `contents: read`, the step returned
-
-        GitHub release failed with status: 403
-        {"message": "Resource not accessible by integration"}
-
-    and it did so AFTER the tag was pushed and 0.4.20 was already live on PyPI —
-    i.e. the release was real and only its GitHub-side record was missing. A
-    job-level `permissions:` block REPLACES the workflow-level one, so the scope
-    has to be declared on this job specifically.
+    workflow-level `contents: read`, the step returned a 403 AFTER the tag was
+    pushed and the wheel was already live on PyPI. A job-level `permissions:`
+    block REPLACES the workflow-level one, so the scope has to be declared on
+    this job specifically.
     """
     assert workflow["jobs"]["release"]["permissions"] == {"contents": "write"}
 
@@ -161,9 +152,9 @@ def test_only_the_release_job_elevates_the_workflow_token(
 ) -> None:
     """Every other job keeps the workflow-level read-only GITHUB_TOKEN.
 
-    The pushing jobs (`arm-dev`, `reopen-dev`) and `sync-main` authenticate as
-    the minted App token, never as GITHUB_TOKEN, so an elevation on any of them
-    would be scope with no consumer.
+    The pushing jobs (`reopen-dev`) and `sync-main` authenticate as the minted
+    App token, never as GITHUB_TOKEN, so an elevation on any of them would be
+    scope with no consumer.
     """
     elevated = {
         job_id
@@ -186,24 +177,37 @@ def test_the_expected_jobs_exist(workflow: dict[str, Any]) -> None:
     assert set(workflow["jobs"]) == {
         "decide",
         "release",
-        "arm-dev",
         "reopen-dev",
         "sync-main",
     }
 
 
-def test_release_runs_only_on_a_non_skipped_non_bumping_decision(
+def test_there_is_no_arm_dev_job(workflow: dict[str, Any]) -> None:
+    # arm-dev existed only to recover from the race where a merge landed while
+    # dev sat level with the just-published tag — a symptom of releasing on
+    # every merge. With releases cut explicitly, at most one cut runs at a time
+    # (see the concurrency test above), so there is nothing to recover from,
+    # and a not-ready decision fails the run instead of opening a bump PR.
+    assert "arm-dev" not in workflow["jobs"]
+
+
+def test_a_not_ready_decision_fails_the_run_loudly(workflow: dict[str, Any]) -> None:
+    decide_steps = workflow["jobs"]["decide"]["steps"]
+    fail_step = next(
+        s
+        for s in decide_steps
+        if s.get("name") == "Fail loudly when dev is not release-ready"
+    )
+    assert fail_step["if"] == "steps.decide.outputs.ready != 'true'"
+    assert "::error::" in fail_step["run"]
+    assert "exit 1" in fail_step["run"]
+
+
+def test_release_runs_only_when_the_decision_is_ready(
     workflow: dict[str, Any],
 ) -> None:
     condition = workflow["jobs"]["release"]["if"]
-    assert "needs.decide.outputs.skip != 'true'" in condition
-    assert "needs.decide.outputs.needs_bump != 'true'" in condition
-
-
-def test_arm_dev_is_the_complement_of_release(workflow: dict[str, Any]) -> None:
-    condition = workflow["jobs"]["arm-dev"]["if"]
-    assert "needs.decide.outputs.skip != 'true'" in condition
-    assert "needs.decide.outputs.needs_bump == 'true'" in condition
+    assert condition == "needs.decide.outputs.ready == 'true'"
 
 
 @pytest.mark.parametrize("job_id", POST_RELEASE_JOBS)
@@ -262,47 +266,23 @@ def test_sync_main_requests_the_workflows_scope_only_when_it_is_needed(
 
 
 # ---------------------------------------------------------------------------
-# The anti-loop marker
+# Every checkout that will tag or push runs against dev explicitly
 # ---------------------------------------------------------------------------
 
 
-def _commit_subjects(job: dict[str, Any]) -> list[str]:
-    subjects: list[str] = []
-    for step in job.get("steps", []):
-        for line in str(step.get("run", "")).splitlines():
-            stripped = line.strip()
-            if stripped.startswith('git commit -m "'):
-                subjects.append(stripped)
-    return subjects
-
-
-def test_the_reopen_commit_carries_the_self_push_marker(
-    workflow: dict[str, Any],
+@pytest.mark.parametrize("job_id", ["decide", "release", "reopen-dev"])
+def test_every_checkout_pins_ref_dev_explicitly(
+    workflow: dict[str, Any], job_id: str
 ) -> None:
-    subjects = _commit_subjects(workflow["jobs"]["reopen-dev"])
-    assert subjects, "reopen-dev must author a commit"
-    assert all(SELF_PUSH_MARKER in subject for subject in subjects), (
-        "the reopen commit touches pyproject.toml and so matches this "
-        "workflow's own paths filter; without the marker its own push "
-        "re-enters the trigger and releases an empty version, once per merge"
+    """workflow_dispatch checks out whatever ref it was dispatched against,
+    defaulting to the repository's default branch — which is NOT dev. Every
+    job that decides or releases must say `ref: dev` rather than trust the
+    dispatch context."""
+    steps = workflow["jobs"][job_id]["steps"]
+    checkout = next(
+        s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@")
     )
-
-
-def test_the_arm_dev_commit_does_not_carry_the_self_push_marker(
-    workflow: dict[str, Any],
-) -> None:
-    subjects = _commit_subjects(workflow["jobs"]["arm-dev"])
-    assert subjects, "arm-dev must author a commit"
-    assert all(SELF_PUSH_MARKER not in subject for subject in subjects), (
-        "arm-dev's bump MUST re-enter the workflow — that re-entry is how the "
-        "deferred release actually happens"
-    )
-
-
-def test_the_marker_string_matches_the_decision_scripts_constant() -> None:
-    from scripts.ci import decide_release_on_merge
-
-    assert decide_release_on_merge.SELF_PUSH_MARKER == SELF_PUSH_MARKER
+    assert checkout.get("with", {}).get("ref") == "dev"
 
 
 # ---------------------------------------------------------------------------
@@ -318,26 +298,13 @@ def test_every_action_reference_is_sha_pinned(raw: str) -> None:
         action, _, ref = value.rpartition("@")
         if not action or not _SHA_PIN.match(ref):
             unpinned.append(value)
-    assert not unpinned, f"unpinned action refs in release-on-merge.yml: {unpinned}"
+    assert not unpinned, f"unpinned action refs in release-cut.yml: {unpinned}"
 
 
 def test_no_job_tries_to_strip_a_persisted_checkout_header(raw: str) -> None:
-    """The `--unset-all extraheader` shape is a NO-OP under actions/checkout v7.
-
-    Measured live, run 34059788335 (2026-09-06T21:02:43Z, release of 0.4.19):
-    checkout v7 does not write the Authorization header into ``.git/config`` at
-    all. It writes it to a generated credentials file under the runner temp
-    directory and points git at it with ``git config --file <that file>
-    http.https://github.com/.extraheader ...`` — so ``git config --local
-    --unset-all http.https://github.com/.extraheader`` removes nothing, the
-    header still wins over any URL-embedded credential, and the tag push failed
-    with ``remote: Permission to OmniNode-ai/omnimarket.git denied to
-    github-actions[bot].``
-
-    The shape is worse than useless: it reads as protection while protecting
-    nothing, and the failure only surfaces on a real release. Pinned so it
-    cannot come back.
-    """
+    """The `--unset-all extraheader` shape is a NO-OP under actions/checkout v7
+    (measured live, run 34059788335, release of 0.4.19). Hand the App token to
+    checkout as `token:` instead and push to plain `origin`."""
     assert "--unset-all" not in _executable_lines(raw), (
         "stripping the persisted checkout credential is a no-op under "
         "actions/checkout v7 — hand the App token to checkout as `token:` "
@@ -350,24 +317,23 @@ def test_no_push_embeds_a_token_in_the_remote_url(raw: str) -> None:
 
     A URL-embedded token loses to the persisted header (see the test above), so
     the only credential that can actually be in force is the one checkout was
-    given. Keeping that single-sourced is what makes the identity of a push
-    readable from the checkout step rather than from a shell line.
+    given.
     """
     executable = _executable_lines(raw)
     assert "x-access-token:" not in executable
     assert "@github.com/${GITHUB_REPOSITORY}" not in executable
 
 
-@pytest.mark.parametrize("job_id", ["release", "arm-dev", "reopen-dev"])
+@pytest.mark.parametrize("job_id", ["release", "reopen-dev"])
 def test_every_pushing_job_checks_out_with_the_app_token(
     workflow: dict[str, Any], job_id: str
 ) -> None:
     """The App token is minted BEFORE the checkout and handed to it.
 
-    `release` pushes the tag, `arm-dev` and `reopen-dev` push a branch (and
-    `reopen-dev` attempts dev itself). All three must carry the App identity,
-    and the only shape that survives checkout v7 is `token:` on the checkout.
-    Order matters: a mint placed after the checkout cannot influence it.
+    `release` pushes the tag, `reopen-dev` pushes a branch (and attempts dev
+    itself). Both must carry the App identity, and the only shape that
+    survives checkout v7 is `token:` on the checkout. Order matters: a mint
+    placed after the checkout cannot influence it.
     """
     steps = workflow["jobs"][job_id]["steps"]
     mint_index = next(
@@ -413,18 +379,17 @@ def test_the_workflow_never_deletes_or_moves_a_tag(raw: str) -> None:
         "push --force",
         "-f refs/tags",
     ):
-        assert forbidden not in raw, f"release-on-merge must never {forbidden!r}"
+        assert forbidden not in raw, f"release-cut must never {forbidden!r}"
 
 
 # ---------------------------------------------------------------------------
-# The manual path is not regressed
+# The manual/recovery path is not regressed
 # ---------------------------------------------------------------------------
 
 
 def test_release_yml_still_serves_the_manual_tag_path() -> None:
-    # release-on-merge is additive. release.yml remains the hand-cut and
-    # re-dispatch path, and the recovery path if this workflow tags but fails to
-    # publish.
+    # release-cut.yml is additive on top of release.yml, which remains the
+    # recovery path if release-cut tags but fails to publish.
     legacy = yaml.safe_load(LEGACY_RELEASE_PATH.read_text(encoding="utf-8"))
     triggers = legacy[ON_KEY]
     assert "tags" in triggers["push"]
@@ -434,83 +399,12 @@ def test_release_yml_still_serves_the_manual_tag_path() -> None:
 def test_the_manual_release_path_publishes_idempotently() -> None:
     """release.yml's publish must tolerate files that are already on PyPI.
 
-    The design assumed the App-token tag push from release-on-merge would be
-    suppressed the way App-token branch pushes are on this org. Measured false:
-    the v0.4.20 tag push fired release.yml as run 34067071382 while
-    release-on-merge run 34066508864 was still publishing the same two files.
-    Two `uv publish` calls for one version overlapped and both reported
-    success, which is luck rather than a property. `--check-url` against the
-    simple index ROOT makes the upload idempotent, so the loser of that race
-    skips instead of taking a 400 and reporting a red release for an artifact
-    that is already live.
+    `--check-url` against the simple index ROOT makes the upload idempotent, so
+    a race between this path and release-cut.yml's tag push (however unlikely
+    now that releases are explicit and serialized) still cannot double-publish.
     """
     raw_legacy = LEGACY_RELEASE_PATH.read_text(encoding="utf-8")
     assert "--check-url https://pypi.org/simple/" in raw_legacy
-
-
-# ---------------------------------------------------------------------------
-# The two bump-PR producers must not be blind to each other (OMN-18010).
-# ---------------------------------------------------------------------------
-
-ARM_DEV_BRANCH_PREFIX = "automation/omn-18010-arm-dev-"
-REOPEN_BRANCH_PREFIX = "automation/omn-18010-post-release-dev-bump-"
-LEGACY_ARM_DEV_BRANCH_PREFIX = "automation/arm-dev-"
-LEGACY_REOPEN_BRANCH_PREFIX = "automation/post-release-dev-bump-"
-
-
-def _job_shell(workflow: dict[str, Any], job_id: str) -> str:
-    """Every ``run:`` script in a job, concatenated."""
-    return "\n".join(
-        step["run"] for step in workflow["jobs"][job_id]["steps"] if "run" in step
-    )
-
-
-@pytest.mark.parametrize("job_id", ["arm-dev", "reopen-dev"])
-def test_a_bump_pr_guard_looks_for_the_peer_jobs_branch_too(
-    workflow: dict[str, Any], job_id: str
-) -> None:
-    """Both bump producers must guard on the target VERSION, not their own branch.
-
-    ``arm-dev`` pushes ``automation/omn-18010-arm-dev-<v>``; ``reopen-dev`` pushes
-    ``automation/omn-18010-post-release-dev-bump-<v>``. Both open a PR that sets
-    ``[project].version`` to the same ``<v>``, and each guarded only on its OWN
-    branch name -- so the two were invisible to each other.
-
-    Measured live: release run 34066508864 published v0.4.20 and its
-    ``reopen-dev`` opened #2361 (0.4.20 -> 0.4.21). The next source merge landed
-    at 23:39Z before #2361 had merged, so dev's version was still level with the
-    v0.4.20 tag; run 34067512248 decided ``needs_bump`` and its ``arm-dev``
-    opened #2364 -- a byte-identical 0.4.20 -> 0.4.21 bump, also armed for
-    auto-merge. Whichever lands first, the other can never merge: its diff
-    context (``version = "0.4.20"``) no longer exists, so it is left permanently
-    CONFLICTING with auto-merge still armed.
-
-    That window is not rare -- it is open on every release until the reopen PR
-    merges, which is precisely when merges are most likely to be arriving.
-    """
-    shell = _job_shell(workflow, job_id)
-    for prefix in (
-        ARM_DEV_BRANCH_PREFIX,
-        REOPEN_BRANCH_PREFIX,
-        LEGACY_ARM_DEV_BRANCH_PREFIX,
-        LEGACY_REOPEN_BRANCH_PREFIX,
-    ):
-        assert prefix in shell, (
-            f"{job_id} does not consider {prefix!r} when checking for an "
-            f"in-flight bump PR, so it can open a duplicate of the peer job's."
-        )
-
-
-def test_generated_bump_pr_branches_bind_the_release_ticket(
-    workflow: dict[str, Any],
-) -> None:
-    """Bump PR bodies cite OMN-18010, so generated branches must bind that ticket."""
-    for job_id, prefix in (
-        ("arm-dev", ARM_DEV_BRANCH_PREFIX),
-        ("reopen-dev", REOPEN_BRANCH_PREFIX),
-    ):
-        shell = _job_shell(workflow, job_id)
-        assert f"branch={prefix}${{TARGET}}" in shell
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +447,7 @@ def test_the_pin_gate_script_is_vendored() -> None:
     )
 
 
-def test_release_on_merge_verifies_pins_before_it_tags(
+def test_release_cut_verifies_pins_before_it_tags(
     workflow: dict[str, Any],
 ) -> None:
     """Build -> verify dist -> RESOLVE -> tag -> publish, in that order.
@@ -579,12 +473,7 @@ def test_release_on_merge_verifies_pins_before_it_tags(
 def test_release_yml_verifies_pins_before_it_publishes(
     workflow: dict[str, Any],
 ) -> None:
-    """The manual/tag path is not a hole in the gate.
-
-    It is not dormant either: the v0.4.20 tag push fired release.yml as run
-    34067071382 while release-on-merge was publishing the same files. A gate on
-    one of two publishing paths is a coin flip.
-    """
+    """The manual/tag recovery path is not a hole in the gate."""
     legacy = yaml.safe_load(LEGACY_RELEASE_PATH.read_text(encoding="utf-8"))
     gate = _index_of_step_running(legacy, "release", PIN_GATE_SCRIPT)
     build = _index_of_step_running(legacy, "release", "uv build")
@@ -598,17 +487,14 @@ def test_release_yml_verifies_pins_before_it_publishes(
 
 @pytest.mark.parametrize(
     ("path", "label"),
-    [(WORKFLOW_PATH, "release-on-merge.yml"), (LEGACY_RELEASE_PATH, "release.yml")],
+    [(WORKFLOW_PATH, "release-cut.yml"), (LEGACY_RELEASE_PATH, "release.yml")],
 )
 def test_the_pin_gate_budget_is_set_explicitly(path: Path, label: str) -> None:
     """The budget is a measurement, not an inherited default.
 
     The script's built-in default (1800s) is shaped by omnibase_infra's
     self-hosted fleet. omnimarket releases on ubuntu-latest and its closure is
-    178 packages / 345 MB (measured 2026-09-07 against omnimarket==0.4.20, the
-    last resolvable release). Setting it here keeps the number reviewable
-    alongside the job's own timeout-minutes instead of hidden in a vendored
-    file.
+    178 packages / 345 MB (measured 2026-09-07 against omnimarket==0.4.20).
     """
     parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
     steps = parsed["jobs"]["release"]["steps"]

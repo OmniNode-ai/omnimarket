@@ -1,0 +1,80 @@
+---
+name: projection_session_content
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_session_content.models.model_session_content.ModelSessionContentRecord
+description: >
+  OMN-19550. Projects full session content -- the complete prompt, tool input,
+  tool result and assistant reply, captured by the omniclaude hooks and
+  scrubbed by the capture-redaction contract before publish -- into
+  omninode_internal.session_content, one row per content chunk. Operator
+  ruling 2026-09-25 (RULING row 2026-09-25T11:23:30Z): full context joins to
+  deterministic outcomes (DoD verdicts, test results, receipts) as labelled
+  training and eval data. Rows join to omninode_internal.work_events on
+  session_id and correlation_id, and to one turn on turn_id. Local-first: the
+  source topic is not on the cloud relay's allowlist, so on a user's machine
+  this runs against their own bus and database with no cloud.
+
+  Retention: rows are kept. This node never deletes and its role holds no
+  DELETE grant. Pruning belongs to the archive plan and follows only a
+  verified archive (RULING row 2026-09-25T11:20:55Z).
+
+# The source topic is a cmd topic (full content goes only on the restricted
+# onex.cmd.omniintelligence.* family), so this contract consumes a command and
+# must name the runtime profile that owns it. One profile, so one pod consumes
+# it: the main runtime, where the application database binding lives.
+runtime_profiles: [main]
+
+handler:
+  module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+  class: HandlerProjectionSessionContent
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: session_content_projection_fold
+      handler:
+        name: HandlerProjectionSessionContent
+        module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+      handler_module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+    # The DURABLE half, and the one the projection wiring path calls with _db
+    # and _topic injected. The pure fold above cannot write, and a node that
+    # declared only the fold would consume, commit and store nothing (rule 7a,
+    # OMN-18769).
+    - operation: session_content_projection_writer
+      handler:
+        name: SessionContentProjectionWriter
+        module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+      handler_module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+
+terminal_event: onex.evt.omnimarket.projection-session-content-applied.v1
+
+golden_path:
+  - "A hook journals a content.captured record carrying scrubbed full content"
+  - "The emit effect fans it out to onex.cmd.omniintelligence.content-captured.v1 through redact_capture"
+  - "This projection folds the record to one row and upserts it on its content-addressed event_id"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-session-content-applied.v1"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.content-captured.v1
+  # The RUNTIME publishes this, only when the writer reports rows_upserted >= 1.
+  publish_topics:
+    - onex.evt.omnimarket.projection-session-content-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-session-content-applied.v1
+
+db_io:
+  db_tables:
+    - name: session_content
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_session_content.sql"
+      access: write
+      role: session_content
+  idempotency_key: "event_id"
+
+metadata:
+  transport_type: kafka

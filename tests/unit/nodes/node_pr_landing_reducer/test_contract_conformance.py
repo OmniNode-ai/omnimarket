@@ -759,7 +759,14 @@ def _tree_manifest() -> Any:
 
 
 class TestAc3NoRuntimeWiring:
-    """Discovery sees both nodes; auto-wiring subscribes neither, on any profile."""
+    """Discovery sees both nodes; auto-wiring subscribes the reducer on no profile.
+
+    The orchestrator is wired since the wave-3 compose (OMN-19829): its
+    wiring is asserted by
+    tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_contract_wiring.py
+    and driven over the runtime's discovery and routing in the seam test. The
+    reducer is called in process by the orchestrator and stays unwired.
+    """
 
     def test_both_nodes_are_registered_for_runtime_discovery(self) -> None:
         pyproject = tomllib.loads((_ROOT / "pyproject.toml").read_text("utf-8"))
@@ -767,7 +774,7 @@ class TestAc3NoRuntimeWiring:
         for node in _NEW_NODES:
             assert entry_points[node] == f"omnimarket.nodes.{node}"
 
-    def test_runtime_discovery_wires_no_subscription_for_the_new_nodes(self) -> None:
+    def test_runtime_discovery_wires_no_subscription_for_the_reducer(self) -> None:
         manifest = _tree_manifest()
         errors = [e for e in manifest.errors if e.entry_point_name in _NEW_NODES]
         assert not errors, errors
@@ -785,7 +792,7 @@ class TestAc3NoRuntimeWiring:
         for profile in sorted(CONSUMER_ATTACHED_RUNTIME_PROFILES):
             owned = filter_manifest_for_runtime_profile(manifest, profile).manifest
             for contract in owned.contracts:
-                if contract.name not in _NEW_NODES:
+                if contract.name != _REDUCER:
                     continue
                 owned_somewhere.add(contract.name)
                 prepared = _prepare_contract_wiring(
@@ -800,14 +807,13 @@ class TestAc3NoRuntimeWiring:
                 assert prepared.prepared_wirings == [], (profile, contract.name)
                 assert prepared.skip_result is not None
                 assert prepared.skip_result.outcome is EnumWiringOutcome.SKIPPED
-        # Not vacuous: each node is owned by a consumer profile and was prepared.
-        assert owned_somewhere == set(_NEW_NODES)
+        # Not vacuous: the reducer is owned by a consumer profile and was prepared.
+        assert owned_somewhere == {_REDUCER}
 
-    @pytest.mark.parametrize("node", _NEW_NODES)
-    def test_the_wave_1_contract_declares_no_bus_surface(self, node: str) -> None:
-        raw = _contract(node)
+    def test_the_reducer_contract_declares_no_bus_surface(self) -> None:
+        raw = _contract(_REDUCER)
         for key in ("handler_routing", "handler", "event_bus", "published_events"):
-            assert key not in raw, f"{node} declares {key} before its handler exists"
+            assert key not in raw, f"{_REDUCER} declares {key}; it is called in process"
 
 
 _OWNED_TOPICS = {
@@ -871,10 +877,18 @@ def _owned_findings(tmp_path: Path, orchestrator: dict[str, Any]) -> list[Any]:
             producers.setdefault(topic, []).append(node.name)
         for topic in node.subscribe_topics:
             consumers.setdefault(topic, []).append(node.name)
+    # As build_graph does: externally_produced_topics name the non-contract
+    # publisher of a consumed topic (the pr-merged publisher workflow).
+    external_producers = {
+        topic: producer
+        for node in nodes
+        for topic, producer in node.externally_produced
+    }
     graph = ModelTopicGraph(
         nodes=tuple(nodes),
         producers={t: tuple(v) for t, v in producers.items()},
         consumers={t: tuple(v) for t, v in consumers.items()},
+        external_producers=external_producers,
     )
     owned = set(_OWNED_TOPICS.values())
     findings: list[ModelGraphFinding] = find_defects(graph)
@@ -903,36 +917,30 @@ class TestAc4Topics:
         }
 
     @pytest.mark.parametrize("topic", sorted(_OWNED_TOPICS.values()))
-    def test_at_most_one_contract_publishes_the_topic(self, topic: str) -> None:
-        # Exactly one once the handler lands (wave 2); none before, because a
-        # declared producer without a consumer fails the contract-topic-graph
-        # gate. The next two tests prove that premise against the gate's own
+    def test_exactly_the_orchestrator_publishes_the_topic(self, topic: str) -> None:
+        # Since the wave-3 compose (OMN-19829) the orchestrator declares its
+        # publications, in the same commit as the projection's subscriptions.
+        # The next two tests prove the graph closes against the gate's own
         # defect finder instead of asserting it.
-        assert len(_publishers_of(topic)) <= 1
+        assert _publishers_of(topic) == [_ORCHESTRATOR]
 
-    def test_the_graph_gate_passes_the_wave_1_orchestrator(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_graph_gate_passes_the_wired_orchestrator(self, tmp_path: Path) -> None:
         findings = _owned_findings(tmp_path, _contract(_ORCHESTRATOR))
         assert findings == []
 
-    def test_the_graph_gate_refuses_a_wave_1_publish_declaration(
+    def test_the_graph_gate_refuses_an_unrouted_or_unconsumed_declaration(
         self, tmp_path: Path
     ) -> None:
-        # Positive control and the reason the declaration waits for wave 2:
-        # the four owned topics declared on the orchestrator today, with no
-        # consumer anywhere yet, are four ORPHANED_PRODUCER findings in the
-        # HARD --scope omnimarket gate, and a subscription with no
-        # handler_routing is DECLARED_BUT_UNWIRED.
+        # Positive control: the same finder over the same census sees a
+        # subscription with no handler_routing (DECLARED_BUT_UNWIRED) and a
+        # publication nobody consumes (ORPHANED_PRODUCER).
         raw = _contract(_ORCHESTRATOR)
-        raw["event_bus"] = {
-            "version": {"major": 1, "minor": 0, "patch": 0},
-            "subscribe_topics": [topics.PR_MERGED_TOPIC_V1],
-            "publish_topics": sorted(_OWNED_TOPICS.values()),
-        }
+        del raw["handler_routing"]
+        unconsumed = "onex.evt.omnimarket.pr-landing-unconsumed-control.v1"
+        raw["event_bus"]["publish_topics"].append(unconsumed)
         findings = _owned_findings(tmp_path, raw)
         orphaned = {f.topic for f in findings if f.defect == "ORPHANED_PRODUCER"}
-        assert orphaned == set(_OWNED_TOPICS.values())
+        assert orphaned == {unconsumed}
         assert any(f.defect == "DECLARED_BUT_UNWIRED" for f in findings)
 
     def test_the_bus_seam_in_the_fixture_names_the_owned_topics(self) -> None:

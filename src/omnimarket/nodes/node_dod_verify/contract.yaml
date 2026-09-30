@@ -65,6 +65,12 @@ inputs:
       declines to store a rehearsal (OMN-18901).
     required: false
     default: false
+  execution_audience:
+    type: str
+    description: >-
+      Authorized evidence execution boundary: hosted or local_done_gate.
+      Required so a hosted verifier cannot execute local Done-gate commands.
+    required: true
   delegation_correlation_id:
     type: str
     description: >-

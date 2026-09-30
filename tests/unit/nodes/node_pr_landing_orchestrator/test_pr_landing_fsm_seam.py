@@ -3,10 +3,9 @@
 """Cross-boundary seam: topic bytes -> typed model -> orchestrator leg -> emitted envelopes.
 
 The shape of omnibase_infra's ``test_s8_delegation_fsm_seam.py`` (one crossing,
-not two unit suites), over this node's contract with the runtime wiring it
-declares when its sibling handlers land (``tests/fixtures/pr_landing/
-orchestrator_wiring.yaml``, staged into the real ``contract.yaml``): runtime
-discovery reads the staged contract, ``build_routing_map`` resolves each subscribed topic to the
+not two unit suites), over this node's real ``contract.yaml`` and the runtime
+wiring it declares: runtime discovery reads the contract,
+``build_routing_map`` resolves each subscribed topic to the
 handler entry that owns it and its ``event_model``, ``RuntimeDispatch`` decodes
 the ``ModelEventEnvelope`` from an ``InMemoryTransport`` and coerces its payload
 into that model, the handler runs one leg against its row, and every emitted
@@ -74,20 +73,8 @@ pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[4]
 _CONTRACT = _ROOT / "src/omnimarket/nodes/node_pr_landing_orchestrator/contract.yaml"
-_WIRING = _ROOT / "tests/fixtures/pr_landing/orchestrator_wiring.yaml"
 _GROUP = "onex.core-runtime.pr-landing"
 _CLOCK = datetime(2026, 9, 27, 9, 0, 0, tzinfo=UTC)
-
-
-def _staged_contract(tmp_path: Path) -> Path:
-    """The real contract plus its wiring block, where discovery can read it."""
-    raw = yaml.safe_load(_CONTRACT.read_text("utf-8"))
-    raw.update(yaml.safe_load(_WIRING.read_text("utf-8")))
-    raw.pop("lifecycle", None)
-    staged = tmp_path / "node_pr_landing_orchestrator" / "contract.yaml"
-    staged.parent.mkdir(parents=True)
-    staged.write_text(yaml.safe_dump(raw, sort_keys=False), "utf-8")
-    return staged
 
 
 def _seam(
@@ -97,7 +84,7 @@ def _seam(
 ) -> tuple[
     RuntimeDispatch, InMemoryTransport, InMemoryBroker, InMemoryPrLandingRowStore
 ]:
-    manifest = discover_contracts_from_paths([_staged_contract(tmp_path)])
+    manifest = discover_contracts_from_paths([_CONTRACT])
     assert not manifest.errors, manifest.errors
     (contract,) = manifest.contracts
     assert contract.event_bus is not None
@@ -256,8 +243,8 @@ async def test_seam_a_duplicate_completion_publishes_nothing_twice(
 
 
 def test_the_wiring_matches_the_frozen_bus_seam_and_class_routing() -> None:
-    """The staged wiring declares exactly the T2 bus seam and class routing."""
-    wiring = yaml.safe_load(_WIRING.read_text("utf-8"))
+    """The contract's wiring declares exactly the T2 bus seam and class routing."""
+    wiring = yaml.safe_load(_CONTRACT.read_text("utf-8"))
     seam = yaml.safe_load(
         (_ROOT / "tests/fixtures/pr_landing/fsm_transitions.yaml").read_text("utf-8")
     )["bus_seam"]

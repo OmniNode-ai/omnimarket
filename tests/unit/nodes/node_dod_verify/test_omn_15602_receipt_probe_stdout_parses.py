@@ -208,6 +208,8 @@ def test_written_receipt_parses_end_to_end(tmp_path: Path) -> None:
             ticket_id,
             "--contract-path",
             str(contract_path),
+            "--execution-audience",
+            "hosted",
             "--output-path",
             str(output_path),
         ],

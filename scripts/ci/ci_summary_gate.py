@@ -140,6 +140,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -590,7 +591,8 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "wheel-content-parity",
     # OMN-19655 (pin-resolvability-gate.yml): the pre-merge twin of the
     # "Verify PyPI dependency-pin resolvability" step that release.yml and
-    # release-on-merge.yml run before tagging. It builds the pull request's
+    # release-cut.yml (formerly release-on-merge.yml, retired under OMN-18010)
+    # run before tagging. It builds the pull request's
     # wheel and runs the SAME script, so a floor raise no published sibling can
     # co-resolve fails before merge. Twice it did not: #2819 (2026-09-24,
     # omnibase-core>=0.47.22) and #2896 (2026-09-25, >=0.47.23) merged green and
@@ -1119,6 +1121,9 @@ class CheckRunState:
     # ISO-8601; the instant this row concluded. The OMN-17864 / OMN-18355
     # supersession windows are measured against it.
     completed_at: str | None = None
+    # The Actions workflow run that wrote the row, from its URL. OMN-17427
+    # reads it to tell whether that producer is running again on this head.
+    workflow_run_id: int | None = None
 
 
 def _check_run_severity(state: CheckRunState) -> int:
@@ -1257,6 +1262,100 @@ def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
     return (state.started_at, _check_run_severity(state), state.id)
 
 
+_RUN_ID_RE = re.compile(r"/actions/runs/(\d+)(?:/|$)")
+
+
+def check_run_workflow_run_id(raw: dict[str, object]) -> int | None:
+    """The Actions workflow-run id that wrote this check-run, or ``None``.
+
+    Read from the row's ``html_url``/``details_url``
+    (``.../actions/runs/<run id>/job/<job id>``). ``None`` for a row no Actions
+    run wrote, or whose URL is unreadable.
+    """
+
+    for key in ("html_url", "details_url"):
+        match = _RUN_ID_RE.search(str(raw.get(key) or ""))
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _run_int(raw: dict[str, object], key: str) -> int:
+    try:
+        return int(str(raw.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def replacement_run_in_flight(
+    state: CheckRunState,
+    head_workflow_runs: list[dict[str, object]] | None,
+) -> bool:
+    """True while the producer of this non-green row is running AGAIN on this head.
+
+    OMN-17427. The OMN-18355 / OMN-17864 windows guess from a clock that a
+    replacement is coming; ``actions/runs?head_sha=`` says so outright, for as
+    long as it is true.
+
+    PREVENTION, NOT A MEASURED OMNIMARKET INCIDENT. The shape was measured on
+    omnibase_infra (omnibase_infra#4225): on omnibase_infra#4216 head 09f3839a
+    the Hostile Reviewer run 36336140596 was cancelled at 17:17:59Z by run
+    36336398239 of the same workflow for the same head, which waited for a
+    runner, and CI Summary run 36336140897 attempt 1 failed at 17:28:35Z while
+    that replacement was still queued; a rerun with no change passed. This
+    repository evaluates its Hostile Reviewer contexts the same way. No
+    omnimarket instance was measured on 2026-09-27. omnimarket#2913 (CI run
+    36349798545 attempt 1, ``external-context failures: Hostile Review Gate,
+    Hostile Reviewer (adversarial gate)`` at 21:17:34Z) is NOT one: Hostile
+    Reviewer run 36349797572 attempt 1 had failed at 20:57:15Z and its attempt
+    2 did not start until 21:37:52Z, so nothing was in flight and this
+    function leaves that red a failure (the replay in the test module).
+
+    Two shapes count, and only two:
+
+    * the row's own run is not ``completed`` and its CURRENT attempt started
+      after the row concluded -- a re-run attempt of the same run;
+    * a NEWER run (higher id) of the same ``workflow_id``, for the same event,
+      is not ``completed`` -- a re-trigger such as the ``edited`` event.
+
+    FAIL-CLOSED: no run URL on the row, a run missing from the payload, or no
+    payload at all is not in flight. This never greens a row: when the running
+    execution finishes, its row wins latest-wins, and if it wrote none the red
+    stands and fails on the next poll. The poller's deadline still converts a
+    sustained PENDING into FAILURE.
+    """
+
+    if not head_workflow_runs or state.workflow_run_id is None:
+        return False
+    run_id = state.workflow_run_id
+    own = next((r for r in head_workflow_runs if _run_int(r, "id") == run_id), None)
+    if own is None:
+        return False
+    if str(own.get("status") or "") != "completed":
+        started_raw = own.get("run_started_at")
+        attempt_started = _parse_timestamp(
+            None if started_raw is None else str(started_raw)
+        )
+        row_completed = _parse_timestamp(state.completed_at)
+        if (
+            attempt_started is not None
+            and row_completed is not None
+            and attempt_started > row_completed
+        ):
+            return True
+    workflow_id = _run_int(own, "workflow_id")
+    if not workflow_id:
+        return False
+    event = str(own.get("event") or "")
+    return any(
+        _run_int(r, "workflow_id") == workflow_id
+        and _run_int(r, "id") > run_id
+        and str(r.get("event") or "") == event
+        and str(r.get("status") or "") != "completed"
+        for r in head_workflow_runs
+    )
+
+
 def dedup_latest_check_runs(
     check_runs: list[dict[str, object]],
 ) -> dict[str, CheckRunState]:
@@ -1291,6 +1390,7 @@ def dedup_latest_check_runs(
             started_at=str(raw.get("started_at") or ""),
             id=run_id,
             completed_at=None if completed_at is None else str(completed_at),
+            workflow_run_id=check_run_workflow_run_id(raw),
         )
         prev = latest.get(name)
         if prev is None or _resolution_key(current) > _resolution_key(prev):
@@ -1444,6 +1544,7 @@ def evaluate_external(
     expected: tuple[str, ...] = EXPECTED_EXTERNAL_CONTEXTS,
     actor_conditional: dict[str, frozenset[str]] = ACTOR_CONDITIONAL_CONTEXTS,
     now: datetime | None = None,
+    head_workflow_runs: list[dict[str, object]] | None = None,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the L4 external-context layer.
 
@@ -1492,7 +1593,9 @@ def evaluate_external(
             continue
         if st.conclusion in EXTERNAL_GOOD_CONCLUSIONS:
             continue
-        if verdict_is_provisional(st, now):
+        if verdict_is_provisional(st, now) or replacement_run_in_flight(
+            st, head_workflow_runs
+        ):
             missing.append(name)
             provisional.append(name)
         else:
@@ -1512,8 +1615,8 @@ def evaluate_external(
         # line reads the same for both.
         lines.append(
             "  external contexts awaiting an automatic replacement (cancelled, "
-            "or failed or skipped inside the re-run window): "
-            + ", ".join(sorted(provisional))
+            "or failed or skipped inside the re-run window, or their workflow is "
+            "running again on this head): " + ", ".join(sorted(provisional))
         )
 
     if failures:
@@ -1645,6 +1748,14 @@ def main(argv: list[str] | None = None) -> int:
         help="github.run_id for own-job cancellation supersession.",
     )
     parser.add_argument(
+        "--head-workflow-runs-file",
+        default=None,
+        help="Path to actions/runs?head_sha=<PR head> JSON. Read ONLY to hold a "
+        "non-green external context PENDING while its producer is demonstrably "
+        "running again on this head (OMN-17427). Missing/unreadable holds "
+        "nothing, the strict reading.",
+    )
+    parser.add_argument(
         "--pr-number",
         type=int,
         default=0,
@@ -1698,7 +1809,10 @@ def main(argv: list[str] | None = None) -> int:
         # its poller, and the gate shipped completely inert with every unit
         # test green.
         ext_code, ext_report = evaluate_external(
-            check_runs, actor=args.actor, now=observation_time
+            check_runs,
+            actor=args.actor,
+            now=observation_time,
+            head_workflow_runs=_load_workflow_runs(args.head_workflow_runs_file),
         )
         print(ext_report)
         code = _worse(code, ext_code)

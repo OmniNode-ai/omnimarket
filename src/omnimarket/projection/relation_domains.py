@@ -37,10 +37,14 @@ from omnibase_core.enums.enum_database_schema_domain import EnumDatabaseSchemaDo
 #: topology module; ``tests/test_omn18774_internal_relation_tenant_posture.py``
 #: pins the two against each other, so a schema added there and not here is a
 #: red test rather than a relation this module refuses to classify.
+#: OMN-17454: between omnibase_infra 0.38.36 and 0.38.59 (confirmed via the
+#: published wheels), _EXPECTED_SCHEMAS dropped the "tenant" schema entry (no
+#: relation in this repo's contracts ever declared a "tenant" schema -- only
+#: "public" -- so it was a dead alias here); this mirror is restated to match
+#: the pinned 0.38.59 shape.
 SCHEMA_DOMAINS: Mapping[str, EnumDatabaseSchemaDomain] = {
     "action_authorization_claim": EnumDatabaseSchemaDomain.OMNINODE_INTERNAL,
     "public": EnumDatabaseSchemaDomain.TENANT,
-    "tenant": EnumDatabaseSchemaDomain.TENANT,
     "omninode_internal": EnumDatabaseSchemaDomain.OMNINODE_INTERNAL,
     "platform_catalog": EnumDatabaseSchemaDomain.PLATFORM_CATALOG,
 }

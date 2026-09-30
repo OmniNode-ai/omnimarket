@@ -55,7 +55,11 @@ _POLICY_RE = re.compile(r"CREATE POLICY\s+\w+\s+ON\s+([\w.]+)([^;]*)", re.I | re
 
 
 def _adapter_calls(tree: ast.Module) -> list[ast.Call]:
-    """Every ``self.db.execute(...)`` / ``self.db.fetch*(...)`` in the module.
+    """Every ``self.db.execute(...)`` / ``self.db.fetch*(...)`` in the module,
+    including the same call through ``self.db_for(<table>, ...)``'s
+    topology-routed adapter (OMN-17454: ``db_for`` returns ``self._db``
+    itself outside a standalone writer, so the two shapes reach the identical
+    adapter and must be pinned identically here).
 
     Matched structurally on the attribute chain rather than by text, so a call
     split across lines, wrapped in ``await``, or re-indented is still found --
@@ -75,6 +79,15 @@ def _adapter_calls(tree: ast.Module) -> list[ast.Call]:
             and value.attr == "db"
             and isinstance(value.value, ast.Name)
             and value.value.id == "self"
+        ):
+            found.append(node)
+            continue
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Attribute)
+            and value.func.attr == "db_for"
+            and isinstance(value.func.value, ast.Name)
+            and value.func.value.id == "self"
         ):
             found.append(node)
     return found
@@ -319,8 +332,17 @@ def _untenanted_adapter_calls_repo_wide() -> list[tuple[Path, int, str]]:
                 continue
             value = func.value
             is_adapter = (
-                isinstance(value, ast.Attribute) and value.attr in {"db", "_db"}
-            ) or (isinstance(value, ast.Name) and value.id in {"db", "adapter", "self"})
+                (isinstance(value, ast.Attribute) and value.attr in {"db", "_db"})
+                or (
+                    isinstance(value, ast.Name)
+                    and value.id in {"db", "adapter", "self"}
+                )
+                or (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr == "db_for"
+                )
+            )
             if not is_adapter:
                 continue
             if any(kw.arg == "tenant" for kw in node.keywords):

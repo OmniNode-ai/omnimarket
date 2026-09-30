@@ -8,6 +8,14 @@ backend's entry in the rendered bifrost contract names the tier and the rungs
 the added backend is a fallback for; the routing authority appends one mirrored
 tier entry per rung AFTER the tier's existing models when it loads the ladder.
 
+``mode`` says how the mirrored entry shares work with its rung. ``fallback``
+(the default) reaches the added backend only when the rung is unroutable or
+already tried. ``spread`` also shares first-choice traffic with the rung: each
+request picks one member of the group by a stable hash of its correlation id,
+so a second host serving the same model takes about half the load (OMN-19215
+AC4, RULING ledger:4257). Either way a transport failure on the member picked
+first still retries the other member of the group.
+
 These models live outside the wire package on purpose. A placement is routing
 configuration read once at load, never a payload a consumer decodes, and the
 bifrost config loader lifts it off the backend entry before the wire model
@@ -18,6 +26,8 @@ released consumer already accepts.
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 
 
 class ModelDelegationBackendPlacement(BaseModel):
@@ -42,6 +52,14 @@ class ModelDelegationBackendPlacement(BaseModel):
         description=(
             "Largest prompt this backend is offered. A mirrored entry takes the "
             "smaller of this and the rung's own max_context_tokens."
+        ),
+    )
+    mode: EnumBackendPlacementMode = Field(
+        default=EnumBackendPlacementMode.FALLBACK,
+        description=(
+            "fallback: offered only when the rung is unroutable or already "
+            "tried. spread: shares first-choice traffic with the rung, one "
+            "member per request chosen by a stable hash of the correlation id."
         ),
     )
 

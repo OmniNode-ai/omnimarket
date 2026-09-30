@@ -31,7 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _GATE = _WORKFLOWS / "pin-resolvability-gate.yml"
 _SCRIPT = "scripts/ci/verify_pypi_pin_resolvability.py"
-_RELEASE_WORKFLOWS = ("release.yml", "release-on-merge.yml")
+_RELEASE_WORKFLOWS = ("release.yml", "release-cut.yml")
 
 
 def _load(path: Path) -> dict[Any, Any]:

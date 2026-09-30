@@ -92,6 +92,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        self._standalone_db_tables = tuple(_tables)
         _by_role = {t["role"]: t["name"] for t in _tables}
 
         for role, name in _by_role.items():
@@ -212,7 +213,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                     "persisting a secret value into the ref catalog)"
                 )
 
-        rows = await self.db.execute(
+        rows = await self.db_for(self._table_credentials, operation="write").execute(
             f"""
             INSERT INTO {self._table_credentials} (
               api_key_ref, tenant_id, name, provider, created_at
@@ -290,7 +291,9 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         # a live route from the later register would hand the tenant a working
         # route to a credential they already revoked. ON CONFLICT still covers
         # the ordinary re-delivery case, so the write stays idempotent.
-        rows = await self.db.execute(
+        rows = await self.db_for(
+            self._table_routing_overlay, operation="write"
+        ).execute(
             f"""
             INSERT INTO {self._table_routing_overlay} (
               tenant_id, task_type, backend_id, provider, endpoint_url, model_name,
@@ -384,7 +387,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         #     out-of-order revoke was first seen, not the eventual real
         #     registration time -- an acceptable audit-trail tradeoff for a
         #     credential this projection has not been told about yet.
-        rows = await self.db.execute(
+        rows = await self.db_for(self._table_credentials, operation="write").execute(
             f"""
             INSERT INTO {self._table_credentials} (
               api_key_ref, tenant_id, name, provider, created_at, revoked_at
@@ -454,7 +457,9 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         ``_project_routing_overlay``'s ``ON CONFLICT DO UPDATE`` writes it over
         the NULL.
         """
-        rows = await self.db.execute(
+        rows = await self.db_for(
+            self._table_routing_overlay, operation="write"
+        ).execute(
             f"""
             UPDATE {self._table_routing_overlay}
                SET secret_ref = NULL,

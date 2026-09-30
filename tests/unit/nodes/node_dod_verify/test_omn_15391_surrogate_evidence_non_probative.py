@@ -446,6 +446,7 @@ class TestThroughTheRealCollector:
             correlation_id=uuid.uuid4(),
             ticket_id="OMN-16667",
             contract_path=str(path),
+            execution_audience="hosted",
             requested_at=datetime.now(tz=UTC),
         )
         result = HandlerDodVerify()._handle_typed(command)
@@ -541,6 +542,7 @@ class TestThroughTheRealCollector:
             correlation_id=uuid.uuid4(),
             ticket_id="OMN-15391",
             contract_path=str(path),
+            execution_audience="hosted",
             requested_at=datetime.now(tz=UTC),
         )
         result = HandlerDodVerify()._handle_typed(command)
@@ -595,6 +597,7 @@ class TestThroughTheRealCollector:
             correlation_id=uuid.uuid4(),
             ticket_id="OMN-15391",
             contract_path=str(path),
+            execution_audience="hosted",
             requested_at=datetime.now(tz=UTC),
         )
         result = HandlerDodVerify()._handle_typed(command)

@@ -1,0 +1,78 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Typed decision effect (OMN-19432)
+#
+# One typed question (choice, noul or score) over a program state, answered by
+# the typed-decision backend this contract pins. The backend is DATA: its
+# endpoint, model, secret reference and timeout resolve from the delegation
+# routing contract (bifrost_delegation.yaml plus overlay) by backend_id, and
+# its key resolves at the effect boundary from the secret store by that
+# reference. Nothing about the provider is a literal in the handler.
+#
+# UNWIRED. No event_bus, runtime_dispatch or handler_routing block, and no
+# onex.nodes entry point: nothing subscribes or dispatches it. It is invoked
+# in-process, and by `python -m omnimarket.nodes.node_typed_decision_effect`,
+# until a decision contract composes it behind a caller.
+name: node_typed_decision_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Asks one typed question of the contract-pinned typed-decision backend and
+  returns the answer the caller acts on, naming which decider produced it: the
+  model, or the caller's own incumbent answer on a refusal, a backend error or
+  an answer below the abstention threshold. A work unit that does not belong
+  to a public repository, resolved live and failing closed, is refused before
+  anything is sent to the backend.
+
+input_model:
+  name: ModelTypedDecisionRequest
+  module: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision
+
+output_model:
+  name: ModelTypedDecisionResult
+  module: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision
+
+decision_routing:
+  # The routing contract's typed-decision backend. Swapping the provider or
+  # the model is a change to that backend (or an overlay), not to this node.
+  backend_id: cloud-typesafe-jev
+  # Below this probability the incumbent answers and the receipt says so.
+  # A starting value, to be replaced by one calibrated from the arm's own
+  # first decisions; it is applied before any model answer is used.
+  abstain_below_probability: 0.8
+
+work_unit_scoping:
+  # The decision backend is a third party. Only work that belongs to a public
+  # repository may reach it: a missing attribution, a private or absent
+  # repository, and any failure to resolve visibility are all refusals.
+  require_public_repository: true
+  visibility_timeout_ms: 5000
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+seam:
+  # Not a runtime declaration: discovery reads nothing here.
+  handler:
+    module: omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision
+    class: HandlerTypedDecision
+
+metadata:
+  transport_type: http
+  description: "Typed decision effect node"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "typed-decision"
+    - "routing"
+  related_tickets:
+    - "OMN-19432"

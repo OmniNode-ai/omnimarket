@@ -7,9 +7,10 @@
 - The frozen names from the plan's seam registry: the node name, the three
   topics (registered in ``omnimarket.events.topics``) and the seven operations
   (contract 1.1.0 added read_pr_state, OMN-19831).
-- Not wired: runtime discovery (omnibase_infra ``runtime/auto_wiring/discovery.py``)
-  walks only the ``onex.nodes`` entry points, so a node with no entry point and
-  no handler cannot be subscribed or dispatched.
+- Wired (wave-3 compose, OMN-19829, contract 1.2.0): the node has an
+  ``onex.nodes`` entry point, consumes the request topic, publishes both result
+  topics by class name, and routes the request to its handler. The
+  orchestrator is the only other contract on those three topics.
 """
 
 from __future__ import annotations
@@ -96,9 +97,9 @@ def test_contract_identity_and_topics() -> None:
     assert contract["name"] == "node_pr_landing_github_effect"
     assert contract["node_type"] == "EFFECT_GENERIC"
     assert contract["descriptor"]["node_archetype"] == "effect"
-    seam = contract["seam"]
-    assert seam["command_topic"] == _REQUESTED
-    assert [t["topic"] for t in seam["result_topics"]] == [_COMPLETED, _FAILED]
+    bus = contract["event_bus"]
+    assert bus["subscribe_topics"] == [_REQUESTED]
+    assert bus["publish_topics"] == [_COMPLETED, _FAILED]
 
 
 def test_topics_are_registered_in_the_topic_registry() -> None:
@@ -107,16 +108,25 @@ def test_topics_are_registered_in_the_topic_registry() -> None:
     assert topics.PR_LANDING_GITHUB_FAILED_TOPIC_V1 == _FAILED
 
 
-def test_no_contract_claims_the_result_topics_on_the_bus_yet() -> None:
-    """The names are owned here; no contract publishes them before the handler."""
-    owners: dict[str, list[str]] = {_REQUESTED: [], _COMPLETED: [], _FAILED: []}
+def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
+    """The orchestrator sends the request and consumes both results; nobody else."""
+    claims: dict[tuple[str, str], list[str]] = {}
     for path in sorted(_NODES.glob("*/contract.yaml")):
         bus = _load(path).get("event_bus") or {}
         for key in ("publish_topics", "subscribe_topics"):
             for topic in bus.get(key) or []:
-                if topic in owners:
-                    owners[topic].append(path.parent.name)
-    assert owners == {_REQUESTED: [], _COMPLETED: [], _FAILED: []}
+                if topic in (_REQUESTED, _COMPLETED, _FAILED):
+                    claims.setdefault((topic, key), []).append(path.parent.name)
+    effect = "node_pr_landing_github_effect"
+    orchestrator = "node_pr_landing_orchestrator"
+    assert claims == {
+        (_REQUESTED, "publish_topics"): [orchestrator],
+        (_REQUESTED, "subscribe_topics"): [effect],
+        (_COMPLETED, "publish_topics"): [effect],
+        (_COMPLETED, "subscribe_topics"): [orchestrator],
+        (_FAILED, "publish_topics"): [effect],
+        (_FAILED, "subscribe_topics"): [orchestrator],
+    }
 
 
 def test_contract_declares_the_seven_operations_and_two_modes() -> None:
@@ -136,20 +146,27 @@ def test_contract_declares_the_seven_operations_and_two_modes() -> None:
     ]
 
 
-def test_contract_version_is_bumped_for_read_pr_state() -> None:
-    """Plan revision 1 section 5: read_pr_state and the expected head are a bump."""
+def test_contract_version_is_bumped_for_the_wiring() -> None:
+    """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus."""
     contract = _load(_CONTRACT)
-    assert contract["contract_version"] == {"major": 1, "minor": 1, "patch": 0}
+    assert contract["contract_version"] == {"major": 1, "minor": 2, "patch": 0}
 
 
 def test_contract_models_resolve_to_the_seam_models() -> None:
     contract = _load(_CONTRACT)
     assert contract["input_model"]["name"] == ModelPrLandingGithubRequest.__name__
     assert contract["input_model"]["module"] == ModelPrLandingGithubRequest.__module__
-    results = {t["event_type"]: t["module"] for t in contract["seam"]["result_topics"]}
+    (route,) = contract["handler_routing"]["handlers"]
+    assert route["event_model"] == {
+        "name": ModelPrLandingGithubRequest.__name__,
+        "module": ModelPrLandingGithubRequest.__module__,
+    }
+    # The runtime routes a returned model to its topic by class name, with the
+    # leading Model stripped (handler_wiring's published_events resolver).
+    results = {e["event_type"]: e["topic"] for e in contract["published_events"]}
     assert results == {
-        ModelPrLandingGithubCompleted.__name__: ModelPrLandingGithubCompleted.__module__,
-        ModelPrLandingGithubFailed.__name__: ModelPrLandingGithubFailed.__module__,
+        ModelPrLandingGithubCompleted.__name__.removeprefix("Model"): _COMPLETED,
+        ModelPrLandingGithubFailed.__name__.removeprefix("Model"): _FAILED,
     }
     for model in (
         ModelPrLandingGithubRequest,
@@ -170,7 +187,7 @@ def test_contract_is_scoped_to_the_dev_lane() -> None:
     assert _load(_CONTRACT)["runtime_lanes"] == ["compose-dev"]
 
 
-# --- not wired --------------------------------------------------------------
+# --- wired ------------------------------------------------------------------
 
 
 def _pyproject_node_entry_points() -> set[str]:
@@ -189,47 +206,26 @@ def _pyproject_node_entry_points() -> set[str]:
     return names
 
 
-def test_node_has_no_entry_point_so_discovery_cannot_wire_it() -> None:
-    assert "node_pr_landing_github_effect" not in _pyproject_node_entry_points()
+def test_node_has_an_entry_point_so_discovery_wires_it() -> None:
+    assert "node_pr_landing_github_effect" in _pyproject_node_entry_points()
     installed = {ep.name for ep in entry_points(group="onex.nodes")}
-    assert "node_pr_landing_github_effect" not in installed
+    assert "node_pr_landing_github_effect" in installed
 
 
-def test_contract_names_the_handler_but_declares_no_dispatch() -> None:
-    """The handler exists (OMN-19831); wiring it is the wave-3 compose step.
-
-    The handler is named in the seam block only. A top-level handler or
-    handler_routing block is what the runtime and the dispatch-entrypoint gate
-    read, and the node has no entry point to dispatch it yet.
-    """
+def test_contract_routes_the_request_to_the_handler() -> None:
+    """handler_routing names the handler class the runtime resolves and calls."""
     contract = _load(_CONTRACT)
-    assert "handler" not in contract
-    assert "handler_routing" not in contract
-    assert contract["lifecycle"] == "experimental"
-    seam = contract["seam"]
-    assert seam["handlers_by"] == "OMN-19831"
-    assert seam["wired_by"] == "wave-3-compose"
-    module = importlib.import_module(seam["handler"]["module"])
-    handler_cls = getattr(module, seam["handler"]["class"])
+    assert "lifecycle" not in contract
+    assert "seam" not in contract
+    (route,) = contract["handler_routing"]["handlers"]
+    assert route["topic"] == _REQUESTED
+    module = importlib.import_module(route["handler"]["module"])
+    handler_cls = getattr(module, route["handler"]["name"])
     assert handler_cls is HandlerPrLandingGithubEffect
 
 
-def test_contract_declares_no_runtime_bus_surface() -> None:
-    """No key any discovery path or the topic graph reads as a subscription.
-
-    A package contract scan subscribes any contract with
-    event_bus.subscribe_topics, entry point or not, so the seam keeps its topic
-    names out of every runtime-read key until the handler lands.
-    """
+def test_contract_attaches_on_the_main_runtime_of_the_dev_lane() -> None:
+    """The dev lane's effects runtime names no lane, so the scope sits on main."""
     contract = _load(_CONTRACT)
-    for key in (
-        "event_bus",
-        "runtime_dispatch",
-        "published_events",
-        "consumed_events",
-        "subscribed_events",
-        "terminal_event",
-        "topics",
-        "subscriptions",
-    ):
-        assert key not in contract, key
+    assert contract["runtime_profiles"] == ["main"]
+    assert "runtime_profiles" not in contract["descriptor"]

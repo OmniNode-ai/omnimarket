@@ -335,6 +335,7 @@ class TestOmn13996Regression:
                 "correlation_id": str(uuid4()),
                 "ticket_id": ticket,
                 "contract_path": str(occ_env / "contracts" / f"{ticket}.yaml"),
+                "execution_audience": "hosted",
                 "dry_run": False,
                 "requested_at": "2026-07-09T00:00:00+00:00",
             }

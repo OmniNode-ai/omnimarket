@@ -52,6 +52,7 @@ def _no_contract_payload(ticket_id: str = "OMN-NOEXIST-15380") -> dict[str, obje
     return {
         "correlation_id": str(uuid4()),
         "ticket_id": ticket_id,
+        "execution_audience": "hosted",
         "dry_run": False,
         "requested_at": datetime.now(tz=UTC).isoformat(),
     }
@@ -201,6 +202,8 @@ class TestCliExitsNonZeroOnMissingContract:
             "omnimarket.nodes.node_dod_verify",
             "--ticket-id",
             ticket_id,
+            "--execution-audience",
+            "hosted",
         ]
         src_path = str(Path(__file__).resolve().parents[4] / "src")
         existing = os.environ.get("PYTHONPATH", "")

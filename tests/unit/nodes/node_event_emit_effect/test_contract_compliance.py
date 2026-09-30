@@ -113,6 +113,8 @@ EXPECTED_PUBLISH_TOPICS = [
     "onex.cmd.omniintelligence.utilization-scoring.v1",
     "onex.evt.omniclaude.budget-cap-hit.v1",
     "onex.evt.omniclaude.circuit-breaker-tripped.v1",
+    # OMN-19550: full-content capture, a cross-domain fan-out target.
+    "onex.cmd.omniintelligence.content-captured.v1",
     "onex.evt.omniclaude.delegation-shadow-comparison.v1",
     "onex.evt.omniclaude.llm-routing-decision.v1",
     "onex.evt.omniclaude.notification-blocked.v1",
@@ -167,6 +169,8 @@ EXPECTED_COMPATIBILITY_PUBLISH_TOPICS = [
     "onex.cmd.omniintelligence.utilization-scoring.v1",
     "onex.evt.omniclaude.budget-cap-hit.v1",
     "onex.evt.omniclaude.circuit-breaker-tripped.v1",
+    # OMN-19550: full-content capture, a cross-domain fan-out target.
+    "onex.cmd.omniintelligence.content-captured.v1",
     "onex.evt.omniclaude.delegation-shadow-comparison.v1",
     "onex.evt.omniclaude.llm-routing-decision.v1",
     "onex.evt.omniclaude.notification-blocked.v1",

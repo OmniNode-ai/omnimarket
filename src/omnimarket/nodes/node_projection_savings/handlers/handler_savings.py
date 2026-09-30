@@ -121,6 +121,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        self._standalone_db_tables = tuple(_tables)
         _by_role = {t["role"]: t["name"] for t in _tables}
 
         for role, name in _by_role.items():
@@ -789,10 +790,15 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         write is refused with ``TenantRegistryResolutionError`` before any SQL.
         """
         identity = _payload_tenant_identity(data) or envelope_tenant_identity(data)
-        resolved = await async_resolve_write_tenant_uuid(self.db, identity)
+        resolved = await async_resolve_write_tenant_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"), identity
+        )
         if resolved is not None:
             return resolved
-        return await async_house_tenant_write_uuid(self.db, table=self._table_estimates)
+        return await async_house_tenant_write_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"),
+            table=self._table_estimates,
+        )
 
     async def _upsert_savings_estimate(
         self,
@@ -854,7 +860,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # ``current_setting('app.tenant_id', true)``, so both halves must come
         # from one resolver -- which is what OMN-15919 made the adapter refuse
         # to do on the caller's behalf.
-        rows = await self.db.execute(
+        rows = await self.db_for(self._table_estimates, operation="write").execute(
             f"""
             INSERT INTO {self._table_estimates} (
               event_timestamp, session_id, model_local, model_cloud_baseline,

@@ -123,6 +123,7 @@ event_bus:
     - onex.cmd.omniclaude.delegate-task.v1
     - onex.cmd.omniintelligence.claude-hook-event.v1
     - onex.cmd.omniintelligence.compliance-evaluate.v1
+    - onex.cmd.omniintelligence.content-captured.v1
     - onex.cmd.omniintelligence.session-outcome.v1
     - onex.cmd.omniintelligence.tool-content.v1
     - onex.cmd.omniintelligence.utilization-scoring.v1
@@ -190,6 +191,7 @@ compatibility_publish_topics:
   - onex.cmd.omniclaude.delegate-task.v1
   - onex.cmd.omniintelligence.claude-hook-event.v1
   - onex.cmd.omniintelligence.compliance-evaluate.v1
+  - onex.cmd.omniintelligence.content-captured.v1
   - onex.cmd.omniintelligence.session-outcome.v1
   - onex.cmd.omniintelligence.tool-content.v1
   - onex.cmd.omniintelligence.utilization-scoring.v1

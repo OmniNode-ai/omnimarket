@@ -10,17 +10,22 @@ fact that clears it lands somewhere nothing on the PR listens to. Measured live
 on 2026-09-27 by the stall diagnosis under OMN-19852 (ledger TERMINAL
 2026-09-27T16:07:43Z lane=market-armed-stall-83, findings 3 and 4).
 
-**The release window.** Every dev merge publishes a release
-(``release-on-merge.yml``), and the post-release version bump PR that moves dev
-off the published version lands ten to fourteen minutes later. Between the two,
-dev's ``project.version`` equals the newest published tag, so any PR whose CI
-starts in that window fails ``Release Identity Gate`` with ``pyproject version
-X is NOT ahead of the latest published version X``. From 11:30Z to 14:27Z on
-2026-09-27 dev sat inside a window about 49 percent of the time
+**The release window.** Measured 2026-09-27, when every dev merge published a
+release (``release-on-merge.yml``): the post-release version bump PR that moves
+dev off the published version lands ten to fourteen minutes later, and between
+the two, dev's ``project.version`` equals the newest published tag, so any PR
+whose CI starts in that window fails ``Release Identity Gate`` with ``pyproject
+version X is NOT ahead of the latest published version X``. From 11:30Z to
+14:27Z on 2026-09-27 dev sat inside a window about 49 percent of the time
 (omnimarket#3009, #2956, #2955 and #2905 were each synced inside one). A rerun
 cannot clear it: ``pull_request`` runs replay the merge ref GitHub pinned at
 trigger time, which still carries the published version. Only a new merge ref
 does, which means a branch update.
+
+``release-on-merge.yml`` is retired as of OMN-18010: releases are now cut on an
+explicit ``workflow_dispatch`` (``release-cut.yml``), so this window opens at
+most once per manual cut rather than once per merge. The mechanics — and this
+heal — are unchanged; only its trigger frequency is expected to fall sharply.
 
 **Vendor parity.** ``node-migration-vendor-parity-gate`` fails an omnimarket PR
 that adds a node migration until the omnibase_infra PR that vendors the same

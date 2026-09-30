@@ -10,12 +10,15 @@
 # what the workflow itself decides.
 #
 # THE TWO REDS
-# 1. Release Identity Gate, failed inside a release window. Every dev merge
-#    publishes a release, and the post-release bump PR moves dev off the
-#    published version 10-14 minutes later. A PR whose CI starts in between
-#    fails the gate, and a rerun replays the same pinned merge ref, so only a
-#    branch update clears it. The heal updates the branch of an open PR whose
-#    gate failed at a version below dev's current one, once dev is out of the
+# 1. Release Identity Gate, failed inside a release window. Releases are cut on
+#    an explicit trigger (OMN-18010, release-cut.yml, replacing the retired
+#    release-on-merge.yml), not on every dev merge, so this window now opens at
+#    most once per manual cut rather than on every merge — but the mechanics
+#    are unchanged: the post-release bump PR moves dev off the published
+#    version some minutes later, a PR whose CI starts in between fails the
+#    gate, and a rerun replays the same pinned merge ref, so only a branch
+#    update clears it. The heal updates the branch of an open PR whose gate
+#    failed at a version below dev's current one, once dev is out of the
 #    window, pinned to the head it read (expected_head_sha): once per head.
 # 2. node-migration-vendor-parity-gate, failed before omnibase_infra vendored
 #    the PR's migration. The gate reads infra dev live, so a rerun passes once
@@ -35,7 +38,7 @@
 # CREDENTIALS
 # Re-runs use the ambient GITHUB_TOKEN (actions: write, scoped to the one job).
 # The branch update uses an onexbot-occ-writer installation token scoped to
-# THIS repository, the same mint release-on-merge.yml uses for its bump PR: a
+# THIS repository, the same mint release-cut.yml uses for its bump PR: a
 # merge commit authored by GITHUB_TOKEN starts no workflow on the new head
 # (GitHub's anti-recursion rule), so an update under it would leave the PR with
 # no checks at all. The mint carries no continue-on-error: without the token
