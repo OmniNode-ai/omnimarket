@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_pr_state_emit_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: EFFECT_GENERIC
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_not_implemented: false
+description: OMN-19999. Types a watcher observation and emits pr.state.observed through node_event_emit_effect. Delivery identity is its digest; partition key is repo#pr_number.
+handler:
+  module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
+  class: HandlerPrStateEmit
+  input_model: omnimarket.events.pr_state.ModelPrStateEmitRequest
+handler_routing:
+  handlers:
+  - operation: pr_state_emit
+    handler:
+      name: HandlerPrStateEmit
+      module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
+input_model:
+  name: ModelPrStateEmitRequest
+  module: omnimarket.events.pr_state
+  description: One typed watcher observation.
+output_model:
+  name: ModelPrStateEmitResult
+  module: omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_result
+  description: Durable delivery result or spool refusal.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 10000
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pr-state-emit.v1
+  terminal_events:
+    success: onex.evt.omnimarket.pr-state-emit-completed.v1
+    failure: onex.evt.omnimarket.pr-state-emit-failed.v1
+  default_timeout_ms: 10000
+  max_timeout_ms: 10000
+terminal_event: onex.evt.omnimarket.pr-state-emit-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.pr-state-emit.v1
+  publish_topics:
+  - onex.evt.omnimarket.pr-state-observed.v1
+  - onex.evt.omnimarket.pr-state-emit-completed.v1
+  - onex.evt.omnimarket.pr-state-emit-failed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.pr-state-emit-completed.v1
+- onex.evt.omnimarket.pr-state-emit-failed.v1
+metadata:
+  transport_type: kafka
+event_type: pr.state.observed

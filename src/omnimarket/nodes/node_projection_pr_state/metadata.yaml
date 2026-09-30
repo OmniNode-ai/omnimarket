@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_projection_pr_state
+version: 1.0.0
+description: 'OMN-19999. Rule 7a: HandlerProjectionPrState is the pure definition-B fold; PrStateProjectionWriter persists its result with in-process dispatch. A guarded upsert retains the maximum (observed_at, digest) per (repo, pr_number), including closed and merged rows.'
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_projection_pr_state: omnimarket.nodes.node_projection_pr_state
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase_core>=0.39.0
+- asyncpg>=0.30.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- pr-state
+- projection
+- reducer
+- OMN-19999
+pack: data
+display_name: PR State Projection
+node_role: reducer

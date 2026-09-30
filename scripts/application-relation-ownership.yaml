@@ -169,6 +169,13 @@ db_io:
     # Declared HERE for the reason the entry above records: the OMN-15361 SQL
     # gate resolves a created application object against this manifest, not
     # against the node db_io block. Created directly in omninode_internal.
+    # OMN-19999: node-owned complete PR observations, retained after closure.
+    - name: pr_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_state/migrations/0000_create_pr_state.sql
+      access: write
+      role: pr_state
     - name: pr_landing_state
       database_ref: application
       schema: omninode_internal
