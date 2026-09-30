@@ -8,12 +8,25 @@ import argparse
 import contextlib
 import json
 import logging
+import socketserver
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
 
 MODEL = "canary-stub-model"
+
+
+class LoopbackServer(ThreadingHTTPServer):
+    """HTTPServer.server_bind resolves the host name with getfqdn, which can
+    stall for tens of seconds on hosted macOS runners. A loopback stub needs
+    no name, so bind without the lookup."""
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
 
 
 def serve(port: int) -> ThreadingHTTPServer:
@@ -70,7 +83,7 @@ def serve(port: int) -> ThreadingHTTPServer:
                 }
             )
 
-    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    return LoopbackServer(("127.0.0.1", port), Handler)
 
 
 def main() -> None:
