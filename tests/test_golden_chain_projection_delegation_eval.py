@@ -206,7 +206,11 @@ def test_migrations_enforce_tenant_isolation_and_writer_grants() -> None:
     assert "tenant_id UUID NOT NULL" in ddl
     assert "PRIMARY KEY (tenant_id, item_key, rater_role, rubric_version)" in ddl
     assert "ENABLE ROW LEVEL SECURITY" in ddl
-    assert "FORCE ROW LEVEL SECURITY" in ddl
+    # FORCE lives in its own fenced migration (0002): the fence runner skips a
+    # whole file, so it cannot share one with the CREATE TABLE.
+    assert "FORCE ROW LEVEL SECURITY" not in ddl
+    force = (_NODE / "migrations/0002_force_rls_delegation_eval_items.sql").read_text()
+    assert "ALTER TABLE public.delegation_eval_items FORCE ROW LEVEL SECURITY" in force
     assert "CREATE POLICY tenant_isolation" in ddl
     assert "USING (tenant_id = current_setting('app.tenant_id', true)::uuid)" in ddl
     assert (

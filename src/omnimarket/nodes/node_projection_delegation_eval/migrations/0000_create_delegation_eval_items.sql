@@ -88,7 +88,6 @@ BEGIN
 END$$;
 -- ---- END OMN-15376 shape reconciliation: delegation_eval_items ----
 ALTER TABLE public.delegation_eval_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.delegation_eval_items FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON public.delegation_eval_items;
 CREATE POLICY tenant_isolation ON public.delegation_eval_items
   FOR ALL

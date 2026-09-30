@@ -1,0 +1,15 @@
+-- OMN-19790: FORCE ROW LEVEL SECURITY for delegation_eval_items.
+--
+-- SPLIT OUT OF 0000 DELIBERATELY, AND FENCED.
+--   scripts/run-forward-migrations.sh refuses ANY new node migration applying
+--   FORCE ROW LEVEL SECURITY unless its id appears in
+--   docker/migrations/forward/fenced-node-migrations.yaml. This statement lived
+--   in the same file that creates the table, so fencing that file would have
+--   skipped the CREATE TABLE and broken the 0001 grants on a fresh database.
+--   Same split node_hook_event_capture 0002 used. The fence entry is added in
+--   the change that vendors this file, so the runner skips this migration and
+--   records the skip; the table exists with ENABLE ROW LEVEL SECURITY and its
+--   tenant_isolation policy from 0000 in the meantime.
+--
+-- Idempotent: FORCE is idempotent.
+ALTER TABLE public.delegation_eval_items FORCE ROW LEVEL SECURITY;
