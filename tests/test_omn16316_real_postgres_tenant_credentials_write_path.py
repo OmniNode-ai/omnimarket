@@ -412,6 +412,64 @@ class TestRealPostgresRoutingOverlayWritePath:
             # Never a house ref.
             assert not row["secret_ref"].startswith("llm.")
 
+    async def test_the_registered_plan_selects_which_glm_endpoint_the_row_addresses(
+        self,
+    ) -> None:
+        """OMN-20157: one provider, one customer route, never the Coding Plan.
+
+        The plan rides the event's ``metadata``; the overlay row records it
+        through the ``backend_id`` it is minted with. A general-API credential,
+        and an event from before plans existed (no plan), mint the general-API
+        route. A credential naming the Coding Plan mints NO route: z.ai's terms
+        bar that quota from third-party systems, so the writer leaves the
+        credential catalogued and unrouted. Against a real connection because
+        the plan-selected values flow through the same typed
+        ``INSERT ... SELECT`` the OMN-15905 class of defect lives in.
+        """
+        expected: dict[str | None, tuple[str, str] | None] = {
+            "general_api": ("byok-glm-general", "/api/paas/v4/"),
+            None: ("byok-glm-general", "/api/paas/v4/"),
+            "coding_plan": None,
+        }
+        for plan, minted in expected.items():
+            async with _provisioned_runner() as (runner, admin_conn, _schema):
+                ref = f"cred_{BYOK_TENANT}_glm_{uuid4().hex[:12]}"
+                event = self._register(ref, provider="glm")
+                if plan is not None:
+                    event["metadata"] = {"plan": plan}
+                assert await runner.project_event(
+                    TOPIC_REGISTERED,
+                    event,
+                    MessageMeta(
+                        partition=0, offset=0, fallback_id=ref, topic=TOPIC_REGISTERED
+                    ),
+                )
+
+                row = await admin_conn.fetchrow(
+                    "SELECT backend_id, provider, endpoint_url, model_name, "
+                    "secret_ref, timeout_ms, max_tokens "
+                    "FROM delegation_routing_tenant_overlay WHERE tenant_id = $1",
+                    BYOK_TENANT,
+                )
+                if minted is None:
+                    assert row is None, (
+                        "a Coding Plan credential must mint no customer route "
+                        "(OMN-20157, z.ai subscription terms section 4)"
+                    )
+                    continue
+                backend_id, path = minted
+                assert row is not None
+                assert row["backend_id"] == backend_id
+                assert row["provider"] == "glm"
+                assert path in row["endpoint_url"]
+                assert "/api/coding/" not in row["endpoint_url"]
+                assert row["model_name"] == "glm-4.5-flash"
+                assert row["secret_ref"] == ref
+                # The general-API row's declared budgets land in their own
+                # integer columns, typed by the same INSERT ... SELECT.
+                assert row["timeout_ms"] == 300000
+                assert row["max_tokens"] == 65536
+
     async def test_redelivery_converges_to_one_row(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             ref = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex[:12]}"

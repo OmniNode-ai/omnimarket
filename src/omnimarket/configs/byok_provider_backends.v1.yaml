@@ -29,15 +29,19 @@
 #   (`llm.openrouter.api_key`) and answering a customer on a house credential
 #   is exactly what OMN-17372 ruling 3 forbids.
 #
-# MODEL CHOICE — WHY A ZERO-COST SLUG
+# MODEL CHOICE — WHY EACH ROW DEFAULTS TO THE CHEAPEST SLUG
 #
-#   The key is the customer's, so every token billed here is billed to THEM.
-#   There is no per-tenant model-selection surface yet, so the default must be
-#   one that cannot spend money a customer never agreed to spend. Each entry
-#   below therefore mirrors a FREE slug already declared and live-probed on the
-#   platform's own rung in bifrost_delegation.yaml. A per-tenant model override
-#   is a follow-on; it belongs in the overlay row's `model_name`, which is
-#   already per-tenant, so it needs no schema change when it lands.
+#   The key is the customer's and so is the bill: OmniNode is never an inference
+#   provider to customers and the customer pays their own provider (INV-068,
+#   operator ruling 2026-08-31, firm and permanent; INV-098; knowledge-base-internal
+#   reference/invariants.yaml). Customer spend is therefore never a reason to
+#   decline a provider. There is no per-tenant model-selection surface yet, so
+#   each row defaults to the cheapest slug that answers, which is a default and
+#   not a constraint, and each mirrors a slug already declared and live-probed on
+#   the platform's own rung in bifrost_delegation.yaml where one exists. A
+#   per-tenant model override is a follow-on; it belongs in the overlay row's
+#   `model_name`, which is already per-tenant, so it needs no schema change when
+#   it lands.
 #
 # DRIFT IS GATED, NOT TRUSTED
 #
@@ -79,8 +83,58 @@
 #     tests/test_omn17353_provider_catalogue.py fails on a rung that is
 #     neither, on a row nothing backs, on any Claude/Anthropic row in either
 #     list, and on any row carrying a secret_ref.
-#   - OMN-17932: gemini and vertex are the declared not-offered providers.
+#   - OMN-17932: gemini and vertex were the declared not-offered providers.
 #     `glm` was lifted OUT of that list on 2026-09-06 — see the row below.
+#   - OMN-20157: `gemini` is lifted out of not_offered too, `glm` gains a second
+#     plan, every row declares a `plan` and a `limit_model`, and vertex stays
+#     not-offered with the reason restated. See "PLANS" and "LIMIT MODEL" below.
+#
+# PLANS (OMN-20157)
+#
+#   A row is keyed (provider, plan). One provider can be reachable through more
+#   than one PRODUCT with one request shape: z.ai serves the GLM Coding Plan and
+#   a general pay-as-you-go API on two endpoints. The customer's credential
+#   records which one it is, and the row below for that plan is what the route
+#   addresses. A multi-plan provider marks exactly one row `default_plan: true`;
+#   a caller that names no plan resolves that row, so every route written before
+#   plans existed is unchanged. A plan the provider does not declare resolves to
+#   nothing and never to the default.
+#
+#   `mirrors_house_rung: false` declares a customer-only surface the platform
+#   holds no key for and therefore has no bifrost rung on. The parity gate then
+#   asserts the opposite: no house rung addresses that endpoint.
+#
+# DETECTION-ONLY PLANS, AND WHY glm DEFAULTS TO THE GENERAL API (OMN-20157)
+#
+#   z.ai's published subscription terms, section 4, bar GLM Coding Plan quota from
+#   "directly invoking model APIs from your own applications, bots, websites, SaaS
+#   products or other systems", and bar a subscriber from letting "customers or
+#   any organization" use it. Violations can mean rate limiting, a freeze, and a
+#   ban after more than three. A customer's Coding Plan key sent to our route is
+#   exactly that, and the exposure lands on the customer's account first. The
+#   terms, each clause quoted with its URL: knowledge-base-internal
+#   reference/zai-glm-coding-plan-terms.md (read 2026-09-30, ticket OMN-20154).
+#
+#   So `glm` defaults to `general_api` (https://api.z.ai/api/paas/v4), and the
+#   `coding_plan` row is `customer_routable: false`: it stays here so onboarding
+#   detection (routing/byok_plan_detection.py) can recognise a Coding Plan key and
+#   refuse it with its typed `refusal_code`, and so the quota model can describe
+#   it, but resolve_byok_provider_backend never returns it and no route, overlay
+#   row or registration may address it. A routable plan may not declare a refusal;
+#   a detection-only plan must, and may not be the default.
+#
+# LIMIT MODEL (OMN-20157)
+#
+#   Every row says how its provider meters a credential, so quota tracking counts
+#   the same way for a customer and for us (the lab is a tenant, never a
+#   separate path). `counter_scope: model` counts per model id; `plan` pools all
+#   models on the plan into one counter. A window's `limit` is null when the
+#   provider publishes no fixed cap or the cap depends on an account tier the
+#   catalogue cannot know; `limit_by_tier` carries published caps per tier and
+#   the tier is a fact about the customer's own account. Every window names its
+#   `source`. The counter identity is
+#   byok_limit_counter_key(tenant_id, api_key_ref, backend). The quota
+#   mechanics (state, projection, policy) are owned by OMN-20154, not this file.
 
 schema_version: "byok_provider_backends.v1"
 
@@ -90,6 +144,7 @@ providers:
   # string that is baked into the minted ref
   # (`cred_<tenant>_openrouter_<uuid>`).
   - provider: openrouter
+    plan: free_tier
     # NOT one of the platform's own backend_ids. A tenant-overlay decision
     # namespaces this by tenant_id before deriving the selected_backend_id
     # UUID (_decision_from_tenant_overlay), so the string only has to be
@@ -117,14 +172,37 @@ providers:
     # defaults (30000 / DELEGATION_MAX_TOKENS_HARD_LIMIT) when either is null.
     timeout_ms: 300000
     max_tokens: 65536
+    limit_model:
+      billing: free_tier
+      counter_scope: model
+      windows:
+        # OpenRouter meters `:free` slugs per model and publishes no fixed
+        # daily cap that holds for every account (it depends on credits ever
+        # purchased), so the cap is null rather than a number that is wrong for
+        # half the customers.
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            OpenRouter free-model limits (openrouter.ai/docs/api-reference/limits),
+            read 2026-09-30: 20 requests per minute and a daily cap that depends
+            on credits purchased. Not a single published number.
 
+  # OMN-20157 SUPERSEDES THE ROUTING HALF of the paragraph below for customers:
+  # the Coding Plan it describes is z.ai's flat-rate product, and z.ai's terms bar
+  # that quota from third-party systems, so this row is detection-only and a
+  # customer's glm key is routed to the general API row instead (see "DETECTION-
+  # ONLY PLANS" above). What the paragraph says about the platform's own
+  # Coding-Plan key and about INV-068 and INV-098 still stands.
+  #
   # OMN-17932 lift, authorised by the operator ruling of 2026-09-06. `glm` was
   # declared not-offered on the OMN-17372 zero-cost rule; the fact that rule was
   # applied to was WRONG. The z.ai key this platform holds, and the only key
   # shape this row can route, is a **GLM Coding Plan** key: a prepaid flat-rate
   # plan metered by 5-hour / weekly quota, NOT a per-token balance. Marginal
-  # cost per delegation on the registering account is therefore zero, which is
-  # what the zero-cost rule protects. The earlier `not_offered` reason read the
+  # cost per delegation on the registering account is therefore zero. (Under
+  # INV-068 and INV-098 a customer's own spend is not a ground for declining a
+  # provider in any case.) The earlier `not_offered` reason read the
   # cost off z.ai's PAY-AS-YOU-GO product (`/api/paas/v4`) — the same
   # two-products confusion OMN-6790 settled and OMN-16891 got wrong.
   #
@@ -134,6 +212,21 @@ providers:
   # A stale z.ai key on the same surface returns 401 code 1000, which is the
   # signature OMN-17987 recorded and mis-read as "the GLM rung cannot be bound".
   - provider: glm
+    plan: coding_plan
+    # OMN-20157: DETECTION-ONLY. Never routed for a customer; see "DETECTION-ONLY
+    # PLANS" above and knowledge-base-internal
+    # reference/zai-glm-coding-plan-terms.md. A key that answers ONLY on this
+    # surface is refused with the code below and the customer is told to register
+    # a general API key. The endpoint, model and limit model stay declared so
+    # detection can probe it and quota tracking can describe it.
+    customer_routable: false
+    refusal_code: BYOK_CODING_PLAN_NOT_PERMITTED
+    refusal_message: >-
+      That key is a z.ai GLM Coding Plan key. z.ai's subscription terms bar Coding
+      Plan quota from third-party systems and from use by customers or any
+      organization, so it cannot be used here and using it could put your z.ai
+      account at risk of rate limiting, a freeze or a ban. Register a z.ai general
+      API key instead (pay-as-you-go, https://api.z.ai/api/paas/v4).
     # Namespaced by tenant before the selected_backend_id UUID is derived, and
     # deliberately NOT the platform rung name `cloud-glm`, so a customer-paid
     # call can never be attributed to the house rung.
@@ -153,6 +246,119 @@ providers:
     # Both mirror the platform `cloud-glm` rung (OMN-13170 / OMN-13161).
     timeout_ms: 300000
     max_tokens: 65536
+    limit_model:
+      # A prepaid flat-rate plan metered in CREDITS over a 5-hour and a weekly
+      # window, pooled across models: credits = (input x in-multiplier + cached
+      # x cached-multiplier + output x out-multiplier) / 10000, so GLM-5.3 and
+      # its flash variant draw on ONE counter (hence counter_scope: plan). The
+      # customer's tier (Lite, Pro or Max) is a fact about their account, so
+      # `limit` is null and `limit_by_tier` carries the published caps.
+      billing: flat_rate_quota
+      counter_scope: plan
+      windows:
+        - window_hours: 5
+          unit: credits
+          limit: null
+          limit_by_tier: {lite: 2000, pro: 12000, max: 28000}
+          source: >-
+            z.ai GLM Coding Plan overview (docs.z.ai/devpack/overview), read
+            2026-09-30 by lane glm-quota-facts, ledger MSG 2026-09-30T15:39:58Z.
+        - window_hours: 168
+          unit: credits
+          limit: null
+          limit_by_tier: {lite: 10000, pro: 60000, max: 140000}
+          source: >-
+            z.ai GLM Coding Plan overview (docs.z.ai/devpack/overview), read
+            2026-09-30 by lane glm-quota-facts, ledger MSG 2026-09-30T15:39:58Z.
+
+  # OMN-20157: the SECOND z.ai product, the general pay-as-you-go API, and the
+  # one a customer's key is routed to. Same OpenAI-style request, same handler, a
+  # different endpoint and a different metering. A customer holding a general-API
+  # key is served here; detection at onboarding (routing/byok_plan_detection.py)
+  # tries the key on this surface first, and a key it answers on is a general key
+  # whatever else it can do. A key that answers only on the Coding Plan is
+  # refused (see the coding_plan row).
+  #
+  # OMN-6790 forbids the platform from pointing anything at this surface (it
+  # holds no balance or resource package on it), so there is NO house rung to
+  # mirror: `mirrors_house_rung: false`. The parity gate asserts instead that no
+  # bifrost rung addresses this endpoint.
+  #
+  # MODEL: `glm-4.5-flash`, listed Free on z.ai's pay-as-you-go pricing page
+  # (docs.z.ai/guides/overview/pricing, read 2026-09-30, next to glm-4.7-flash),
+  # which is the cheapest slug that answers, this file's MODEL CHOICE default.
+  # Not glm-4.7-flash, the other free id: on 2026-09-30 it answered HTTP 429
+  # code 1305 ("temporarily overloaded") three times running on this surface,
+  # while glm-4.5-flash answered HTTP 200 on a one-token completion. The cheapest
+  # PAID flash id is glm-5.3-flash at $0.15 in / $0.50 out per 1M tokens and is
+  # deliberately not the default.
+  #
+  # PROBE EVIDENCE AND ITS LIMIT: the 200 above came from the platform's own
+  # key, which is a Coding Plan key that ALSO answers on this surface today (it
+  # answered 429 code 1113 here on 2026-08-30, see cloud-glm above; something
+  # changed on the account since). So the row is live-verified as far as the
+  # endpoint, the model id and the request shape go, but NOT against a key that
+  # belongs to the general API only. No such key exists on this platform.
+  - provider: glm
+    plan: general_api
+    # OMN-20157: the customer default. A caller that names no plan, and an event
+    # published before plans existed, resolve this row.
+    default_plan: true
+    mirrors_house_rung: false
+    backend_id: byok-glm-general
+    endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"
+    model_name: "glm-4.5-flash"
+    max_retries: 2
+    timeout_ms: 300000
+    max_tokens: 65536
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        # z.ai publishes concurrency limits per model on this surface rather
+        # than a request quota; there is no window to count against, and the
+        # spend is the customer's balance. Left empty on purpose.
+        []
+
+  # OMN-20157 lift. `gemini` was declared not-offered on the OMN-17372 zero-cost
+  # design comment, which was a catalogue default and never an operator ruling.
+  # A customer's own Gemini spend is accepted by existing invariant: OmniNode is
+  # never an inference provider to customers and the customer pays their own
+  # provider (INV-068, operator ruling 2026-08-31; INV-098; knowledge-base-internal
+  # reference/invariants.yaml). The default is `gemini-2.5-flash-lite`, the
+  # cheapest slug, on the customer's own Google AI Studio key; the account and
+  # its billing are the customer's.
+  #
+  # Auth is `Authorization: Bearer <key>` against Google's OpenAI-compatible
+  # endpoint, which is what the dispatch adapter already sends. The endpoint,
+  # model and budgets mirror the platform rung `cloud-gemini-flash`. Do not
+  # repoint to gemini-2.5-pro: it was quota-zero on the only key probed
+  # (OMN-13351).
+  - provider: gemini
+    plan: ai_studio
+    backend_id: byok-gemini
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    model_name: "gemini-2.5-flash-lite"
+    max_retries: 2
+    timeout_ms: 60000
+    # Flash-family output cap (OMN-13161), mirrored from the platform rung.
+    max_tokens: 8192
+    limit_model:
+      billing: free_tier
+      counter_scope: model
+      windows:
+        # AI Studio meters per model and per project. The daily request cap
+        # differs by model and by whether the project has billing enabled, so it
+        # is null here. Observed live on the platform's own key on 2026-09-30:
+        # 20 requests in the day, refused from 15:18Z (ledger MSG from lane
+        # quota-tracking, 15:26:26Z), which is the free-tier behaviour.
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            Google AI Studio rate limits (ai.google.dev/gemini-api/docs/rate-limits):
+            per-model, per-project RPM/TPM/RPD by tier. Observed 20 requests per
+            day on the platform's free-tier key, 2026-09-30.
 
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either
@@ -160,17 +366,17 @@ providers:
 # Claude/Anthropic may not appear in this list either — it is never a
 # delegation target, so there is nothing to decline.
 not_offered:
-  - provider: gemini
-    reason: >-
-      The platform's gemini rungs (gemini-2.5-flash / -lite) are paid slugs;
-      a BYOK default must be zero-cost on the customer's account until a
-      per-tenant model choice exists.
-    ticket: OMN-17932
   - provider: vertex
     reason: >-
-      Vertex authenticates with a short-lived access token
-      (llm.vertex.access_token), not an API key a customer can register.
-    ticket: OMN-17932
+      Vertex authenticates with a short-lived OAuth access token minted from
+      Application Default Credentials (llm.vertex.access_token) and addresses a
+      per-customer project and location in the endpoint path, not an API key a
+      customer can register. SSO-style auth like this is out of scope for the
+      customer catalogue (operator ruling 2026-09-30, "We are not starting with
+      anything that uses SSO as authentication. That is out of scope.", ledger
+      docs/tracking/ROLLING_WORK_LEDGER.md:18743, ticket OMN-20157).
+      The house rung cloud-vertex-gemini is also parked and unreferenced (OMN-16833).
+    ticket: OMN-20157
   - provider: typesafe
     reason: >-
       TypeSafe Jev (cloud-typesafe-jev) is a typed-decision backend, not a

@@ -84,7 +84,9 @@ class TestTheShippedCatalogueIsClean:
         A gate that judged a different list than ``customer_provider_catalogue()``
         would pass while the customer-visible surface was dirty.
         """
-        assert tuple(sorted(str(r["provider"]) for r in rows)) == (
+        # OMN-20157: a provider with several plans has several rows, and the
+        # gate must judge every one of them, so compare the provider SET.
+        assert tuple(sorted({str(r["provider"]) for r in rows})) == (
             customer_provider_catalogue()
         )
 
@@ -104,7 +106,7 @@ class TestThePredicateIsNotTheNaiveIntersection:
         here.
         """
         overlap = set(customer_provider_catalogue()) & house_keyed_provider_slugs(rungs)
-        assert overlap == {"glm", "openrouter"}, overlap
+        assert overlap == {"gemini", "glm", "openrouter"}, overlap
 
     def test_every_offered_provider_is_house_keyed_on_the_platform_side(
         self, rungs: list[dict[str, Any]]
