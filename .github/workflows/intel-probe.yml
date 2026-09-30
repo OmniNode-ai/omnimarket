@@ -1,0 +1,24 @@
+name: intel-probe
+on:
+  push:
+    branches: [jonah/omn-20120-intel-canary]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - run: uname -m; sw_vers; brew --prefix; which cargo rustc; rustc --version || true
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: recipe
+        run: |
+          set -x
+          brew install openssl@3 rust
+          export OPENSSL_DIR="$(brew --prefix openssl@3)"
+          rustc --version; echo $OPENSSL_DIR
+          time uv tool install --with 'omnibase-infra>=0.38.4' --with 'omnimarket>=0.4.205' 'omnibase-core>=0.46.8'
+          ~/.local/bin/onex --version
