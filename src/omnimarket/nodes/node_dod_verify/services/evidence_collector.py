@@ -63,6 +63,9 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
     HandlerDodEvidenceGithubEffect,
     pypi_release_files,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
+    ModelDodAcceptanceSummary,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
@@ -77,6 +80,9 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelProductClonePin,
     ModelProductClonePinSet,
     ModelProductCloneResolution,
+)
+from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
+    derive_falsifier_items,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
@@ -2292,6 +2298,12 @@ class EvidenceCollector:
         # collector — a sweep adjudicates dozens of candidates and must not
         # re-open the file for each one.
         self._product_clone_pins: dict[str, ModelProductClonePin] | None = None
+        # OMN-20153: what the last ticket-contract collect() derived from the
+        # contract's accepted acceptance-criteria falsifiers. None until a
+        # ticket contract has been loaded (and for a goal-scoped inline run,
+        # which has no ticket criteria), so a consumer can tell "no acceptance
+        # checks" from "never looked". Read by ``handler_dod_verify``.
+        self.acceptance_summary: ModelDodAcceptanceSummary | None = None
 
     @property
     def occ_governance_ref(self) -> str:
@@ -3170,6 +3182,7 @@ class EvidenceCollector:
         Returns:
             One ModelEvidenceCheckResult per dod_evidence item.
         """
+        self.acceptance_summary = None
         raw: dict[str, Any] | None
         if inline_items is not None:
             path = None
@@ -3249,6 +3262,23 @@ class EvidenceCollector:
                     message="Contract has empty or missing dod_evidence[] section.",
                 )
             ]
+
+        # OMN-20153: the author's own accepted falsifiers become evidence items
+        # here, before audiences are validated and before anything executes, so
+        # they run through the ordinary item path and a failing or zero-test
+        # falsifier is a FAILED item in the verdict rather than a sentence in a
+        # ticket. A goal-scoped inline run has no ticket criteria and derives
+        # nothing.
+        if inline_items is None:
+            derived_items, self.acceptance_summary = derive_falsifier_items(
+                raw,
+                dod_items,
+                repo_candidates=self._contract_repo_dirs(dod_items),
+                path_exists=self._product_path_exists,
+            )
+            dod_items = [*dod_items, *derived_items]
+        else:
+            self.acceptance_summary = None
 
         # OMN-15443: validate the complete contract's execution audience before
         # resolving supersessions or running ANY declared/local-GitHub effect.
@@ -4220,6 +4250,35 @@ class EvidenceCollector:
                 seen.add(item_id)
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
+
+    def _contract_repo_dirs(self, dod_items: list[Any]) -> tuple[str, ...]:
+        """Repository directory names the contract's own PR-bound items name.
+
+        Read from the evidence-id convention (``dod-<owner>-<repo>-pr-<n>``),
+        in contract order and de-duplicated. These are the only repositories a
+        derived falsifier may run in, because they are the ones the ticket's
+        own evidence says the work landed in.
+        """
+        repos: list[str] = []
+        for item in dod_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            slug, _pr = self._repo_and_pr_from_evidence_id(
+                item_id if isinstance(item_id, str) else None
+            )
+            name = slug.split("/", 1)[-1] if slug else ""
+            if name and name not in repos:
+                repos.append(name)
+        return tuple(repos)
+
+    @staticmethod
+    def _product_path_exists(repo: str, path: str) -> bool:
+        """Whether ``$OMNI_HOME/<repo>`` holds ``path`` (a file or a directory)."""
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            return False
+        return (Path(omni_home) / repo / path).exists()
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
