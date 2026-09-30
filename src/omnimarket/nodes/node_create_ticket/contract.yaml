@@ -58,7 +58,7 @@ inputs:
     required: false
   project:
     type: str
-    description: "Linear project name"
+    description: "REFUSED when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)"
     required: false
   team:
     type: str

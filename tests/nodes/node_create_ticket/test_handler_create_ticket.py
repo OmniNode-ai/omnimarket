@@ -164,3 +164,73 @@ def test_validation_error_never_calls_linear_client() -> None:
     handler = HandlerCreateTicket()
     result = handler.handle(request)
     assert result.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# Operator ruling 2026-09-30T14:30:05Z (OMN-17427): Backlog, no project
+# ---------------------------------------------------------------------------
+
+
+def _recording_gateway() -> tuple[object, list[tuple[str, dict[str, object]]]]:
+    from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
+        LinearTicketHttpGateway,
+    )
+
+    gateway = LinearTicketHttpGateway("test-key")
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_post(query: str, variables: dict[str, object]) -> object:
+        calls.append((query, variables))
+        if "GetTeamByName" in query:
+            return {"data": {"teams": {"nodes": [{"id": "team-1"}]}}}
+        if "GetBacklogState" in query:
+            return {"data": {"workflowStates": {"nodes": [{"id": "state-backlog"}]}}}
+        if "GetIssueByIdentifier" in query:
+            return {"data": {"issue": {"id": "parent-uuid"}}}
+        return {"data": {"issueCreate": {"issue": {"identifier": "OMN-1", "url": "u"}}}}
+
+    gateway._post = fake_post  # type: ignore[method-assign]
+    return gateway, calls
+
+
+def test_gateway_creates_in_backlog_with_no_project() -> None:
+    gateway, calls = _recording_gateway()
+    gateway.create_ticket(  # type: ignore[attr-defined]
+        title="t", description="d", team="Omninode", parent="OMN-5"
+    )
+    query, variables = calls[-1]
+    assert "issueCreate" in query
+    assert variables["stateId"] == "state-backlog"
+    assert variables["parentId"] == "parent-uuid"
+    assert "projectId" not in variables
+    assert "projectId" not in query
+
+
+def test_gateway_refuses_when_the_team_has_no_backlog_state() -> None:
+    from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
+        LinearTicketHttpGateway,
+    )
+
+    gateway = LinearTicketHttpGateway("test-key")
+
+    def fake_post(query: str, variables: dict[str, object]) -> object:
+        del variables
+        if "GetTeamByName" in query:
+            return {"data": {"teams": {"nodes": [{"id": "team-1"}]}}}
+        return {"data": {"workflowStates": {"nodes": []}}}
+
+    gateway._post = fake_post  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="Backlog"):
+        gateway.create_ticket(title="t", description="d", team="Omninode", parent=None)
+
+
+def test_start_command_refuses_a_project_naming_the_ruling() -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.nodes.node_create_ticket.models.model_create_ticket_state import (
+        ModelCreateTicketStartCommand,
+    )
+
+    assert ModelCreateTicketStartCommand(title="ok").project == ""
+    with pytest.raises(ValidationError, match="OMN-17427"):
+        ModelCreateTicketStartCommand(title="x", project="Sprint 2026-09-28")
