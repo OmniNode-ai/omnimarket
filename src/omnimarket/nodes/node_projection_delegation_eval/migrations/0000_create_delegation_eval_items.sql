@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.delegation_eval_items (
     projection_cursor BIGSERIAL,
     PRIMARY KEY (tenant_id, item_key, rater_role, rubric_version)
 );
+-- ---- BEGIN OMN-15376 shape reconciliation: delegation_eval_items ----
 -- COLUMN RECONCILIATION: one guarded ADD COLUMN per declared column, so CREATE TABLE IF NOT EXISTS stays idempotent in SHAPE, not just existence.
 ALTER TABLE public.delegation_eval_items
     ADD COLUMN IF NOT EXISTS tenant_id UUID;
@@ -58,6 +59,34 @@ ALTER TABLE public.delegation_eval_items
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 ALTER TABLE public.delegation_eval_items
     ADD COLUMN IF NOT EXISTS projection_cursor BIGSERIAL;
+-- DEFAULT RECONCILIATION: a pre-existing table keeps the columns it has, so the
+-- declared defaults are set explicitly (idempotent).
+ALTER TABLE public.delegation_eval_items
+    ALTER COLUMN first_seen_at SET DEFAULT NOW();
+ALTER TABLE public.delegation_eval_items
+    ALTER COLUMN updated_at SET DEFAULT NOW();
+-- NOT NULL RECONCILIATION: SET NOT NULL refuses (fails the migration) when a
+-- pre-existing row holds NULL; it never invents a value.
+ALTER TABLE public.delegation_eval_items ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN item_key SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN rater_role SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN rubric_version SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN observed_at SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN first_seen_at SET NOT NULL;
+ALTER TABLE public.delegation_eval_items ALTER COLUMN updated_at SET NOT NULL;
+-- PRIMARY KEY RECONCILIATION.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.delegation_eval_items'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE public.delegation_eval_items
+            ADD CONSTRAINT delegation_eval_items_pkey
+            PRIMARY KEY (tenant_id, item_key, rater_role, rubric_version);
+    END IF;
+END$$;
+-- ---- END OMN-15376 shape reconciliation: delegation_eval_items ----
 ALTER TABLE public.delegation_eval_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.delegation_eval_items FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON public.delegation_eval_items;
