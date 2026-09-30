@@ -381,3 +381,45 @@ class TestTheInProcessTerminalReachesThePlatformTable:
         )
         assert all(e["payload"] is payload for e in published)
         assert published[0]["event_id"] == f"delegate-skill-terminal-{correlation}"
+
+
+def test_a_429_with_a_truncated_body_is_rate_limited_not_context_too_large() -> None:
+    """Lab dev lane 2026-09-30, correlation af9f024f: the body cap's marker won."""
+    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        _inference_error_failure_class,
+    )
+
+    assert (
+        _inference_error_failure_class(_GEMINI_TRUNCATED_MESSAGE).value
+        == "rate_limited"
+    )
+
+
+def test_the_registry_declares_every_event_the_emit_effect_is_handed() -> None:
+    """The emit effect refuses an undeclared topic override (OMN-17237).
+
+    The conftest stubs delivery, so this is the check that the real effect
+    would accept each event this change hands it; the gap it closes was found
+    on the lab, where every observation was refused before this entry existed.
+    """
+    from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
+        resolve_event_type,
+        resolve_override_transform,
+    )
+
+    for event_type, topic in (
+        (
+            "provider.quota.observed",
+            "onex.evt.omnimarket.provider-quota-observed.v1",
+        ),  # onex-topic-allow: registry check
+        (
+            "delegate_skill.completed",
+            "onex.evt.omnimarket.delegate-skill-completed.v1",
+        ),  # onex-topic-allow: registry check
+        (
+            "delegate_skill.failed",
+            "onex.evt.omnimarket.delegate-skill-failed.v1",
+        ),  # onex-topic-allow: registry check
+    ):
+        assert [t.topic for t in resolve_event_type(event_type)] == [topic]
+        assert resolve_override_transform(topic, event_type) is None
