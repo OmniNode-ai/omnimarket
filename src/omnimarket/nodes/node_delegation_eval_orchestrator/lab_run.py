@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from importlib import metadata
 from pathlib import Path
@@ -42,6 +41,7 @@ from omnimarket.events.delegation_eval import (
     ModelDelegationEvalRunRequest,
     ModelLabelRecordRequest,
 )
+from omnimarket.lab_work.named_env import read_named_env
 from omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator import (
     HandlerDelegationEvalOrchestrator,
 )
@@ -135,7 +135,7 @@ class _PrefetchedLabelledItems:
 
 
 def _dsn(env_name: str) -> str:
-    return os.environ[env_name]
+    return read_named_env(env_name)
 
 
 async def _read_snapshots(
