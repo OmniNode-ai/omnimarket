@@ -69,6 +69,14 @@ query GetTeamByName($name: String!) {
 }
 """
 
+_BACKLOG_STATE_QUERY = """
+query GetBacklogState($teamId: ID!) {
+  workflowStates(filter: { team: { id: { eq: $teamId } }, name: { eq: "Backlog" } }) {
+    nodes { id }
+  }
+}
+"""
+
 _ISSUE_BY_IDENTIFIER_QUERY = """
 query GetIssueByIdentifier($identifier: String!) {
   issue(id: $identifier) { id }
@@ -76,12 +84,13 @@ query GetIssueByIdentifier($identifier: String!) {
 """
 
 _ISSUE_CREATE_MUTATION = """
-mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String) {
+mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String) {
   issueCreate(input: {
     teamId: $teamId,
     title: $title,
     description: $description,
-    parentId: $parentId
+    parentId: $parentId,
+    stateId: $stateId
   }) {
     issue { identifier url }
   }
@@ -240,10 +249,25 @@ class LinearTicketHttpGateway:
             raise RuntimeError(f"Linear team {team!r} not found")
         team_id = team_nodes[0]["id"]
 
+        # Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        # created in the Backlog with NO project. The state is set explicitly
+        # rather than trusting the team default, and no projectId is ever sent.
+        state_data = self._post(_BACKLOG_STATE_QUERY, {"teamId": team_id})
+        state_nodes = (
+            state_data.get("data", {}).get("workflowStates", {}).get("nodes", [])
+        )
+        if not state_nodes:
+            raise RuntimeError(
+                f"Linear team {team!r} has no 'Backlog' workflow state; refusing "
+                "to create a ticket outside the Backlog (operator ruling "
+                "2026-09-30T14:30:05Z, OMN-17427)"
+            )
+
         variables: dict[str, object] = {
             "teamId": team_id,
             "title": title,
             "description": description,
+            "stateId": state_nodes[0]["id"],
         }
         if parent:
             parent_data = self._post(_ISSUE_BY_IDENTIFIER_QUERY, {"identifier": parent})

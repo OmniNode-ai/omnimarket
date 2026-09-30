@@ -154,7 +154,7 @@ def _build_ticket_payload(
         "description": "\n".join(description_lines),
         "priority": _PRIORITY_BY_SEVERITY[finding.severity],
         "team": command.team,
-        "project": command.project,
+        "state": "Backlog",
         "parent": command.parent,
         "labels": labels,
         "finding_index": finding_index,

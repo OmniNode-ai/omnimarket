@@ -110,6 +110,10 @@ def test_contract_declares_event_bus_surfaces() -> None:
     assert (
         "onex.evt.omnimarket.adversarial-pipeline-completed.v1" in eb["publish_topics"]
     )
+    assert (
+        "onex.evt.omnimarket.adversarial-pipeline-gate-failed.v1"
+        in eb["publish_topics"]
+    )
     assert "onex.dlq.omnimarket.adversarial-pipeline.v1" in eb["dlq_topics"]
 
 
@@ -181,7 +185,6 @@ def test_handler_runs_all_stages_through_adapters() -> None:
         ModelAdversarialPipelineRequest(
             topic="design a unified auth layer",
             min_findings_gate=3,
-            linear_project="Tech Debt Remediation",
         )
     )
 
@@ -191,7 +194,8 @@ def test_handler_runs_all_stages_through_adapters() -> None:
     assert result.created_ticket_ids == ("OMN-1", "OMN-2")
     assert result.tickets_created == 2
     assert result.stage_reached == 3
-    assert design.payloads[0]["linear_project"] == "Tech Debt Remediation"
+    assert "linear_project" not in design.payloads[0]
+    assert "linear_project" not in tickets.payloads[0]
     assert review.payloads[0]["plan_path"] == "/tmp/native-plan.md"
     assert tickets.payloads[0]["findings_count"] == 4
 
@@ -305,3 +309,9 @@ def test_handler_gate_failure_does_not_create_tickets() -> None:
     assert result.gate_passed is False
     assert result.stage_reached == 2
     assert tickets.payloads == []
+
+
+def test_a_linear_project_is_refused_naming_the_ruling() -> None:
+    """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): Backlog, no project."""
+    with pytest.raises(ValidationError, match="OMN-17427"):
+        ModelAdversarialPipelineRequest(topic="t", linear_project="Sprint X")

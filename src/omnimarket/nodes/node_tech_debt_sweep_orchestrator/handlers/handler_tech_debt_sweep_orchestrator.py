@@ -350,7 +350,7 @@ def _epic_payload(
             f"Ticket groups: {len(groups)}"
         ),
         "team": request.linear_team,
-        "project": request.linear_project,
+        "state": "Backlog",
         "category": category,
     }
 
@@ -377,7 +377,7 @@ def _ticket_payload(
             f"Evidence:\n{evidence}"
         ),
         "team": request.linear_team,
-        "project": request.linear_project,
+        "state": "Backlog",
         "parent": epic_id,
         "labels": ["tech-debt", category, first.repo],
         "category": category,

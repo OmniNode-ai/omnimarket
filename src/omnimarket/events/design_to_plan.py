@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class ModelPlanToTicketsStartCommand(BaseModel):
@@ -16,6 +16,20 @@ class ModelPlanToTicketsStartCommand(BaseModel):
     plan_path: str
     project: str = ""
     epic_title: str = ""
+
+    @field_validator("project")
+    @classmethod
+    def _refuse_project(cls, value: str) -> str:
+        """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        created in the Backlog with NO project. Fail loud, never drop it."""
+        if value.strip():
+            raise ValueError(
+                f"project={value!r} refused: every new ticket is created in the "
+                "Backlog with no project (operator ruling 2026-09-30T14:30:05Z, "
+                "OMN-17427). Moving a ticket into a sprint is the operator's call."
+            )
+        return value
+
     no_create_epic: bool = False
     dry_run: bool = False
     skip_existing: bool = False
