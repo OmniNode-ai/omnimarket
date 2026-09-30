@@ -175,6 +175,9 @@ jobs:
             eligible=true
           fi
           {
+            # OMN-20042: the window-quiet step bounds its wait by what is left
+            # of this job's budget, measured from here.
+            echo "started_at=$(date +%s)"
             echo "eligible=${eligible}"
             echo "number=${number}"
             echo "head_sha=${head_sha}"
@@ -396,9 +399,48 @@ jobs:
             --tickets "$TICKETS" \
             --json-out "${RUNNER_TEMP}/runner_summary.json"
 
+      - name: Wait for a quiet batch window before pushing
+        id: window-quiet
+        if: steps.occ-app-token.outputs.token != ''
+        env:
+          OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+          OCC_BRANCH: ${{ steps.companion.outputs.occ_branch }}
+          STARTED_AT: ${{ steps.ctx.outputs.started_at }}
+        run: |
+          set -uo pipefail
+          # OMN-20042: a push onto a batch window (auto/window-*) whose
+          # change-control run is in flight cancels that run and restarts it,
+          # so a busy window never merges and holds every member behind it.
+          # The companion emitter holds its window rebuilds on the same test.
+          # Wait here until the run settles; a non-window branch, an unreadable
+          # window or a spent budget proceeds at once, so this never strands
+          # a member. The push below already re-clones and re-executes on a
+          # moved tip, so a wait after the clone is safe.
+          #
+          # Budget: 45 min job, minus what has run since started_at, minus
+          # 600 s kept for the push and its re-execute retry; never above the
+          # script's own 1500 s default.
+          now="$(date +%s)"
+          left=$(( 45 * 60 - (now - ${STARTED_AT:-$now}) - 600 ))
+          if [ "$left" -gt 1500 ]; then left=1500; fi
+          if [ "$left" -lt 0 ]; then left=0; fi
+          uv run python scripts/ci/occ_window_quiet_wait.py \
+            --branch "$OCC_BRANCH" \
+            --max-wait-seconds "$left"
+          rc=$?
+          if [ "$rc" -eq 10 ]; then
+            echo "::notice::The window ${OCC_BRANCH} merged or closed while the receipt push waited. Not pushing (pushed=false): the receipts bind when this PR's next autobind mints the next window."
+            echo "window_gone=true" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -ne 0 ]; then
+            echo "::warning::The window-quiet wait exited ${rc}; pushing without it, as before OMN-20042."
+          fi
+          exit 0
+
       - name: Push receipts to the companion branch
         id: push
-        if: steps.occ-app-token.outputs.token != ''
+        if: >-
+          steps.occ-app-token.outputs.token != '' &&
+          steps.window-quiet.outputs.window_gone != 'true'
         env:
           OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
           OCC_BRANCH: ${{ steps.companion.outputs.occ_branch }}
