@@ -12,7 +12,7 @@ description: >
   OMN-19793 (EV.4). A run-completed event writes one delegation_eval_item_verdicts
   row per labelled item and one delegation_eval_results row per task class,
   stratum and arm, keyed by the eval run id, so a redelivered run adds no row.
-  The results table is exposed as onex.snapshot.projection.delegation.acceptance-eval.v1.
+  The results table is served on the acceptance-eval projection snapshot topic.
 handler:
   module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
   class: HandlerProjectionDelegationEval
