@@ -35,11 +35,9 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: work_ledger_projection_fold
-      handler:
-        name: HandlerProjectionWorkLedger
-        module: omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection
-      handler_module: omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection
+    # Only the writer is routed (OMN-19833). A routed pure fold is handed the raw
+    # event beside the writer, cannot report a write, and fails or runs on defaults
+    # when its request wraps the event. The writer calls the fold in process (rule 7a).
     # The DURABLE half, the one the projection wiring path calls: without it the
     # node consumes, commits offsets and stores nothing (rule 7a, trap one).
     - operation: work_ledger_projection_writer
