@@ -60,6 +60,20 @@ class ModelInferenceProtocolProfile(BaseModel):
     system_prompt_contains: tuple[str, ...] = Field(default_factory=tuple)
     directive: ModelInferencePromptDirective
     request_options: dict[str, Any] = Field(default_factory=dict)
+    default_temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description=(
+            "OMN-19432. The sampling temperature this profile prescribes when the "
+            "caller supplied none. A field and not a request option because "
+            "`temperature` is a reserved wire key on every delegation path: one "
+            "producer per key, so a profile writing it through request_options "
+            "raises before any request is sent. The dispatch path resolves the "
+            "outbound value as caller, else this default, else the task class "
+            "default."
+        ),
+    )
 
 
 class ModelInferenceProtocolSelection(BaseModel):
@@ -202,6 +216,36 @@ def apply_inference_protocol(
             profile.request_options,
         )
     return next_system_prompt, next_prompt, request_options
+
+
+def resolve_inference_protocol_default_temperature(
+    *,
+    model: str,
+    system_prompt: str = "",
+    task_type: str | None = None,
+    backend_id: str | None = None,
+    config: ModelInferenceProtocolConfig | None = None,
+) -> float | None:
+    """The ``default_temperature`` of the last matching profile, or ``None``.
+
+    Profiles apply in file order, so a later matching profile overrides an
+    earlier one, exactly as their ``request_options`` merge. ``None`` means no
+    matching profile prescribes a temperature and the caller's default applies.
+    """
+    resolved_config = config or load_inference_protocol_config()
+    temperature: float | None = None
+    for profile in resolved_config.profiles:
+        if profile.default_temperature is None:
+            continue
+        if _profile_matches(
+            profile,
+            system_prompt=system_prompt,
+            model=model,
+            task_type=task_type,
+            backend_id=backend_id,
+        ):
+            temperature = profile.default_temperature
+    return temperature
 
 
 def _resolve_selected_profile(
