@@ -127,7 +127,9 @@ def _install_ladder(
         port_mod, "first_eligible_tier", lambda _task_type, **_kwargs: "local"
     )
     monkeypatch.setattr(
-        port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
+        port_mod,
+        "backend_id_for_tier",
+        lambda tier, _task_type, **_kw: _TIER_BACKEND_ID[tier],
     )
     monkeypatch.setattr(
         port_mod, "tier_for_backend", lambda backend_id: _BACKEND_TIER.get(backend_id)

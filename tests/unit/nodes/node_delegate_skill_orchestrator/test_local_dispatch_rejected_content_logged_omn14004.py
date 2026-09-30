@@ -85,7 +85,9 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(port_mod, "next_eligible_tier", fake_next_eligible_tier)
     monkeypatch.setattr(port_mod, "first_eligible_tier", fake_first_eligible_tier)
     monkeypatch.setattr(
-        port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
+        port_mod,
+        "backend_id_for_tier",
+        lambda tier, _task_type, **_kw: _TIER_BACKEND_ID[tier],
     )
     monkeypatch.setattr(
         port_mod, "tier_for_backend", lambda backend_id: _BACKEND_TIER.get(backend_id)
