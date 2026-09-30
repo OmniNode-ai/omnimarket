@@ -268,15 +268,32 @@ class TestRoutingReadsTheProjectionAndFailsClosed:
         snapshot = read_provider_quota_snapshot(None, tenant_id=None)
         assert snapshot.readable is False
 
-    def test_a_zai_cooldown_blocks_every_glm_backend_on_that_credential(self) -> None:
+    def test_a_zai_cooldown_blocks_every_glm_backend_on_that_credential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         now = datetime.now(UTC)
-        backends = routing._load_bifrost_endpoints()
+        # OMN-20173 parked every packaged z.ai rung, so the contract alone no
+        # longer declares one. The zai quota rule still matches any api.z.ai
+        # backend, so two are declared here beside the packaged ones.
+        backends = dict(routing._load_bifrost_endpoints())
+        for ref, model in (
+            ("test-glm-flash", "glm-4.5-flash"),
+            ("test-glm", "glm-5.3"),
+        ):
+            backends[ref] = routing.BifrostBackendRef(
+                endpoint_url="https://api.z.ai/api/paas/v4/chat/completions",
+                model_name=model,
+                timeout_ms=60000,
+                max_tokens=8192,
+                api_key_ref="llm.glm.api_key",
+            )
+        monkeypatch.setattr(routing, "_load_bifrost_endpoints", lambda: backends)
         glm_refs = {
             ref
             for ref, b in backends.items()
             if "api.z.ai" in b.endpoint_url and b.api_key_ref == "llm.glm.api_key"
         }
-        assert glm_refs, "the packaged contract declares a GLM backend"
+        assert glm_refs == {"test-glm-flash", "test-glm"}
         snapshot = ModelProviderQuotaSnapshot(
             tenant_id=None,
             as_of=now,
