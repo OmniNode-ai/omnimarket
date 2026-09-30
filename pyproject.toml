@@ -411,6 +411,7 @@ node_projection_topic_activity = "omnimarket.nodes.node_projection_topic_activit
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
+node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
