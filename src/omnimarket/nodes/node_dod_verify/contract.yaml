@@ -79,6 +79,34 @@ inputs:
       joins to the delegation_events row of that run (OMN-19514). Omit it
       when the verification judges no delegated attempt.
     required: false
+  goal_id:
+    type: uuid
+    description: "Goal being verified; enables inline goal-contract verification."
+    required: false
+  parent_goal_id:
+    type: uuid
+    description: "Parent goal identity for nested goal verification."
+    required: false
+  level:
+    type: str
+    description: "Goal level: delegate_call, workflow_lane, or interactive_session."
+    required: false
+  contract_revision:
+    type: uuid
+    description: "Immutable revision identity of the inline goal contract."
+    required: false
+  contract_schema_version:
+    type: str
+    description: >-
+      Declared contract schema version used with ticket_id and the exact inline
+      item when validating the canonical receipt entry hash.
+    required: false
+  dod_evidence:
+    type: list
+    description: >-
+      Inline ModelContractDodItem values for a goal. Required with goal_id and
+      mutually exclusive with contract_path.
+    required: false
 
 outputs:
   status:
@@ -130,6 +158,18 @@ outputs:
       Why the run reached no verdict, from EnumDodVerifyUnresolvedCause
       (run_error_or_timeout | pr_lookup_failed | pr_lookup_ambiguous |
       repo_lookup_failed | unknown). Set exactly when status is `unresolved`.
+  goal_id:
+    type: uuid
+    description: "Goal identity attached to this verification attempt."
+  parent_goal_id:
+    type: uuid
+    description: "Parent goal identity for nested verification."
+  level:
+    type: str
+    description: "Goal level for this verification attempt."
+  contract_revision:
+    type: uuid
+    description: "Immutable goal-contract revision evaluated by this attempt."
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 

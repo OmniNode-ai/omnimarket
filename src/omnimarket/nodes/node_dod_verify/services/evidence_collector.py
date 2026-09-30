@@ -36,13 +36,20 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, cast
+from uuid import UUID
 
 import yaml
+from omnibase_core.enums.ticket.enum_dod_check_type import EnumDodCheckType
 from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
     EnumDodEvidenceExecutionScope,
 )
+from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
+from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
+from omnibase_core.validation.validator_receipt_gate import (
+    compute_contract_entry_sha256,
+)
 from pydantic import ValidationError
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
@@ -3150,6 +3157,9 @@ class EvidenceCollector:
         execution_audience: EnumDodVerifyExecutionAudience = (
             EnumDodVerifyExecutionAudience.HOSTED
         ),
+        inline_items: tuple[ModelContractDodItem, ...] | None = None,
+        goal_id: UUID | None = None,
+        contract_schema_version: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
@@ -3160,7 +3170,14 @@ class EvidenceCollector:
         Returns:
             One ModelEvidenceCheckResult per dod_evidence item.
         """
-        if contract_path is not None:
+        raw: dict[str, Any] | None
+        if inline_items is not None:
+            path = None
+            raw = {
+                "ticket_id": ticket_id,
+                "dod_evidence": [item.model_dump(mode="json") for item in inline_items],
+            }
+        elif contract_path is not None:
             path = Path(contract_path)
             if not path.exists():
                 return [
@@ -3171,6 +3188,7 @@ class EvidenceCollector:
                         message=f"File does not exist: {contract_path}",
                     )
                 ]
+            raw = self._load_yaml(path)
         else:
             found = self._find_contract(ticket_id)
             if found is None:
@@ -3186,8 +3204,7 @@ class EvidenceCollector:
                     )
                 ]
             path = found
-
-        raw = self._load_yaml(path)
+            raw = self._load_yaml(path)
         if raw is None:
             return [
                 ModelEvidenceCheckResult(
@@ -3303,7 +3320,13 @@ class EvidenceCollector:
             if (id_at[index] or None) in target_ids:
                 continue
             executed[index] = self._execute_item(
-                item, ticket_id, path, index, execution_audience
+                item,
+                ticket_id,
+                path,
+                index,
+                execution_audience,
+                goal_id,
+                contract_schema_version,
             )
 
         # Phase 2 — an edge takes effect only if the item that ultimately
@@ -3438,7 +3461,13 @@ class EvidenceCollector:
                 # the marker did not retire it (OMN-15390 remediation — the
                 # anti-laundering rule). Never a silent pass.
                 group = self._execute_item(
-                    item, ticket_id, path, index, execution_audience
+                    item,
+                    ticket_id,
+                    path,
+                    index,
+                    execution_audience,
+                    goal_id,
+                    contract_schema_version,
                 )
                 if group:
                     carrier = self._terminal_superseder(
@@ -3515,6 +3544,25 @@ class EvidenceCollector:
             results = stamped
 
         return results
+
+    def collect_inline(
+        self,
+        ticket_id: str,
+        dod_evidence: tuple[ModelContractDodItem, ...],
+        *,
+        goal_id: UUID,
+        contract_schema_version: str,
+        execution_audience: EnumDodVerifyExecutionAudience,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Run a typed goal contract without resolving a ticket contract file."""
+        return self._collect_impl(
+            ticket_id,
+            contract_path=None,
+            execution_audience=execution_audience,
+            inline_items=dod_evidence,
+            goal_id=goal_id,
+            contract_schema_version=contract_schema_version,
+        )
 
     @staticmethod
     def _validate_evidence_audiences(
@@ -3650,6 +3698,8 @@ class EvidenceCollector:
         path: Path | None,
         index: int,
         execution_audience: EnumDodVerifyExecutionAudience,
+        goal_id: UUID | None,
+        contract_schema_version: str | None,
     ) -> list[ModelEvidenceCheckResult]:
         """Execute one dod_evidence item and return its full result group.
 
@@ -3702,6 +3752,44 @@ class EvidenceCollector:
                         ),
                     )
                 ]
+            if isinstance(item, dict):
+                checks = item.get("checks")
+                disposition_checks = (
+                    [
+                        check
+                        for check in checks
+                        if isinstance(check, dict)
+                        and check.get("check_type")
+                        == EnumDodCheckType.DISPOSITION.value
+                    ]
+                    if isinstance(checks, list)
+                    else []
+                )
+                if isinstance(checks, list) and disposition_checks:
+                    if len(disposition_checks) != len(checks):
+                        return [
+                            ModelEvidenceCheckResult(
+                                evidence_id=str(
+                                    item.get("id", f"dod_evidence[{index}]")
+                                ),
+                                description=str(item.get("description", "")),
+                                status=EnumEvidenceCheckStatus.FAILED,
+                                message=(
+                                    "INVALID_DISPOSITION_ITEM: disposition items "
+                                    "must not mix disposition and executable checks."
+                                ),
+                            )
+                        ]
+                    return [
+                        self._read_disposition_receipts(
+                            item,
+                            ticket_id,
+                            path,
+                            goal_id,
+                            contract_schema_version,
+                            disposition_checks,
+                        )
+                    ]
             results = [self._check_evidence_item(item, ticket_id, path)]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
@@ -3727,6 +3815,129 @@ class EvidenceCollector:
                     ),
                 )
             ]
+
+    def _read_disposition_receipts(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+        goal_id: UUID | None,
+        contract_schema_version: str | None,
+        checks: list[dict[str, Any]],
+    ) -> ModelEvidenceCheckResult:
+        """Read stored lane dispositions without executing the check value."""
+        item_id = item.get("id")
+        evidence_id = item_id if isinstance(item_id, str) else "unknown"
+        description = str(item.get("description", evidence_id))
+        if goal_id is None:
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=EnumEvidenceCheckStatus.SKIPPED,
+                is_disposition=True,
+                message="DISPOSITION_NOT_GOAL_SCOPED: no goal id was supplied.",
+            )
+
+        if contract_schema_version is None:
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=EnumEvidenceCheckStatus.FAILED,
+                is_disposition=True,
+                message=(
+                    "INVALID_DISPOSITION_RECEIPT: goal contract schema version is "
+                    "missing."
+                ),
+            )
+
+        if not isinstance(item_id, str) or not item_id:
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=EnumEvidenceCheckStatus.FAILED,
+                is_disposition=True,
+                message="MALFORMED_DISPOSITION_ITEM: item id is required.",
+            )
+
+        expected_values = {
+            check.get("check_value")
+            for check in checks
+            if isinstance(check.get("check_value"), str)
+        }
+        payloads = self._load_item_receipts(item_id, ticket_id, contract_path)
+        candidates: list[tuple[str, ModelDodReceipt]] = []
+        malformed = False
+        unbound = False
+        goal_contract = {
+            "ticket_id": ticket_id,
+            "schema_version": contract_schema_version,
+            "dod_evidence": [item],
+        }
+        expected_entry_sha256 = compute_contract_entry_sha256(goal_contract, item_id)
+        for payload in payloads:
+            fields = {
+                key: value for key, value in payload.items() if key != "__source_name__"
+            }
+            if (
+                fields.get("check_type") != EnumDodCheckType.DISPOSITION.value
+                or fields.get("ticket_id") != ticket_id
+                or fields.get("evidence_item_id") != item_id
+                or fields.get("goal_id") != str(goal_id)
+                or fields.get("check_value") not in expected_values
+            ):
+                continue
+            source_name = str(payload.get("__source_name__", ""))
+            try:
+                receipt = ModelDodReceipt.model_validate(fields)
+            except ValidationError:
+                malformed = True
+                continue
+            if receipt.contract_entry_sha256 != expected_entry_sha256:
+                unbound = True
+                continue
+            candidates.append((source_name, receipt))
+
+        if not candidates:
+            status = (
+                EnumEvidenceCheckStatus.FAILED
+                if malformed or unbound
+                else EnumEvidenceCheckStatus.SKIPPED
+            )
+            if malformed:
+                message = (
+                    "INVALID_DISPOSITION_RECEIPT: matching receipt did not validate."
+                )
+            elif unbound:
+                message = (
+                    "INVALID_DISPOSITION_RECEIPT: contract entry hash is missing "
+                    "or mismatched."
+                )
+            else:
+                message = (
+                    "DISPOSITION_RECEIPT_MISSING: no stored receipt matched this goal."
+                )
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=status,
+                is_disposition=True,
+                message=message,
+            )
+
+        source_name, receipt = max(candidates, key=lambda candidate: candidate[0])
+        if receipt.status is EnumReceiptStatus.PASS:
+            status = EnumEvidenceCheckStatus.VERIFIED
+        elif receipt.status is EnumReceiptStatus.FAIL:
+            status = EnumEvidenceCheckStatus.FAILED
+        else:
+            status = EnumEvidenceCheckStatus.SKIPPED
+        return ModelEvidenceCheckResult(
+            evidence_id=evidence_id,
+            description=description,
+            status=status,
+            is_disposition=True,
+            message=f"Disposition receipt {receipt.status.value} read from {source_name}.",
+        )
 
     @staticmethod
     def _non_probative_reason(item: Any) -> str | None:
@@ -4090,6 +4301,22 @@ class EvidenceCollector:
                 description=description,
                 status=EnumEvidenceCheckStatus.SKIPPED,
                 message="No checks defined for this evidence item.",
+                proof_class=item_proof_class,
+            )
+
+        if any(
+            isinstance(check, dict)
+            and check.get("check_type") == EnumDodCheckType.DISPOSITION.value
+            for check in checks
+        ):
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=EnumEvidenceCheckStatus.FAILED,
+                message=(
+                    "DISPOSITION_NOT_EXECUTABLE: stored lane verdicts are read "
+                    "from receipts and are never run by the verifier."
+                ),
                 proof_class=item_proof_class,
             )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -408,6 +408,14 @@ class ModelEvidenceCheckResult(BaseModel):
         default=EnumCheckProofClass.INDETERMINATE,
         description="What this check binds: behavior / merge-state / surrogate.",
     )
+    is_disposition: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "True for a stored lane disposition receipt, which is recorded in "
+            "checks but excluded from the executable-check verdict counts."
+        ),
+    )
 
     # OMN-18056. WHICH ACCEPTANCE CRITERIA THIS CHECK'S EVIDENCE ITEM CLAIMS.
     #
@@ -524,6 +532,16 @@ class ModelDodVerifyState(BaseModel):
         default=None,
         exclude_if=lambda value: value is None,
         description="Correlation id of the delegation run this verification judged.",
+    )
+    goal_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
+    parent_goal_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    level: Literal["delegate_call", "workflow_lane", "interactive_session"] | None = (
+        Field(default=None, exclude_if=lambda value: value is None)
+    )
+    contract_revision: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
     # OMN-18901. When the run began and when its verdict was sealed.
     #

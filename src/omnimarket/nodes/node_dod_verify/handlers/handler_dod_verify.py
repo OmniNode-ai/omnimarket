@@ -140,11 +140,21 @@ class HandlerDodVerify:
         if evidence_results is None:
             assert execution_audience is not None
             collector = self._make_collector()
-            evidence_results = collector.collect(
-                ticket_id=command.ticket_id,
-                contract_path=command.contract_path,
-                execution_audience=execution_audience,
-            )
+            if command.goal_id is not None:
+                assert command.contract_schema_version is not None
+                evidence_results = collector.collect_inline(
+                    ticket_id=command.ticket_id,
+                    dod_evidence=command.dod_evidence,
+                    goal_id=command.goal_id,
+                    contract_schema_version=command.contract_schema_version,
+                    execution_audience=execution_audience,
+                )
+            else:
+                evidence_results = collector.collect(
+                    ticket_id=command.ticket_id,
+                    contract_path=command.contract_path,
+                    execution_audience=execution_audience,
+                )
             # OMN-15454 AC2: provenance of the OCC ref actually read this run,
             # not merely the ref requested. None when collect() never
             # attempted OCC auto-resolution (an explicit contract_path).
@@ -161,17 +171,24 @@ class HandlerDodVerify:
             occ_ref_failure_code = collector.occ_ref_failure_code
 
         checks = evidence_results
+        executable_checks = [r for r in checks if not r.is_disposition]
 
         verified = sum(
-            1 for r in checks if r.status == EnumEvidenceCheckStatus.VERIFIED
+            1 for r in executable_checks if r.status == EnumEvidenceCheckStatus.VERIFIED
         )
-        failed = sum(1 for r in checks if r.status == EnumEvidenceCheckStatus.FAILED)
-        skipped = sum(1 for r in checks if r.status == EnumEvidenceCheckStatus.SKIPPED)
+        failed = sum(
+            1 for r in executable_checks if r.status == EnumEvidenceCheckStatus.FAILED
+        )
+        skipped = sum(
+            1 for r in executable_checks if r.status == EnumEvidenceCheckStatus.SKIPPED
+        )
         # OMN-15382: a superseded item is neither executed nor a failure — it
         # is excluded from the failure count (and from "all skipped" below)
         # entirely; the superseding item's own checks carry the verdict.
         superseded = sum(
-            1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
+            1
+            for r in executable_checks
+            if r.status == EnumEvidenceCheckStatus.SUPERSEDED
         )
         # OMN-16788: skips that are credential-reachability facts, not
         # deliberate ones. These carry a typed ``unverifiable_cause`` and are
@@ -183,14 +200,18 @@ class HandlerDodVerify:
         # any sibling check verified. Counted separately so the failure count
         # stays clean (the check did not fail) while the verdict stays
         # blocked (the check was never proven).
-        unverifiable = [r for r in checks if r.unverifiable_cause is not None]
+        unverifiable = [
+            r for r in executable_checks if r.unverifiable_cause is not None
+        ]
         # OMN-15391: executed, exited 0, and its exit status cannot depend on
         # the product change — a bare ``gh pr view`` (green for every PR on
         # GitHub) or a ticket-independent foreign suite. It is provenance, and
         # provenance is not completion, so it is counted on its own axis and
         # never folded into ``verified``.
         non_probative = sum(
-            1 for r in checks if r.status == EnumEvidenceCheckStatus.NON_PROBATIVE
+            1
+            for r in executable_checks
+            if r.status == EnumEvidenceCheckStatus.NON_PROBATIVE
         )
         # OMN-15911: how many of the passing checks actually executed the
         # claimed behavior. The orthogonal question to ``non_probative``:
@@ -205,14 +226,14 @@ class HandlerDodVerify:
         # OMN-15391 and still a statement about GitHub, not about the system.
         behavior_proving = sum(
             1
-            for r in checks
+            for r in executable_checks
             if r.status == EnumEvidenceCheckStatus.VERIFIED
             and r.proof_class == EnumCheckProofClass.BEHAVIOR
         )
         # OMN-18135 AC4: counted alongside, never added into, the line above.
         readback_proving = sum(
             1
-            for r in checks
+            for r in executable_checks
             if r.status == EnumEvidenceCheckStatus.VERIFIED
             and r.proof_class == EnumCheckProofClass.READBACK
         )
@@ -246,8 +267,10 @@ class HandlerDodVerify:
         # assertion, and an OMN-16788 ``unverifiable_cause`` skip — carry no
         # marker, stay in the denominator, and keep blocking on their existing
         # terms.
-        unbindable_overlays = sum(1 for r in checks if r.unbindable_derived_overlay)
-        non_superseded_total = len(checks) - superseded - unbindable_overlays
+        unbindable_overlays = sum(
+            1 for r in executable_checks if r.unbindable_derived_overlay
+        )
+        non_superseded_total = len(executable_checks) - superseded - unbindable_overlays
         # The marker is only valid on a SKIPPED result (enforced on the model),
         # so every excluded overlay is also inside ``skipped``. Both sides of
         # the "everything was skipped" comparison below must therefore drop
@@ -347,6 +370,15 @@ class HandlerDodVerify:
             # ticket cannot flip on evidence no one read.
             overall = EnumDodVerifyStatus.SKIPPED
         elif (
+            command.goal_id is not None
+            and not executable_checks
+            and any(result.is_disposition for result in checks)
+        ):
+            # A disposition is durable caller evidence, not an executable
+            # verifier check. Report the run as collected so the shared core
+            # reducer reaches NO_CHECKS_RUN over the empty executable set.
+            overall = EnumDodVerifyStatus.VERIFIED
+        elif (
             non_superseded_total == 0 or verdict_bearing_skipped == non_superseded_total
         ):
             # Either no verdict-bearing entry remains at all (only superseded
@@ -421,7 +453,8 @@ class HandlerDodVerify:
                 # product reason. The fix is to BIND a probative check, not to
                 # re-run anything.
                 error_message = (
-                    f"NO_PROBATIVE_EVIDENCE: {non_probative}/{len(checks)} "
+                    f"NO_PROBATIVE_EVIDENCE: {non_probative}/"
+                    f"{len(executable_checks)} "
                     f"evidence checks for {command.ticket_id} executed and "
                     "passed, but every one of them is exit-status-invariant "
                     "over the product change (PR-existence probes, or a "
@@ -462,7 +495,7 @@ class HandlerDodVerify:
                 )
             else:
                 error_message = (
-                    f"NO_CHECKS_VERIFIED: 0/{len(checks)} evidence checks "
+                    f"NO_CHECKS_VERIFIED: 0/{len(executable_checks)} evidence checks "
                     f"verified for {command.ticket_id}"
                 )
 
@@ -472,6 +505,10 @@ class HandlerDodVerify:
             status=overall,
             dry_run=command.dry_run,
             delegation_correlation_id=command.delegation_correlation_id,
+            goal_id=command.goal_id,
+            parent_goal_id=command.parent_goal_id,
+            level=command.level,
+            contract_revision=command.contract_revision,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             checks=checks,
@@ -529,6 +566,10 @@ class HandlerDodVerify:
             ticket_id=state.ticket_id,
             status=state.status,
             delegation_correlation_id=state.delegation_correlation_id,
+            goal_id=state.goal_id,
+            parent_goal_id=state.parent_goal_id,
+            level=state.level,
+            contract_revision=state.contract_revision,
             started_at=state.started_at,
             completed_at=state.completed_at,
             checks=state.checks,
