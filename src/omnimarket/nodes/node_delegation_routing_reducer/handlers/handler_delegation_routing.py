@@ -1739,7 +1739,11 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
 
 
 def backend_id_for_tier(
-    tier_name: str, task_type: str, *, require_credential: bool = True
+    tier_name: str,
+    task_type: str,
+    *,
+    require_credential: bool = True,
+    spread_key: str | None = None,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -1762,6 +1766,12 @@ def backend_id_for_tier(
     :func:`credential_withheld_rung`, to ask this same selection what it would
     have chosen had the credential resolved. See that predicate's docstring for
     why only the credential term moves.
+
+    ``spread_key`` (OMN-19432) is the in-process path's counterpart of the key
+    :func:`delta` derives from the correlation id: when given and the chosen
+    rung has spread-mode peers, the answer is one member of that group, stable
+    per key. ``None`` keeps the ordered answer, so the availability probes and
+    every existing caller are unchanged.
     """
     config = _get_config()
     matching_tier = next(
@@ -1786,6 +1796,8 @@ def backend_id_for_tier(
             task_type, contract
         ),
         require_credential=require_credential,
+        spread_key=spread_key,
+        spread_peers=_spread_peers_for(config),
     )
     if selected is None:
         return None

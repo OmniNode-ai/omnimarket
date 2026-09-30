@@ -187,7 +187,7 @@ def test_backend_id_none_preserves_existing_tier_based_resolution(
         tier_calls.append(task_type)
         return "local"
 
-    def _fake_backend_id_for_tier(tier: str, _task_type: str) -> str:
+    def _fake_backend_id_for_tier(tier: str, _task_type: str, **_kw: object) -> str:
         assert tier == "local"
         return "local-coder"
 

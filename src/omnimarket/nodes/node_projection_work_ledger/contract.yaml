@@ -1,0 +1,98 @@
+---
+name: projection_work_ledger
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
+description: >
+  OMN-19513, stage 1 of retiring the manual markdown work ledger. Folds the
+  eleven typed row events (one topic per canonical row type, declared under
+  event_bus below) into two omninode_internal tables: work_ledger_rows, the
+  whole log keyed on the row's content hash, and work_ledger_state, one row per
+  entity (an open claim, a live hold with its scope, an unanswered message, a
+  ruling, a consent) whose open or closed state is GENERATED from two guarded
+  column groups. The markdown file
+  stays authoritative in stage 1; this projection is what its readers move onto
+  one at a time (pause_check, the drain map, queue_status, session-resume), and
+  the parity check compares the two.
+
+  Rule 7a: a projection is two classes. HandlerProjectionWorkLedger is the pure
+  definition-B fold; WorkLedgerProjectionWriter is the effect-class writer the
+  runtime actually calls, and it declares in-process dispatch. The raw_row in
+  each event is the truth: every typed field is re-derived from it.
+
+# The runtime lanes this node attaches on: the lab lanes only (lab first, rule
+# 24). A runtime that declares no lane does not attach it (fail-closed).
+runtime_lanes:
+  - compose-dev
+  - onex-lab
+  - onex-lab-k3s
+
+handler:
+  module: omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection
+  class: HandlerProjectionWorkLedger
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed (OMN-19833). A routed pure fold is handed the raw
+    # event beside the writer, cannot report a write, and fails or runs on defaults
+    # when its request wraps the event. The writer calls the fold in process (rule 7a).
+    # The DURABLE half, the one the projection wiring path calls: without it the
+    # node consumes, commits offsets and stores nothing (rule 7a, trap one).
+    - operation: work_ledger_projection_writer
+      handler:
+        name: WorkLedgerProjectionWriter
+        module: omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection
+      handler_module: omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection
+
+terminal_event: onex.evt.omnimarket.projection-work-ledger-applied.v1
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.work-ledger-claim.v1
+    - onex.evt.omnimarket.work-ledger-status.v1
+    - onex.evt.omnimarket.work-ledger-terminal.v1
+    - onex.evt.omnimarket.work-ledger-hold.v1
+    - onex.evt.omnimarket.work-ledger-release.v1
+    - onex.evt.omnimarket.work-ledger-msg.v1
+    - onex.evt.omnimarket.work-ledger-ack.v1
+    - onex.evt.omnimarket.work-ledger-ruling.v1
+    - onex.evt.omnimarket.work-ledger-operator-consent.v1
+    - onex.evt.omnimarket.work-ledger-friction.v1
+    - onex.evt.omnimarket.work-ledger-correction.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-work-ledger-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-work-ledger-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-work-ledger-applied.v1
+
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: write
+      role: work_ledger_rows
+    - name: work_ledger_state
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: write
+      role: work_ledger_state
+
+  # work_ledger_rows is keyed on the row's content hash (ON CONFLICT DO NOTHING);
+  # work_ledger_state is keyed on the entity, each op guarded on (at, row_id).
+  idempotency_key: "row_id"
+
+metadata:
+  transport_type: kafka

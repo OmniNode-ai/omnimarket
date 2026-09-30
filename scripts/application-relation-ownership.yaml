@@ -163,6 +163,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-19790: tenant-scoped labels, corrected by newer observations.
+    - name: delegation_eval_items
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_delegation_eval/migrations/0000_create_delegation_eval_items.sql
+      access: read_write
+      role: delegation_eval_labels
     # OMN-19833 (task T11 of the PR landing workflow plan): the two read
     # models of node_projection_pr_landing, one row per (repository, pull
     # request) and one append-only row per (repository, pull request, seq).
@@ -188,6 +195,22 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
       access: read_write
       role: pr_landing_transitions
+    # OMN-19513: the append-only ledger rows and materialized entity state
+    # owned by node_projection_work_ledger. The OMN-15361 SQL gate resolves
+    # ownership from this manifest separately from the node contract db_io.
+    # Both tables are created directly in omninode_internal.
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
+      access: write
+      role: work_ledger_rows
+    - name: work_ledger_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
+      access: write
+      role: work_ledger_state
     # OMN-19399: register this repository as the CATALOG owner of the physical
     # relation `worktree_reconcile_hosts`, one row per host carrying the latest
     # worktree-reconcile run's counts, created by
@@ -1070,6 +1093,14 @@ database_objects:
     database_ref: application
     schema: omninode_internal
     domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19790: BIGSERIAL requires a separately declared sequence grant.
+  - name: delegation_eval_items_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   # OMN-19833: the sequences behind the projection_cursor of the two PR
