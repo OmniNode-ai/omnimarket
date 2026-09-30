@@ -1905,6 +1905,7 @@ def sibling_backend_available_in_tier(
     tier_name: str,
     task_type: str,
     exclude_backend_refs: frozenset[str],
+    estimated_tokens: int = 0,
 ) -> str | None:
     """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
 
@@ -1930,6 +1931,10 @@ def sibling_backend_available_in_tier(
     ``exclude_backend_refs`` — the orchestrator then falls through to the
     normal cross-tier escalation (``next_eligible_tier``), which is the
     ORIGINAL behavior when no sibling exists.
+
+    ``estimated_tokens`` (OMN-19432) replaces the 0-token availability probe with
+    the prompt's real size, so a sibling whose routing window the prompt exceeds
+    is not offered. The default keeps every existing caller's answer.
     """
     config = _get_config()
     matching_tier = next(
@@ -1948,7 +1953,7 @@ def sibling_backend_available_in_tier(
     selected = _select_model_for_task(
         matching_tier.models,
         task_type,
-        0,
+        estimated_tokens,
         bifrost_backends,
         contract_model_ref=contract_model_ref,
         exclude_backend_refs=exclude_backend_refs,

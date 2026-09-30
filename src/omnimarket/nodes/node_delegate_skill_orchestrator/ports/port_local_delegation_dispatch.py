@@ -2160,6 +2160,7 @@ class LocalDelegationDispatchPort:
         task_type: str,
         excluded_backend_refs: frozenset[str],
         excluded_model_ids: frozenset[str] = frozenset(),
+        estimated_tokens: int = 0,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
 
@@ -2201,6 +2202,9 @@ class LocalDelegationDispatchPort:
         ``excluded_model_ids`` (OMN-19215) skips a sibling whose resolved
         ``model_id`` is in the set, counting it as tried, so the quality-gate
         caller never re-draws the model it just rejected on another host.
+
+        ``estimated_tokens`` (OMN-19432) is the prompt's size; a sibling whose routing
+        window it exceeds is not offered. The default 0 is the availability probe.
         """
         tried: set[str] = set(excluded_backend_refs)
         while True:
@@ -2208,6 +2212,7 @@ class LocalDelegationDispatchPort:
                 current_tier,
                 task_type,
                 frozenset(tried),
+                estimated_tokens=estimated_tokens,
             )
             if sibling_ref is None:
                 return None
@@ -2260,6 +2265,7 @@ class LocalDelegationDispatchPort:
                 current_tier=current_tier,
                 task_type=task_type,
                 excluded_backend_refs=frozenset(excluded_backend_refs),
+                estimated_tokens=measured_input_tokens,
             )
             if sibling is None:
                 return None

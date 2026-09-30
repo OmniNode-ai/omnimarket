@@ -267,6 +267,29 @@ def test_the_wide_backend_is_the_sibling_once_the_rung_is_tried() -> None:
     )
 
 
+@pytest.mark.usefixtures("_authority")
+def test_the_sibling_probe_with_a_size_does_not_offer_a_backend_the_prompt_exceeds() -> (
+    None
+):
+    tried = frozenset({_RUNG})
+    assert (
+        routing.sibling_backend_available_in_tier(
+            "local", "document", tried, estimated_tokens=20_000
+        )
+        == _WIDE
+    )
+    assert (
+        routing.sibling_backend_available_in_tier(
+            "local", "document", tried, estimated_tokens=_WIDE_WINDOW + 1
+        )
+        is None
+    )
+    # The default is the 0-token availability probe every existing caller reads.
+    assert (
+        routing.sibling_backend_available_in_tier("local", "document", tried) == _WIDE
+    )
+
+
 # --- the in-process path's initial pick honours the prompt's size -------------
 
 

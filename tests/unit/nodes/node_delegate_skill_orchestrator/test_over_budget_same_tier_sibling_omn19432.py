@@ -102,18 +102,33 @@ def _install(
     *,
     budgets: dict[str, int | None],
     local_order: tuple[str, ...] = (_SMALL_A, _SMALL_B, _WIDE),
-) -> None:
+    windows: dict[str, int] | None = None,
+) -> list[int]:
+    windows = windows or {}
+    seen_estimates: list[int] = []
+
     def fake_resolve(
         task_type: str, *, backend_id: str | None = None
     ) -> ModelResolvedDelegationBackend:
         return _backend(backend_id or local_order[0])
 
     def fake_sibling(
-        tier_name: str, task_type: str, excluded: frozenset[str]
+        tier_name: str,
+        task_type: str,
+        excluded: frozenset[str],
+        estimated_tokens: int = 0,
     ) -> str | None:
+        seen_estimates.append(estimated_tokens)
         if tier_name != "local":
             return None
-        return next((b for b in local_order if b not in excluded), None)
+        return next(
+            (
+                b
+                for b in local_order
+                if b not in excluded and estimated_tokens <= windows.get(b, 10**9)
+            ),
+            None,
+        )
 
     def fake_next_eligible_tier(
         current: str,
@@ -144,6 +159,7 @@ def _install(
     monkeypatch.setattr(
         port_mod, "resolve_backend_grounding_budget", lambda b: budgets.get(b)
     )
+    return seen_estimates
 
 
 def _dispatch(port: LocalDelegationDispatchPort, prompt: str) -> dict[str, object]:
@@ -237,3 +253,34 @@ def test_an_in_budget_prompt_never_leaves_the_rung_it_was_routed_to(
 
     assert effect.calls == [_SMALL_A]
     assert result["escalation_count"] == 0
+
+
+def test_the_sibling_walk_asks_with_the_prompts_own_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _install(
+        monkeypatch,
+        budgets={_SMALL_A: _BUDGET, _SMALL_B: _BUDGET, _WIDE: None, _CLOUD: None},
+    )
+
+    _dispatch(_port(tmp_path, _RecordingEffect()), _OVER)
+
+    assert seen
+    assert set(seen) == {len(_OVER) // 4}
+
+
+def test_a_sibling_whose_routing_window_the_prompt_exceeds_is_not_offered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The planner declares no budget but its routing window is 10,000 tokens."""
+    _install(
+        monkeypatch,
+        budgets={_SMALL_A: _BUDGET, _SMALL_B: _BUDGET, _WIDE: None, _CLOUD: None},
+        windows={_WIDE: 10_000},
+    )
+    effect = _RecordingEffect()
+
+    result = _dispatch(_port(tmp_path, effect), _OVER)
+
+    assert effect.calls == [_CLOUD]
+    assert result["escalation_count"] == 1
