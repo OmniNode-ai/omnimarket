@@ -112,12 +112,23 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
+      - backend_id: cloud-gemini-pro
+        provider: gemini
+        endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        model_name: gemini-2.5-flash
+        secret_ref: llm.gemini.api_key
+        api_key_env: GEMINI_API_KEY
+        tier: cheap_cloud
+        timeout_ms: 30000
+        max_tokens: 65536
+        capabilities: [code_generation]
+      # OMN-20173: a house backend DISABLED by a null endpoint. It is not a
+      # route, but its secret_ref must still count as OmniNode's credential.
       - backend_id: cloud-glm
         provider: glm
-        endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        endpoint_url: null
         model_name: glm-5.3-flash
         secret_ref: llm.glm.api_key
-        api_key_env: LLM_GLM_API_KEY
         tier: cheap_cloud
         timeout_ms: 30000
         max_tokens: 65536
@@ -130,7 +141,7 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-glm]
+        backend_ids: [local-coder, cloud-gemini-pro]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -561,7 +572,7 @@ def test_platform_work_may_escalate_to_the_house_credentialed_tier() -> None:
         min_tier_name="cheap_cloud",
         surface=EnumDelegationSurface.CLOUD,
     )
-    assert decision.api_key_ref == "llm.glm.api_key"
+    assert decision.api_key_ref == "llm.gemini.api_key"
     assert decision.tier_name == "cheap_cloud"
 
 

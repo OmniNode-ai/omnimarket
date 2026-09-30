@@ -112,3 +112,26 @@ def test_the_nightly_rung_eval_has_no_direct_glm_rung() -> None:
     rungs = yaml.safe_load(_RUNG_EVAL.read_text()).get("rungs") or []
     assert rungs, "no rungs were read; the read is wrong"
     assert "cloud-glm" not in {str(r.get("rung_id")) for r in rungs}
+
+
+def test_a_disabled_rung_still_counts_as_a_house_credential() -> None:
+    """Disabling a rung by a null endpoint must not shrink the house set (INV-068).
+
+    Positive control and the claim together: the Vertex rung carries a null endpoint in
+    the committed contract too, and both its credential and the disabled GLM rungs'
+    credential stay in the set a customer-path request is checked against.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing,
+    )
+
+    routing._load_bifrost_endpoints.cache_clear()
+    try:
+        refs = routing.shipped_house_credential_refs()
+        bound = routing._load_bifrost_endpoints()
+    finally:
+        routing._load_bifrost_endpoints.cache_clear()
+    assert "cloud-glm" not in bound
+    assert "cloud-glm-5-3" not in bound
+    assert "llm.glm.api_key" in refs
+    assert "llm.gemini.api_key" in refs
