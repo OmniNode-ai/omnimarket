@@ -184,6 +184,20 @@ def test_exposure_is_bus_backed_at_the_model_day_grain() -> None:
         assert column in exposure.columns
 
 
+def test_exposure_declares_no_reader_until_a_surface_reads_it() -> None:
+    # OMN-17199: a bus_backed exposure with no reader fails the omnibase_infra
+    # exposure-reader-coverage gate on every PR. No dashboard or backend reader
+    # renders this projection yet, so the opt-out is declared with its reason;
+    # delete both keys when a reader lands.
+    api = _contract()["projection_api"]
+    assert isinstance(api, dict)
+    assert api["bus_backed"] is True
+    assert api["consumers"] == "none"
+    reason = api["consumers_reason"]
+    assert isinstance(reason, str)
+    assert "no rendering surface" in reason
+
+
 def test_runtime_dispatch_resolves_only_the_writer() -> None:
     contract = _contract()
     handlers = contract["handler_routing"]["handlers"]  # type: ignore[index]

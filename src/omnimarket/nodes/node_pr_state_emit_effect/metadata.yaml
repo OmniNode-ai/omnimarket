@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_state_emit_effect
+version: 0.1.0
+description: OMN-19999. Types a watcher observation and emits pr.state.observed through node_event_emit_effect. Delivery identity is its digest; partition key is repo#pr_number.
+pack: pr_state
+node_role: effect
+display_name: PR State Emit Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_state_emit_effect: omnimarket.nodes.node_pr_state_emit_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase-infra>=0.38.3,<0.39.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- pr-state
+- event-emit
+- spool
+- OMN-19999

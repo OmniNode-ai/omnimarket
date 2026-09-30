@@ -169,6 +169,13 @@ db_io:
     # Declared HERE for the reason the entry above records: the OMN-15361 SQL
     # gate resolves a created application object against this manifest, not
     # against the node db_io block. Created directly in omninode_internal.
+    # OMN-19999: node-owned complete PR observations, retained after closure.
+    - name: pr_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_state/migrations/0000_create_pr_state.sql
+      access: write
+      role: pr_state
     - name: pr_landing_state
       database_ref: application
       schema: omninode_internal
@@ -181,6 +188,22 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
       access: read_write
       role: pr_landing_transitions
+    # OMN-19513: the append-only ledger rows and materialized entity state
+    # owned by node_projection_work_ledger. The OMN-15361 SQL gate resolves
+    # ownership from this manifest separately from the node contract db_io.
+    # Both tables are created directly in omninode_internal.
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
+      access: write
+      role: work_ledger_rows
+    - name: work_ledger_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
+      access: write
+      role: work_ledger_state
     # OMN-19399: register this repository as the CATALOG owner of the physical
     # relation `worktree_reconcile_hosts`, one row per host carrying the latest
     # worktree-reconcile run's counts, created by

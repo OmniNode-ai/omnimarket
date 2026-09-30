@@ -303,6 +303,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
     #
+    # WorkLedgerProjectionWriter (OMN-19513) is the work-ledger projection's
+    # rule 7a effect-class DB writer. It is dispatched once per consumed row by
+    # runtime auto-wiring; its pure fold, HandlerProjectionWorkLedger, does not
+    # declare the capability.
     # WorktreeReconcileProjectionWriter (OMN-19399) follows, on the same
     # reviewed terms. It is the only writer of worktree_reconcile_hosts,
     # dispatched once per consumed run-completed event by runtime auto-wiring,
@@ -328,6 +332,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # consumed lab-proof receipt, and the writer calls its pure fold in process.
     # HandlerProjectionLabProofReceipts does NOT declare the capability, so the
     # receipt is not dispatched to both the writer and the fold.
+    # PrStateProjectionWriter (OMN-19999) follows the same pattern. It is the
+    # node's DB writer, dispatched once per consumed PR-state event by runtime
+    # auto-wiring; its pure fold, HandlerProjectionPrState, does not declare
+    # this capability and must not.
     #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
@@ -347,10 +355,12 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabLaneHealthProjectionWriter",
         "LabProofReceiptsProjectionWriter",
         "PrLandingProjectionWriter",
+        "PrStateProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorkLedgerProjectionWriter",
         "WorktreeReconcileProjectionWriter",
         "UsageByModelDayProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"

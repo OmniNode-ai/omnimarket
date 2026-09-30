@@ -46,7 +46,11 @@ from omnimarket.routing.local_byok_route import house_provider_slug
 
 __all__ = ["secret_group"]
 
-_PROMPT = "Value (input hidden): "
+#: The leading characters a key for a known provider starts with. Checked only
+#: on the terminal prompt, where a mistyped or mis-pasted value is the failure;
+#: a piped value is a script's choice and is stored as given. A provider absent
+#: here has no documented fixed prefix, so nothing is checked for it.
+_KNOWN_KEY_PREFIXES: dict[str, str] = {"openrouter": "sk-or-v1-"}
 
 
 def _offered_provider(secret_ref: str) -> str | None:
@@ -66,10 +70,40 @@ def _offered_provider(secret_ref: str) -> str | None:
     return slug
 
 
-def _read_value() -> str:
-    """Take the value from stdin, or from a hidden prompt on a terminal."""
-    if sys.stdin is not None and sys.stdin.isatty():
-        return getpass(_PROMPT).strip()
+def _stdin_is_tty() -> bool:
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def _prompt_value(secret_ref: str) -> str:
+    """Ask for the value on a terminal: hidden, confirmed, and shape-checked.
+
+    Nothing typed is ever echoed or included in a message, including in the
+    refusals below.
+    """
+    value = getpass(f"Paste the value for {secret_ref} (input hidden): ").strip()
+    if not value:
+        raise click.ClickException(
+            f"no value was entered for {secret_ref}; nothing was stored."
+        )
+    slug = house_provider_slug(secret_ref)
+    prefix = _KNOWN_KEY_PREFIXES.get(slug) if slug is not None else None
+    if prefix is not None and not value.startswith(prefix):
+        raise click.ClickException(
+            f"that does not look like a {slug} key: a {slug} key starts with "
+            f"{prefix!r}. Nothing was stored. Copy the whole key from the "
+            "provider's key page and run the command again."
+        )
+    if getpass("Paste it again to confirm (input hidden): ").strip() != value:
+        raise click.ClickException(
+            "the two entries did not match; nothing was stored. Run the command again."
+        )
+    return value
+
+
+def _read_value(secret_ref: str) -> str:
+    """Take the value from stdin when piped, or from a prompt on a terminal."""
+    if _stdin_is_tty():
+        return _prompt_value(secret_ref)
     return sys.stdin.read().strip()
 
 
@@ -106,7 +140,7 @@ def set_secret(secret_ref: str, force: bool) -> None:
             "cannot silently swap a working credential for a stale one."
         )
 
-    value = _read_value()
+    value = _read_value(secret_ref)
     if not value:
         raise click.ClickException(
             f"no value was supplied for {secret_ref}. Pipe the value in, or "
