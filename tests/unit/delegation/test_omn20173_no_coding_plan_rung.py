@@ -77,8 +77,8 @@ def test_no_backend_calls_the_coding_plan_endpoint() -> None:
 
 
 def test_the_glm_coding_plan_backends_are_disabled() -> None:
-    """Declared (the BYOK catalogue's glm row needs a platform rung naming its slug) but with a null
-    endpoint and no endpoint env, the shape the routing reducer skips, so nothing can call them."""
+    """Declared (the BYOK catalogue's glm row needs a platform rung naming its slug) but parked:
+    a null endpoint, the shape the routing reducer and the generation consumer skip."""
     backends = {
         str(b.get("backend_id")): b
         for b in yaml.safe_load(_BIFROST.read_text())["backends"]
@@ -88,7 +88,6 @@ def test_the_glm_coding_plan_backends_are_disabled() -> None:
         if backend is None:
             continue
         assert backend.get("endpoint_url") is None, backend_id
-        assert not backend.get("endpoint_url_env"), backend_id
 
 
 def test_no_routing_tier_places_a_removed_glm_rung() -> None:

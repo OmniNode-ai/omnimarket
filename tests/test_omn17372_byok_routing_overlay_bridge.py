@@ -200,6 +200,17 @@ class TestPlatformContractParity:
                 for b in platform
                 if b.get("endpoint_url") == backend.endpoint_url
                 and b.get("model_name") == backend.model_name
+            ] or [
+                # OMN-20173: a platform rung PARKED by a null endpoint (the GLM
+                # Coding Plan rung, disabled because the plan's terms bar direct
+                # API use from our systems) still anchors the customer row by
+                # model and provider.
+                b
+                for b in platform
+                if b.get("endpoint_url") is None
+                and b.get("endpoint_url_env")
+                and b.get("model_name") == backend.model_name
+                and b.get("provider") == backend.provider
             ]
             assert matches, (
                 f"BYOK provider {backend.provider!r} declares endpoint_url="

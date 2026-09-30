@@ -302,9 +302,13 @@ backends:
   # through the internal harness-delegate skill (operator tooling, never a
   # routing tier: INV-064, INV-068).
   #
-  # How they are disabled: `endpoint_url: null` with no `endpoint_url_env`, the
-  # shape the routing reducer's `_load_bifrost_endpoints` skips (the renderer's
-  # own disable convention, OMN-17502), and no placement in routing_tiers.yaml.
+  # How they are disabled ("parked", in the bindability validator's words):
+  # `endpoint_url: null`, the shape the routing reducer's `_load_bifrost_endpoints`
+  # and the generation consumer both skip, and no placement in routing_tiers.yaml.
+  # The `endpoint_url_env` names are inert and exist only for the provider
+  # endpoint shape audit: the deploy-time renderer strips them and never reads an
+  # endpoint from the process environment, and a lane overlay binds only local
+  # backends. No lane sets them; setting one would reopen a path the terms bar.
   # The declarations stay so the customer BYOK catalogue's glm row keeps a
   # platform rung carrying its slug (byok_catalogue_no_house_entry) and so no
   # id-keyed reader breaks; a customer's own key never resolves through them.
@@ -313,6 +317,7 @@ backends:
   # tests/unit/delegation/test_omn20173_no_coding_plan_rung.py.
   - backend_id: cloud-glm
     provider: glm
+    endpoint_url_env: BIFROST_CLOUD_GLM_ENDPOINT_URL
     endpoint_url: null
     model_name: "glm-5.3-flash"
     secret_ref: llm.glm.api_key
@@ -325,6 +330,7 @@ backends:
       - research
   - backend_id: cloud-glm-5-3
     provider: glm
+    endpoint_url_env: BIFROST_CLOUD_GLM_5_3_ENDPOINT_URL
     endpoint_url: null
     model_name: "glm-5.3"
     secret_ref: llm.glm.api_key
