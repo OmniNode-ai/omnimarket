@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -335,29 +335,10 @@ class EnumQuotaScope(StrEnum):
     MODEL = "model"
 
 
-# OMN-20154, the consumer-first half. The next change declares ``scope`` on
-# each quota code rule (provider-wide or per model) and a ``cooldown``
-# disposition. This model is ``extra="forbid"``, so a released loader would
-# refuse a policy carrying ``scope``; this release accepts the key and discards
-# it, until the declaring change replaces this with the field itself.
-_FORTHCOMING_QUOTA_RULE_KEYS: frozenset[str] = frozenset({"scope"})
-
-
 class ModelQuotaCodeRule(BaseModel):
     """One provider error code and the disposition it maps to."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_forthcoming_keys(cls, data: Any) -> Any:
-        if not isinstance(data, dict) or _FORTHCOMING_QUOTA_RULE_KEYS.isdisjoint(data):
-            return data
-        return {
-            key: value
-            for key, value in data.items()
-            if key not in _FORTHCOMING_QUOTA_RULE_KEYS
-        }
 
     code: str = Field(..., description="Provider-native error code, as a string.")
     disposition: EnumQuotaDisposition = Field(...)

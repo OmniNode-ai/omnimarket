@@ -47,7 +47,7 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
 # that decodes the new shape before the producer that emits it can merge.
 #
-# This is that consumer. It accepts exactly these keys and discards them,
+# This consumer accepts exactly the keys listed below and discards them,
 # because it has nowhere typed to put them yet. Any other unknown key is still
 # refused. The half that declares the fields replaces this with the fields
 # themselves.
@@ -57,13 +57,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # fields" the paragraph above describes), so it is not listed here: the
 # frozenset holds only keys still awaiting their own declared field.
 #
-# OMN-20154 adds three more the same way: which provider a rung called, the
-# HTTP status it answered and its native error code. The producer that stamps
-# them onto each attempt, and the declared fields, land in the change after the
-# release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "provider_id", "http_status", "provider_code"}
-)
+# OMN-20154 now declares ``provider_id``, ``http_status`` and ``provider_code``
+# as real attempt fields below. They retain the provider facts stamped by the
+# producer and are no longer listed among the forthcoming keys.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
