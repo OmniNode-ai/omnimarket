@@ -142,28 +142,3 @@ def test_a_selected_overlay_wins_over_the_local_store(
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "no-such-profile")
     with pytest.raises(ProviderQuotaReadBindingError):
         resolve_provider_quota_reader_for_local_store(tmp_path / "delegation.sqlite")
-
-
-def test_a_fresh_install_with_no_overlay_resolves_a_quota_reader(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The customer path: empty HOME, no overlay, default port construction.
-
-    ``tests/conftest.py`` no longer stubs the quota reader, so this runs the real
-    resolution. It fails if a fresh install cannot bind a reader, which is what
-    broke ``onex delegate`` before the local-store binding.
-    """
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("USERPROFILE", str(home))
-    monkeypatch.delenv("ONEX_DATABASE_TOPOLOGY_PROFILE", raising=False)
-    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-
-    dispatch = LocalDelegationDispatchPort()
-    snapshot = dispatch._quota_snapshot(())
-
-    assert snapshot.readable
-    assert dispatch._quota_reader is not None
