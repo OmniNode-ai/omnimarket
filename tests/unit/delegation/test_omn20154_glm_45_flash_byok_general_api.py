@@ -408,3 +408,20 @@ def test_the_effect_books_a_free_model_call_at_zero(
     assert result.success is True
     assert result.actual_cost_usd == Decimal("0")
     assert result.cost_basis is EnumCostBasis.ZERO_MARGINAL_API_COST
+
+
+# -- the surface declaration lives outside the wire payload model --------------
+
+
+def test_the_surface_is_declared_in_its_own_contract_not_in_the_wire_payload() -> None:
+    """``ModelQuotaProviderRule`` is decoded by released consumers with extra keys
+    forbidden, so a new key on it would need a consumer-first release."""
+    from omnimarket.inference.provider_surfaces import load_provider_surfaces
+
+    surfaces = load_provider_surfaces()
+    assert [
+        (s.provider_id, s.match_path_prefix, s.allowed_model_names) for s in surfaces
+    ] == [("zai-general", "/api/paas/v4", (_FREE_MODEL,))]
+    for rule in _bifrost()["provider_quota_policy"]["providers"]:
+        assert "match_path_prefix" not in rule
+        assert "allowed_model_names" not in rule

@@ -38,6 +38,11 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.inference.provider_surfaces import (
+    load_provider_surfaces,
+    provider_surface_for_endpoint,
+)
+
 # OMN-16891: the config SHAPES live with the other bifrost wire DTOs — the
 # bifrost loader validates the whole contract with extra="forbid", so a second
 # private definition here would be a second source of truth that could drift
@@ -95,30 +100,31 @@ def provider_rule_for_endpoint(
     """Return the provider rule that describes ``endpoint_url``.
 
     A rule matches on the endpoint's host (subdomains match their declared
-    parent, so a regional or versioned host does not silently fall through to
-    the default disposition). A rule that also declares ``match_path_prefix``
-    matches only endpoints under that prefix, and of the rules that match, the
-    longest prefix wins: one host can serve two products with two quota domains
-    (z.ai's Coding Plan and general API, OMN-20154), and a rule with no prefix
-    is the host-wide fallback.
+    parent, so a regional or versioned host does not silently fall through to the
+    default disposition). One host can serve two products with two quota domains
+    (z.ai's Coding Plan and general API, OMN-20154): an endpoint under a declared
+    provider surface takes the rule that surface names, and every other endpoint
+    on the host takes the host-wide rule, never a surface's.
     """
-    parsed = urlparse(endpoint_url)
-    host = (parsed.hostname or "").lower()
+    host = (urlparse(endpoint_url).hostname or "").lower()
     if not host:
         return None
-    best: ModelQuotaProviderRule | None = None
-    best_len = -1
-    for provider in providers:
-        match = provider.match_endpoint_host.lower()
-        if not (host == match or host.endswith(f".{match}")):
-            continue
-        prefix = provider.match_path_prefix
-        if prefix is not None and not parsed.path.startswith(prefix):
-            continue
-        specificity = len(prefix) if prefix is not None else 0
-        if specificity > best_len:
-            best, best_len = provider, specificity
-    return best
+    candidates = [
+        provider
+        for provider in providers
+        if host == provider.match_endpoint_host.lower()
+        or host.endswith(f".{provider.match_endpoint_host.lower()}")
+    ]
+    surface = provider_surface_for_endpoint(endpoint_url)
+    if surface is not None:
+        for provider in candidates:
+            if provider.provider_id == surface.provider_id:
+                return provider
+    surface_ids = {s.provider_id for s in load_provider_surfaces()}
+    for provider in candidates:
+        if provider.provider_id not in surface_ids:
+            return provider
+    return None
 
 
 def _provider_for(

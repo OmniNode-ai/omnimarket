@@ -978,19 +978,11 @@ provider_quota_policy:
     # a tenant's own BYOK credential does, through the glm/general_api row of
     # byok_provider_backends.v1.yaml. This rule gives that surface its own quota
     # domain (a spent Coding Plan window must not bar it, and the reverse) and its
-    # own reading of 1113. `match_path_prefix` makes this rule win over the
-    # host-wide `zai` rule for any /api/paas/v4 endpoint, and
-    # `allowed_model_names` is the load-time guard that keeps every paid model
-    # off this surface: no paid balance is approved.
+    # own reading of 1113. provider_surfaces.v1.yaml makes this rule win over the
+    # host-wide `zai` rule for any /api/paas/v4 endpoint and lists the only model
+    # admitted there: no paid balance is approved.
     - provider_id: zai-general
       match_endpoint_host: "api.z.ai"
-      match_path_prefix: "/api/paas/v4"
-      allowed_model_names:
-        - "glm-4.5-flash"
-      allowed_model_names_hint: >-
-        Only glm-4.5-flash is free on the z.ai general API, and no paid balance
-        is approved. A paid id here answers 429 code 1113. Fix the model id;
-        do not fund the account and do not add a paid id to this list.
       codes:
         # Capacity signals, not quality verdicts and not plan caps: measured
         # 2026-09-30, glm-4.5-flash answers 1302 above 2 requests in flight, and

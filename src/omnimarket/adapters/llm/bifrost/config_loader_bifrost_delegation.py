@@ -36,6 +36,7 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.inference.provider_surfaces import load_provider_surfaces
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     AUTHORITATIVE_BACKEND_FIELDS,
     EnumBifrostFieldSource,
@@ -638,12 +639,13 @@ def reject_backends_off_a_declared_provider_surface(
         ProviderSurfaceMismatchError: naming every offending ``backend_id``, its
             URL, the required prefix, the declared hint, and ``source``.
     """
-    rules = [
-        r
-        for r in provider_rules
-        if r.get("required_path_prefix") or r.get("allowed_model_names") is not None
-    ]
-    if not rules:
+    rules = [r for r in provider_rules if r.get("required_path_prefix")]
+    # OMN-20154: a host can serve a second, separately metered surface (z.ai's
+    # general API beside the Coding Plan). The surface declares the ONLY models
+    # admitted under its path prefix (provider_surfaces.v1.yaml): a model outside
+    # the list is refused by name, because no paid balance is approved there.
+    surfaces = [surface.as_rule() for surface in load_provider_surfaces()]
+    if not rules and not surfaces:
         return
 
     def _host_of(backend: Mapping[str, Any]) -> tuple[str | None, str | None]:
@@ -653,23 +655,12 @@ def reject_backends_off_a_declared_provider_surface(
         parsed = urlparse(url)
         return parsed.hostname, parsed.path
 
-    # OMN-20154: a host can serve a second, separately metered surface (z.ai's
-    # general API beside the Coding Plan). A rule that declares
-    # ``match_path_prefix`` plus ``allowed_model_names`` admits that surface for
-    # exactly those models, and only for them: a model outside the list is
-    # refused by name, because no paid balance is approved there.
-    surfaces = [
-        r
-        for r in rules
-        if r.get("match_path_prefix") and r.get("allowed_model_names") is not None
-    ]
-
     offenders: list[str] = []
-    for rule in surfaces:
-        prefix = cast(str, rule["match_path_prefix"])
-        host = rule.get("match_endpoint_host")
-        allowed = list(rule.get("allowed_model_names") or [])
-        hint = rule.get("allowed_model_names_hint") or ""
+    for surface_rule in surfaces:
+        prefix = cast(str, surface_rule["match_path_prefix"])
+        host = surface_rule.get("match_endpoint_host")
+        allowed = list(surface_rule.get("allowed_model_names") or [])
+        hint = surface_rule.get("allowed_model_names_hint") or ""
         # The host's primary surface, when the contract names one, is where every
         # other model is served: say so, so a repointed paid backend reads as the
         # wrong-surface defect it is.
@@ -699,7 +690,7 @@ def reject_backends_off_a_declared_provider_surface(
             offenders.append(
                 f"backend {backend.get('backend_id')!r} -> {backend.get('endpoint_url')} "
                 f"carries model {backend.get('model_name')!r}; provider "
-                f"{rule.get('provider_id')!r} admits only {allowed} under path "
+                f"{surface_rule.get('provider_id')!r} admits only {allowed} under path "
                 f"prefix {prefix!r}" + (f" — {hint}" if hint else "") + primary_note
             )
 
