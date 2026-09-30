@@ -17,7 +17,10 @@ What must hold, and what each test pins:
 * through the routing authority, a prompt over the rung's window selects the
   wide backend, a short prompt still selects the rung, the wide backend is the
   sibling after the rung is tried, and a prompt over even the wide window
-  selects nothing local, so it still escalates.
+  selects nothing local, so it still escalates;
+* the in-process path (``onex delegate``) makes its INITIAL pick with the
+  prompt's own size, where it used a 0-token probe and handed a 60,000-token
+  prompt to an 8192-window rung or a 32768-window spread peer.
 """
 
 from __future__ import annotations
@@ -36,6 +39,9 @@ from omnimarket.models.delegation.model_delegation_backend_placement import (
 from omnimarket.models.delegation.wire import (
     ModelTierModel,
     parse_delegation_config_yaml,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
@@ -259,3 +265,123 @@ def test_the_wide_backend_is_the_sibling_once_the_rung_is_tried() -> None:
         )
         is None
     )
+
+
+# --- the in-process path's initial pick honours the prompt's size -------------
+
+
+@pytest.mark.usefixtures("_authority")
+def test_backend_id_for_tier_defaults_to_the_zero_token_availability_probe() -> None:
+    """POSITIVE CONTROL: no estimate keeps every existing caller's answer."""
+    assert routing.backend_id_for_tier("local", "document") == _RUNG
+    assert (
+        routing.backend_id_for_tier("local", "document", estimated_tokens=3000) == _RUNG
+    )
+
+
+@pytest.mark.usefixtures("_authority")
+def test_backend_id_for_tier_with_a_long_prompt_answers_the_wide_backend() -> None:
+    assert (
+        routing.backend_id_for_tier(
+            "local", "document", estimated_tokens=_RUNG_WINDOW + 1
+        )
+        == _WIDE
+    )
+    assert (
+        routing.backend_id_for_tier(
+            "local", "document", estimated_tokens=_WIDE_WINDOW + 1
+        )
+        is None
+    )
+
+
+def _resolvable_bifrost_yaml() -> str:
+    """The fixture plus the token and timeout budgets the port's resolver needs."""
+    return _BIFROST_YAML.replace(
+        "    provider: local\n",
+        "    provider: local\n    max_tokens: 4096\n    timeout_ms: 30000\n",
+    )
+
+
+def _port(tmp_path: Path) -> LocalDelegationDispatchPort:
+    return LocalDelegationDispatchPort(
+        effect_handler=lambda _request: pytest.fail("no LLM call in a resolution test"),
+        evidence_db_path=tmp_path / "d.sqlite",
+        effect_process_boundary=False,
+    )
+
+
+@pytest.fixture
+def _resolvable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _authority: None
+) -> None:
+    (tmp_path / "bifrost_delegation.yaml").write_text(_resolvable_bifrost_yaml())
+    routing._config = None
+    routing._load_bifrost_endpoints.cache_clear()
+
+
+@pytest.mark.usefixtures("_resolvable")
+def test_the_initial_pick_sends_a_long_prompt_to_the_wide_backend(
+    tmp_path: Path,
+) -> None:
+    port = _port(tmp_path)
+    short = port._resolve_initial_backend("document", estimated_tokens=3000)
+    long = port._resolve_initial_backend("document", estimated_tokens=20_000)
+    assert short.backend_id == _RUNG
+    assert long.backend_id == _WIDE
+    assert long.model_id == _WIDE_MODEL
+    assert long.endpoint_ref == "http://198.51.100.30:8130/v1/chat/completions"
+
+
+@pytest.mark.usefixtures("_resolvable")
+def test_a_prompt_no_local_backend_fits_keeps_the_zero_token_pick(
+    tmp_path: Path,
+) -> None:
+    """Behaviour for an oversize prompt is what it was before the estimate."""
+    port = _port(tmp_path)
+    oversize = port._resolve_initial_backend(
+        "document", estimated_tokens=_WIDE_WINDOW + 1
+    )
+    assert oversize.backend_id == _RUNG
+
+
+@pytest.mark.usefixtures("_resolvable")
+def test_a_caller_pin_still_bypasses_the_size_aware_pick(tmp_path: Path) -> None:
+    port = _port(tmp_path)
+    pinned = port._resolve_initial_backend(
+        "document", backend_id=_RUNG, estimated_tokens=20_000
+    )
+    assert pinned.backend_id == _RUNG
+
+
+def test_dispatch_passes_the_prompts_estimated_tokens_to_the_initial_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+    from uuid import uuid4
+
+    seen: list[object] = []
+
+    def _stop(self: object, task_type: str, **kwargs: object) -> object:
+        seen.append(kwargs.get("estimated_tokens"))
+        raise RuntimeError("stop after the initial resolution")
+
+    monkeypatch.setattr(LocalDelegationDispatchPort, "_resolve_initial_backend", _stop)
+    with pytest.raises(RuntimeError, match="stop after"):
+        asyncio.run(
+            _port(tmp_path).dispatch(
+                prompt="x" * 40_000,
+                task_type="document",
+                correlation_id=uuid4(),
+                max_tokens=16,
+                source_file_path=None,
+                source_session_id=None,
+                wait=True,
+                execution_timeout_seconds=240,
+                terminal_delivery_margin_seconds=60,
+                quality_contract_mode="extend_task_class",
+                acceptance_criteria=(),
+                tenant_id=None,
+            )
+        )
+    assert seen == [10_000]

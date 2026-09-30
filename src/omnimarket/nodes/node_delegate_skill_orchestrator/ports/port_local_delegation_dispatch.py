@@ -1053,6 +1053,7 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             backend_id=backend_id,
             spread_key=str(correlation_id),
+            estimated_tokens=measure_grounding_input_tokens(prompt),
         )
         # OMN-16200: a customer who has declared no model lands on a cloud rung
         # carrying OmniNode's key, which the terminus below refuses without
@@ -2036,6 +2037,7 @@ class LocalDelegationDispatchPort:
         roi_overlay: ModelRoutingRoiOverlay | None = None,
         backend_id: str | None = None,
         spread_key: str | None = None,
+        estimated_tokens: int = 0,
     ) -> ModelResolvedDelegationBackend:
         """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
 
@@ -2087,14 +2089,29 @@ class LocalDelegationDispatchPort:
         back to the untargeted resolution only when the task class declares no
         routable tier_order (legacy / no-contract classes), preserving their
         behavior without opening the closed set for classes that DO declare one.
+
+        OMN-19432: ``estimated_tokens`` is the prompt's size. The initial pick
+        used a 0-token probe, so a 60,000-token prompt could be handed to a rung
+        whose routing window is 8,192, or to a spread peer whose window is 32,768,
+        and only the server's refusal moved it on. The estimate now reaches the
+        routing authority, as it does on the bus path, so the pick is the local
+        backend whose window fits. When NO local backend fits, the 0-token pick is
+        kept, which is what every prompt got before.
         """
         if backend_id is not None:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
         first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
         if first_tier is not None:
             backend_id = backend_id_for_tier(
-                first_tier, task_type, spread_key=spread_key
+                first_tier,
+                task_type,
+                spread_key=spread_key,
+                estimated_tokens=estimated_tokens,
             )
+            if backend_id is None and estimated_tokens:
+                backend_id = backend_id_for_tier(
+                    first_tier, task_type, spread_key=spread_key
+                )
             if backend_id is not None:
                 try:
                     return resolve_delegation_backend(task_type, backend_id=backend_id)

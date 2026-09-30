@@ -1744,6 +1744,7 @@ def backend_id_for_tier(
     *,
     require_credential: bool = True,
     spread_key: str | None = None,
+    estimated_tokens: int = 0,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -1772,6 +1773,13 @@ def backend_id_for_tier(
     rung has spread-mode peers, the answer is one member of that group, stable
     per key. ``None`` keeps the ordered answer, so the availability probes and
     every existing caller are unchanged.
+
+    ``estimated_tokens`` (OMN-19432) is the prompt's size in the routing
+    authority's units. The default ``0`` is the availability probe every existing
+    caller relies on. The in-process path's INITIAL pick passes the real
+    estimate, as :func:`delta` does on the bus path, so a prompt over a rung's
+    routing window is not sent to that rung, or to a spread peer with a smaller
+    window, and lands on the local backend whose window fits it.
     """
     config = _get_config()
     matching_tier = next(
@@ -1784,12 +1792,13 @@ def backend_id_for_tier(
     bifrost_backends = _load_bifrost_endpoints()
     contract = _get_task_class_contract()
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
-    # 0-token availability probe: identifies which backend the tier WOULD select
-    # for the task (delta re-selects with the real token estimate).
+    # With ``estimated_tokens`` 0 this is the availability probe: it identifies
+    # which backend the tier WOULD select for the task (delta re-selects with the
+    # real token estimate).
     selected = _select_model_for_task(
         matching_tier.models,
         task_type,
-        0,
+        estimated_tokens,
         bifrost_backends,
         contract_model_ref=contract_model_ref,
         contract_model_ref_is_explicit_override=_is_explicit_task_model_override(
