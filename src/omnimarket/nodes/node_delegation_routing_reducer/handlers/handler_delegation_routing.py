@@ -115,7 +115,8 @@ from omnimarket.routing.backend_placement import (
     apply_backend_placements,
     load_bound_bifrost_placements,
     spread_groups,
-    spread_index,
+    spread_pick,
+    spread_weights,
 )
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
@@ -349,6 +350,7 @@ def _select_model_for_task(
     require_credential: bool = True,
     spread_key: str | None = None,
     spread_peers: dict[str, tuple[str, ...]] | None = None,
+    spread_member_weights: dict[str, float] | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -356,7 +358,8 @@ def _select_model_for_task(
     OMN-19215 AC4: when ``spread_key`` is given and ``spread_peers`` names
     spread-mode placed backends for the chosen rung, the choice becomes one
     member of the group ``[rung, *eligible peers]``, picked by
-    :func:`~omnimarket.routing.backend_placement.spread_index` over the key.
+    :func:`~omnimarket.routing.backend_placement.spread_pick` over the key, each
+    member taking the share its placement ``weight`` declares (the rung's is 1.0).
     A peer is eligible under the same rules the first choice met: not
     excluded, declares ``task_type``, fits ``estimated_tokens`` and its backend
     is routable. Only :func:`delta` passes a key, so the availability probes
@@ -403,7 +406,14 @@ def _select_model_for_task(
             group.append(member)
     if len(group) == 1:
         return selected
-    return group[spread_index(spread_key, len(group))]
+    member_weights = spread_member_weights or {}
+    return group[
+        spread_pick(
+            spread_key,
+            [1.0]
+            + [member_weights.get(member.backend_ref, 1.0) for member in group[1:]],
+        )
+    ]
 
 
 def _select_primary_model_for_task(
@@ -562,10 +572,12 @@ _config: ModelDelegationConfig | None = None
 _config_spread_peers: (
     tuple[ModelDelegationConfig, dict[str, tuple[str, ...]]] | None
 ) = None
+# The peers' declared weights, bound to the same config object.
+_config_spread_weights: tuple[ModelDelegationConfig, dict[str, float]] | None = None
 
 
 def _get_config() -> ModelDelegationConfig:
-    global _config, _config_spread_peers
+    global _config, _config_spread_peers, _config_spread_weights
     if _config is None:
         # OMN-16200: an unbound DELEGATION_ROUTING_TIERS_PATH resolves to the
         # packaged tiers file with a logged bootstrap_default provenance line
@@ -601,12 +613,21 @@ def _get_config() -> ModelDelegationConfig:
             parse_delegation_config_yaml(yaml_text), placed
         )
         _config_spread_peers = (_config, spread_groups(placed))
+        _config_spread_weights = (_config, spread_weights(placed))
     return _config
 
 
 def _spread_peers_for(config: ModelDelegationConfig) -> dict[str, tuple[str, ...]]:
     """The spread groups recorded for ``config`` by :func:`_get_config`, or ``{}``."""
     recorded = _config_spread_peers
+    if recorded is None or recorded[0] is not config:
+        return {}
+    return recorded[1]
+
+
+def _spread_weights_for(config: ModelDelegationConfig) -> dict[str, float]:
+    """The spread peers' declared weights recorded for ``config``, or ``{}``."""
+    recorded = _config_spread_weights
     if recorded is None or recorded[0] is not config:
         return {}
     return recorded[1]
@@ -1799,6 +1820,7 @@ def backend_id_for_tier(
         require_credential=require_credential,
         spread_key=spread_key,
         spread_peers=_spread_peers_for(config),
+        spread_member_weights=_spread_weights_for(config),
     )
     if selected is None:
         return None
@@ -2625,6 +2647,7 @@ def delta(
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
     spread_peers = _spread_peers_for(config)
+    spread_member_weights = _spread_weights_for(config)
     spread_members = frozenset(spread_peers).union(*spread_peers.values())
 
     contract = _get_task_class_contract()
@@ -2709,6 +2732,7 @@ def delta(
                     # peers, one member per correlation id.
                     spread_key=str(request.correlation_id),
                     spread_peers=spread_peers,
+                    spread_member_weights=spread_member_weights,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
