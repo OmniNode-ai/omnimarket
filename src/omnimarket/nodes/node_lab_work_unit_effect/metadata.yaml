@@ -1,0 +1,22 @@
+name: node_lab_work_unit_effect
+version: "0.1.0"
+description: "Effect: runs one heavy command (tests, build, lint, lab-model code draft) at one pushed commit on the pool host it is addressed to and returns exit code, log path and output tail; its hosting process also advertises the host's capacity for placement. Reached over its own bus command topic; hosted by a serve process on each pool host, never by a shared runtime."
+pack: pipeline
+node_role: effect
+display_name: "Lab Work Unit Effect (pool host)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_work_unit_effect: "omnimarket.nodes.node_lab_work_unit_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lab-work", "placement"]

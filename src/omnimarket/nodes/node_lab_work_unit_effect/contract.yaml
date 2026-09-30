@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Work Unit Effect on a pool host (OMN-20105)
+#
+# Operator direction 2026-09-29: heavy work (tests, builds, lint, code drafts)
+# is placed on the pool machine with the most free capacity, the launching Mac
+# included when its load is low enough, and SENT OVER THE BUS to that machine,
+# not typed into a brief and not reached by ad-hoc ssh.
+#
+# WHO HOSTS THIS NODE. A process on each pool host (`onex lab-work serve`),
+# which runs git and the command locally. The shared runtimes must NOT attach
+# it, for the reason node_focused_test_run_effect gives: an attached copy in a
+# runtime container would race the pool hosts for units it cannot run. So the
+# contract declares runtime_dispatch and NO event_bus block; the runtime
+# auto-wiring attaches only contracts that declare both handler_routing and
+# event_bus.
+#
+# ADDRESSING. The caller places the unit and names the pool host on the
+# request (target_host). Every serve process reads the command topic in its
+# OWN consumer group and runs only the units addressed to it, so the command is
+# seen by every host and run by one. The pool host names are deployment facts
+# given on each serve command line; nothing here names a machine.
+#
+# CAPACITY. Each serve process publishes a capacity advertisement on
+# capacity_topic every cadence_seconds (HandlerHostCapacityAdvertiseEffect).
+# Placement reads those, never the machine. This is the first bus slice of the
+# idle-compute plan (OMN-16737): the machine_capability advertisement family
+# (OMN-16738), the placement node (OMN-16740) and the dispatch effect
+# (OMN-16741) remain open for their full scope.
+name: "node_lab_work_unit_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Runs one heavy command (test suite, build, lint, lab-model code draft) at one exact
+  pushed commit on the pool host it is addressed to, and returns a receipt
+  with the exit code, the log path on that host and a bounded output tail.
+  Each hosting process also advertises its host's capacity on a fixed cadence
+  for placement.
+input_model:
+  name: "ModelLabWorkUnitRequest"
+  module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
+  description: "Work unit id, target host, repository, commit sha, argv, kind, timeout, lane, tools needed."
+output_model:
+  name: "ModelLabWorkUnitReceipt"
+  module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
+  description: "Status, exit code, log path, output tail, duration, the host that ran it."
+handler:
+  module: "omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_lab_work_unit_effect"
+  class: "HandlerLabWorkUnitEffect"
+  input_model: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit.ModelLabWorkUnitRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_lab_work_unit_effect:HandlerLabWorkUnitEffect"
+  handlers:
+    - operation: "run_lab_work_unit"
+      handler:
+        name: "HandlerLabWorkUnitEffect"
+        module: "omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_lab_work_unit_effect"
+    - operation: "advertise_host_capacity"
+      handler:
+        name: "HandlerHostCapacityAdvertiseEffect"
+        module: "omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_host_capacity_advertise_effect"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 7200000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-work-unit-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lab-work-unit-completed.v1"
+    failure: "onex.evt.omnimarket.lab-work-unit-failed.v1"
+capacity:
+  capacity_topic: "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
+  cadence_seconds: 10
+# The capacity advertisements leave the node graph here: they are read by the
+# caller (omnimarket.lab_work.bus.LabWorkCaller, behind `onex lab-work run` and
+# `onex lab-work hosts`), which is not a node contract.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-host-capacity-advertised.v1
+published_events:
+  - event_type: ModelLabWorkUnitReceipt
+    topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+    description: "The receipt of a unit this host ran, refused or could not run."
+  - event_type: ModelHostCapacityAdvertisement
+    topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+    description: "This host's cores, load1, available memory, tools and running units."
+metadata:
+  transport_type: kafka
+  description: "Lab work unit effect, hosted by a serve process on each pool host and reached over the bus"
+  author: "OmniNode Team"
+  created: "2026-09-29"
+  tags:
+    - "effect"
+    - "lab-work"
+    - "placement"
+    - "OMN-20105"
+  related_tickets:
+    - "OMN-20105"
+    - "OMN-20101"
+    - "OMN-16737"

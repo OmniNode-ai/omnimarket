@@ -1,0 +1,98 @@
+name: projection_lab_proof_receipts
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_lab_proof_receipts.models.model_lab_proof_receipt_projection_request.ModelLabProofReceiptProjectionRequest
+description: >
+  OMN-19566 (T2 slice 2 of the lab-proof plan, epic OMN-19564). Folds every
+  pr-head lab-proof receipt, PASS or FAIL, into one row per
+  (repo, pr_number, head_sha, profile_id, profile_version). The lab pool
+  driver mints a receipt at the end of every proof, keyed by the exact head it
+  fetched, and publishes it; landers, the prover scheduler and the proof-bar
+  counter read this table instead of a person-shaped lab line in a PR body.
+
+  The row records the verifier's token at mint time against the proven head.
+  That is a statement about the receipt, never a merge decision: the required
+  `lab-proof` job (T20, OMN-19584) re-verifies against the PR's live head.
+
+# The lab lanes this node attaches on, as for node_projection_lab_lane_health
+# (OMN-19408): the pool publishes on the lab bus, and a runtime that could only
+# consume and drop these facts is held unhealthy by the apply-divergence
+# detector.
+runtime_lanes:
+  - compose-dev
+  - onex-lab
+  - onex-lab-k3s
+
+handler:
+  module: omnimarket.nodes.node_projection_lab_proof_receipts.handlers.handler_projection_lab_proof_receipts
+  class: HandlerProjectionLabProofReceipts
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed. A routed pure fold receives the raw event
+    # beside the writer and dead-letters it (OMN-19721); the writer calls the
+    # fold in process (rule 7a).
+    - operation: lab_proof_receipts_projection_writer
+      handler:
+        name: LabProofReceiptsProjectionWriter
+        module: omnimarket.nodes.node_projection_lab_proof_receipts.handlers.handler_lab_proof_receipts_writer
+      handler_module: omnimarket.nodes.node_projection_lab_proof_receipts.handlers.handler_lab_proof_receipts_writer
+
+terminal_event: onex.evt.omnimarket.projection-lab-proof-receipts-applied.v1
+
+golden_path:
+  - "The lab pool driver mints one pr-head receipt per proved PR, PASS or FAIL, keyed by the exact fetched head"
+  - "It publishes the receipt as onex.evt.omnibase-infra.lab-proof-receipt.v1 through the lab fact publisher"
+  - "The writer loads the stored row for the key and passes it to the pure fold"
+  - "A newer proof of the key replaces the row; a redelivery or an older proof is refused in the fold and in SQL"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-lab-proof-receipts-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn19566_lab_proof_receipts_projection.py::test_a_fail_receipt_is_a_row_like_a_pass
+    description: "A FAIL receipt is recorded as faithfully as a PASS"
+  - test: tests/test_omn19566_lab_proof_receipts_projection.py::test_a_redelivery_or_older_proof_never_replaces_a_newer_one
+    description: "The fold refuses an older proof of the same key"
+  - test: tests/test_omn19566_lab_proof_receipts_projection.py::test_a_key_that_disagrees_with_its_fields_is_refused
+    description: "A receipt key naming another head or profile is refused, never filed"
+  - test: tests/test_omn19566_lab_proof_receipts_writer.py::test_the_writer_upserts_under_the_finished_at_guard
+    description: "The SQL ordering guard is on the upsert the writer runs"
+  - test: tests/test_omn19566_lab_proof_receipts_writer.py::test_the_producers_event_projects_verbatim
+    description: "The event omnibase_infra's build_pr_head_bus_event writes projects without translation"
+
+db_io:
+  db_tables:
+    - name: lab_proof_receipts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_proof_receipts.sql"
+      access: read_write
+      role: lab_proof_receipts
+  dedupe_key:
+    - repo
+    - pr_number
+    - head_sha
+    - profile_id
+    - profile_version
+  ordering_key: finished_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.lab-proof-receipt.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lab-proof-receipts-applied.v1
+  # A malformed receipt is a durable, recoverable failure signal: dropping it
+  # would leave a proof that ran looking like one that never did.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lab-proof-receipts-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lab-proof-receipts-applied.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.lab-proof-receipt.v1
+    producer: "omnibase_infra scripts/runtime_build/prepr_runtime_pool.py run --publish-bus-lane, through scripts/ci/publish_lab_fact_event.py"
+
+metadata:
+  transport_type: kafka
