@@ -697,6 +697,19 @@ class BifrostBackendRef:
         self.api_key_env = api_key_env
 
 
+class BifrostBackendMap(dict[str, BifrostBackendRef]):
+    """The bound backends, plus every credential name any DECLARED backend names.
+
+    OMN-20173: a backend disabled by ``endpoint_url: null`` (the direct GLM Coding
+    Plan rungs, a lane's absent local rungs, a Vertex rung no overlay binds) is
+    skipped as a route but its ``secret_ref`` is still OmniNode's credential.
+    ``house_credential_refs`` reads ``declared_secret_refs`` so disabling a rung can
+    never shrink the house set a customer-path request is checked against (INV-068).
+    """
+
+    declared_secret_refs: frozenset[str] = frozenset()
+
+
 @lru_cache(maxsize=1)
 def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     """Load backend info from the default bifrost contract plus endpoint overlay.
@@ -773,7 +786,13 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         )
         raise ProtocolConfigurationError(msg, context=context) from exc
 
-    backends: dict[str, BifrostBackendRef] = {}
+    backends = BifrostBackendMap()
+    backends.declared_secret_refs = frozenset(
+        name.strip()
+        for backend in config.backends
+        for name in (backend.resolved_secret_ref, backend.api_key_env)
+        if isinstance(name, str) and name.strip()
+    )
     for backend in config.backends:
         url = (backend.endpoint_url or "").strip()
         model_name = (backend.model_name or "").strip()

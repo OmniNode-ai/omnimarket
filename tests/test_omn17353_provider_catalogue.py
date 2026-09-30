@@ -192,6 +192,19 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
                     if b.get("endpoint_url") == backend.endpoint_url
                     and b.get("model_name") == backend.model_name
                 ]
+                if not mirrored:
+                    # OMN-20173: the platform GLM Coding Plan rung is PARKED (null
+                    # endpoint) because the plan's terms bar direct API use from
+                    # our own systems. The customer row still mirrors that declared
+                    # rung by model and provider slug.
+                    mirrored = [
+                        b
+                        for b in backends
+                        if b.get("endpoint_url") is None
+                        and b.get("endpoint_url_env")
+                        and b.get("model_name") == backend.model_name
+                        and b.get("provider") == provider
+                    ]
                 assert mirrored, f"{provider!r} plan {backend.plan!r} mirrors no rung"
                 assert set(house_keyed_provider_slugs(mirrored)) == {provider}, (
                     f"{provider!r} mirrors rung(s) whose house secret_ref names a "

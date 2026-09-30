@@ -16,11 +16,9 @@ rungs:
     base_url_env: RUNG_EVAL_PLANNER_200_BASE_URL
     model_env: RUNG_EVAL_PLANNER_200_MODEL
     api_key_env: null
-  - rung_id: cloud-glm
-    kind: cloud
-    base_url_env: RUNG_EVAL_CLOUD_GLM_BASE_URL
-    model_env: RUNG_EVAL_CLOUD_GLM_MODEL
-    api_key_env: RUNG_EVAL_CLOUD_GLM_API_KEY
+  # OMN-20173: the cloud-glm rung is removed. The nightly eval called z.ai's
+  # GLM Coding Plan directly, which the plan's terms bar (knowledge-base-internal
+  # reference/zai-glm-coding-plan-terms.md, OMN-20154).
   - rung_id: cloud-openrouter
     kind: cloud
     base_url_env: RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL

@@ -246,128 +246,14 @@ tiers:
       cost_type: metered
       rate_per_1k_usd: 0.002
     models:
-      # OMN-13640: GLM (cloud-glm) is declared FIRST in this tier so it wins
-      # `_select_model_for_task`'s declaration-order tiebreak over
-      # cloud-gemini-pro below, for EVERY task class both backends serve
-      # (code_generation, code_review, refactor, reasoning, research) — not
-      # only the prose classes (document/documentation/summarization) this
-      # ticket originally added to GLM's use_for. Measured live 2026-09-15,
-      # not inferred: with cloud-gemini-pro declared first, cheap_cloud
-      # resolved cloud-gemini-pro — the metered backend with a free-tier day
-      # quota of 20 requests, exhausted daily — ahead of the flat-rate
-      # cloud-glm for all five of those classes; only prose was unaffected,
-      # because cloud-gemini-pro never declared prose in its use_for to begin
-      # with. Pinned by
-      # test_glm_resolves_before_gemini_for_every_dual_eligible_cheap_cloud_class
-      # in tests/unit/delegation/test_cheap_cloud_glm_precedes_gemini_omn13640.py.
-      #
-      # This is a pure reorder: no model is added, removed, or repointed to a
-      # new backend/key. cloud-gemini-pro keeps every task class it already
-      # served (this entry's own use_for list is unchanged); GLM is not the
-      # exclusive rung for any of them — it is exactly the same-tier fallback
-      # cloud-gemini-pro used to be for GLM before this change.
-      #
-      # OMN-6790: GLM is an ACTIVE cheap_cloud rung. This account holds a live
-      # z.ai GLM Coding Plan (0% of the 5-hour, weekly, and MCP quotas used as
-      # of 2026-08-29 14:52; weekly reset 2026-09-05 13:38), the key resolves
-      # on the .201 dev lane, and a one-token completion against the plan's
-      # endpoint returns 200 (probed 2026-08-30 — see the cloud-glm backend
-      # block in bifrost_delegation.yaml for the full ladder).
-      #
-      # This supersedes two stale premises that each cost a rediscovery:
-      #   * OMN-14625: "the z.ai GLM route is DEAD — resolve_api_key succeeds
-      #     but every completion call 401s." Not reproducible; the route
-      #     authenticates and serves.
-      #   * OMN-16891: "DECLARED-BUT-DISABLED, the operator removed the keys",
-      #     and the 429/1113 read as a plan-entitlement gap. Both wrong. The
-      #     429 came from pointing this backend at the PAY-AS-YOU-GO surface
-      #     (/api/paas/v4) with a Coding-Plan key. The endpoint was the bug.
-      #   * This same comment block previously read "cloud-gemini-pro above
-      #     remains the PRIMARY cheap_cloud code backend; this rung adds a
-      #     second, independently-funded quota domain beside it rather than
-      #     displacing it" (OMN-14625/OMN-17193) — written when GLM's route
-      #     was believed dead. With GLM proven live and flat-rate against a
-      #     metered, daily-exhausted Gemini quota, the "known-good, keep as
-      #     primary" reasoning for Gemini's precedence no longer holds; the
-      #     standing operator policy is GLM preferred over Gemini generally
-      #     (`feedback_prefer_glm_over_gemini_outages`), not merely as a
-      #     backup quota domain.
-      #
-      # Quota discipline is unchanged: a flat-rate subscription is near-zero
-      # MARGINAL cost but has a hard periodic ceiling, so GLM is still guarded
-      # by quota-domain health rather than trusted blindly — a trip is
-      # classified by bifrost_delegation.yaml's provider_quota_policy (1310 ->
-      # disable until the stated reset; 1113 -> WRONG ENDPOINT, alert, never a
-      # billing action) and `_backend_routable` then skips this backend by
-      # quota domain, falling through to cloud-gemini-pro in THIS tier rather
-      # than stranding the class.
-      - id: glm-5.3-flash
-        backend_id: cloud-glm
-        # OMN-6790: id kept in sync with the cloud-glm backend's model_name —
-        # cheapest id the Coding Plan accepts, per cheapest-first. A mismatch
-        # here strands the task_model_overrides id-match escape hatch.
-        # The z.ai coding surface serves a 128k context window.
-        max_context_tokens: 131072
-        use_for:
-          - code_generation
-          - code_review
-          - refactor
-          - reasoning
-          - research
-          # OMN-13640: the three PROSE classes. `gemini-flash` (backend
-          # cloud-gemini-flash, declared further below) keeps prose too, as
-          # the same-tier fallback.
-          - document
-          - documentation
-          - summarization
-          # OMN-19852: the four classes cloud-gemini-pro below was the ONLY
-          # cheap_cloud model to serve. OMN-15503 (planning, review) and
-          # OMN-15630 (validator_generation), plus test, gave those classes a
-          # reachable cheap_cloud rung while GLM's route was believed dead, so
-          # they landed on Gemini alone. OMN-13640's reorder only covered the
-          # classes both backends already served, so these four still
-          # escalated local -> metered Gemini with GLM never tried. Measured
-          # live 2026-09-28 16:05-18:20Z: every `review` escalation resolved
-          # cloud-gemini-pro (one a Gemini 429) while a pinned cloud-glm
-          # smoke answered at quality 1.0. GLM carries the same capabilities
-          # it already serves code_review with (reasoning, code_completion),
-          # and cloud-gemini-pro keeps all four as the same-tier fallback.
-          - review
-          - planning
-          - test
-          - validator_generation
-        fast_path_threshold_tokens: 8192
-      # OMN-19432: the rung AFTER flash, inside the same tier and ahead of every
-      # Gemini rung. Operator ruling 2026-09-30T14:37:39Z: start with flash and
-      # escalate to the next higher model. The dispatch port's same-tier sibling
-      # hop resolves the next untried backend in declaration order, on a quality
-      # gate rejection (a sibling serving the same MODEL id is skipped, this one
-      # serves a different model) and on a retryable transport failure, so a
-      # flash gate rejection or a 429 code 1302 lands here without spending a
-      # tier escalation. It serves exactly the classes flash serves: a rung that
-      # served fewer would strand the classes it lacks.
-      - id: glm-5.3
-        backend_id: cloud-glm-5-3
-        max_context_tokens: 131072
-        use_for:
-          - code_generation
-          - code_review
-          - refactor
-          - reasoning
-          - research
-          - document
-          - documentation
-          - summarization
-          - review
-          - planning
-          - test
-          - validator_generation
-        # The same fast-path threshold as flash. `_select_primary_model_for_task`
-        # runs its fast-path pass BEFORE the general pass, so a rung with no
-        # threshold loses to any later rung that has one: without this line a
-        # flash refusal on a short prompt hopped past glm-5.3 to the Gemini rung
-        # (measured by test_omn19432_flash_first_glm_ladder).
-        fast_path_threshold_tokens: 8192
+      # OMN-20173: the two direct GLM Coding Plan rungs (glm-5.3-flash on
+      # backend cloud-glm, then glm-5.3 on cloud-glm-5-3) are REMOVED from this
+      # tier: they called z.ai's Coding Plan endpoint directly from this node,
+      # which the plan's terms bar (knowledge-base-internal
+      # reference/zai-glm-coding-plan-terms.md, OMN-20154). The Gemini rungs
+      # below serve every class those rungs served, so no class is stranded.
+      # GLM is used only through Claude Code (the internal harness-delegate
+      # skill), never from routing.
       # OMN-14625 (historical): this entry was PRIMARY-by-declaration-order
       # for cheap-cloud code-gen, repointed here off direct z.ai GLM on a
       # "GLM route is DEAD from .201" finding (resolve_api_key succeeded but
