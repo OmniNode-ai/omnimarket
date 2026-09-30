@@ -12,6 +12,7 @@ it.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,6 +51,16 @@ class ModelDodVerdictRow(BaseModel):
             "The delegation run this verification judged (OMN-19514). NULL "
             "when the verification judged no delegated attempt."
         ),
+    )
+    goal_id: UUID | None = Field(default=None, description="Goal identity.")
+    parent_goal_id: UUID | None = Field(
+        default=None, description="Parent goal identity, when nested."
+    )
+    level: Literal["delegate_call", "workflow_lane", "interactive_session"] | None = (
+        Field(default=None, description="Goal level.")
+    )
+    contract_revision: UUID | None = Field(
+        default=None, description="Immutable contract revision identity."
     )
 
     total_checks: int = Field(..., ge=0)
