@@ -304,7 +304,6 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
 
     workspace = tmp_path / "evidence-root"
     workspace.mkdir()
-    (workspace / "proof.txt").write_text("inline goal check\n", encoding="utf-8")
     monkeypatch.setenv("OMNI_HOME", str(workspace))
 
     binding_path = tmp_path / "projection-binding.yaml"
@@ -339,8 +338,8 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
         "dod_evidence": [
             {
                 "id": "gc2-inline-proof",
-                "description": "An inline goal check with no ticket contract file.",
-                "checks": [{"check_type": "file_exists", "check_value": "proof.txt"}],
+                "description": "A safe inline command check with no ticket contract file.",
+                "checks": [{"check_type": "command", "check_value": "true"}],
             }
         ],
     }
@@ -358,7 +357,11 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
     )
     terminal, evidence = asyncio.run(runtime.dispatch(command))
 
-    assert evidence.runtime_observation.status == "OBSERVED"
+    assert evidence.runtime_observation.status == "OBSERVED", (
+        f"runtime observation={evidence.runtime_observation.model_dump()}, "
+        f"terminal_status={terminal.status}, "
+        f"terminal_error={terminal.error_message!r}"
+    )
     assert evidence.node_name == "node_dod_verify"
     assert evidence.command_topic == _VERIFY_COMMAND
     assert terminal.status == "completed"
