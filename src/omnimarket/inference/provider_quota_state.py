@@ -61,7 +61,10 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
     credential_ref_for,
 )
-from omnimarket.inference.provider_quota_policy import load_provider_quota_policy
+from omnimarket.inference.provider_quota_policy import (
+    load_provider_quota_policy,
+    provider_rule_for_endpoint,
+)
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_rls_read_tenant,
@@ -248,15 +251,6 @@ class ModelProviderQuotaSnapshot(BaseModel):
         return None
 
 
-def _declared_provider_for_host(host: str) -> str | None:
-    policy = load_provider_quota_policy()
-    for provider in policy.providers:
-        match = provider.match_endpoint_host.lower()
-        if host == match or host.endswith(f".{match}"):
-            return provider.provider_id
-    return None
-
-
 def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
     """Return the quota failure domain an endpoint belongs to.
 
@@ -270,14 +264,26 @@ def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
     host = (urlparse(endpoint_url).hostname or "").lower()
     if not host:
         return None
-    declared = _declared_provider_for_host(host)
-    return declared if declared is not None else f"host:{host}"
+    try:
+        policy = load_provider_quota_policy()
+    except (OSError, ValueError):
+        # The policy is a hard requirement of the CLASSIFIER, but this resolver
+        # is also called on the read path for every routing eligibility check.
+        # Degrading to host-keying here keeps routing working; a genuinely
+        # missing policy still fails loud where it is loaded for classification.
+        return f"host:{host}"
+    # Host first, then the declared path prefix (OMN-20154): z.ai's general API
+    # and Coding Plan share a host and a key but not a counter.
+    provider = provider_rule_for_endpoint(policy.providers, endpoint_url)
+    if provider is not None:
+        return provider.provider_id
+    return f"host:{host}"
 
 
 def endpoint_is_metered(endpoint_url: str) -> bool:
     """Whether the quota policy declares this endpoint's provider."""
-    host = (urlparse(endpoint_url).hostname or "").lower()
-    return bool(host) and _declared_provider_for_host(host) is not None
+    domain = quota_domain_for_endpoint(endpoint_url)
+    return domain is not None and not domain.startswith("host:")
 
 
 def quota_block_for_backend(

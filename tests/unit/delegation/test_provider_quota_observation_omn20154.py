@@ -273,15 +273,15 @@ class TestRoutingReadsTheProjectionAndFailsClosed:
     ) -> None:
         now = datetime.now(UTC)
         # OMN-20173 parked every packaged z.ai rung, so the contract alone no
-        # longer declares one. The zai quota rule still matches any api.z.ai
-        # backend, so two are declared here beside the packaged ones.
+        # longer declares one. The zai quota rule matches any Coding Plan backend
+        # (the general API is its own quota domain), so two are declared here.
         backends = dict(routing._load_bifrost_endpoints())
         for ref, model in (
             ("test-glm-flash", "glm-4.5-flash"),
             ("test-glm", "glm-5.3"),
         ):
             backends[ref] = routing.BifrostBackendRef(
-                endpoint_url="https://api.z.ai/api/paas/v4/chat/completions",
+                endpoint_url="https://api.z.ai/api/coding/paas/v4/chat/completions",
                 model_name=model,
                 timeout_ms=60000,
                 max_tokens=8192,
