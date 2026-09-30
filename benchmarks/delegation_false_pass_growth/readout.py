@@ -9,11 +9,12 @@ import sys
 from collections import Counter, defaultdict
 from uuid import UUID
 
-from omnimarket.events.delegation_eval import ModelDelegationEvalRunRequest
-from omnimarket.nodes.node_delegation_eval_orchestrator.scrubber import scrub_snapshot
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run import (
     HandlerDelegationEvalRun,
 )
+
+from omnimarket.events.delegation_eval import ModelDelegationEvalRunRequest
+from omnimarket.nodes.node_delegation_eval_orchestrator.scrubber import scrub_snapshot
 from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
     wilson_interval,
 )
