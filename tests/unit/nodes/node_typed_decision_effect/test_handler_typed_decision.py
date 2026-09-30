@@ -192,7 +192,9 @@ def test_public_is_admitted_and_private_is_refused_in_the_same_run(
     assert len(recorder.visibility_calls) == 2
     # Exactly one decision call: the public one. The private request sent nothing.
     assert len(recorder.decision_calls) == 1
-    # The visibility read is anonymous, so no credential can widen "public".
+    # No GitHub token resolves from this store, so the read is anonymous. With a
+    # token the read is authenticated and still admits only ``private: false``
+    # (test_visibility_guard.py).
     assert all("Authorization" not in c.headers for c in recorder.visibility_calls)
 
 
