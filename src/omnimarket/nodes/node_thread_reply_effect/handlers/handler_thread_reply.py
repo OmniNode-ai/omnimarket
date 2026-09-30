@@ -30,6 +30,7 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
 from omnimarket.github_api import GitHubApiError, rest_json
+from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
@@ -87,8 +88,9 @@ _BASE_REGISTRY: dict[str, dict[str, str]] = {
         "health_path": "/health",
     },
     "glm-4.5": {
-        "base_url": os.environ.get(  # contract-config-ok: config
-            "LLM_GLM_URL", ""
+        "base_url": glm_url_or_empty(
+            os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
+            source="handler_thread_reply.glm-4.5",
         ),
         "health_path": "",
     },
@@ -145,6 +147,9 @@ async def _real_llm_call(
             correlation_id="thread-reply-effect",
         )
     )
+
+    if routing_result.model_key == "glm-4.5" and not routing_result.endpoint_url:
+        raise RuntimeError("Thread reply GLM endpoint is not configured")
 
     provider = AdapterLlmProviderOpenai(
         base_url=routing_result.endpoint_url,

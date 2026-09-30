@@ -907,7 +907,7 @@ provider_quota_policy:
       required_path_prefix: "/api/coding/paas/v4"
       required_path_prefix_hint: >-
         We hold a z.ai GLM Coding Plan, served ONLY at
-        https://api.z.ai/api/coding/paas/v4. The bare /api/paas/v4 is the
+        /api/coding/paas/v4. The bare /api/paas/v4 is the
         pay-as-you-go product, which this account does not hold; it answers a
         Coding-Plan key with 429 code 1113 "Insufficient balance or no resource
         package". That is a WRONG-ENDPOINT signal, never a billing fact, and
@@ -970,7 +970,7 @@ provider_quota_policy:
           alert_hint: >-
             z.ai 1113 on an OmniNode GLM request means the request hit the
             pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
-            The Coding Plan endpoint is https://api.z.ai/api/coding/paas/v4.
+            The Coding Plan path is /api/coding/paas/v4 (direct calls parked, OMN-20173).
             This is a routing defect, never a billing action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
