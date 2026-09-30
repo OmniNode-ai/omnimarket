@@ -385,3 +385,84 @@ def test_dispatch_passes_the_prompts_estimated_tokens_to_the_initial_pick(
             )
         )
     assert seen == [10_000]
+
+
+# --- a same-model peer shares its rung's grounding budget ---------------------
+
+_PEER = "local-omnipc2-chat"
+_BUDGET = 8000
+
+
+def _budget_line(budget: int | None) -> str:
+    return "" if budget is None else f"    max_grounded_input_tokens: {budget}\n"
+
+
+def _bifrost_with_budgets(*, peer_budget: int | None = None) -> str:
+    """The fixture contract with a budget on the rung and a same-model spread peer."""
+    rung_marker = (
+        f"  - backend_id: {_RUNG}\n"
+        "    provider: local\n"
+        '    endpoint_url: "http://198.51.100.10:8000/v1/chat/completions"\n'
+        "    model_name: Qwen3.8-27B\n"
+        "    tier: local\n"
+    )
+    wide_marker = f"  - backend_id: {_WIDE}\n"
+    assert rung_marker in _BIFROST_YAML
+    assert wide_marker in _BIFROST_YAML
+    peer = (
+        f"  - backend_id: {_PEER}\n"
+        "    provider: local\n"
+        '    endpoint_url: "http://198.51.100.20:8000/v1/chat/completions"\n'
+        "    model_name: Qwen3.8-27B\n"
+        "    tier: local\n"
+        + _budget_line(peer_budget)
+        + "    capabilities: [document]\n"
+        "    placement:\n"
+        "      tier: local\n"
+        f"      fallback_for: [{_RUNG}]\n"
+        "      max_context_tokens: 32768\n"
+        "      mode: spread\n"
+    )
+    text = _BIFROST_YAML.replace(
+        rung_marker, rung_marker + _budget_line(_BUDGET)
+    ).replace(wide_marker, peer + wide_marker)
+    assert f"max_grounded_input_tokens: {_BUDGET}" in text
+    assert f"backend_id: {_PEER}" in text
+    return text
+
+
+@pytest.fixture
+def _budgeted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _authority: None
+) -> None:
+    (tmp_path / "bifrost_delegation.yaml").write_text(_bifrost_with_budgets())
+    routing._config = None
+    routing._load_bifrost_endpoints.cache_clear()
+
+
+@pytest.mark.usefixtures("_budgeted")
+def test_a_same_model_peer_inherits_its_rungs_grounding_budget() -> None:
+    assert routing.resolve_backend_grounding_budget(_RUNG) == _BUDGET
+    assert routing.resolve_backend_grounding_budget(_PEER) == _BUDGET
+
+
+@pytest.mark.usefixtures("_budgeted")
+def test_a_different_model_placed_backend_inherits_nothing() -> None:
+    """NOT DECLARED stays not declared: the planner's ceiling is its own to set."""
+    assert routing.resolve_backend_grounding_budget(_WIDE) is None
+
+
+@pytest.mark.usefixtures("_authority")
+def test_a_peer_with_its_own_declared_budget_keeps_it(tmp_path: Path) -> None:
+    (tmp_path / "bifrost_delegation.yaml").write_text(
+        _bifrost_with_budgets(peer_budget=4000)
+    )
+    routing._config = None
+    assert routing.resolve_backend_grounding_budget(_PEER) == 4000
+
+
+@pytest.mark.usefixtures("_authority")
+def test_no_declared_budget_anywhere_is_none() -> None:
+    """POSITIVE CONTROL: without a rung budget there is nothing to inherit."""
+    assert routing.resolve_backend_grounding_budget(_RUNG) is None
+    assert routing.resolve_backend_grounding_budget(_WIDE) is None

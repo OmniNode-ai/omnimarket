@@ -1732,9 +1732,30 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
         config_path=contract_override,
         overlay_path=overlay_override,
     )
-    for backend in config.backends:
-        if backend.backend_id == backend_id:
-            return backend.max_grounded_input_tokens
+    by_id = {backend.backend_id: backend for backend in config.backends}
+    own = by_id.get(backend_id)
+    if own is not None and own.max_grounded_input_tokens is not None:
+        return own.max_grounded_input_tokens
+    # OMN-19432: a grounding ceiling belongs to the MODEL. A lane-added backend
+    # placed behind a rung that serves the SAME model (the second host of a spread
+    # pair) inherits that rung's budget when it declares none, because the lane
+    # overlay has no field for it and an undeclared budget reads as "unbounded".
+    # Without this, the same-tier sibling hop offered the same Qwen on another
+    # host an 18,000-token prompt its twin had just been refused. A placed backend
+    # serving a DIFFERENT model inherits nothing: its ceiling is its own to
+    # declare, and "not declared" stays exactly that.
+    for placed in _load_placed_backends():
+        if placed.backend_id != backend_id:
+            continue
+        inherited = [
+            rung.max_grounded_input_tokens
+            for rung_ref in placed.placement.fallback_for
+            if (rung := by_id.get(rung_ref)) is not None
+            and rung.model_name == placed.model_name
+            and rung.max_grounded_input_tokens is not None
+        ]
+        if inherited:
+            return min(inherited)
     return None
 
 
