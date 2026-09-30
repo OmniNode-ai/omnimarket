@@ -42,11 +42,13 @@ import asyncio
 import logging
 import os
 import re
+import sqlite3
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from functools import lru_cache
 from importlib.resources import files
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 from uuid import UUID
@@ -465,6 +467,90 @@ class PostgresProviderQuotaReader:
         self._conn = None
 
 
+class SqliteProviderQuotaReader:
+    """Read-only reader of ``provider_quota_state`` in the local SQLite store.
+
+    The local profile's binding of the contract's ``provider_quota_state``
+    declaration: ``onex local init`` creates the store, and this reads the same
+    table the deployed projection holds, in that one store. It opens the file
+    read-only and never creates it. A store with no ``provider_quota_state``
+    table has had no refusal observed into it, so it holds no block (readable,
+    empty); any other failure raises and the snapshot fails closed as UNKNOWN.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        self._db_path = db_path
+        self._binding_ref = f"local-sqlite:{db_path}"
+
+    @property
+    def binding_ref(self) -> str:
+        return self._binding_ref
+
+    def read_active_blocks(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaBlock]:
+        if not self._db_path.exists():
+            return ()
+        uri = f"file:{self._db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)  # no-contract-check: local store
+        conn.row_factory = sqlite3.Row
+        try:
+            try:
+                rows = conn.execute(
+                    "SELECT credential_ref, provider_id, model_scope, disposition, "
+                    "blocked_until, blocked_indefinitely, last_provider_code, "
+                    "block_reason FROM provider_quota_state "
+                    "WHERE tenant_id = ? AND disposition IS NOT NULL",
+                    (str(tenant_id),),
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                if "no such table" in str(exc):
+                    return ()
+                raise
+        finally:
+            conn.close()
+        blocks = tuple(
+            ModelProviderQuotaBlock(
+                credential_ref=str(row["credential_ref"]),
+                provider_id=str(row["provider_id"]),
+                model_scope=str(row["model_scope"]),
+                disposition=str(row["disposition"]),
+                blocked_until=(
+                    datetime.fromisoformat(row["blocked_until"])
+                    if row["blocked_until"]
+                    else None
+                ),
+                blocked_indefinitely=bool(row["blocked_indefinitely"]),
+                provider_code=row["last_provider_code"],
+                reason=str(row["block_reason"] or ""),
+            )
+            for row in rows
+        )
+        return tuple(b for b in blocks if b.active_at(as_of))
+
+
+def resolve_provider_quota_reader_for_local_store(
+    local_store_path: Path | None,
+) -> ProtocolProviderQuotaReader:
+    """Bind the contract read: the selected lane overlay, else the local store.
+
+    A lane that selects a database-topology overlay is a deployed runtime and
+    binds through it, raising :class:`ProviderQuotaReadBindingError` when that
+    binding is unresolved. With no overlay selected the caller is the local
+    profile only if its store is a SQLite file (``local_store_path``, where
+    ``onex local init`` put the install's state); the read then binds to that
+    store. The declaration still comes from the owning projection contract. No
+    environment variable picks the store and nothing falls back to a shared
+    database: no overlay and no local store is unbound and still raises.
+    """
+    if os.environ.get("ONEX_DATABASE_TOPOLOGY_PROFILE", "").strip():
+        return resolve_provider_quota_reader()
+    if local_store_path is None:
+        return resolve_provider_quota_reader()
+    provider_quota_read_declaration()
+    return SqliteProviderQuotaReader(local_store_path)
+
+
 def resolve_provider_quota_reader(
     *,
     topology: ModelDeploymentTopology | None = None,
@@ -581,6 +667,7 @@ __all__ = [
     "PostgresProviderQuotaReader",
     "ProtocolProviderQuotaReader",
     "ProviderQuotaReadBindingError",
+    "SqliteProviderQuotaReader",
     "StaticProviderQuotaReader",
     "active_blocks_sql",
     "endpoint_is_metered",
@@ -589,5 +676,6 @@ __all__ = [
     "quota_domain_for_endpoint",
     "read_provider_quota_snapshot",
     "resolve_provider_quota_reader",
+    "resolve_provider_quota_reader_for_local_store",
     "resolve_quota_tenant",
 ]

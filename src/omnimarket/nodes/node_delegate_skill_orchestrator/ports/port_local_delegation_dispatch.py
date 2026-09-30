@@ -970,7 +970,13 @@ class LocalDelegationDispatchPort:
     ) -> ModelProviderQuotaSnapshot:
         """The lane tenant's quota state plus this dispatch's own refusals."""
         if self._quota_reader is None:
-            self._quota_reader = provider_quota_state.resolve_provider_quota_reader()
+            self._quota_reader = (
+                provider_quota_state.resolve_provider_quota_reader_for_local_store(
+                    self._evidence_db.db_path
+                    if isinstance(self._evidence_db, SqliteDatabaseAdapter)
+                    else None
+                )
+            )
         snapshot = read_provider_quota_snapshot(self._quota_reader, tenant_id=None)
         for observation in observed:
             snapshot = snapshot.with_observation(observation)
