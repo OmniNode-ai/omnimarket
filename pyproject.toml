@@ -213,9 +213,9 @@ dependencies = [
     "rich>=13.0.0",
     # OMN-14893: GitHub App JWT signing + installation-token exchange for the
     # OCC machine-auth path (github_app_auth.py). Already an unconditional
-    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
+    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); floor is the fixed release for the 2.13.0 advisories (GHSA-ffc3-869f-jxw9 and five HIGH); declared
     # directly so this repo does not depend on that transitivity holding.
-    "pyjwt[crypto]>=2.12.0",
+    "pyjwt[crypto]>=2.15.1",
     # OMN-16375: security floor for pyasn1 DoS advisories reported by the
     # dependency scan against pyasn1 0.6.3 (CVE-2026-59885/CVE-2026-59886).
     "pyasn1>=0.6.4",
