@@ -24,3 +24,8 @@ CREATE POLICY tenant_isolation ON public.delegation_eval_items
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+-- The dashboard reader keeps SELECT on this relation. 0000 grants it; it is restated
+-- here, idempotently, so that every file restating the tenant_isolation policy also
+-- carries the app_dashboard SELECT grant (the OMN-14894 grant-coverage ratchet).
+GRANT SELECT ON public.delegation_eval_items TO app_dashboard;
