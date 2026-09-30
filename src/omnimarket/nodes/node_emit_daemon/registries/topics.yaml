@@ -856,3 +856,12 @@ events:
         description: "A row already on the ledger was wrong; this is the fix"
     partition_key_field: ledger_id
     required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+  # OMN-19999: watcher observations, never dropped. The producer supplies the
+  # composite partition key repo#pr_number via ModelEmitRequest.partition_key;
+  # the registry's single-field key lookup cannot express that composite.
+  pr.state.observed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.pr-state-observed.v1"
+        tier: duty_critical
+        description: "A watcher tick observes the complete PR state"
+    required_fields: [repo, pr_number, state, observed_at, digest]

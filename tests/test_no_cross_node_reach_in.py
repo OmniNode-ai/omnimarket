@@ -158,6 +158,10 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # emit request and result models move there too.
         "omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_request:ModelEmitRequest",
         "omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_result:ModelEmitResult",
+        # OMN-19999: PR-state delivery reuses node_event_emit_effect's typed
+        # request/result seam, and the projection consumes the emitted event.
+        "omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_request:ModelEmitRequest",
+        "omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_result:ModelEmitResult",
     ]
 )
 

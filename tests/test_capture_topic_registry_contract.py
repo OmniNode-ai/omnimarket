@@ -64,6 +64,10 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "audit.scope.violation",
         "artifact.captured",
         "tool.output.captured",
+        # OMN-19999: a watcher observation is duty-critical so a PR-state
+        # transition is never silently dropped. It is not a capture topic:
+        # its schema contains only bounded PR-state fields.
+        "pr.state.observed",
         # OMN-17019 (C9). The five work-obligation lifecycle kinds are
         # duty_critical DELIBERATELY, and the tier is the whole point of the
         # ticket: an obligation READ may degrade to the last-good projection

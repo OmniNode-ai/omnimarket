@@ -12,13 +12,22 @@ committed row, at least once).
 The leg logic is :func:`...orchestration.core.run_leg`. This class only binds it
 to a row store under compare-and-set with retry: the runtime's ``state_io``
 seam when a dispatch has bound its rows, the in-memory store otherwise.
+
+OMN-20127: the compose runtime calls :meth:`HandlerPrLandingOrchestrator.handle_async`
+(it prefers that entrypoint when the class declares it) and publishes the events
+of the ``ModelHandlerOutput`` it returns. A bare ``list`` from ``handle`` is a
+def-B fan-out sequence, which omnibase_infra ``handler_wiring`` drops while the
+fan-out seam flag is off, so without this entrypoint the state_io outbox captured
+nothing and every row waited on a GitHub read that was never sent.
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Literal
+from uuid import UUID, uuid4, uuid5
 
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from pydantic import BaseModel
 
 from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import (
@@ -35,6 +44,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
     PrLandingOrchestratorPorts,
     PrLandingStepResult,
     run_leg,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.outbox import (
+    PR_LANDING_NAMESPACE,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     LazyPrLandingReducer,
@@ -112,6 +124,36 @@ class HandlerPrLandingOrchestrator:
                 result.dropped_reason,
             )
         return list(result.emitted)
+
+    async def handle_async(
+        self, request: PrLandingOrchestratorInput
+    ) -> ModelHandlerOutput[None]:
+        """Runtime entrypoint: the leg's emissions as publishable handler output.
+
+        The compose runtime publishes ``events`` through the contract's
+        ``published_events`` map and, for this ``state_io`` node, captures them
+        into the row's outbox in the same compare-and-set (OMN-20127).
+        """
+        events = await self.handle(request)
+        return ModelHandlerOutput.for_orchestrator(
+            input_envelope_id=uuid4(),
+            correlation_id=_correlation_of(request),
+            handler_id="node_pr_landing_orchestrator.workflow",
+            events=tuple(events),
+        )
+
+
+def _correlation_of(request: PrLandingOrchestratorInput) -> UUID:
+    """The inbound correlation id, or one derived from the landing key."""
+    candidate = getattr(request, "correlation_id", None)
+    if isinstance(candidate, UUID):
+        return candidate
+    if isinstance(candidate, str):
+        try:
+            return UUID(candidate)
+        except ValueError:
+            pass
+    return uuid5(PR_LANDING_NAMESPACE, f"{request.landing_key}|handler-output")
 
 
 __all__: list[str] = ["HandlerPrLandingOrchestrator"]
