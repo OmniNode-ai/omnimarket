@@ -29,15 +29,19 @@
 #   (`llm.openrouter.api_key`) and answering a customer on a house credential
 #   is exactly what OMN-17372 ruling 3 forbids.
 #
-# MODEL CHOICE — WHY A ZERO-COST SLUG
+# MODEL CHOICE — WHY EACH ROW DEFAULTS TO THE CHEAPEST SLUG
 #
-#   The key is the customer's, so every token billed here is billed to THEM.
-#   There is no per-tenant model-selection surface yet, so the default must be
-#   one that cannot spend money a customer never agreed to spend. Each entry
-#   below therefore mirrors a FREE slug already declared and live-probed on the
-#   platform's own rung in bifrost_delegation.yaml. A per-tenant model override
-#   is a follow-on; it belongs in the overlay row's `model_name`, which is
-#   already per-tenant, so it needs no schema change when it lands.
+#   The key is the customer's and so is the bill: OmniNode is never an inference
+#   provider to customers and the customer pays their own provider (INV-068,
+#   operator ruling 2026-08-31, firm and permanent; INV-098; knowledge-base-internal
+#   reference/invariants.yaml). Customer spend is therefore never a reason to
+#   decline a provider. There is no per-tenant model-selection surface yet, so
+#   each row defaults to the cheapest slug that answers, which is a default and
+#   not a constraint, and each mirrors a slug already declared and live-probed on
+#   the platform's own rung in bifrost_delegation.yaml where one exists. A
+#   per-tenant model override is a follow-on; it belongs in the overlay row's
+#   `model_name`, which is already per-tenant, so it needs no schema change when
+#   it lands.
 #
 # DRIFT IS GATED, NOT TRUSTED
 #
@@ -170,8 +174,9 @@ providers:
   # applied to was WRONG. The z.ai key this platform holds, and the only key
   # shape this row can route, is a **GLM Coding Plan** key: a prepaid flat-rate
   # plan metered by 5-hour / weekly quota, NOT a per-token balance. Marginal
-  # cost per delegation on the registering account is therefore zero, which is
-  # what the zero-cost rule protects. The earlier `not_offered` reason read the
+  # cost per delegation on the registering account is therefore zero. (Under
+  # INV-068 and INV-098 a customer's own spend is not a ground for declining a
+  # provider in any case.) The earlier `not_offered` reason read the
   # cost off z.ai's PAY-AS-YOU-GO product (`/api/paas/v4`) — the same
   # two-products confusion OMN-6790 settled and OMN-16891 got wrong.
   #
@@ -240,7 +245,7 @@ providers:
   #
   # MODEL: `glm-4.5-flash`, listed Free on z.ai's pay-as-you-go pricing page
   # (docs.z.ai/guides/overview/pricing, read 2026-09-30, next to glm-4.7-flash),
-  # which keeps the zero-cost default this file's MODEL CHOICE rule requires.
+  # which is the cheapest slug that answers, this file's MODEL CHOICE default.
   # Not glm-4.7-flash, the other free id: on 2026-09-30 it answered HTTP 429
   # code 1305 ("temporarily overloaded") three times running on this surface,
   # while glm-4.5-flash answered HTTP 200 on a one-token completion. The cheapest
@@ -271,18 +276,14 @@ providers:
         # spend is the customer's balance. Left empty on purpose.
         []
 
-  # OMN-20157 lift. `gemini` was declared not-offered on the OMN-17372
-  # zero-cost rule because the platform's rungs are paid slugs. This row keeps
-  # that rule's intent by defaulting to `gemini-2.5-flash-lite`, the cheapest
-  # slug, on the customer's own Google AI Studio key: an AI Studio project on
-  # the free tier is billed nothing, a project with billing enabled is billed by
-  # Google at flash-lite rates, and either way the account is the customer's.
-  #
-  # OPEN DECISION FOR THE OPERATOR, not resolved here: no zero-cost slug has
-  # been live-probed on a CUSTOMER's key. Lifting this row is the ruling that a
-  # customer's own Gemini spend is accepted (or that this default is fine
-  # because the free tier covers it). Until then the OMN-17932 exclusion and
-  # this row disagree, which is why the PR that adds it is held unmerged.
+  # OMN-20157 lift. `gemini` was declared not-offered on the OMN-17372 zero-cost
+  # design comment, which was a catalogue default and never an operator ruling.
+  # A customer's own Gemini spend is accepted by existing invariant: OmniNode is
+  # never an inference provider to customers and the customer pays their own
+  # provider (INV-068, operator ruling 2026-08-31; INV-098; knowledge-base-internal
+  # reference/invariants.yaml). The default is `gemini-2.5-flash-lite`, the
+  # cheapest slug, on the customer's own Google AI Studio key; the account and
+  # its billing are the customer's.
   #
   # Auth is `Authorization: Bearer <key>` against Google's OpenAI-compatible
   # endpoint, which is what the dispatch adapter already sends. The endpoint,
@@ -327,7 +328,9 @@ not_offered:
       Application Default Credentials (llm.vertex.access_token) and addresses a
       per-customer project and location in the endpoint path, not an API key a
       customer can register. SSO-style auth like this is out of scope for the
-      customer catalogue (operator ruling 2026-09-30, recorded on OMN-20157).
+      customer catalogue (operator ruling 2026-09-30, "We are not starting with
+      anything that uses SSO as authentication. That is out of scope.", ledger
+      docs/tracking/ROLLING_WORK_LEDGER.md:18743, ticket OMN-20157).
       The house rung cloud-vertex-gemini is also parked and unreferenced (OMN-16833).
     ticket: OMN-20157
   - provider: typesafe
