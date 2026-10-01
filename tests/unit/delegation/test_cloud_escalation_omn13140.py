@@ -68,6 +68,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
     HandlerRoutingIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # Bifrost contract where local AND cheap_cloud carry resolvable code_generation
 # endpoints (no api_key_ref -> usable in unit context purely on a non-empty
 # endpoint_url, exactly the eligibility delta() applies). The canonical cloud

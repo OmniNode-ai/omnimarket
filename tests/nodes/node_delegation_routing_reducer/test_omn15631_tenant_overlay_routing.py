@@ -63,6 +63,8 @@ from omnimarket.routing.tenant_overlay_resolver import (
     resolve_tenant_overlay,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # --- Platform-default fixture (mirrors test_roi_overlay_routing_omn14001.py) ----
 
 _BIFROST_ONE_TIER = textwrap.dedent(

@@ -46,6 +46,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CALLER_SYSTEM_PROMPT = "Follow the caller's exact structured-output instructions."
 _ROUTING_SYSTEM_PROMPT = "Task-class routing default that must not win."
 _RESPONSE_FORMAT: dict[str, object] = {"type": "json_object"}

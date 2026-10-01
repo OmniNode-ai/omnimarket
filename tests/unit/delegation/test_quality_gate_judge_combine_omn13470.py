@@ -97,7 +97,10 @@ from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 # These tests pin the DECLARED judge (its recorded replay and concrete model id),
 # which is the reviewer only on a machine whose judge credential resolves
 # (OMN-19198).
-pytestmark = pytest.mark.usefixtures("declared_judge_credential_resolves")
+pytestmark = [
+    pytest.mark.usefixtures("declared_judge_credential_resolves"),
+    pytest.mark.usefixtures("stub_provider_quota_reader"),
+]
 
 _FIXTURES_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "judge_inference"
 

@@ -865,3 +865,34 @@ events:
         tier: duty_critical
         description: "A watcher tick observes the complete PR state"
     required_fields: [repo, pr_number, state, observed_at, digest]
+  # OMN-20154: provider quota observations and the in-process delegation
+  # terminal. Their emitters are the in-process `onex delegate` port and the
+  # quality-gate judge, which have no orchestrator to return an event through,
+  # never a Claude Code hook; so, like pr.state.observed, they are declared
+  # emit-only in scripts/validation/event_registry_drift_baseline.txt. Never
+  # dropped: a lost quota observation is a refusal the next call walks into,
+  # and a lost terminal is a delegation missing from delegation_events.
+  # No transform: the runtime already publishes these payloads, unredacted,
+  # on the same contract topics.
+  provider.quota.observed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.provider-quota-observed.v1"
+        tier: duty_critical
+        description: "One metered provider call and its capacity outcome"
+    partition_key_field: tenant_id
+    required_fields:
+      [event_id, tenant_id, credential_ref, provider_id, model_name, outcome, observed_at]
+  delegate_skill.completed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegate-skill-completed.v1"
+        tier: duty_critical
+        description: "An in-process delegation's completed terminal, for the platform projection"
+    partition_key_field: correlation_id
+    required_fields: [correlation_id, status, task_type]
+  delegate_skill.failed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegate-skill-failed.v1"
+        tier: duty_critical
+        description: "An in-process delegation's failed terminal, for the platform projection"
+    partition_key_field: correlation_id
+    required_fields: [correlation_id, status, task_type]

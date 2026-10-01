@@ -88,6 +88,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
 )
 from tests.constants import MODEL_LOCAL_201_SERVED_ID, MODEL_QWEN3_27B_MTP
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # ---------------------------------------------------------------------------
 # Section A — _select_model_for_task's exclude_backend_refs (no I/O)
 # ---------------------------------------------------------------------------

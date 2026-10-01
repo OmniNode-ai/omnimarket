@@ -207,13 +207,10 @@ jobs:
               exit 1
               ;;
           esac
-          case "$TAG_SHA" in
-            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-            *)
-              echo "::error::release SHA is not a full commit SHA"
-              exit 1
-              ;;
-          esac
+          if [[ ! "$TAG_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release SHA is not a full commit SHA"
+            exit 1
+          fi
           python3 - <<'PY' > update-main-ref.json
           import json
           import os
