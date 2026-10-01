@@ -325,6 +325,8 @@ node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
+# OMN-20275: ledger-host append effect, hosted by `onex work-ledger serve`.
+node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -757,6 +759,8 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # pool's capacity advertisements, and place and send one heavy command over the
 # bus. Discovered over installed distributions like the groups above.
 lab-work = "omnimarket.lab_work.cli:lab_work_group"
+# OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
+work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market
