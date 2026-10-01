@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_append_effect
+version: "0.1.0"
+description: "Effect: append exact rows on the ledger host over a bus command, returning a receipt. Hosted by a serve process, never by a shared runtime."
+pack: pipeline
+node_role: effect
+display_name: "Work Ledger Append Effect (ledger host)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_append_effect: "omnimarket.nodes.node_work_ledger_append_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "work-ledger"]
