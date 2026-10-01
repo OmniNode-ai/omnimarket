@@ -32,6 +32,14 @@ concurrency:
     }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # GitHub-hosted runners hit PyPI download timeouts at uv's 30s default
+  # (files.pythonhosted.org; torch/CUDA wheels from the intelligence extra
+  # and small wheels alike). 2026-10-01 07:18-08:32Z every omnimarket PR and
+  # the dev head went red on "Failed to download distribution due to network
+  # timeout". omnibase_infra, omnibase_core and omniclaude already set this.
+  UV_HTTP_TIMEOUT: "600"
+
 jobs:
   # =============================================================================
   # Per-run runner routing (OMN-18031)
