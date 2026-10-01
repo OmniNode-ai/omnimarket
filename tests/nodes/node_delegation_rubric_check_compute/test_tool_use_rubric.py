@@ -509,6 +509,27 @@ def test_tool_use_answer_traceable_request_passes():
     assert (row.outcome, row.reason_code) == ("PASS", "answer_traceable")
 
 
+def test_tool_use_answer_traceable_accepted_call_argument_passes():
+    run = transcript(calls=(call(output="def build_widget(): ..."),))
+    row = criterion(
+        "task_answer_traceable", run=run, answer="Changed src/widget.py as asked."
+    )
+    assert (row.outcome, row.reason_code) == ("PASS", "answer_traceable")
+
+
+@pytest.mark.parametrize("status", ["error", None])
+def test_tool_use_answer_traceable_refused_call_argument_is_not_evidence(status):
+    run = transcript(calls=(call(status=status, output="no such file"),))
+    row = criterion(
+        "task_answer_traceable", run=run, answer="Changed src/widget.py as asked."
+    )
+    assert (row.outcome, row.reason_code, row.facts) == (
+        "FAIL",
+        "untraceable_identifier",
+        ("src/widget.py",),
+    )
+
+
 def test_tool_use_answer_traceable_identifier_nowhere_fails_and_named():
     row = criterion(
         "task_answer_traceable", run=transcript(), answer="SYN-999 changed."

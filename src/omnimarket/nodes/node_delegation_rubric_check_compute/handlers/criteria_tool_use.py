@@ -249,6 +249,9 @@ def task_answer_traceable(
         return result(criterion, EnumRubricOutcome.UNDETERMINED, "no_transcript")
     params = criterion.params
     assert isinstance(params, ModelClaimsTraceableParams)
+    # What the run observed: every recorded output, plus the arguments of calls
+    # the environment accepted (a path an ok Read was given exists). A failed
+    # call's arguments are the model's own text and are not evidence.
     source = "\n".join(
         (
             request.request_text,
@@ -256,6 +259,12 @@ def task_answer_traceable(
                 call.result.output
                 for call in transcript.tool_calls
                 if call.result is not None
+            ),
+            *(
+                call.arguments_json
+                for call in transcript.tool_calls
+                if call.result is not None
+                and call.result.status == EnumToolCallStatus.OK
             ),
         )
     )

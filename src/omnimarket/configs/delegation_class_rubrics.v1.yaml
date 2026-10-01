@@ -108,7 +108,7 @@ x-tool-use-criteria: &tool_use_criteria
   params:
     target_pattern: *test_target_pattern
 - criterion_id: task_answer_traceable
-  description: Extractable identifiers in the final answer occur in the request or recorded tool outputs.
+  description: Extractable identifiers in the final answer occur in the request, a recorded tool output or the arguments of a call the environment accepted.
   params:
     ticket_id_pattern: *ticket_id_pattern
     min_quote_words: 3
