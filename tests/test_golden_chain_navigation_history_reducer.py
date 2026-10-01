@@ -11,10 +11,14 @@ Related: OMN-8301 (Wave 5 migration), OMN-2584
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
+from omnibase_core.container import ModelONEXContainer
 
+import omnimarket.nodes.node_navigation_history_reducer as navigation_node
 from omnimarket.nodes.node_navigation_history_reducer import (
     HandlerNavigationHistoryReducer,
     HandlerNavigationHistoryWriter,
@@ -67,7 +71,7 @@ class TestNavigationHistoryReducerGoldenChain:
         session = _make_success_session()
         request = ModelNavigationHistoryRequest(session=session)
         with pytest.raises(ValidationError):
-            request.session = _make_success_session()  # type: ignore[misc]
+            request.session = _make_success_session()
 
     def test_plan_step_roundtrip(self) -> None:
         """ModelPlanStep serializes cleanly with all fields."""
@@ -95,7 +99,7 @@ class TestNavigationHistoryReducerGoldenChain:
             executed_at=datetime.now(tz=UTC),
         )
         with pytest.raises(ValidationError):
-            step.step_index = 99  # type: ignore[misc]
+            step.step_index = 99
 
     def test_handler_importable(self) -> None:
         """HandlerNavigationHistoryReducer is importable from omnimarket.nodes."""
@@ -117,3 +121,29 @@ class TestNavigationHistoryReducerGoldenChain:
         assert session.executed_steps is not None
         assert len(session.executed_steps) == 1
         assert session.graph_fingerprint == "abc123"
+
+    def test_node_owns_its_container(self) -> None:
+        """The node stores its container and exposes it via the read-only property."""
+        container = ModelONEXContainer()
+        node = NodeNavigationHistoryReducer(container)
+        assert node.container is container
+        assert isinstance(node.handler, HandlerNavigationHistoryReducer)
+
+    def test_contract_fsm_folds_completed_sessions_into_reduced(self) -> None:
+        """The contract FSM folds completed sessions into the reduced state."""
+        contract = yaml.safe_load(
+            (Path(navigation_node.__file__).parent / "contract.yaml").read_text()
+        )
+        fsm = contract["state_machine"]
+        fsm_map = {
+            (t["from_state"], t["trigger"]): t["to_state"] for t in fsm["transitions"]
+        }
+
+        assert fsm["initial_state"] == "idle"
+        assert {s["state_name"] for s in fsm["states"]} == {"idle", "reduced", "failed"}
+        assert fsm_map[("idle", "navigation_session_completed")] == "reduced"
+        assert fsm_map[("reduced", "navigation_session_completed")] == "reduced"
+        assert fsm_map[("reduced", "navigation_history_reduced")] == "reduced"
+        assert fsm_map[("reduced", "navigation_history_reduce_failed")] == "failed"
+        assert "reduced" not in fsm["terminal_states"]
+        assert fsm["terminal_states"] == ["failed"]
