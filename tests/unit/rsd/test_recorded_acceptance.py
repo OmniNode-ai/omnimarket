@@ -237,6 +237,7 @@ def _synthetic_c0(*, endpoint: str = _ENDPOINT) -> ModelRsdOfflineC0Input:
     )
     overlay = (
         f"backends:\n  - backend_id: local-coder\n    endpoint_url: {endpoint}\n"
+        "    model_name: Qwen3.8-27B\n"
     ).encode("ascii")
     return ModelRsdOfflineC0Input(
         routing_decision=decision,
@@ -302,8 +303,10 @@ def test_valid_independent_c0_and_b2_never_claim_cross_binding() -> None:
                 b"backends:\n"
                 b"  - backend_id: local-coder\n"
                 + f"    endpoint_url: {_ENDPOINT}\n".encode("ascii")
+                + b"    model_name: Qwen3.8-27B\n"
                 + b"  - backend_id: local-heavy-reasoning\n"
                 + f"    endpoint_url: {_ENDPOINT}\n".encode("ascii")
+                + b"    model_name: Qwen3.8-27B\n"
             ),
         }
     )

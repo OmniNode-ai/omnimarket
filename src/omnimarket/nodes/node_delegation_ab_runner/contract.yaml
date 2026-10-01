@@ -39,9 +39,6 @@ env_dependencies:
   LLM_CODER_URL:
     required: false
     description: "Local vLLM endpoint — used as delegated path when available"
-  LLM_GLM_URL:
-    required: false
-    description: "GLM cloud API — alternate delegated path"
   ONEX_TRACK_A_API_KEY:
     required: false
     description: "API key for frontier model baseline path (Gemini/cloud)"

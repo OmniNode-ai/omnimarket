@@ -20,7 +20,7 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442, OMN-17099
 config_version: "2.7.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
@@ -33,44 +33,9 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
-    # Live readback (GET .201:8000's /v1/models, this ticket) confirms the
-    # SGLang-served id is "Qwen3.6-35B-A3B". A backend whose model_name does not
-    # match this endpoint's served id is now caught at dispatch by the
-    # fail-closed guard in HandlerLlmDelegationCall (transport.
-    # probe_served_models + the OMN-16419 mismatch check) instead of silently
-    # attributing to a model that isn't running.
-    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
-    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
-    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
-    # .201:8000's /v1/models now returns http=200 with served ids
-    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
-    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
-    # So this field has now flipped TWICE, and both times every static test in
-    # every repo stayed green while EVERY local delegation attempt was refused
-    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
-    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
-    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
-    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
-    # fails CI instead of silently billing. Re-probe before changing this value.
-    # OMN-18626 (2026-09-17): THIRD FLIP, and the prediction in the paragraph
-    # above was half right. The endpoint was rebuilt onto the NVFP4 27B at about
-    # 15:24Z and GET .201:8000/v1/models now returns exactly {"Qwen3.8-27B"},
-    # root /data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090, max_model_len
-    # 131072. The probe-fixture mechanism OMN-16999 built is the right one and it
-    # DID fail CI the moment the recorded readback was refreshed -- but it is a
-    # RECORD, and a record cannot notice that the thing it recorded has moved.
-    # What actually found this flip was a real delegation taking HTTP 404 "The
-    # model `Qwen3.6-35B-A3B` does not exist." on its local rung and climbing to
-    # a metered cheap_cloud rung (run 95df150b-21cc-4b0e-afc6-9e25fbeb3735).
-    # THIS LINE AND omnibase_infra's lab lane overlays MOVE TOGETHER OR NOT
-    # AT ALL: render_bifrost_delegation_contract._merge_lane_overlay refuses a
-    # base/overlay disagreement outright, so a half-applied change is a runtime
-    # that will not render its delegation contract at container start.
-    # OMN-18626 (2026-09-17): third flip, same endpoint, same commit as
-    # local-coder above -- see that backend's note for the readback, the
-    # delegation that found it, and why this line cannot move alone.
-    model_name: Qwen3.8-27B
+    # The lane overlay declares the local served model id; omnibase_infra renders it.
+    # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+    model_name: null
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
@@ -118,22 +83,9 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    # OMN-16419: was "Qwen3.6-35B-A3B" — same stale label as local-coder above
-    # (same .201:8000 SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
-    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
-    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
-    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
-    # .201:8000's /v1/models now returns http=200 with served ids
-    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
-    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
-    # So this field has now flipped TWICE, and both times every static test in
-    # every repo stayed green while EVERY local delegation attempt was refused
-    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
-    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
-    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
-    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
-    # fails CI instead of silently billing. Re-probe before changing this value.
-    model_name: Qwen3.8-27B
+    # The lane overlay declares the local served model id; omnibase_infra renders it.
+    # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+    model_name: null
     tier: local
     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
     # large deep-reasoning/research outputs are not killed at 60s.
@@ -193,7 +145,7 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
-    model_name: text-embedding-qwen3
+    model_name: null
     tier: local
     timeout_ms: 30000
     # OMN-13161: embedding backend produces vectors, not chat completions — it never
@@ -479,19 +431,9 @@ backends:
     endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
-    # OMN-16833: was "ds-v4-flash" — that is the ROUTING CATALOG KEY
-    # (model_registry_v1.yaml `ds-v4-flash:` / routing_tiers.yaml `id:`), not the
-    # SERVED id.  `model_name` is the wire field POSTed as "model", and the
-    # registry entry for this same backend already declares
-    # `model_name: "deepseek-v4-flash"` — the bifrost contract had simply drifted
-    # from it.  Live readback 2026-08-28: GET .200:8101/v1/models lists exactly
-    # {"deepseek-v4-flash", "deepseek-v4-pro"}, so the old value was rejected by
-    # the OMN-16419 served-model guard in HandlerLlmDelegationCall
-    # (transport.probe_served_models) — the same silent-misattribution class that
-    # ticket closed for local-coder.  The catalog key stays `ds-v4-flash`
-    # everywhere (routing_tiers `id`, generated_llm_routing_constants,
-    # telemetry); only the wire name is corrected here.
-    model_name: deepseek-v4-flash
+    # OMN-16833 / OMN-17099: ds-v4-flash remains the routing key;
+    # the lane overlay supplies the served id checked at dispatch.
+    model_name: null
     tier: local
     # OMN-13170: DS-V4-Flash is a 284B MoE serving code_generation; full
     # module/test-suite generation at its throughput well exceeds 60s and was
@@ -907,7 +849,7 @@ provider_quota_policy:
       required_path_prefix: "/api/coding/paas/v4"
       required_path_prefix_hint: >-
         We hold a z.ai GLM Coding Plan, served ONLY at
-        https://api.z.ai/api/coding/paas/v4. The bare /api/paas/v4 is the
+        /api/coding/paas/v4. The bare /api/paas/v4 is the
         pay-as-you-go product, which this account does not hold; it answers a
         Coding-Plan key with 429 code 1113 "Insufficient balance or no resource
         package". That is a WRONG-ENDPOINT signal, never a billing fact, and
@@ -970,7 +912,7 @@ provider_quota_policy:
           alert_hint: >-
             z.ai 1113 on an OmniNode GLM request means the request hit the
             pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
-            The Coding Plan endpoint is https://api.z.ai/api/coding/paas/v4.
+            The Coding Plan path is /api/coding/paas/v4 (direct calls parked, OMN-20173).
             This is a routing defect, never a billing action.
     # OMN-20154: z.ai's GENERAL API is a second product on the same host as the
     # Coding Plan rule above, metered separately and served under its own path.

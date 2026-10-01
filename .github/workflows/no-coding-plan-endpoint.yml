@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-20173: the same endpoint assertion runs locally and in required CI Summary.
+
+name: No Coding Plan Endpoint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  no-coding-plan-endpoint:
+    name: No Coding Plan Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Assert no direct Coding Plan endpoint is declared
+        run: uv run python -m omnimarket.validators.no_coding_plan_endpoint
+
+      - name: Prove the assertion is falsifiable
+        run: uv run pytest tests/unit/validators/test_no_coding_plan_endpoint.py -q -p no:cacheprovider
