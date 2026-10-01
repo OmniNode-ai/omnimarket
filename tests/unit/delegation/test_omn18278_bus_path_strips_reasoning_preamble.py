@@ -395,6 +395,25 @@ class TestBusPathReusesTheSharedImplementations:
 
         assert _segmented_inference_response(once).content == once.content
 
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "Part one.</think> more reasoning. Final.",
+            "Final answer with <think> inside",
+            "Part one. <think>more reasoning</think> Final.",
+            "Clean final answer.",
+        ],
+    )
+    def test_the_response_seam_preserves_everything_after_the_leading_block(
+        self, answer: str
+    ) -> None:
+        response = ModelInferenceResponseData(
+            correlation_id=uuid4(),
+            content="We need answer user...</think>\n\n" + answer,
+            model_used="test-model",
+        )
+        assert _segmented_inference_response(response).content == answer
+
     def test_the_truncation_marker_is_derived_from_the_shared_constant(self) -> None:
         """The classifier matches the effect's own message, not a copy of it."""
         assert TRUNCATED_RESPONSE_FAILURE_MARKER in (
