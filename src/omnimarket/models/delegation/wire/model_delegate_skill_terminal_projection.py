@@ -337,6 +337,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
     session_id: UUID
     model_local: str
     model_cloud_baseline: str
+    baseline_source: str = "fixed_default"
+    pricing_manifest_version: int = Field(default=0, ge=0)
     local_cost_usd: Decimal
     cloud_cost_usd: Decimal
     savings_usd: Decimal
