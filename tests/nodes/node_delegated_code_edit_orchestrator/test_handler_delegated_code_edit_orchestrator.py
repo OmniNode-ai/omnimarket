@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any, cast
 
 import pytest
 
@@ -67,6 +68,7 @@ class FakePorts:
         self.claimed: set[str] = set()
         self.writes: list[str] = []
         self.checks_run: list[str] = []
+        self.formatter_argv: list[tuple[str, ...]] = []
         self.prompts: list[str] = []
         self.contracts: list[dict[str, object]] = []
 
@@ -113,6 +115,9 @@ class FakePorts:
     def run_check(
         self, request: ModelDelegatedCodeEditRequest, check: ModelDeclaredCheck
     ) -> ModelCheckResult:
+        if check.name == "format":
+            self.formatter_argv.append(check.argv)
+            return ModelCheckResult(name="format", status="passed", exit_code=0)
         self.checks_run.append(check.name)
         passed = self.check_passes.pop(0) if self.check_passes else False
         return ModelCheckResult(
@@ -497,3 +502,49 @@ def test_a_turn_whose_results_exceed_the_history_budget_is_cut_not_dropped() -> 
     assert "TURN 2\n> view(path='src/m.py') -> ok" in prompt
     assert "more characters cut" in prompt
     assert len(prompt) <= len(head_only) + 5_000 + 200
+
+
+def test_format_tool_runs_the_declared_formatter_over_a_writable_file() -> None:
+    ports = FakePorts(
+        [_reply(1, _a("format", file_path="src/m.py"), _a("finish", summary="s"))],
+        check_passes=[True, True],
+    )
+    request = _request(formatter=("ruff", "format"))
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert ports.formatter_argv == [("ruff", "format", "src/m.py")]
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.refusals == 0
+
+
+def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter() -> (
+    None
+):
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("format", file_path="tests/test_m.py"),
+                _a("format", file_path="src/m.py"),
+            )
+        ],
+        check_passes=[False],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(max_turns=1, formatter=("ruff", "format"))
+    )
+    assert result.refusals == 1
+    ports = FakePorts([_reply(1, _a("format", file_path="src/m.py"))])
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert result.refusals == 1
+    assert ports.formatter_argv == []
+
+
+def test_format_is_offered_as_a_tool() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator import TOOL_SCHEMAS
+
+    schemas = cast("list[dict[str, dict[str, str]]]", list(TOOL_SCHEMAS))
+    names = [t["function"]["name"] for t in schemas]
+    assert "format" in names
+    contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
+    tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
+    assert "format" in tool_enum
