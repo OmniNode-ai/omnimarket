@@ -278,6 +278,12 @@ async def test_backfill_sees_rows_under_force_rls_as_the_owner() -> None:
                 "WHERE oid = 'delegation_events'::regclass"
             )
             assert forced is True
+            policies = await conn.fetchval(
+                "SELECT count(*) FROM pg_policies WHERE schemaname = $1 "
+                "AND tablename = 'delegation_events' AND policyname = 'tenant_isolation'",
+                schema,
+            )
+            assert policies == 1
         finally:
             await conn.execute("RESET ROLE")
             await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")

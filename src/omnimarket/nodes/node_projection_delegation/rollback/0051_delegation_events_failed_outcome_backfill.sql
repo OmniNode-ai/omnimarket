@@ -46,6 +46,13 @@ BEGIN
 
         IF v_forced THEN
             ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
+            -- 0034's predicate, restated as 0051 restates it.
+            DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
+            CREATE POLICY tenant_isolation ON delegation_events
+              FOR ALL
+              USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+              WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+            GRANT SELECT ON delegation_events TO app_dashboard;
         END IF;
         RAISE NOTICE 'OMN-20276: restored % delegation_events rows', v_restored;
     END IF;

@@ -50,7 +50,9 @@
 --   invisible, so the rewrite would match nothing and report success. The
 --   DO block lifts FORCE, rewrites, and restores it, as 0033 does; one
 --   statement is one transaction, so no path commits with FORCE lifted.
---   created_at and the row's other columns are not touched.
+--   Where FORCE is restored the tenant_isolation policy is restated with
+--   0034's predicate unchanged, so the file never enforces without its
+--   admitting rule. created_at and the row's other columns are not touched.
 
 CREATE TABLE IF NOT EXISTS omninode_internal.delegation_events_outcome_backfill_omn20276 (
     delegation_event_id UUID PRIMARY KEY,
@@ -68,7 +70,6 @@ COMMENT ON TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 I
 DO $$
 DECLARE
     v_forced BOOLEAN;
-    v_pending BIGINT;
     v_rewritten BIGINT;
 BEGIN
     IF to_regclass('delegation_events') IS NULL THEN
@@ -95,20 +96,6 @@ BEGIN
     );
     IF v_forced THEN
         ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
-    END IF;
-
-    SELECT count(*) INTO v_pending
-    FROM delegation_events AS e
-    WHERE e.terminal_ok IS FALSE
-      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
-      AND e.operational_outcome = 'completed';
-
-    IF v_pending = 0 THEN
-        IF v_forced THEN
-            ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
-        END IF;
-        RAISE NOTICE 'OMN-20276: no contradictory delegation_events rows; nothing to rewrite';
-        RETURN;
     END IF;
 
     INSERT INTO omninode_internal.delegation_events_outcome_backfill_omn20276 (
@@ -154,6 +141,16 @@ BEGIN
 
     IF v_forced THEN
         ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
+        -- Restated, not changed: the predicate is 0034's, byte for byte, so
+        -- this file alone leaves the relation enforcing with its admitting
+        -- rule (the OMN-17298 policy-presence rule), and the ratchet's grant
+        -- travels with it (OMN-14894).
+        DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
+        CREATE POLICY tenant_isolation ON delegation_events
+          FOR ALL
+          USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+          WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+        GRANT SELECT ON delegation_events TO app_dashboard;
     END IF;
 
     RAISE NOTICE 'OMN-20276: rewrote % delegation_events rows', v_rewritten;
