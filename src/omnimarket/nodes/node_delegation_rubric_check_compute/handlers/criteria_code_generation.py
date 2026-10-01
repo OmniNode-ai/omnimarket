@@ -9,6 +9,7 @@ import re
 import yaml
 
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_common import (
+    added_diff_lines,
     fences,
     result,
     test_passes,
@@ -127,9 +128,12 @@ def ids_traceable(
 ) -> ModelRubricCriterionResult:
     params = criterion.params
     assert isinstance(params, ModelIdsTraceableParams)
-    ids = tuple(
-        dict.fromkeys(re.findall(params.ticket_id_pattern, request.answer_text))
-    )
+    scored = request.answer_text
+    if params.diff_scope == "added_lines":
+        added = added_diff_lines(request.answer_text)
+        if added is not None:
+            scored = added
+    ids = tuple(dict.fromkeys(re.findall(params.ticket_id_pattern, scored)))
     if not ids:
         return result(criterion, EnumRubricOutcome.UNDETERMINED, "not_applicable")
     source_ids = set(

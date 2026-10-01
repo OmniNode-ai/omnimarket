@@ -35,6 +35,7 @@ from uuid import UUID
 import httpx
 import yaml
 
+from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -971,6 +972,9 @@ class HandlerLlmDelegationCall:
         # made a scratchpad score 1.0.
         finish_reason = finish_reason_from_choice(choices[0])
         content: str = choices[0].get("message", {}).get("content") or ""
+        content, reasoning_stripped_chars = strip_leading_inline_reasoning(
+            content, request.inline_reasoning_terminator
+        )
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
@@ -991,6 +995,7 @@ class HandlerLlmDelegationCall:
             secret_source=secret_source,
             secret_ref=request.secret_ref,
             content=content,
+            reasoning_stripped_chars=reasoning_stripped_chars,
             output_hash=output_hash,
             tokens_in=tokens_in,
             tokens_out=tokens_out,

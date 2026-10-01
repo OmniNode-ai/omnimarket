@@ -84,9 +84,10 @@ x-code-criteria: &code_criteria
   params:
     target_pattern: *test_target_pattern
 - criterion_id: ids_traceable
-  description: Ticket-shaped identifiers in the answer occur in the request or supplied context.
+  description: Ticket-shaped identifiers in the added lines of a diff answer (the whole answer when it is not a diff) occur in the request or supplied context.
   params:
     ticket_id_pattern: *ticket_id_pattern
+    diff_scope: added_lines
 
 x-tool-use-criteria: &tool_use_criteria
 - criterion_id: tool_calls_wellformed

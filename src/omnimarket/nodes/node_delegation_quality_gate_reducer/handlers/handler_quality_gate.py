@@ -92,9 +92,12 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    RESIDUAL_REASONING_TAG_CHECK_NAME,
+    RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
+    ModelReasoningSegmentation,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_conformance import (
@@ -113,6 +116,7 @@ from omnimarket.inference.provider_finish_reason import (
 from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
     resolve_quality_rule,
+    resolve_reasoning_preamble_policy,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
@@ -2881,6 +2885,30 @@ def _unresolved_preamble_result(
     )
 
 
+def _residual_reasoning_tag_result(
+    gate_input: ModelQualityGateInput, tag: str
+) -> ModelQualityGateResult:
+    """Refuse unfinished separation of reasoning and answer (OMN-18278)."""
+    reason = f"{RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON}: {tag!r}"
+    reasons = (reason,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=RESIDUAL_REASONING_TAG_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=reason,
+            ),
+        ),
+    )
+
+
 def _known_heuristic_checks() -> frozenset[str]:
     """Every heuristic check name the gate can execute.
 
@@ -2992,6 +3020,7 @@ def delta(
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
+    reasoning_stripped_chars: int = 0,
 ) -> ModelQualityGateResult:
     """Segment off a leaked reasoning preamble, then evaluate the answer.
 
@@ -3029,7 +3058,31 @@ def delta(
         # pre-OMN-19529 behaviour -- grounding checks skipped and recorded.
         stamped = getattr(gate_input, "grounding_source", None)
         grounding_source = stamped if isinstance(stamped, str) else None
-    segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
+    # The adapter's receipt means the leading boundary was already consumed.
+    # A later terminator belongs to the answer and must reach the floor intact.
+    segmentation = (
+        ModelReasoningSegmentation(
+            answer=gate_input.llm_response_content,
+            preamble="",
+            boundary_rule=EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND,
+            boundary_offset=0,
+        )
+        if reasoning_stripped_chars > 0
+        else segment_reasoning_preamble(gate_input.llm_response_content)
+    )
+    preamble_policy = resolve_reasoning_preamble_policy()
+    residual_tag = next(
+        (
+            tag
+            for tag in (
+                preamble_policy.residual_trace_tags
+                if preamble_policy is not None
+                else ()
+            )
+            if tag in segmentation.answer
+        ),
+        None,
+    )
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
     elif (
@@ -3051,6 +3104,9 @@ def delta(
         # other: a response can be truncated without opening with a declared
         # phrase, and can open with one without being truncated.
         result = _unresolved_preamble_result(gate_input)
+    elif residual_tag is not None:
+        # Inspect the answer before any paired-tag strip can hide a trace.
+        result = _residual_reasoning_tag_result(gate_input, residual_tag)
     else:
         segmented_input = (
             gate_input

@@ -14,6 +14,7 @@ independent of which transport is selected.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -210,6 +211,31 @@ class TestHealthProbeCache:
 class TestHandlerLlmDelegationCall:
     def setup_method(self) -> None:
         _health_cache.clear()
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("terminator", ["</think>", None])
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "The answer.",
+            "Part one.</think> more.",
+            "Final <think>inside</think> answer.",
+        ],
+    )
+    def test_adapter_strips_declared_leading_reasoning_and_hashes_returned_text(
+        self, monkeypatch: pytest.MonkeyPatch, terminator: str | None, answer: str
+    ) -> None:
+        raw = "We need answer user...</think>\n\n" + answer
+        _patch_post(monkeypatch, json_body=_make_api_response(raw))
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(inline_reasoning_terminator=terminator)
+            )
+        assert result.success
+        expected = answer if terminator is not None else raw
+        assert result.content == expected
+        assert result.reasoning_stripped_chars == len(raw) - len(expected)
+        assert result.output_hash == hashlib.sha256(expected.encode()).hexdigest()
 
     @pytest.mark.unit
     def test_delegation_publish_topics_are_resolved_by_suffix(self) -> None:

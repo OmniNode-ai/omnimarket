@@ -1,0 +1,193 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""OMN-18278: strip one declared leading block and refuse residual traces."""
+
+import json
+from uuid import uuid4
+
+import pytest
+from omnibase_core.models.delegation.wire import EnumQualityRuleEnforcement
+
+from omnimarket.delegation.reasoning_preamble import (
+    RESIDUAL_REASONING_TAG_CHECK_NAME,
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
+    EnumReasoningBoundaryRule,
+    segment_reasoning_preamble,
+    strip_leading_inline_reasoning,
+)
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.inference.provider_finish_reason import TRUNCATION_CHECK_NAME
+from omnimarket.inference.task_class_authority import (
+    ModelReasoningPreamblePolicy,
+    resolve_reasoning_preamble_policy,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    delta,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
+    ModelQualityGateInput,
+)
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    ("content", "terminator", "expected", "count"),
+    [
+        ("reasoning</think>\n\nanswer", None, "reasoning</think>\n\nanswer", 0),
+        ("reasoning</think>\n\nanswer", "</think>", "answer", 19),
+        ("answer", "</think>", "answer", 0),
+        ("a</think>b</think>c", "</think>", "b</think>c", 9),
+        ("aEND \n answer  \n", "END", "answer  \n", 7),
+    ],
+)
+def test_strip_only_one_leading_block(
+    content: str, terminator: str | None, expected: str, count: int
+) -> None:
+    assert strip_leading_inline_reasoning(content, terminator) == (expected, count)
+
+
+def _input(content: str) -> ModelQualityGateInput:
+    return ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="document",
+        llm_response_content=content,
+        dod_deterministic=("response_non_empty",),
+        dod_heuristic=(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "tag"),
+    [
+        ("Part one.</think> more reasoning. Final.", "</think>"),
+        ("Final answer with <think> inside", "<think>"),
+        ("Part one. <think>more reasoning</think> Final.", "<think>"),
+    ],
+)
+@pytest.mark.parametrize("adapter_stripped", [False, True])
+def test_residual_tag_refuses_and_climbs(
+    answer: str, tag: str, adapter_stripped: bool
+) -> None:
+    raw = "We need answer user...</think>\n\n" + answer
+    content, count = (
+        strip_leading_inline_reasoning(raw, "</think>")
+        if adapter_stripped
+        else (raw, 0)
+    )
+    result = delta(_input(content), reasoning_stripped_chars=count)
+    assert not result.passed
+    assert result.fail_category == "fail_deterministic"
+    assert result.quality_score == 0.0
+    assert result.fallback_recommended
+    assert all(reason.startswith("WEAK_OUTPUT:") for reason in result.failure_reasons)
+    assert len(result.rule_evaluations) == 1
+    rule = result.rule_evaluations[0]
+    assert rule.rule == RESIDUAL_REASONING_TAG_CHECK_NAME
+    assert rule.enforcement is EnumQualityRuleEnforcement.BLOCKING
+    assert not rule.passed
+    assert tag in rule.detail
+
+
+def test_a_leading_paired_block_is_segmented_off_and_the_answer_passes() -> None:
+    answer = json.dumps({"answer": "42"})
+    content = "  <think>weighing options</think>\n\n" + answer
+    segmentation = segment_reasoning_preamble(content)
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.LEADING_PAIRED_BLOCK
+    assert segmentation.answer == answer
+    contract: dict[str, object] = {"type": "object", "required": ["answer"]}
+    result = delta(_input(content), response_contract=contract)
+    assert result.passed
+    assert result.reasoning_preamble_rule == "leading_paired_block"
+
+
+def test_a_paired_block_after_the_answer_starts_is_left_for_the_floor() -> None:
+    content = "The answer is 42. <think>second thoughts</think> Or 41."
+    segmentation = segment_reasoning_preamble(content)
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+    result = delta(_input(content))
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
+
+
+def test_a_leading_paired_block_with_nothing_behind_it_stays_unresolved() -> None:
+    segmentation = segment_reasoning_preamble("<think>only reasoning</think>\n")
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+
+
+def test_residual_opening_tag_in_whole_answer_is_refused() -> None:
+    result = delta(_input("Final answer with <think> inside"))
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
+    assert result.reasoning_preamble_rule == "no_boundary_found"
+
+
+@pytest.mark.parametrize("adapter_stripped", [False, True])
+def test_clean_answer_is_unchanged_after_leading_segmentation(
+    adapter_stripped: bool,
+) -> None:
+    answer = json.dumps({"answer": "Final answer."})
+    raw = "We need answer user...</think>\n\n" + answer
+    content, count = (
+        strip_leading_inline_reasoning(raw, "</think>")
+        if adapter_stripped
+        else (raw, 0)
+    )
+    contract: dict[str, object] = {"type": "object", "required": ["answer"]}
+    clean = delta(_input(answer), response_contract=contract)
+    segmented = delta(
+        _input(content), reasoning_stripped_chars=count, response_contract=contract
+    )
+    assert clean.passed
+    assert segmented.passed
+    assert segmented.quality_score == clean.quality_score
+    assert segmented.rule_evaluations == clean.rule_evaluations
+    assert segmented.failure_reasons == clean.failure_reasons
+
+
+def test_policy_exposes_residual_tags_and_defaults_to_none_declared() -> None:
+    policy = resolve_reasoning_preamble_policy()
+    assert policy is not None
+    assert policy.residual_trace_tags == ("<think>", "</think>")
+    without_tags = ModelReasoningPreamblePolicy.model_validate(
+        policy.model_dump(exclude={"residual_trace_tags"})
+    )
+    assert without_tags.residual_trace_tags == ()
+
+
+def test_undeclared_residual_tags_do_not_add_a_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = resolve_reasoning_preamble_policy()
+    assert policy is not None
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers."
+        "handler_quality_gate.resolve_reasoning_preamble_policy",
+        lambda: policy.model_copy(update={"residual_trace_tags": ()}),
+    )
+    assert delta(
+        _input(json.dumps({"answer": "Final answer with <think> inside"})),
+        response_contract={"type": "object", "required": ["answer"]},
+    ).passed
+
+
+@pytest.mark.parametrize(
+    ("content", "finish_reason", "expected_rule"),
+    [
+        (
+            "Final answer with <think> inside",
+            EnumProviderFinishReason.LENGTH,
+            TRUNCATION_CHECK_NAME,
+        ),
+        (
+            "We need answer user... <think> unfinished",
+            EnumProviderFinishReason.STOP,
+            UNRESOLVED_PREAMBLE_CHECK_NAME,
+        ),
+    ],
+)
+def test_existing_floors_keep_precedence(
+    content: str, finish_reason: EnumProviderFinishReason, expected_rule: str
+) -> None:
+    result = delta(_input(content), finish_reason=finish_reason)
+    assert result.rule_evaluations[0].rule == expected_rule

@@ -180,6 +180,7 @@ class ModelResolvedDelegationBackend(BaseModel):
         ),
     )
     extra_headers: dict[str, str] = Field(default_factory=dict)
+    inline_reasoning_terminator: str | None = Field(default=None, min_length=1)
     secret_ref: str | None = Field(
         default=None,
         description=(
@@ -777,6 +778,7 @@ def resolve_delegation_backend(
         max_tokens=raw_max_tokens,
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
+        inline_reasoning_terminator=backend.get("inline_reasoning_terminator"),
         secret_ref=secret_ref,
         api_key_env=api_key_env,
         supports_response_format_json_schema=bool(
