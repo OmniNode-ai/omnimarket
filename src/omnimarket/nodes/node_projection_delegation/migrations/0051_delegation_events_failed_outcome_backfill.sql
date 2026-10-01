@@ -1,0 +1,143 @@
+-- OMN-20276: rewrite the delegation_events rows that contradict themselves.
+--
+-- WHAT IS WRONG WITH THESE ROWS
+--
+--   One delegation_events row (upsert key correlation_id) is written by two
+--   event families. The inner delegation terminal names operational_outcome
+--   and content_verdict; the outer delegate-skill terminal names terminal_ok
+--   and terminal_failure_cause. Before omnimarket#3158 (OMN-19559) nothing
+--   reconciled them, so a row could read terminal_ok=false with a typed
+--   failure cause while operational_outcome='completed' and
+--   content_verdict='usable'. Read-only psql on the .201 dev lane at
+--   2026-10-01T10:36Z found 249 such rows (timeout 194, runtime_shutdown 46,
+--   provider_error 9), every one written before #3158 merged.
+--
+-- WHAT THIS FILE DOES
+--
+--   It applies to those historical rows exactly the rule #3158 applies to new
+--   ones (model_terminal_precedence.apply_terminal_precedence and
+--   outcome_for_failure_cause): a row whose terminal_ok is false, whose cause
+--   is not blank and whose outcome is 'completed' takes the outcome its cause
+--   names, and a 'usable' or 'correct' verdict takes the cause's verdict.
+--   tests/test_omn19559_backfill_migration_real_postgres.py fails if the
+--   mapping below and outcome_for_failure_cause disagree for any cause.
+--
+--   Each rewritten row's prior outcome and verdict are kept in
+--   delegation_events_outcome_backfill_omn20276, so the rollback
+--   (omnibase_infra rollback_node_projection_delegation_0051.sql) restores
+--   them exactly and drops that table.
+--
+-- RE-RUNNABLE
+--
+--   A second application matches nothing: the first left no row with
+--   terminal_ok=false and outcome 'completed'. The audit insert keeps the
+--   first prior values (ON CONFLICT DO NOTHING), so a re-run never overwrites
+--   what the rollback needs.
+--
+-- ROW LEVEL SECURITY
+--
+--   delegation_events is FORCE ROW LEVEL SECURITY on the tenant lanes. Under
+--   FORCE the owner is filtered too, and with app.tenant_id unset every row is
+--   invisible, so the UPDATE would match nothing and report success. The
+--   same DO block lifts FORCE, rewrites, and restores it, as 0033 does; one
+--   statement is one transaction, so no path commits with FORCE lifted.
+--   created_at and the row's other columns are not touched.
+
+CREATE TABLE IF NOT EXISTS delegation_events_outcome_backfill_omn20276 (
+    delegation_event_id UUID PRIMARY KEY,
+    correlation_id TEXT NOT NULL,
+    prior_operational_outcome TEXT,
+    prior_content_verdict TEXT,
+    new_operational_outcome TEXT NOT NULL,
+    new_content_verdict TEXT,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE delegation_events_outcome_backfill_omn20276 IS
+    'OMN-20276: prior outcome and verdict of each delegation_events row 0051 rewrote; read by its rollback, dropped by it.';
+
+DO $$
+DECLARE
+    v_forced BOOLEAN;
+    v_rewritten BIGINT;
+BEGIN
+    IF to_regclass('delegation_events') IS NULL THEN
+        RAISE NOTICE 'OMN-20276: delegation_events does not exist; nothing to rewrite';
+        RETURN;
+    END IF;
+    -- A replay that withholds 0029 or 0045 has no column to contradict.
+    IF (
+        SELECT count(*) FROM pg_catalog.pg_attribute
+        WHERE attrelid = 'delegation_events'::regclass
+          AND attname IN (
+              'terminal_ok', 'terminal_failure_cause',
+              'operational_outcome', 'content_verdict'
+          )
+          AND NOT attisdropped
+    ) < 4 THEN
+        RAISE NOTICE 'OMN-20276: delegation_events has no outcome columns; nothing to rewrite';
+        RETURN;
+    END IF;
+
+    v_forced := (
+        SELECT relforcerowsecurity FROM pg_catalog.pg_class
+        WHERE oid = 'delegation_events'::regclass
+    );
+    IF v_forced THEN
+        ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
+    END IF;
+
+    WITH mapped AS (
+        SELECT
+            e.id,
+            e.correlation_id,
+            e.operational_outcome AS prior_outcome,
+            e.content_verdict AS prior_verdict,
+            CASE e.terminal_failure_cause
+                WHEN 'timeout' THEN 'timeout'
+                WHEN 'runtime_shutdown' THEN 'cancelled'
+                WHEN 'provider_quota_exhausted' THEN 'provider_quota'
+                WHEN 'quality_gate_refused' THEN 'quality_rejected'
+                ELSE 'inference_failed'
+            END AS new_outcome,
+            CASE
+                WHEN e.content_verdict IN ('usable', 'correct') THEN
+                    CASE e.terminal_failure_cause
+                        WHEN 'quality_gate_refused' THEN 'unusable'
+                        ELSE 'not_applicable'
+                    END
+                ELSE e.content_verdict
+            END AS new_verdict
+        FROM delegation_events AS e
+        WHERE e.terminal_ok IS FALSE
+          AND e.terminal_failure_cause IS NOT NULL
+          AND btrim(e.terminal_failure_cause) <> ''
+          AND e.operational_outcome = 'completed'
+        FOR UPDATE
+    ),
+    audited AS (
+        INSERT INTO delegation_events_outcome_backfill_omn20276 (
+            delegation_event_id, correlation_id,
+            prior_operational_outcome, prior_content_verdict,
+            new_operational_outcome, new_content_verdict
+        )
+        SELECT id, correlation_id, prior_outcome, prior_verdict, new_outcome, new_verdict
+        FROM mapped
+        ON CONFLICT (delegation_event_id) DO NOTHING
+    ),
+    rewritten AS (
+        UPDATE delegation_events AS e
+        SET operational_outcome = m.new_outcome,
+            content_verdict = m.new_verdict
+        FROM mapped AS m
+        WHERE e.id = m.id
+        RETURNING e.id
+    )
+    SELECT count(*) INTO v_rewritten FROM rewritten;
+
+    IF v_forced THEN
+        ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
+    END IF;
+
+    RAISE NOTICE 'OMN-20276: rewrote % delegation_events rows', v_rewritten;
+END$$;
