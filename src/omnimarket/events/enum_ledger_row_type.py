@@ -50,6 +50,15 @@ class EnumLedgerRowType(StrEnum):
         return resolved.topic
 
     @property
+    def typed_event_type(self) -> str:
+        return f"{EVENT_TYPE_PREFIX}typed.{self.slug.replace('-', '_')}"
+
+    @property
+    def typed_topic(self) -> str:
+        (resolved,) = resolve_event_type(self.typed_event_type)
+        return resolved.topic
+
+    @property
     def event_type(self) -> str:
         """The emit-registry ``event_type`` key for this row type."""
         return f"{EVENT_TYPE_PREFIX}{self.slug.replace('-', '_')}"

@@ -238,6 +238,18 @@ def build_synthetic_payload(
     return payload
 
 
+def _request_event_id(event_type: str, payload: dict[str, object]) -> str:
+    """The emit-request event_id the new path is driven with.
+
+    A work-ledger request must carry the canonical producer identity (the new
+    node refuses any other, OMN-20001), so it reuses the payload's event_id.
+    """
+    supplied = payload.get("event_id")
+    if event_type.startswith("work.ledger.") and isinstance(supplied, str):
+        return supplied
+    return f"evt-{event_type.replace('.', '-')}"
+
+
 # =============================================================================
 # Recorder: shared fake-broker capture surface for both paths
 # =============================================================================
@@ -456,7 +468,7 @@ async def run_new_path(
         request = ModelEmitRequest(
             event_type=event_type,
             payload=payload,  # type: ignore[arg-type]
-            event_id=f"evt-{event_type.replace('.', '-')}",
+            event_id=_request_event_id(event_type, payload),
         )
         try:
             result = handler.handle(request)
