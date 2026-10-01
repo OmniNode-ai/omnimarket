@@ -2942,7 +2942,7 @@ class LocalDelegationDispatchPort:
             finish_reason=result.finish_reason,
             reasoning_stripped_chars=result.reasoning_stripped_chars,
         )
-        from omnimarket.delegation.output_boundary_gate import (
+        from omnimarket.delegation.deliverable_extraction import (
             gate_result_with_output_refusal,
         )
 

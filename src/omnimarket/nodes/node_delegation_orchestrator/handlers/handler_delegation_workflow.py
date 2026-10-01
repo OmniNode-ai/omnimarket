@@ -1151,7 +1151,7 @@ def _gate_result_with_output_refusal(
     workflow: DelegationWorkflowState, result: ModelQualityGateResult
 ) -> ModelQualityGateResult:
     """Keep extraction's deterministic refusal in the verdict about raw text."""
-    from omnimarket.delegation.output_boundary_gate import (
+    from omnimarket.delegation.deliverable_extraction import (
         gate_result_with_output_refusal,
     )
 
