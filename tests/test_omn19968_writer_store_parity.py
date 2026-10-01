@@ -415,9 +415,24 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
             *(set(r) for r in sqlite_rows[table] + pg_rows[table])
         )
         assert common, f"no shared columns in {table}"
+
+        # Pair rows by the shared columns only, so the pairing never depends on
+        # a column that exists on one store alone.
+        def _by_common(
+            rows: list[dict[str, object]], cols: set[str] = common
+        ) -> list[dict[str, object]]:
+            projected = [{k: r[k] for k in sorted(cols)} for r in rows]
+            return sorted(
+                projected, key=lambda r: json.dumps(r, sort_keys=True, default=str)
+            )
+
         diffs = [
             (table, k, a[k], b[k])
-            for a, b in zip(sqlite_rows[table], pg_rows[table], strict=True)
+            for a, b in zip(
+                _by_common(sqlite_rows[table]),
+                _by_common(pg_rows[table]),
+                strict=True,
+            )
             for k in sorted(common)
             if a[k] != b[k]
         ]
