@@ -7671,7 +7671,9 @@
       "owner_declaration": "node_projection_tenant_credentials",
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
-      "readers": [],
+      "readers": [
+        "node_projection_tenant_credentials"
+      ],
       "target_schema": "public",
       "writers": [
         "node_projection_tenant_credentials"
