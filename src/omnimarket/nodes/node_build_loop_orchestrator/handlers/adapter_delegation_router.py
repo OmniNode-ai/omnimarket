@@ -28,6 +28,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
+
 logger = logging.getLogger(__name__)
 
 
@@ -279,9 +281,12 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     # deployed lane now resolves it through the lane mapping, where the house
     # entry was deleted.
     glm_key = _resolved_secret("llm.glm.api_key")
-    glm_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
+    glm_url = glm_url_or_empty(
+        os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
+        source="adapter_delegation_router.glm_url",
+    )
     glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if glm_key:
+    if glm_key and glm_url:
         _add_endpoint_config(
             configs,
             tier=EnumModelTier.FRONTIER_GLM,
@@ -296,9 +301,12 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     # Frontier review — explicit served model ID required.
     glm_review_key = _resolved_secret("llm.glm.api_key")  # OMN-17372: store, not env
-    glm_review_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
+    glm_review_url = glm_url_or_empty(
+        os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
+        source="adapter_delegation_router.glm_review_url",
+    )
     glm_review_model = os.environ.get("LLM_GLM_REVIEW_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if glm_review_key:
+    if glm_review_key and glm_review_url:
         _add_endpoint_config(
             configs,
             tier=EnumModelTier.FRONTIER_REVIEW,

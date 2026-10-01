@@ -183,7 +183,7 @@ def test_models_registry_has_expected_models() -> None:
         "deepseek-r1-14b",
         "deepseek-r1-32b",
         "qwen3-next-80b",
-        "glm-4.5",
+        # OMN-20173: GLM Coding Plan direct comparison is retired.
     }
     assert expected == ids
 
@@ -207,3 +207,16 @@ def test_workflow_yaml_handler_references_orchestrator_module() -> None:
         "omnimarket.nodes.node_ab_compare_orchestrator"
     )
     assert input_model["class"] == "ModelAbCompareStart"
+
+
+@pytest.mark.unit
+def test_glm_is_removed_from_ab_endpoint_allowlist() -> None:
+    # OMN-20173: the effect cannot accept a GLM URL from the environment.
+    from omnimarket.nodes.node_ab_inference_effect.handlers.handler_ab_inference_effect import (
+        _ENDPOINT_ALLOWLIST_ENVS,
+    )
+
+    assert "LLM_GLM_URL" not in _ENDPOINT_ALLOWLIST_ENVS
+    for node in ("node_ab_inference_effect", "node_delegation_ab_runner"):
+        data = yaml.safe_load((NODE_DIR.parent / node / "contract.yaml").read_text())
+        assert "LLM_GLM_URL" not in data["env_dependencies"]

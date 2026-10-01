@@ -43,6 +43,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.config.settings import Settings, get_settings
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )
@@ -96,7 +97,10 @@ LLM_FAST_MODEL_NAME = _POLICY_LOADER.resolve_model_id_optional("coder_fast")
 
 # Frontier GLM endpoint/profile (delegation policy).
 LLM_GLM_API_KEY: str = _POLICY_LOADER.resolve_api_key("delegation")
-LLM_GLM_URL: str | None = _POLICY_LOADER.resolve_optional("delegation")
+LLM_GLM_URL: str = glm_url_or_empty(
+    _POLICY_LOADER.resolve_optional("delegation") or "",
+    source="assemble_live.delegation",
+)
 LLM_GLM_MODEL_NAME: str | None = _POLICY_LOADER.resolve_model_id_optional("delegation")
 
 # Frontier OpenAI-compatible endpoint/profile (openai policy).

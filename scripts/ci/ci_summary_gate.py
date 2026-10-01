@@ -499,6 +499,8 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Leaked Literals Gate",
     "Legacy Compatibility Check",
     "No Faked Boundary Gate",
+    # OMN-20173: enforce the standalone endpoint validator before merge.
+    "No Coding Plan Endpoint",
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
