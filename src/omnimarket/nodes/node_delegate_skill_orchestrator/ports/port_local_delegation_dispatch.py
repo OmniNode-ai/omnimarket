@@ -100,6 +100,10 @@ from omnimarket.delegation.response_contract_instruction import (
     render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
+from omnimarket.delegation.rubric.attempt_verdict import (
+    record_attempt_rubric_verdict,
+    rubric_check_error_verdict,
+)
 from omnimarket.delegation.structured_output import (
     provider_response_format_for_contract,
 )
@@ -1708,6 +1712,22 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            # OMN-20165: acceptance is settled above; the rubric verdict is
+            # recorded on this attempt and read by no decision.
+            try:
+                rubric_verdict = record_attempt_rubric_verdict(
+                    task_class=task_type,
+                    request_text=(
+                        attempt_outcome.request_text
+                        if attempt_outcome.request_text is not None
+                        else prompt
+                    ),
+                    answer_text=result.content or "",
+                )
+            except Exception as exc:
+                # A recording fault must never fail the delegation it describes.
+                logger.warning("Rubric recording failed: %s", type(exc).__name__)
+                rubric_verdict = rubric_check_error_verdict(task_type)
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -1734,6 +1754,7 @@ class LocalDelegationDispatchPort:
                     # seam. Retained so a refusal can be audited against
                     # exactly the text that was judged.
                     "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
+                    "rubric_verdict": rubric_verdict.model_dump(mode="json"),
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
@@ -2959,6 +2980,7 @@ class LocalDelegationDispatchPort:
         return _AttemptOutcome(
             result=result,
             gate_result=gate_result,
+            request_text=outbound_prompt,
             failure_message=None,
             timeout_result=None,
             preamble_chars=extraction.preamble_chars,
@@ -3329,6 +3351,7 @@ class _AttemptOutcome:
         "gate_result",
         "output_refusal",
         "preamble_chars",
+        "request_text",
         "response_contract_evidence",
         "result",
         "timeout_result",
@@ -3344,6 +3367,7 @@ class _AttemptOutcome:
         preamble_chars: int,
         output_refusal: ModelDelegationOutputRefusal | None,
         response_contract_evidence: ModelDelegationContractEvidence | None = None,
+        request_text: str | None = None,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
@@ -3352,6 +3376,7 @@ class _AttemptOutcome:
         self.preamble_chars = preamble_chars
         self.output_refusal = output_refusal
         self.response_contract_evidence = response_contract_evidence
+        self.request_text = request_text
 
 
 __all__ = ["LocalDelegationDispatchPort"]
