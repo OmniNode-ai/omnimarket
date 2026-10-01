@@ -773,6 +773,15 @@ repos:
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
         stages: [pre-commit]
 
+      # OMN-20173: same tracked-config assertion as the required CI gate.
+      - id: no-coding-plan-endpoint
+        name: No Coding Plan Endpoint
+        language: system
+        entry: uv run python -m omnimarket.validators.no_coding_plan_endpoint
+        pass_filenames: false
+        files: '(?i)(\.(yaml|yml|json|toml|env|template)$|(^|/)\.env($|\.)|\.env\.|(^|/)(docker[-.]compose|compose)([^/]*$)|^src/omnimarket/validators/no_coding_plan_endpoint\.py$)'
+        stages: [pre-commit]
+
       - id: event-registry-drift
         name: Event registry drift validator
         language: system

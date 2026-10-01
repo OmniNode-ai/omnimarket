@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import os
 import subprocess
 import sys
 import time
@@ -35,7 +34,6 @@ _DEFAULT_TASKS: tuple[str, ...] = (
     "Write a Python function parse_ints(lines: list[str]) -> list[int] that extracts "
     "the first signed integer from each line and skips lines without one.",
 )
-_GLM_COST_PER_1K_TOTAL_TOKENS = 0.0005
 
 
 @dataclass(frozen=True)
@@ -275,7 +273,6 @@ async def _run_direct_suite_async(
     models: list[str],
     system_prompt: str | None,
     quality_check: bool,
-    include_glm: bool,
     max_tokens: int,
 ) -> list[ModelAbCompareResult]:
     from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
@@ -306,17 +303,6 @@ async def _run_direct_suite_async(
             )
         )
         run_skipped = list(skipped)
-        if include_glm:
-            glm_row = await _call_glm(
-                task=task,
-                system_prompt=prompt,
-                correlation_id=correlation_id,
-                max_tokens=max_tokens,
-            )
-            if glm_row is None:
-                run_skipped.append("glm-4.5 (missing LLM_GLM_URL or LLM_GLM_API_KEY)")
-            else:
-                rows.append(glm_row)
         rows.sort(key=lambda row: (row.error != "", row.cost_usd, row.latency_ms))
         results.append(
             ModelAbCompareResult(
@@ -330,134 +316,12 @@ async def _run_direct_suite_async(
     return results
 
 
-async def _call_glm(
-    *,
-    task: str,
-    system_prompt: str | None,
-    correlation_id: str,
-    max_tokens: int = 512,
-) -> ModelComparisonRow | None:
-    from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_result import (
-        ModelComparisonRow,
-    )
-
-    base_url = os.environ.get("LLM_GLM_URL", "").strip()
-    # OMN-17372: the GLM key resolves from its secret ref through the store,
-    # never straight out of the process environment. Locally the store still
-    # maps this ref onto the developer's own LLM_GLM_API_KEY, so this
-    # harness behaves exactly as before; on a lane it resolves through the
-    # lane mapping, where the house entry was deleted.
-    from omnimarket.inference.secret_store_resolver import (
-        resolve_api_key_loop_safe,
-    )
-
-    _glm_secret = resolve_api_key_loop_safe("llm.glm.api_key", required=False)
-    api_key = _glm_secret.get_secret_value().strip() if _glm_secret else ""
-    model_name = os.environ.get("LLM_GLM_MODEL_NAME", "").strip()
-    if not base_url or not api_key:
-        return None
-
-    messages: list[dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": task})
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "max_tokens": max_tokens,
-    }
-
-    started = time.monotonic()
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                f"{base_url.rstrip('/')}/chat/completions",
-                json=payload,
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            response.raise_for_status()
-            raw_data = response.json()
-            if not isinstance(raw_data, dict):
-                latency_ms = int((time.monotonic() - started) * 1000)
-                return ModelComparisonRow(
-                    model_key=model_name,
-                    display_name=f"{model_name} (z.ai)",
-                    latency_ms=latency_ms,
-                    error="InvalidResponse: unexpected body type",
-                )
-            data = raw_data
-    except Exception as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        return ModelComparisonRow(
-            model_key=model_name,
-            display_name=f"{model_name} (z.ai)",
-            latency_ms=latency_ms,
-            error=f"{type(exc).__name__}: {exc}",
-        )
-
-    latency_ms = int((time.monotonic() - started) * 1000)
-    choices = cast(object, data.get("choices"))
-    if not isinstance(choices, list) or not choices:
-        return ModelComparisonRow(
-            model_key=model_name,
-            display_name=f"{model_name} (z.ai)",
-            latency_ms=latency_ms,
-            error="InvalidResponse: missing choices",
-        )
-    usage = cast(dict[str, Any], data.get("usage") or {})
-    prompt_tokens = int(usage.get("prompt_tokens", 0))
-    completion_tokens = int(usage.get("completion_tokens", 0))
-    total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens))
-    return ModelComparisonRow(
-        model_key=model_name,
-        display_name=f"{model_name} (z.ai)",
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        cost_usd=(total_tokens * _GLM_COST_PER_1K_TOTAL_TOKENS) / 1000.0,
-        latency_ms=latency_ms,
-    )
-
-
-async def _add_glm_rows(
-    *,
-    tasks: list[str],
-    results: list[ModelAbCompareResult],
-    system_prompt: str | None,
-) -> list[ModelAbCompareResult]:
-    enriched: list[ModelAbCompareResult] = []
-    for task, result in zip(tasks, results, strict=True):
-        row = await _call_glm(
-            task=task,
-            system_prompt=system_prompt,
-            correlation_id=result.correlation_id,
-        )
-        if row is None:
-            enriched.append(
-                result.model_copy(
-                    update={
-                        "status": "PARTIAL",
-                        "models_skipped": [
-                            *result.models_skipped,
-                            "glm-4.5 (missing LLM_GLM_URL or LLM_GLM_API_KEY)",
-                        ],
-                    }
-                )
-            )
-            continue
-        enriched.append(
-            result.model_copy(update={"comparison": [*result.comparison, row]})
-        )
-    return enriched
-
-
 def _run_suite(
     *,
     tasks: list[str],
     models: list[str],
     system_prompt: str | None,
     quality_check: bool,
-    include_glm: bool,
     transport: str,
     max_tokens: int,
 ) -> list[ModelAbCompareResult]:
@@ -468,7 +332,6 @@ def _run_suite(
                 models=models,
                 system_prompt=system_prompt,
                 quality_check=quality_check,
-                include_glm=include_glm,
                 max_tokens=max_tokens,
             )
         results = await _run_suite_async(
@@ -477,16 +340,6 @@ def _run_suite(
             system_prompt=system_prompt,
             quality_check=quality_check,
         )
-        if include_glm:
-            from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
-                _DEFAULT_SYSTEM_PROMPT,
-            )
-
-            results = await _add_glm_rows(
-                tasks=tasks,
-                results=results,
-                system_prompt=system_prompt or _DEFAULT_SYSTEM_PROMPT,
-            )
         return results
 
     return asyncio.run(_run())
@@ -634,12 +487,6 @@ def _write_output(path: Path, content: str) -> None:
     help="Maximum completion tokens per model call.",
 )
 @click.option(
-    "--include-glm/--no-include-glm",
-    default=True,
-    show_default=True,
-    help="Include configured z.ai GLM as the cloud baseline row.",
-)
-@click.option(
     "--output",
     type=click.Choice(["table", "json"]),
     default="table",
@@ -659,7 +506,6 @@ def main(
     quality_check: bool,
     transport: str,
     max_tokens: int,
-    include_glm: bool,
     output: str,
     output_file: Path | None,
 ) -> None:
@@ -672,7 +518,6 @@ def main(
         models=model_list,
         system_prompt=system_prompt,
         quality_check=quality_check,
-        include_glm=include_glm,
         transport=transport,
         max_tokens=max_tokens,
     )
