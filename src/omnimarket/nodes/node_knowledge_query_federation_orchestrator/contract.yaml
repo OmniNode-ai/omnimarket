@@ -15,6 +15,7 @@ description: >
   No LLM dependency. Results are merged with provenance tags and deduplicated
   by content hash. Ambiguous queries fan out to all three backends.
 node_type: orchestrator
+runtime_profiles: [main]
 input_model: "ModelKnowledgeQueryFederationRequest"
 output_model: "ModelKnowledgeQueryFederationResponse"
 

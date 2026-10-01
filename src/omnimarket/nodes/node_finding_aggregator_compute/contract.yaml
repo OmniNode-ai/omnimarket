@@ -10,6 +10,7 @@
 #   - OMN-7781: Unified LLM Workflow Migration epic
 name: "node_finding_aggregator_compute"
 node_type: compute
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0

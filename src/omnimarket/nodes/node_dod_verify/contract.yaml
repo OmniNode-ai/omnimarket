@@ -2,6 +2,7 @@
 name: dod_verify
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 # OMN-13253: top-level input_model is the source the RuntimeLocal event-driven
