@@ -2359,7 +2359,12 @@ class HandlerDelegationWorkflow:
                 and not workflow.routing_intent_replayed
             ):
                 workflow.routing_intent_replayed = True
-                return [ModelRoutingIntent(payload=workflow.request or request)]
+                routing_request = workflow.request or request
+                if not routing_request.tenant_id and workflow.tenant_id:
+                    routing_request = routing_request.model_copy(
+                        update={"tenant_id": workflow.tenant_id}
+                    )
+                return [ModelRoutingIntent(payload=routing_request)]
             return []
 
         effective_response_contract = (
@@ -2393,7 +2398,12 @@ class HandlerDelegationWorkflow:
         )
         self._workflows[cid] = workflow
 
-        return [ModelRoutingIntent(payload=request)]
+        routing_request = request
+        if not request.tenant_id and workflow.tenant_id:
+            routing_request = request.model_copy(
+                update={"tenant_id": workflow.tenant_id}
+            )
+        return [ModelRoutingIntent(payload=routing_request)]
 
     def handle_invocation_command(
         self,

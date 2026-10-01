@@ -67,9 +67,9 @@ _SERVED_MODEL = "Qwen3.8-27B"
 #: The committed contract, reduced to the two rungs the case turns on, for the
 #: pure-compute tests that take backend lists directly. Both declare
 #: ``model_name`` (the contract owns it) and leave ``endpoint_url`` null (the
-#: overlay is meant to supply it) — the same split the real
-#: ``src/omnimarket/configs/bifrost_delegation.yaml`` draws, asserted against
-#: the real file by ``_write_pair`` below.
+#: overlay is meant to supply it). OMN-17099's packaged base has null local
+#: model names; these synthetic declarations retain coverage of shadowing a
+#: non-null field in a rendered lane contract.
 _COMMITTED_BACKENDS: list[dict[str, Any]] = [
     {
         "backend_id": "local-coder",
@@ -112,9 +112,8 @@ _STALE_OVERLAY: dict[str, Any] = {
 #: as a shadow warning.
 _WARN_MARKER = "bifrost_overlay_shadows_authoritative_field"
 
-#: The REAL committed contract. The fixture overlay is merged over this rather
-#: than over a hand-written stub, so the test reproduces the actual 2026-09-18
-#: merge and cannot drift from the schema the loader validates.
+#: The packaged contract supplies the schema; a lane overlay supplies the
+#: synthetic model declarations the stale overlay will shadow.
 _REAL_CONTRACT = (
     Path(__file__).resolve().parents[3]
     / "src"
@@ -125,18 +124,27 @@ _REAL_CONTRACT = (
 
 
 def _write_pair(tmp_path: Path) -> tuple[Path, Path]:
-    """Copy the real committed contract, write the stale overlay, prove they differ.
-
-    The ticket's AC4 falsifier is "the test passes without the fixture actually
-    overriding anything", so the disagreement is asserted here rather than
-    assumed — every path-based test in this module routes through this helper.
-    Asserting it against the REAL contract also means that nulling or retiring
-    ``model_name`` on these rungs breaks this test loudly instead of quietly
-    draining it of meaning.
-    """
+    """Render a lane fixture, then prove the stale overlay shadows its ids."""
     contract = tmp_path / "bifrost_delegation.yaml"
     overlay = tmp_path / "bifrost_overrides.yaml"
-    contract.write_text(_REAL_CONTRACT.read_text(encoding="utf-8"), encoding="utf-8")
+    lane_overlay = tmp_path / "lane_overlay.yaml"
+    lane_overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {"backend_id": backend_id, "model_name": _SERVED_MODEL}
+                    for backend_id in _OVERRIDDEN_BACKEND_IDS
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    rendered = load_bifrost_delegation_config(
+        config_path=_REAL_CONTRACT, overlay_path=lane_overlay
+    )
+    contract.write_text(
+        yaml.safe_dump(rendered.model_dump(mode="json")), encoding="utf-8"
+    )
     overlay.write_text(yaml.safe_dump(_STALE_OVERLAY), encoding="utf-8")
 
     committed = yaml.safe_load(contract.read_text(encoding="utf-8"))
