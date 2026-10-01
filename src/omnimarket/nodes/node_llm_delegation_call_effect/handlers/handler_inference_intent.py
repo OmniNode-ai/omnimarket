@@ -51,6 +51,10 @@ from omnimarket.inference.provider_response_error import (
     provider_error_from_body,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.model_call_reconcile.correlation import (
+    SELF_HOSTED_CORRELATION_HEADER,
+    SELF_HOSTED_CORRELATION_QUERY_PARAM,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
@@ -95,8 +99,6 @@ _SUPPORTED_URL_SCHEMES = ("http://", "https://")
 # each request's path and query string, so the run's correlation id rides in the
 # query string, and in a header for any log that records headers. Only a
 # private or loopback address gets them; a third-party provider never does.
-SELF_HOSTED_CORRELATION_QUERY_PARAM: Final[str] = "onex_cid"
-SELF_HOSTED_CORRELATION_HEADER: Final[str] = "X-Onex-Correlation-Id"
 
 # OMN-18852: the ceiling ONE outbound provider call may occupy, read from this
 # node's own contract at import time (the same fail-fast posture as the topic
