@@ -13,6 +13,10 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     ModelTestTargetsParams,
 )
 
+CITED_LINES_PATTERN = (
+    r"(?<![\w/])(?P<path>[A-Za-z_./][\w./-]*):(?P<start>\d+)(?:-(?P<end>\d+))?"
+)
+
 
 def result(
     criterion: ModelRubricCriterion,

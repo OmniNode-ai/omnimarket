@@ -178,6 +178,8 @@ class _InMemoryHookTables:
             "payload",
             "content_ref_ids",
             "source_topic",
+            "goal_id",
+            "parent_goal_id",
         )
         assert len(params) == len(columns)
         row = dict(zip(columns, params, strict=True))
@@ -740,3 +742,107 @@ def test_a_producer_without_the_new_lineage_fields_still_validates() -> None:
         event["lineage"].pop(name, None)
     wire = ModelClaudeHookEventWire.model_validate(event)
     assert wire.lineage.agent_model is None
+
+
+# --------------------------------------------------------------------------
+# Goal binding (OMN-20031): producer and consumer pin each other
+# --------------------------------------------------------------------------
+
+_GOAL_ID = "0b8f5c1e-5d0c-4f43-9a52-3c7f1d2e9a10"
+_PARENT_GOAL_ID = "7a1d9e44-2b6f-4c8e-8f01-b5d3a9c60e27"
+
+
+def _goal_fixture(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES / "events" / f"{name}.json").read_text("utf-8"))
+
+
+def test_the_goal_binding_fixture_folds_to_one_row_with_both_ids() -> None:
+    event = _goal_fixture("PreToolUse.goal_binding")
+    assert event["payload"]["goal_id"] == _GOAL_ID
+    result = HandlerProjectionClaudeHookEvents().handle(
+        ModelClaudeHookProjectionRequest.model_validate(event)
+    )
+    row = result.event_row
+    assert str(row.goal_id) == _GOAL_ID
+    assert str(row.parent_goal_id) == _PARENT_GOAL_ID
+    assert row.payload == event["payload"]
+
+
+def test_the_goal_binding_fixture_is_written_with_both_ids() -> None:
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), _goal_fixture("PreToolUse.goal_binding"))
+    (stored,) = tables.events.values()
+    assert str(stored["goal_id"]) == _GOAL_ID
+    assert str(stored["parent_goal_id"]) == _PARENT_GOAL_ID
+
+
+def test_an_event_without_a_goal_key_folds_with_null_goal_columns() -> None:
+    result = HandlerProjectionClaudeHookEvents().handle(
+        ModelClaudeHookProjectionRequest.model_validate(_pre_tool_use())
+    )
+    assert result.event_row.goal_id is None
+    assert result.event_row.parent_goal_id is None
+
+
+def test_a_goal_id_that_is_not_a_uuid_is_refused_and_nothing_is_stored() -> None:
+    event = _goal_fixture("PreToolUse.goal_not_uuid")
+    assert event["payload"]["goal_id"] == "not-a-uuid"
+    tables = _InMemoryHookTables()
+    with pytest.raises(ValueError, match="goal_id"):
+        _deliver(_writer(tables), event)
+    assert tables.events == {}
+
+
+def test_a_goal_id_that_is_not_canonical_lowercase_is_refused() -> None:
+    for bad in (
+        _GOAL_ID.upper(),
+        _GOAL_ID.replace("-", ""),
+        f"{{{_GOAL_ID}}}",
+        42,
+        "",
+    ):
+        event = _goal_fixture("PreToolUse.goal_binding")
+        event["payload"]["goal_id"] = bad
+        with pytest.raises(ValueError, match="goal_id"):
+            ModelClaudeHookEventWire.model_validate(event)
+
+
+def test_a_parent_goal_id_that_is_not_canonical_is_refused() -> None:
+    event = _goal_fixture("PreToolUse.goal_binding")
+    event["payload"]["parent_goal_id"] = _PARENT_GOAL_ID.upper()
+    with pytest.raises(ValueError, match="parent_goal_id"):
+        ModelClaudeHookEventWire.model_validate(event)
+
+
+def test_a_parent_goal_id_without_a_goal_id_is_refused() -> None:
+    for goal in (None, "absent"):
+        event = _goal_fixture("PreToolUse.goal_binding")
+        if goal == "absent":
+            del event["payload"]["goal_id"]
+        else:
+            event["payload"]["goal_id"] = None
+        with pytest.raises(ValueError, match="parent_goal_id"):
+            ModelClaudeHookEventWire.model_validate(event)
+
+
+def test_absent_and_null_goal_ids_are_both_accepted() -> None:
+    event = _goal_fixture("PreToolUse.goal_binding")
+    del event["payload"]["parent_goal_id"]
+    assert str(ModelClaudeHookEventWire.model_validate(event).goal_id) == _GOAL_ID
+    event["payload"]["parent_goal_id"] = None
+    assert ModelClaudeHookEventWire.model_validate(event).parent_goal_id is None
+    nulls = _pre_tool_use()
+    nulls["payload"]["goal_id"] = None
+    nulls["payload"]["parent_goal_id"] = None
+    wire = ModelClaudeHookEventWire.model_validate(nulls)
+    assert wire.goal_id is None
+    assert wire.parent_goal_id is None
+
+
+def test_a_key_beside_the_goal_keys_is_still_refused_as_undeclared() -> None:
+    event = _goal_fixture("PreToolUse.goal_binding")
+    event["payload"]["goal_name"] = "ship the thing"
+    tables = _InMemoryHookTables()
+    with pytest.raises(ValidationError, match="does not declare"):
+        _deliver(_writer(tables), event)
+    assert tables.events == {}

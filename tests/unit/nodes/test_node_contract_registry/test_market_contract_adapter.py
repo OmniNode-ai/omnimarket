@@ -252,8 +252,7 @@ def test_missing_handler_class_fails_fast() -> None:
             "routing_strategy": "operation_match",
             "handlers": [
                 {
-                    "routing_key": "subscribe",
-                    "handler_key": "HandlerSubscription.subscribe",
+                    "operation": "subscribe",
                 }
             ],
         },

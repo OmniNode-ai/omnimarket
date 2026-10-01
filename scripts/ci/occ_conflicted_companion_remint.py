@@ -80,7 +80,7 @@ import re
 import subprocess  # fixed argv, no shell, trusted binaries
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -109,6 +109,12 @@ RECEIPT_RUNNER_GRACE: Final[timedelta] = timedelta(minutes=5)
 #: with this repository's token, so its head is recorded as unread rather than
 #: guessed.
 UNREAD_HEAD_SHA: Final[str] = "unread-private-repo"
+
+#: How long a ready, unbound member's head must have stood before the schedule
+#: re-drives it (OMN-17427). The event-driven publish and the mint-verify retry
+#: (``occ-autobind-mint-verify.yml``, about 150 seconds after the publish) go
+#: first; this only catches the member they left unbound.
+WINDOW_REDRIVE_GRACE: Final[timedelta] = timedelta(minutes=15)
 
 _OPEN_PR_LIMIT: Final[int] = 1000
 _MERGEABILITY_READS: Final[int] = 6
@@ -175,6 +181,39 @@ class EnumReceiptOutcome(StrEnum):
     TOO_FRESH = "too_fresh"
     ALREADY_RAN = "already_ran"
     PRODUCT_NOT_READY = "product_not_ready"
+
+
+class EnumRedriveOutcome(StrEnum):
+    """Every answer :func:`decide_window_redrive` can give. Only ``REDRIVE`` acts."""
+
+    REDRIVE = "redrive"
+    DRAFT = "draft"
+    BOUND = "bound"
+    NO_TICKET = "no_ticket"
+    TOO_FRESH = "too_fresh"
+    WINDOW_OPEN = "window_open"
+
+
+@dataclass(frozen=True)
+class MemberFacts:
+    """One open product PR of this repository, as the window re-drive reads it.
+
+    ``head_committed_at`` is read only for a ready, unbound PR; ``None`` elsewhere.
+    """
+
+    number: int
+    title: str
+    body: str
+    draft: bool
+    head_sha: str
+    head_committed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class RedriveDecision:
+    outcome: EnumRedriveOutcome
+    reason: str
+    target: Target | None = None
 
 
 @dataclass(frozen=True)
@@ -464,6 +503,71 @@ def decide_receipt_refire(
     )
 
 
+def window_companion_branch_for(repo: str) -> str:
+    """The repository's batch-window branch; mirrors ``occ_companion.window_companion_branch_for``."""
+    return f"auto/window-{repo.replace('/', '-').lower()}-occ-autobind"
+
+
+def decide_window_redrive(
+    member: MemberFacts,
+    *,
+    repo: str,
+    open_window: int | None,
+    now: datetime,
+) -> RedriveDecision:
+    """Whether to republish the window-mode autobind command for one member (OMN-17427).
+
+    Pure. The emitter skips a member that arrives while its repository's window
+    is in flight (``skip:WINDOW_IN_FLIGHT``, OMN-20042) and says it binds on the
+    next rebuild, but nothing publishes for that member again once the window
+    merges: the product PR fires no event, and mint-verify's one retry lands
+    inside the same hold. The member then stays unbound until a person
+    hand-authors a companion. This supplies that missing trigger, only while no
+    window is open, so it never pushes into an in-flight window.
+    """
+    if member.draft:
+        return RedriveDecision(
+            EnumRedriveOutcome.DRAFT, f"{repo}#{member.number} is a draft"
+        )
+    cited = [int(m.group("n")) for m in _EVIDENCE_SOURCE_RE.finditer(member.body)]
+    if cited:
+        return RedriveDecision(
+            EnumRedriveOutcome.BOUND,
+            f"{repo}#{member.number} already cites OCC#{cited[0]}",
+        )
+    ticket_match = _TITLE_TICKET_RE.search(member.title)
+    if ticket_match is None:
+        return RedriveDecision(
+            EnumRedriveOutcome.NO_TICKET,
+            f"{repo}#{member.number}'s title cites no OMN ticket",
+        )
+    target = Target(repo=repo, pr_number=member.number, ticket=ticket_match.group(1))
+    if (
+        member.head_committed_at is None
+        or now - member.head_committed_at < WINDOW_REDRIVE_GRACE
+    ):
+        return RedriveDecision(
+            EnumRedriveOutcome.TOO_FRESH,
+            f"{repo}#{member.number}'s head is younger than "
+            f"{int(WINDOW_REDRIVE_GRACE.total_seconds() // 60)} minutes; the "
+            "event-driven publish goes first",
+            target,
+        )
+    if open_window is not None:
+        return RedriveDecision(
+            EnumRedriveOutcome.WINDOW_OPEN,
+            f"{repo}'s window OCC#{open_window} is open; {repo}#{member.number} is "
+            "re-driven on the first pass after it merges",
+            target,
+        )
+    return RedriveDecision(
+        EnumRedriveOutcome.REDRIVE,
+        f"{repo}#{member.number} is ready and unbound with no open window; "
+        "republishing its window autobind command",
+        target,
+    )
+
+
 class GhPort(Protocol):
     """The live reads and the two writes; faked in tests."""
 
@@ -486,6 +590,20 @@ class GhPort(Protocol):
     ) -> str: ...
 
     def dispatch_receipt_runner(self, *, repo: str, pr_number: int) -> None: ...
+
+
+class RedrivePort(Protocol):
+    """The window re-drive's reads and its one write; faked in tests."""
+
+    def open_members(self, *, repo: str) -> tuple[MemberFacts, ...]: ...
+
+    def head_committed_at(self, *, repo: str, sha: str) -> datetime: ...
+
+    def open_window_number(self, *, occ_repo: str, branch: str) -> int | None: ...
+
+    def publish_window_autobind(
+        self, *, target: Target, member: MemberFacts, lane: str
+    ) -> str: ...
 
 
 def _obj(value: object) -> dict[str, object]:
@@ -674,13 +792,109 @@ class GhCli:
     def publish_autobind(
         self, *, target: Target, product: ProductFacts, lane: str
     ) -> str:
+        # The per-PR branch is what conflicted; the default ticket batch
+        # command would address a different companion. This is the one
+        # caller that asks for the per-PR path, and it does so by flag.
+        return self._publish(
+            target=target,
+            head_sha=product.head_sha,
+            title=product.title,
+            lane=lane,
+            extra_args=["--batch-mode", "off"],
+        )
+
+    def publish_window_autobind(
+        self, *, target: Target, member: MemberFacts, lane: str
+    ) -> str:
+        # No flag: the publisher's default is the repository batch window, the
+        # same command the product PR's own ready flip publishes.
+        return self._publish(
+            target=target,
+            head_sha=member.head_sha,
+            title=member.title,
+            lane=lane,
+            extra_args=[],
+        )
+
+    def open_members(self, *, repo: str) -> tuple[MemberFacts, ...]:
+        listing = self._run(
+            [
+                "api",
+                "--paginate",
+                f"repos/{repo}/pulls?state=open&per_page=100",
+                "--jq",
+                ".[] | {number, title, body, draft, sha: .head.sha} | @json",
+            ]
+        )
+        if listing.returncode != 0:
+            raise RuntimeError(
+                f"listing open {repo} PRs exited {listing.returncode}: "
+                f"{listing.stderr.strip()}"
+            )
+        members: list[MemberFacts] = []
+        for line in listing.stdout.splitlines():
+            if not line.strip():
+                continue
+            row = _obj(json.loads(line))
+            number = row.get("number")
+            if not isinstance(number, int):
+                raise RuntimeError(f"open {repo} PR row has no number: {line[:200]}")
+            members.append(
+                MemberFacts(
+                    number=number,
+                    title=str(row.get("title") or ""),
+                    body=str(row.get("body") or ""),
+                    draft=bool(row.get("draft")),
+                    head_sha=str(row.get("sha") or ""),
+                )
+            )
+        return tuple(members)
+
+    def head_committed_at(self, *, repo: str, sha: str) -> datetime:
+        commit = _obj(self._json(["api", f"repos/{repo}/commits/{sha}"]))
+        committer = _obj(_obj(commit.get("commit")).get("committer"))
+        return _parse_ts(committer.get("date"))
+
+    def open_window_number(self, *, occ_repo: str, branch: str) -> int | None:
+        payload = self._json(
+            [
+                "pr",
+                "list",
+                "--repo",
+                occ_repo,
+                "--state",
+                "open",
+                "--head",
+                branch,
+                "--json",
+                "number",
+            ]
+        )
+        if not isinstance(payload, list):
+            raise RuntimeError(f"gh pr list for {branch} returned no list")
+        numbers = sorted(
+            int(e["number"])
+            for e in payload
+            if isinstance(e, dict) and isinstance(e.get("number"), int)
+        )
+        return numbers[0] if numbers else None
+
+    def _publish(
+        self,
+        *,
+        target: Target,
+        head_sha: str,
+        title: str,
+        lane: str,
+        extra_args: list[str],
+    ) -> str:
         env = dict(os.environ)
         env.update(
             {
                 "PR_REPO": target.repo,
                 "PR_NUMBER": str(target.pr_number),
-                "PR_HEAD_SHA": product.head_sha or UNREAD_HEAD_SHA,
-                "PR_TITLE": product.title,
+                "PR_HEAD_SHA": head_sha or UNREAD_HEAD_SHA,
+                "PR_TITLE": title,
                 "PR_TICKET": target.ticket,
                 "RUNNER_IS_TRUSTED": "true",
             }
@@ -689,17 +903,7 @@ class GhCli:
         # inherited value must not stop a re-mint.
         env.pop("OCC_COMPANION_BATCH_MODE", None)
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(self._publisher),
-                "--lane",
-                lane,
-                # The per-PR branch is what conflicted; the default ticket batch
-                # command would address a different companion. This is the one
-                # caller that asks for the per-PR path, and it does so by flag.
-                "--batch-mode",
-                "off",
-            ],
+            [sys.executable, str(self._publisher), "--lane", lane, *extra_args],
             capture_output=True,
             text=True,
             check=False,
@@ -819,6 +1023,83 @@ def run_pass(
     return PassReport(tuple(remint), tuple(receipts), tuple(errors))
 
 
+@dataclass(frozen=True)
+class RedriveReport:
+    decisions: tuple[tuple[int, RedriveDecision], ...]
+    open_window: int | None
+    errors: tuple[str, ...]
+
+
+def run_window_redrive_pass(
+    gh: RedrivePort,
+    *,
+    occ_repo: str,
+    this_repo: str,
+    lane: str,
+    dry_run: bool,
+    now: datetime,
+) -> RedriveReport:
+    """Republish the window autobind command for this repo's stranded members.
+
+    Every eligible member is published, oldest PR first, in one pass. The first
+    the emitter accepts opens the window; the rest meet that window in flight
+    and are skipped by the emitter's own hold, to be re-driven after it merges.
+    Publishing all of them, not only the oldest, keeps a member the emitter
+    declines for good (a hold marker, no derivable check) from starving the
+    members behind it.
+    """
+    decisions: list[tuple[int, RedriveDecision]] = []
+    errors: list[str] = []
+    open_window = gh.open_window_number(
+        occ_repo=occ_repo, branch=window_companion_branch_for(this_repo)
+    )
+    for member in sorted(gh.open_members(repo=this_repo), key=lambda m: m.number):
+        try:
+            if (
+                not member.draft
+                and not _EVIDENCE_SOURCE_RE.search(member.body)
+                and member.head_sha
+            ):
+                member = replace(
+                    member,
+                    head_committed_at=gh.head_committed_at(
+                        repo=this_repo, sha=member.head_sha
+                    ),
+                )
+            decision = decide_window_redrive(
+                member, repo=this_repo, open_window=open_window, now=now
+            )
+            if decision.outcome is EnumRedriveOutcome.REDRIVE and not dry_run:
+                assert decision.target is not None
+                delivered = gh.publish_window_autobind(
+                    target=decision.target, member=member, lane=lane
+                )
+                decision = replace(decision, reason=f"{decision.reason}; {delivered}")
+            decisions.append((member.number, decision))
+        except Exception as exc:  # report every member, then fail the job
+            errors.append(f"{this_repo}#{member.number}: {exc}")
+    return RedriveReport(tuple(decisions), open_window, tuple(errors))
+
+
+def _render_redrive(report: RedriveReport, *, dry_run: bool) -> str:
+    verb = "would act" if dry_run else "acted"
+    window = f"OCC#{report.open_window}" if report.open_window else "none"
+    lines = [
+        f"window re-drive: considered {len(report.decisions)} open PR(s), open "
+        f"window {window} ({verb} on marked rows)"
+    ]
+    for number, decision in report.decisions:
+        if decision.outcome in (EnumRedriveOutcome.DRAFT, EnumRedriveOutcome.BOUND):
+            continue
+        mark = "*" if decision.outcome is EnumRedriveOutcome.REDRIVE else " "
+        lines.append(
+            f"{mark} #{number} redrive={decision.outcome.value}: {decision.reason}"
+        )
+    for error in report.errors:
+        lines.append(f"ERROR {error}")
+    return "\n".join(lines)
+
+
 def _render(report: PassReport, *, dry_run: bool) -> str:
     verb = "would act" if dry_run else "acted"
     lines = [
@@ -858,8 +1139,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+    gh = GhCli(Path(args.publisher))
     report = run_pass(
-        GhCli(Path(args.publisher)),
+        gh,
         occ_repo=args.occ_repo,
         this_repo=args.repo,
         lane=args.lane,
@@ -868,12 +1150,26 @@ def main(argv: list[str] | None = None) -> int:
         now=datetime.now(UTC),
     )
     text = _render(report, dry_run=args.dry_run)
+    errors = report.errors
+    # A run scoped to one companion is a targeted re-mint; the window re-drive
+    # (OMN-17427) belongs to the full scheduled pass only.
+    if args.occ_pr is None:
+        redrive = run_window_redrive_pass(
+            gh,
+            occ_repo=args.occ_repo,
+            this_repo=args.repo,
+            lane=args.lane,
+            dry_run=args.dry_run,
+            now=datetime.now(UTC),
+        )
+        text = f"{text}\n{_render_redrive(redrive, dry_run=args.dry_run)}"
+        errors = (*errors, *redrive.errors)
     print(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
     if summary:
         with Path(summary).open("a", encoding="utf-8") as fh:
             fh.write("```\n" + text + "\n```\n")
-    return EXIT_ERROR if report.errors else EXIT_OK
+    return EXIT_ERROR if errors else EXIT_OK
 
 
 if __name__ == "__main__":

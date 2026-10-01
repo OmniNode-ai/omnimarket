@@ -1,0 +1,26 @@
+name: node_trajectory_evaluation_effect
+version: "1.0.0"
+description: "Default-off trajectory evaluation effect: validates a command, refuses non-public work, paces itself and submits to an evaluator behind a node-local protocol."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_trajectory_evaluation_effect: "omnimarket.nodes.node_trajectory_evaluation_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "httpx"
+  - "pyyaml"
+  - "pydantic"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "evaluation", "trajectory", "OMN-20087"]
+pack: "observability"
+display_name: "Trajectory Evaluation Effect"
+node_role: "effect"
