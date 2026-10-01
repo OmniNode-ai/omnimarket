@@ -2389,10 +2389,10 @@ jobs:
   # suite under `pytest --cov`: it combines the per-shard coverage artifacts the
   # `test` matrix already emits (scripts/ci/aggregate_coverage_artifacts.py,
   # proven as the OMN-14680 shadow at parity with zero divergence) and dispatches
-  # node_coverage_sweep against that combined census. The full second-pass
-  # census (scripts/ci/run_coverage_sweep_gate.py) runs nightly on `dev` in
-  # .github/workflows/nightly-full-suite.yml, which carries what smart selection
-  # does not run on a PR. Rollback: revert the OMN-18556 commit.
+  # node_coverage_sweep against that combined census. The full suite runs
+  # nightly on `dev` in .github/workflows/nightly-full-suite.yml, sharded and
+  # folded by the same aggregator since OMN-20316, which carries what smart
+  # selection does not run on a PR. Rollback: revert the OMN-18556 commit.
   #
   # Fail-closed on missing / wrong-head / malformed / stale shard artifacts
   # (exit 3), combine-engine failure (exit 4) and a sweep `status="error"`
