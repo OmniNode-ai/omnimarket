@@ -115,6 +115,8 @@ class HandlerProjectionClaudeHookEvents:
                 str(ref.content_record_id) for ref in event.content_refs
             ),
             source_topic=request.source_topic or SOURCE_TOPIC,
+            goal_id=event.goal_id,
+            parent_goal_id=event.parent_goal_id,
         )
 
         span_update: ModelClaudeAgentSpanUpdate | None = None
