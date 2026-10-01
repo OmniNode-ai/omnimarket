@@ -1,13 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20165, consumer first: a released consumer must decode the next shape.
-
-The change after this consumer's release stamps ``rubric_verdict`` onto every
-delegation attempt and declares its field. The attempt model is
-``extra="forbid"``, so a consumer released without tolerance would refuse every
-terminal carrying the key (OMN-18852 / OMN-18868). This release accepts exactly
-this forthcoming key, discards it, and still refuses any other unknown key.
-"""
+"""OMN-20165: the consumer now declares and retains the rubric verdict."""
 
 from __future__ import annotations
 
@@ -43,7 +36,10 @@ def test_an_attempt_carrying_a_rubric_verdict_decodes() -> None:
         }
     )
     assert record.failure_class == "rate_limited"
-    assert "rubric_verdict" not in record.model_dump()
+    assert record.rubric_verdict is not None
+    assert record.rubric_verdict.outcome == "FAIL"
+    assert record.rubric_verdict.failed_criteria == ("cited_lines_exist",)
+    assert record.model_dump(mode="json")["rubric_verdict"]["outcome"] == "FAIL"
 
 
 def test_an_attempt_with_a_null_rubric_verdict_decodes() -> None:
@@ -51,7 +47,7 @@ def test_an_attempt_with_a_null_rubric_verdict_decodes() -> None:
         _ATTEMPT | {"rubric_verdict": None}
     )
     assert record.failure_class == "rate_limited"
-    assert "rubric_verdict" not in record.model_dump()
+    assert record.rubric_verdict is None
 
 
 def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
@@ -59,8 +55,11 @@ def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
         ModelDelegateSkillAttemptRecord.model_validate(_ATTEMPT | {"surprise": 1})
 
 
-def test_rubric_verdict_is_a_forthcoming_attempt_key_only() -> None:
-    assert "rubric_verdict" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+def test_rubric_verdict_is_declared_and_no_longer_forthcoming() -> None:
+    assert (
+        "rubric_verdict" not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    )
+    assert "rubric_verdict" in ModelDelegateSkillAttemptRecord.model_fields
     assert (
         "rubric_verdict" not in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS
     )
