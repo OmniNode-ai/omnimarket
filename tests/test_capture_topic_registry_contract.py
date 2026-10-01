@@ -108,6 +108,18 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "work.ledger.ruling",
         "work.ledger.status",
         "work.ledger.terminal",
+        # OMN-20001: the core typed (v2) ledger row events keep the v1 tier; same bounded schema.
+        "work.ledger.typed.ack",
+        "work.ledger.typed.claim",
+        "work.ledger.typed.correction",
+        "work.ledger.typed.friction",
+        "work.ledger.typed.hold",
+        "work.ledger.typed.msg",
+        "work.ledger.typed.operator_consent",
+        "work.ledger.typed.release",
+        "work.ledger.typed.ruling",
+        "work.ledger.typed.status",
+        "work.ledger.typed.terminal",
     }
 )
 

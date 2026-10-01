@@ -12,10 +12,14 @@ Coverage:
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.validators.event_registry_drift import (
     Baseline,
@@ -413,6 +417,7 @@ def _describe_omniclaude_checkout(omniclaude_root: Path) -> str:
             text=True,
             check=True,
             timeout=15,
+            env=scrub_git_location_env(os.environ),
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         head = "(not a resolvable git checkout)"
@@ -460,3 +465,46 @@ def test_live_registries_have_no_unbaselined_drift() -> None:
         "and do NOT baseline a topic that clone is merely too old to declare "
         "(OMN-17549)."
     )
+
+
+def _consumer_ahead_report() -> object:
+    from omnimarket.validators import event_registry_drift as mod
+
+    return mod.CombinedDriftReport(
+        topic_report=mod.ModelEventRegistryDriftReport(
+            source_only=frozenset(),
+            registry_only=frozenset({"onex.evt.omnimarket.ahead.v1"}),
+            baselined_source_only=frozenset(),
+            baselined_registry_only=frozenset(),
+        ),
+        structural_report=mod.StructuralDriftReport(
+            event_source_only=frozenset(),
+            event_registry_only=frozenset({"ahead.event"}),
+        ),
+    )
+
+
+@pytest.mark.unit
+def test_tolerate_consumer_ahead_passes_registry_only_but_not_source_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from dataclasses import replace
+
+    from omnimarket.validators import event_registry_drift as mod
+
+    ahead = _consumer_ahead_report()
+    monkeypatch.setattr(mod, "validate_event_registry_drift", lambda **_: ahead)
+    monkeypatch.setattr(mod, "resolve_repo_root", lambda _r: tmp_path)
+    monkeypatch.setattr(mod, "resolve_omniclaude_root", lambda **_: tmp_path)
+
+    assert mod.main([]) == 1  # registry-only is drift by default
+    assert mod.main(["--tolerate-consumer-ahead"]) == 0
+
+    behind = replace(
+        ahead,
+        topic_report=replace(
+            ahead.topic_report, source_only=frozenset({"onex.evt.omnimarket.new.v1"})
+        ),
+    )
+    monkeypatch.setattr(mod, "validate_event_registry_drift", lambda **_: behind)
+    assert mod.main(["--tolerate-consumer-ahead"]) == 1  # pin ahead of registry fails
