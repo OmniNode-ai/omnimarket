@@ -28,6 +28,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     ModelDelegatedCodeEditRequest,
 )
 
+#: Fewest characters of a turn worth showing cut; below it the turn is left out.
+_MIN_TURN_CHARS = 400
+
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 #: Required string arguments per tool.
@@ -220,6 +223,10 @@ def build_turn_prompt(
     kept: list[str] = []
     for block in reversed(history):
         if budget - len(block) < 0:
+            # A turn whose results exceed what is left is shown cut, never
+            # dropped: its actions and outcomes are the model's only memory.
+            if budget > _MIN_TURN_CHARS:
+                kept.append(_cap(block, budget))
             kept.append("[earlier turns cut to fit]\n")
             break
         kept.append(block)
