@@ -278,6 +278,37 @@ def _data(part: Mapping[str, object]) -> Mapping[str, object]:
     return data if isinstance(data, Mapping) else {}
 
 
+def recorded_calls_request(
+    *,
+    rubric: ModelClassRubric,
+    request_text: str,
+    answer_text: str,
+    declared_tools: tuple[ModelDeclaredTool, ...],
+    calls: Sequence[ModelToolCall],
+    turn_count: int,
+    wall_time_ms: int | None,
+    workspace_files: Sequence[ModelWorkspaceFile] | None,
+    execution_results: Sequence[ModelRubricExecutionResult] = (),
+) -> ModelRubricCheckRequest:
+    """A run whose recorder already holds typed calls with worktree-relative paths.
+
+    The delegated code edit loop (OMN-20290) records each applied action as a
+    call itself, so there is no session store to read and no root to strip.
+    """
+    return _request(
+        rubric=rubric,
+        request_text=request_text,
+        answer_text=answer_text,
+        workspace_root=None,
+        declared_tools=declared_tools,
+        calls=list(calls),
+        turn_count=turn_count,
+        wall_time_ms=wall_time_ms,
+        workspace_files=workspace_files,
+        extra_execution_results=execution_results,
+    )
+
+
 def crush_request(
     messages: Sequence[CrushMessage],
     *,

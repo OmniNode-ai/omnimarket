@@ -1,0 +1,22 @@
+name: node_delegated_code_edit_orchestrator
+version: "0.1.0"
+description: "Orchestrator for the delegated code edit loop: each model turn is one onex delegate run returning typed actions, applied to a git worktree under declared writable paths and declared checks, ending accepted when every check passes. Writes one loop receipt with every run id, the diff, the check results and the tool_use rubric verdict."
+pack: pipeline
+node_role: orchestrator
+display_name: "Delegated Code Edit Orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegated_code_edit_orchestrator: "omnimarket.nodes.node_delegated_code_edit_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "delegated-code-edit", "delegation"]
