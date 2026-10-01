@@ -2945,6 +2945,7 @@
       ],
       "indexes": [
         "idx_claude_hook_events_emitted",
+        "idx_claude_hook_events_goal_id",
         "idx_claude_hook_events_parent_call",
         "idx_claude_hook_events_pre_tool_call",
         "idx_claude_hook_events_projection_cursor",
