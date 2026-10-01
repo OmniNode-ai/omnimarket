@@ -18,16 +18,19 @@ repos:
     rev: cfaa6ec863c3026b5e65196151ed76cdad13dae3 # pragma: allowlist secret
     hooks:
       - id: check-stub-implementations
+        require_serial: true
       # OMN-12791: scan ModelDodReceipt YAML for gamed probes, deferred
       # evidence, self-attestation, fake human verifiers. Triggers only on
       # files under drift/dod_receipts/ (hook's own `files` filter), so it is
       # a no-op for omnimarket PRs that carry no receipt YAMLs.
       - id: check-receipt-honesty
+        require_serial: true
       # OMN-13026: bare AsyncMock/MagicMock without spec=/spec_set= on
       # EventBus/transport/kafka surfaces. Ratchet: existing violations frozen
       # in validation/transport_mock_baseline.yaml (101 violations, 26 files).
       # New violations blocked. Drain tracked by OMN-13026 per-site tickets.
       - id: transport-mock-lint
+        require_serial: true
         args: [--baseline, validation/transport_mock_baseline.yaml]
 
   # FSM YAML-vs-handler drift guard (OMN-13735). Consumes the canonical validator
@@ -40,6 +43,7 @@ repos:
     rev: 2d6e64e76a8bd90757eeacb8b4663c8e187beb59 # pragma: allowlist secret
     hooks:
       - id: check-fsm-handler-drift
+        require_serial: true
 
   # Contract walker, REPORT-ONLY (OMN-19554; walker in omnibase_core, OMN-19553).
   # Golden-chain validation layer plan r4 Phase 3: prints golden paths, error
@@ -53,6 +57,7 @@ repos:
     rev: fe19489c3e734e5e96407d438443fbafa9004c49 # pragma: allowlist secret
     hooks:
       - id: report-contract-walk
+        require_serial: true
         args: [src]
 
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
@@ -67,6 +72,7 @@ repos:
     rev: 940d2f2ab44d2f455a607926674b90ecbc9b74ba # pragma: allowlist secret
     hooks:
       - id: check-canonical-inference
+        require_serial: true
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
   # URL Authority Gate (OMN-13298, child of OMN-12803).
@@ -80,6 +86,7 @@ repos:
     rev: d720f33cf02aca1886d43811337d80aa1a47720e # pragma: allowlist secret
     hooks:
       - id: check-url-authority
+        require_serial: true
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
   # OMN-13284: canonical Plugin* lifecycle guard. omnimarket owns ONEX node packages
@@ -91,6 +98,7 @@ repos:
     rev: a509d3fb2777693242fdcd979e5d67bed2bbefeb # pragma: allowlist secret
     hooks:
       - id: no-plugin-daemon-classes
+        require_serial: true
         files: ^src/omnimarket/.*\.py$
 
   # OMN-14350: non-canonical lifecycle-class ratchet (fan-out from the omnibase_core
@@ -104,6 +112,7 @@ repos:
     rev: 63635097705d832e0ee9c4811093efb31349105c # pragma: allowlist secret
     hooks:
       - id: no-noncanonical-lifecycle-classes
+        require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
 
@@ -124,6 +133,7 @@ repos:
       # goes blocking now for all other compute/reducer code, with the burn-down
       # tracked as an OMN-9048 follow-up. New violations elsewhere fail.
       - id: validate-no-transport-imports
+        require_serial: true
         files: ^src/omnimarket/nodes/node_[^/]*_(compute|reducer)/
         exclude: >-
           (?x)(
@@ -132,6 +142,7 @@ repos:
             |^src/omnimarket/nodes/node_navigation_history_reducer/handlers/handler_navigation_history_reducer\.py$
           )
       - id: node-purity
+        require_serial: true
         files: ^src/omnimarket/nodes/node_[^/]*_(compute|reducer)/
         exclude: >-
           (?x)(
@@ -160,6 +171,7 @@ repos:
     rev: d163312724489f10f58ffdf8115ba1fa9d5783e8 # pragma: allowlist secret
     hooks:
       - id: validate-validator-requirements
+        require_serial: true
         args:
           - --repo
           - omnimarket
@@ -188,6 +200,7 @@ repos:
     rev: 0c69dff015b6f83365d4b0247d8b3230516276ae # pragma: allowlist secret
     hooks:
       - id: check-projection-exposure-drift
+        require_serial: true
         args:
           - src
           - --fail-on-omission
@@ -206,6 +219,7 @@ repos:
     rev: c6ebe3c49448ef821013c616d5dbe1e764104d85 # pragma: allowlist secret
     hooks:
       - id: check-duplicate-registry-ids
+        require_serial: true
         files: ^(\.duplicate-id-registries\.yaml|src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/nodes/node_ab_compare_orchestrator/models_registry\.yaml)$
 
   # Shared ONEX governance hooks (onex_change_control)
@@ -213,6 +227,7 @@ repos:
     rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
     hooks:
       - id: no-hardcoded-topics
+        require_serial: true
         stages: [pre-commit]
         # OMN-14541 (org-jam fix): compliance_sweep_baseline.yaml is forensic
         # data recording PAST hardcoded-topic violations (the ratchet
@@ -242,6 +257,7 @@ repos:
         # defect it pins, which is the whole property the fence exists to hold.
         exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/omnimarket/validators/contract_topic_graph\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/cli/.*)$"
       - id: no-untracked-todos
+        require_serial: true
         stages: [pre-commit]
 
   # KB doc gate (OMN-16589) — blocks new/regrown non-KB markdown docs.
@@ -259,6 +275,7 @@ repos:
     rev: 6bfba15f7d103ddaa9e949c459e95153b1ca6a94  # pragma: allowlist secret
     hooks:
       - id: kb-doc-gate
+        require_serial: true
 
   # Essential file formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -349,6 +366,7 @@ repos:
       # findings), so this hook is BLOCKING (no --report-only), mirroring the core
       # gate. Suppress an approved fixture line with: # onex-allow-faked-boundary
       - id: check-no-faked-boundary
+        require_serial: true
         name: No faked inference/routing/dispatch boundary — COMPUTE/bus, BLOCKING (OMN-13502)
         entry: uv run python -m omnibase_core.validation.no_faked_boundary.runtime_no_faked_boundary
         language: system
@@ -456,6 +474,7 @@ repos:
       # HandlerRuntimeCloseoutOrchestrator had four of them and restarted the closeout
       # instead of advancing it, under four green golden-chain tests.
       - id: handler-event-type-source
+        require_serial: true
         name: Handler event types come from the contract, not a literal (OMN-18013)
         language: system
         entry: uv run python -m omnimarket.validators.handler_event_type_source
@@ -521,6 +540,7 @@ repos:
       # shell scripts; same script the shellcheck-gate CI job runs, so local and CI
       # enforcement cannot drift. The tracked tree is held to --severity=error.
       - id: shell-hygiene
+        require_serial: true
         name: Shell hygiene (shellcheck, OMN-14761)
         entry: bash scripts/ci/check_shell_hygiene.sh
         language: system
@@ -813,6 +833,7 @@ repos:
       # Validates that all [project.entry-points."onex.nodes"] entries are valid
       # dotted module paths. Does not verify filesystem — CI runtime_sweep does that.
       - id: entry-point-format
+        require_serial: true
         name: Entry point format check
         language: system
         entry: uv run python scripts/ci/check_entry_point_format.py
@@ -984,6 +1005,7 @@ repos:
       # docstring for the OMN-14158 bypass class this deliberately does not
       # repeat. SYNC with ci.yml step "Bare aiokafka construction gate (auth kwargs)".
       - id: aiokafka-construction-auth
+        require_serial: true
         name: Bare aiokafka construction gate — auth kwargs required (OMN-15833)
         language: system
         entry: uv run python scripts/ci/check_aiokafka_construction_auth.py
@@ -995,6 +1017,7 @@ repos:
       # route the malformed event to its contract-declared DLQ topic, not drop it
       # silently. SYNC with ci.yml step "Projection-DLQ path gate".
       - id: projection-dlq-path
+        require_serial: true
         name: Projection-DLQ path gate (OMN-13548)
         language: system
         entry: uv run python scripts/ci/check_projection_dlq_path.py
@@ -1051,6 +1074,7 @@ repos:
       # contract_secret_ref + resolve_api_key. SYNC with ci.yml step
       # "GitHub-token env-read gate (enforce)".
       - id: github-token-env-gate
+        require_serial: true
         name: GitHub-token env-read gate
         language: system
         entry: uv run python scripts/ci/check_github_token_env_reads.py
@@ -1087,6 +1111,7 @@ repos:
       # Broad env-read violations run in report mode (Wave 0); provenance-bypass
       # violations always exit 1. SYNC with ci.yml step "Delegation env-read gate".
       - id: delegation-env-read-gate
+        require_serial: true
         name: Delegation env-read gate (OMN-13295)
         language: system
         entry: uv run python scripts/ci/check_delegation_env_reads.py
@@ -1161,6 +1186,7 @@ repos:
       # local hook against the installed omnibase_core. SYNC with ci.yml step
       # "operation_match operation-field gate (enforce)".
       - id: operation-match-requires-operation
+        require_serial: true
         name: operation_match handler operation-field gate (OMN-13530)
         language: system
         entry: uv run python -m omnibase_core.validators.operation_match_requires_operation
@@ -1238,6 +1264,7 @@ repos:
       # EnumWatchdogEventType authority). Forces the typed authority instead of
       # hardcoded strings. SYNC with ci.yml step "Watchdog-topic authority gate".
       - id: watchdog-topic-authority-gate
+        require_serial: true
         name: Watchdog-topic authority gate
         language: system
         entry: uv run python scripts/ci/check_watchdog_topic_authority.py
@@ -1496,6 +1523,7 @@ repos:
 
       # OMN-10738: Blocks silent localhost/hardcoded-endpoint fallbacks in env reads
       - id: validate-no-env-fallbacks
+        require_serial: true
         name: Validate no silent env fallbacks
         language: system
         entry: uv run python scripts/validation/validate_no_env_fallbacks.py
@@ -1551,6 +1579,7 @@ repos:
       # Blocks [skip-*] bypass tokens in staged markdown/yaml/txt files.
       # Escape hatch: add '# skip-token-allowed: <receipt-id>' with a traceable approval receipt.
       - id: reject-deploy-gate-skip-token
+        require_serial: true
         name: Reject skip-gate bypass tokens (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
@@ -1559,12 +1588,14 @@ repos:
         stages: [pre-commit]
         exclude: ^tests/.*fixtures/
       - id: reject-deploy-gate-skip-token-commit-msg
+        require_serial: true
         name: Reject skip-gate bypass tokens in commit messages (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
         pass_filenames: true
         stages: [commit-msg]
       - id: strip-ai-coauthor-trailer
+        require_serial: true
         name: Strip AI-generated Co-Authored-By trailers from commit messages
         entry: perl -i -ne 'print unless /^co-authored-by:.*claude.*noreply\@anthropic\.com/i'
         language: system
@@ -1828,6 +1859,7 @@ repos:
     rev: 3faefdcd5750b05f69d2efcb8cf200bc359483c3  # pragma: allowlist secret
     hooks:
       - id: anti-growth-baseline
+        require_serial: true
         alias: anti-growth-dep-findings-baseline
         name: Dependency findings baseline can only shrink (OMN-19677)
         args:
@@ -1839,6 +1871,7 @@ repos:
           - origin/dev
         files: ^\.onex_state/dep_health_baseline\.json$
       - id: anti-growth-baseline
+        require_serial: true
         alias: anti-growth-dep-topic-allowlist
         name: Dependency topic allowlist can only shrink (OMN-19677)
         args:
@@ -1850,6 +1883,7 @@ repos:
           - origin/dev
         files: ^src/dep_health_allowlist\.yaml$
       - id: anti-growth-baseline
+        require_serial: true
         alias: anti-growth-state-coverage-baseline
         name: State coverage baseline can only shrink (OMN-19677)
         args:
