@@ -162,15 +162,29 @@ def test_page_selection_ranked_window_serves_the_top_rows_by_declared_order() ->
     assert body["page_selection"] == "order_by"
 
 
-def test_page_selection_ranked_window_owes_no_cursor_and_says_truncated() -> None:
-    """A ranked page's rows are scattered in cursor space: no cursor continues
-    it, and ``truncated`` carries the fact a cursor would have."""
+def test_page_selection_ranked_window_cursor_starts_a_walk_that_skips_nothing() -> None:
+    """A ranked page cannot continue from its own last row (its rows are
+    scattered in cursor space), so a truncated one advertises the ORIGIN of the
+    ascending walk (OMN-20327): following it reaches every key, and a caller
+    that stops at the ranked page sees ``truncated``."""
     cfg = _contract_exposure()
+    walked: set[int] = set()
     with _client(cfg, _seeded_cache(cfg)) as client:
         body = client.get(f"/projection/{cfg.topic}").json()
-    assert body["next_cursor"] is None
-    assert body["truncated"] is True
-    assert body["row_count"] == cfg.limit
+        assert body["truncated"] is True
+        assert body["row_count"] == cfg.limit
+        assert body["next_cursor"] == "0"
+        walked.update(_cursors(body))
+        since = body["next_cursor"]
+        for _ in range(_CACHED_ROWS):
+            body = client.get(
+                f"/projection/{cfg.topic}", params={"since": since}
+            ).json()
+            walked.update(_cursors(body))
+            if body["next_cursor"] is None:
+                break
+            since = body["next_cursor"]
+    assert walked == set(range(1, _CACHED_ROWS + 1))
 
 
 def test_page_selection_ranked_window_is_not_truncated_when_it_fits() -> None:

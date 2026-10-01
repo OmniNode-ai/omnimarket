@@ -520,21 +520,21 @@ async def read_projection_page(
     # `since` filter and the truncation test below must see the whole set, or
     # no page at the contract limit advertises a cursor and no walk passes that
     # many rows. OMN-20152: the window is read from the writer's table.
+    # OMN-20327: a read without ``since`` is page one of the ascending cursor
+    # walk over every key, not the newest ``limit * 4`` rows -- a walk that
+    # starts inside the newest window can never reach the keys older than it.
+    # A ranked exposure ranks the WHOLE set in the source, not a recency cut.
+    ranked_window = cfg.page_selection == "order_by" and since is None
     try:
         all_rows = await source.rows(
             cfg,
-            order_spec=page_order_spec,
+            order_spec=order_by_spec if ranked_window else page_order_spec,
             tenant_id=scope_tenant,
             since=since,
             correlation_id=correlation_id,
+            selection="ranked" if ranked_window else "walk",
         )
-        latest_event_at = await source.latest_event_at(
-            cfg,
-            tenant_id=scope_tenant,
-            window_rows=(
-                all_rows if since is None and correlation_id is None else None
-            ),
-        )
+        latest_event_at = await source.latest_event_at(cfg, tenant_id=scope_tenant)
     except ProjectionReadError as exc:
         return ProjectionPage(exc.status_code, read_refusal(topic, exc))
     filtered_rows = filter_rows(
@@ -552,7 +552,6 @@ async def read_projection_page(
     # cursor order first and ranking the cut afterwards served the lowest
     # cursors -- the oldest rows -- for as long as the cache held more than
     # one page. A ``since`` request is a cursor walk under either selection.
-    ranked_window = cfg.page_selection == "order_by" and since is None
     try:
         if ranked_window:
             serialisable_rows = sort_for_presentation(
@@ -579,16 +578,24 @@ async def read_projection_page(
     # happens to carry rows owes no cursor — advertising one sends the caller
     # after a page that is empty and indistinguishable from "more data".
     #
-    # OMN-19841: a ranked window owes no cursor either, truncated or not. Its
-    # rows are scattered across cursor space, so any value advertised here
-    # would continue a walk this page never started and skip or repeat rows.
-    # ``truncated`` states the fact the cursor would otherwise carry; a caller
-    # that wants the whole set walks it with an explicit ``since``.
+    # OMN-19841: a ranked window cannot continue from its own last row -- its
+    # rows are scattered across cursor space, so that value would continue a
+    # walk this page never started and skip rows. OMN-20327: but a truncated
+    # ranked page that says nothing leaves a walker with the top page as the
+    # whole key set. It advertises the origin of the ascending walk instead:
+    # the walk that follows starts at the first row, skips none, and repeats
+    # only rows the ranked page already served.
     next_cursor: str | None = None
-    if cfg.cursor_column is not None and truncated and not ranked_window:
-        last_cursor_val = page_rows[-1].get(cfg.cursor_column)
-        if last_cursor_val is not None:
-            next_cursor = str(last_cursor_val)
+    if cfg.cursor_column is not None and truncated:
+        if ranked_window:
+            try:
+                next_cursor = await source.walk_origin(cfg, tenant_id=scope_tenant)
+            except ProjectionReadError as exc:
+                return ProjectionPage(exc.status_code, read_refusal(topic, exc))
+        else:
+            last_cursor_val = page_rows[-1].get(cfg.cursor_column)
+            if last_cursor_val is not None:
+                next_cursor = str(last_cursor_val)
 
     return ProjectionPage(
         200,

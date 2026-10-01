@@ -177,6 +177,46 @@ class WindowQuery:
     params: tuple[Any, ...]
 
 
+def _latest_per_key_sql(
+    cfg: ProjectionTableConfig, relation: str, *, tenant_where: str, order_column: str
+) -> str:
+    """The newest row of each key, reached by a skip scan over the key index.
+
+    A mutable-grain exposure serves one row per key -- the latest -- and the
+    snapshot cache it replaced held exactly that. A table can hold every
+    window a key ever had, so a window cut by recency over the table serves a
+    handful of busy keys many times and never reaches the quiet ones
+    (OMN-20327: consumer-flow's 2000 newest rows named 597 of its 976
+    consumer-group/topic pairs). The distinct keys are found one index probe
+    each, and the newest row of each is one more, so the cost follows the key
+    count, not the table's row count.
+    """
+    keys = ", ".join(quote_identifier(column) for column in cfg.key_columns)
+    tenant_and = f" AND {tenant_where}" if tenant_where else ""
+    tenant_only = f" WHERE {tenant_where}" if tenant_where else ""
+    after_key = (
+        "("
+        + ", ".join(f"t.{quote_identifier(column)}" for column in cfg.key_columns)
+        + ") > ("
+        + ", ".join(f"k.{quote_identifier(column)}" for column in cfg.key_columns)
+        + ")"
+    )
+    same_key = " AND ".join(
+        f"t.{quote_identifier(column)} = k.{quote_identifier(column)}"
+        for column in cfg.key_columns
+    )
+    return (
+        "WITH RECURSIVE k AS ("
+        f"(SELECT {keys} FROM {relation}{tenant_only} ORDER BY {keys} LIMIT 1) "
+        f"UNION ALL SELECT {', '.join(f'n.{quote_identifier(c)}' for c in cfg.key_columns)} "
+        f"FROM k, LATERAL (SELECT {keys} FROM {relation} AS t "
+        f"WHERE {after_key}{tenant_and} ORDER BY {keys} LIMIT 1) AS n) "
+        f"SELECT l.* FROM k CROSS JOIN LATERAL (SELECT {select_list(cfg)} "
+        f"FROM {relation} AS t WHERE {same_key}{tenant_and} "
+        f"ORDER BY t.{quote_identifier(order_column)} DESC LIMIT 1) AS l"
+    )
+
+
 def build_window_query(
     cfg: ProjectionTableConfig,
     *,
@@ -185,6 +225,7 @@ def build_window_query(
     since: str | None = None,
     since_type: str | None = None,
     correlation_id: str | None = None,
+    selection: str = "newest",
 ) -> WindowQuery:
     """The SQL for one exposure's served window.
 
@@ -192,12 +233,18 @@ def build_window_query(
     parameter. ``since_type`` is the cursor column's catalogue type, read from
     ``pg_attribute`` (never from the caller), so the bound text compares with
     the column's own ordering rather than as a string.
+
+    ``selection`` names which ``limit * 4`` rows of the exposure the window
+    holds: ``newest`` (the status page and the freshness read), ``walk`` (the
+    start of the ascending cursor walk, so a read without ``since`` is page one
+    of a walk that reaches every key) or ``ranked`` (the top of the declared
+    order over the whole set). A ``since`` read is always a walk.
     """
     relation = qualified_relation(cfg)
     columns = select_list(cfg)
     retain = cfg.limit * RETAINED_WINDOW_FACTOR
-    where: list[str] = []
     params: list[Any] = []
+    tenant_where = ""
 
     if cfg.tenant_column is not None:
         if tenant_id is None:
@@ -208,8 +255,9 @@ def build_window_query(
                 status_code=422,
             )
         params.append(tenant_id)
-        where.append(f"{quote_identifier(cfg.tenant_column)}::text = ${len(params)}")
+        tenant_where = f"{quote_identifier(cfg.tenant_column)}::text = ${len(params)}"
 
+    where: list[str] = []
     if correlation_id is not None:
         params.append(correlation_id)
         where.append(f"{quote_identifier('correlation_id')}::text = ${len(params)}")
@@ -226,9 +274,17 @@ def build_window_query(
             f"{quote_identifier(cfg.cursor_column)} > "
             f"CAST(${len(params)}::text AS {since_type})"
         )
-        window_order = f"{quote_identifier(cfg.cursor_column)} ASC"
+
+    recency = recency_column(cfg)
+    if since is not None or selection == "walk":
+        window_order = (
+            f"{quote_identifier(recency)} ASC"
+            if recency is not None
+            else order_clause(order_spec)
+        )
+    elif selection == "ranked":
+        window_order = order_clause(order_spec)
     else:
-        recency = recency_column(cfg)
         # No NULLS clause on the window's recency order: Postgres serves
         # ``DESC`` (implicitly NULLS FIRST) as a backward scan of the column's
         # ascending index, while ``DESC NULLS LAST`` forces a full sort -- on
@@ -242,9 +298,15 @@ def build_window_query(
             else order_clause(order_spec)
         )
 
+    if cfg.key_columns and recency is not None:
+        source = f"({_latest_per_key_sql(cfg, relation, tenant_where=tenant_where, order_column=cfg.latest_by or recency)}) AS latest"
+    else:
+        if tenant_where:
+            where.insert(0, tenant_where)
+        source = relation
     where_sql = f" WHERE {' AND '.join(where)}" if where else ""
     inner_order = f" ORDER BY {window_order}" if window_order else ""
-    inner = f"SELECT {columns} FROM {relation}{where_sql}{inner_order} LIMIT {retain}"
+    inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
     sql = f"SELECT * FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
@@ -345,7 +407,12 @@ class ProtocolProjectionRowSource(Protocol):
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        selection: str = "newest",
     ) -> list[dict[str, Any]]: ...
+
+    async def walk_origin(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> str | None: ...
 
     async def latest_event_at(
         self,
@@ -469,6 +536,7 @@ class TableRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        selection: str = "newest",
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
         pool = await self._pool(cfg)
@@ -494,6 +562,7 @@ class TableRowSource:
                     since=since,
                     since_type=since_type,
                     correlation_id=correlation_id,
+                    selection=selection,
                 )
                 records = await connection.fetch(query.sql, *query.params)
         except ProjectionReadError:
@@ -528,6 +597,40 @@ class TableRowSource:
                 "projection_database_unavailable", f"reading {relation} failed"
             ) from exc
         return [serialise_row(cfg, record) for record in records]
+
+    async def walk_origin(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> str | None:
+        """The ``since`` value that starts an ascending walk at the first row.
+
+        ``since`` is a strict ``>``, so the origin is one below the smallest
+        cursor. Only an integer cursor has one; any other cursor type has no
+        value a caller could be handed, and the answer is ``None``.
+        """
+        if cfg.cursor_column is None:
+            return None
+        pool = await self._pool(cfg)
+        relation = qualified_relation(cfg)
+        where = ""
+        params: list[Any] = []
+        if cfg.tenant_column is not None and tenant_id is not None:
+            params.append(tenant_id)
+            where = f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
+        try:
+            async with pool.acquire() as connection:
+                smallest = await connection.fetchval(
+                    f"SELECT min({quote_identifier(cfg.cursor_column)}) "
+                    f"FROM {relation}{where}",
+                    *params,
+                )
+        except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+            log.warning("walk origin read of %s failed: %r", relation, exc)
+            raise ProjectionReadError(
+                "projection_database_unavailable", f"reading {relation} failed"
+            ) from exc
+        if isinstance(smallest, int) and not isinstance(smallest, bool):
+            return str(smallest - 1)
+        return None
 
     async def latest_event_at(
         self,

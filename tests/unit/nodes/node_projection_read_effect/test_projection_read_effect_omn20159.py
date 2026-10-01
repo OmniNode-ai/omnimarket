@@ -110,11 +110,17 @@ class _RecordingSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        selection: str = "newest",
     ) -> list[dict[str, Any]]:
         self.tenants.append(tenant_id)
         if self._fail is not None:
             raise self._fail
         return [dict(row) for row in self._rows]
+
+    async def walk_origin(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> str | None:
+        return None
 
     async def latest_event_at(
         self,

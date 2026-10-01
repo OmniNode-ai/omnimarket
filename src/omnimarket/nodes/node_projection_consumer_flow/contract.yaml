@@ -201,6 +201,12 @@ projection_api:
   key_columns:
     - "consumer_group"
     - "topic"
+  # OMN-20327: the table-backed read serves each pair once, at its newest
+  # window, as the cache did. window_start is the tail of the table's primary
+  # key (consumer_group, topic, window_start), so the newest window of a pair is
+  # one index probe; projection_cursor has no index under a key prefix and
+  # would sort every window of every pair.
+  latest_by: "window_start"
 
 metadata:
   transport_type: kafka
