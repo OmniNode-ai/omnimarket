@@ -99,6 +99,16 @@ externally_consumed_topics:
   - onex.evt.omnimarket.trajectory-evaluation-failed.v1
   - onex.evt.omnimarket.trajectory-evaluation-status.v1
 
+# The public-repository guard and the evaluator adapter reach their services
+# over HTTP (httpx).
+metadata:
+  transport_type: http
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.trajectory-evaluation-submit.v1
+  terminal_events:
+    success: onex.evt.omnimarket.trajectory-evaluation-accepted.v1
+
 # Definition-B result routing is by class name with the Model prefix removed.
 published_events:
   - event_type: TrajectoryEvaluationAccepted
