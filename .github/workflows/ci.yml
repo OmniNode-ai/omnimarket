@@ -3011,7 +3011,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@a3b56675fda87a1ba8cf7e19d8e60a7d0ab6c4ee"
+      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@d17f5be8be88a8d35fc6a69e13cb8c1896c3025b"
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
