@@ -120,7 +120,8 @@ def test_the_catalogue_offers_the_free_model_on_the_general_api_by_default() -> 
     row = resolve_byok_provider_backend("glm")
     assert row is not None
     assert row.plan == "general_api"
-    assert row.model_name == _FREE_MODEL
+    assert row.pricing is not None
+    assert row.pricing.model_name == _FREE_MODEL
     assert row.endpoint_url == _GENERAL_API_URL
     assert row.mirrors_house_rung is False
 
@@ -280,7 +281,7 @@ def _lab_overlay_row() -> dict[str, object]:
         "backend_id": backend.backend_id,
         "provider": backend.provider,
         "endpoint_url": backend.endpoint_url,
-        "model_name": backend.model_name,
+        "model_name": _FREE_MODEL,
         "secret_ref": _LAB_KEY_REF,
         "timeout_ms": backend.timeout_ms,
         "max_tokens": backend.max_tokens,

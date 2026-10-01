@@ -41,6 +41,7 @@ from omnimarket.routing.byok_provider_backends import (
     load_byok_provider_catalog,
     resolve_byok_declared_plan,
     resolve_byok_provider_backend,
+    select_byok_model,
 )
 
 pytestmark = pytest.mark.unit
@@ -106,10 +107,7 @@ class TestGeminiIsOffered:
         row = resolve_byok_provider_backend("gemini")
         assert row is not None
         mirrored = [
-            b
-            for b in _platform_backends()
-            if b.get("endpoint_url") == row.endpoint_url
-            and b.get("model_name") == row.model_name
+            b for b in _platform_backends() if b.get("endpoint_url") == row.endpoint_url
         ]
         assert mirrored, "the gemini row mirrors no bifrost rung"
         assert house_keyed_provider_slugs(mirrored) == frozenset({"gemini"})
@@ -118,7 +116,10 @@ class TestGeminiIsOffered:
         row = resolve_byok_provider_backend("gemini")
         assert row is not None
         # OMN-13351: gemini-2.5-pro was quota-zero on the only resolvable key.
-        assert "pro" not in row.model_name
+        # OMN-20157: no id is pinned; no preference entry may pick a pro model.
+        listed = ["gemini-2.5-pro", "gemini-3.5-pro", "gemini-3.5-flash-lite"]
+        assert select_byok_model(row, listed) == "gemini-3.5-flash-lite"
+        assert select_byok_model(row, ["gemini-2.5-pro", "gemini-3.5-pro"]) is None
         assert row.max_tokens is not None
         assert row.max_tokens <= 8192, "flash-lite caps output near 8192 tokens"
 
@@ -250,12 +251,14 @@ class TestLimitCounterKey:
     def test_a_model_scoped_row_keys_on_the_model(self) -> None:
         row = resolve_byok_provider_backend("gemini")
         assert row is not None
-        assert byok_limit_counter_key("acme", "cred_acme_gemini_1", row) == (
+        assert byok_limit_counter_key(
+            "acme", "cred_acme_gemini_1", row, "gemini-3.5-flash-lite"
+        ) == (
             "acme",
             "cred_acme_gemini_1",
             "gemini",
             "ai_studio",
-            row.model_name,
+            "gemini-3.5-flash-lite",
         )
 
     def test_a_plan_scoped_row_drops_the_model_so_models_pool_one_counter(
@@ -263,7 +266,9 @@ class TestLimitCounterKey:
     ) -> None:
         row = resolve_byok_declared_plan("glm", "coding_plan")
         assert row is not None
-        assert byok_limit_counter_key("acme", "cred_acme_glm_1", row) == (
+        assert byok_limit_counter_key(
+            "acme", "cred_acme_glm_1", row, "glm-5.3-flash"
+        ) == (
             "acme",
             "cred_acme_glm_1",
             "glm",
@@ -275,9 +280,9 @@ class TestLimitCounterKey:
         row = resolve_byok_provider_backend("gemini")
         assert row is not None
         keys = {
-            byok_limit_counter_key("acme", "cred_acme_gemini_1", row),
-            byok_limit_counter_key("acme", "cred_acme_gemini_2", row),
-            byok_limit_counter_key("omninode", "cred_omninode_gemini_1", row),
+            byok_limit_counter_key("acme", "cred_acme_gemini_1", row, "m"),
+            byok_limit_counter_key("acme", "cred_acme_gemini_2", row, "m"),
+            byok_limit_counter_key("omninode", "cred_omninode_gemini_1", row, "m"),
         }
         assert len(keys) == 3
 
@@ -286,9 +291,9 @@ class TestLimitCounterKey:
         general = resolve_byok_provider_backend("glm", plan="general_api")
         assert coding is not None
         assert general is not None
-        assert byok_limit_counter_key("t", "c", coding) != byok_limit_counter_key(
-            "t", "c", general
-        )
+        assert byok_limit_counter_key(
+            "t", "c", coding, "glm-5.3-flash"
+        ) != byok_limit_counter_key("t", "c", general, "glm-5.3-flash")
 
 
 class TestVertexStaysNotOffered:

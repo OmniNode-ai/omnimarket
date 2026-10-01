@@ -176,6 +176,61 @@ class ModelByokLimitModel(BaseModel):
         return self
 
 
+#: OMN-20157. The model a route carries when no model has been resolved for the
+#: credential yet: a registration whose discovery could not reach the provider,
+#: or an event published before discovery existed. It is not a model id any
+#: provider serves. The effect boundary, which holds the key, resolves it from
+#: the provider's own model list before the call (``byok_model_discovery``), so a
+#: route never addresses a model nobody chose.
+BYOK_MODEL_UNRESOLVED = "byok-model-unresolved"
+
+
+class ModelByokModelPreference(BaseModel):
+    """One entry of a provider row's ordered model preference (OMN-20157).
+
+    ``pattern`` is a full-match regular expression over the model ids the
+    provider lists for a key. A pattern with a named group ``generation``
+    describes a FAMILY: among the listed ids it matches, the one with the highest
+    generation wins (``3.5`` beats ``3.1`` beats ``2.5``), so a newer generation
+    is picked up the day the provider lists it and a retired one is left behind
+    without a catalogue edit. A pattern without that group matches ids exactly as
+    written and ties are broken by the id, highest first.
+
+    ``tags`` name the capability the entry stands for (``cheapest``,
+    ``flash_lite``, ``free``), so a reader and a later task-class filter can say
+    why the entry is there without parsing the regex.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str = Field(min_length=1)
+    tags: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _the_pattern_compiles(self) -> ModelByokModelPreference:
+        try:
+            re.compile(self.pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"model_preference pattern {self.pattern!r} is not a valid "
+                f"regular expression: {exc}"
+            ) from exc
+        return self
+
+    def generation_of(self, model_id: str) -> tuple[int, ...] | None:
+        """The generation ``model_id`` has under this entry, or ``None`` if no match.
+
+        An entry without a ``generation`` group returns ``()`` for a match.
+        """
+        match = re.fullmatch(self.pattern, model_id)
+        if match is None:
+            return None
+        raw = match.groupdict().get("generation")
+        if raw is None:
+            return ()
+        return tuple(int(part) for part in re.findall(r"[0-9]+", raw))
+
+
 class ModelByokPricing(BaseModel):
     """The per-1M-token price of a row's model, when it differs from its tier's.
 
@@ -187,6 +242,9 @@ class ModelByokPricing(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: The model id this price is for. A row resolves its model per key from the
+    #: provider's list (OMN-20157), so the price names the model it is true of.
+    model_name: str = Field(min_length=1)
     input_per_1m_usd: Decimal = Field(ge=0)
     output_per_1m_usd: Decimal = Field(ge=0)
     #: Where the price was read. Required: an unsourced zero reads like a fact.
@@ -212,8 +270,8 @@ class ModelByokProviderBackend(BaseModel):
     #: Exactly one row per multi-plan provider carries ``true``. A provider
     #: with a single row is its own default.
     default_plan: bool = False
-    #: ``true`` when ``endpoint_url`` and ``model_name`` duplicate a live rung
-    #: of ``bifrost_delegation.yaml`` (held honest by the parity gate). ``false``
+    #: ``true`` when ``endpoint_url`` duplicates a live rung of
+    #: ``bifrost_delegation.yaml`` (held honest by the parity gate). ``false``
     #: declares a customer-only surface the platform holds no key for and
     #: therefore has no rung on (the z.ai general API, OMN-6790).
     mirrors_house_rung: bool = True
@@ -230,7 +288,16 @@ class ModelByokProviderBackend(BaseModel):
     refusal_message: str | None = Field(default=None, min_length=1)
     backend_id: str = Field(min_length=1)
     endpoint_url: str = Field(min_length=1)
-    model_name: str = Field(min_length=1)
+    #: OMN-20157. The COMPLETE URL of the provider's own list-models endpoint for
+    #: this plan, fetched VERBATIM with the customer's key at registration and on
+    #: a model-not-found at call time. What a key may use is the provider's fact,
+    #: so it is read from the provider rather than pinned here.
+    models_url: str = Field(min_length=1, pattern=r"^https?://")
+    #: OMN-20157. Ordered model preference, most preferred first. There is no
+    #: pinned model id on a customer row: the model a credential's route runs is
+    #: the best entry here that the provider lists for that key, resolved by
+    #: :func:`select_byok_model` and stored with the credential.
+    model_preference: tuple[ModelByokModelPreference, ...] = Field(min_length=1)
     #: OMN-18265. How many times a TRANSIENT provider failure on this
     #: customer-credentialed route may be re-issued to the same backend before
     #: the delegation terminalises. Required, not defaulted: a customer's chain
@@ -714,7 +781,7 @@ def byok_declared_price_per_1m(
         if (
             backend.pricing is not None
             and backend.endpoint_url == endpoint_url
-            and backend.model_name == model_name
+            and backend.pricing.model_name == model_name
         ):
             return (
                 backend.pricing.input_per_1m_usd,
@@ -724,30 +791,86 @@ def byok_declared_price_per_1m(
 
 
 def byok_limit_counter_key(
-    tenant_id: str, api_key_ref: str, backend: ModelByokProviderBackend
+    tenant_id: str,
+    api_key_ref: str,
+    backend: ModelByokProviderBackend,
+    model_name: str | None,
 ) -> tuple[str, str, str, str, str | None]:
     """The identity of the quota counter one credential's calls count against.
 
     ``(tenant_id, api_key_ref, provider, plan, model_name)``. ``model_name`` is
-    ``None`` when the row meters per plan (``limit_model.counter_scope`` is
-    ``plan``): every model on that plan draws on one pool, so keying on the
-    model would split one quota into counters that each look healthy.
+    the model the credential's route resolved (OMN-20157: resolved per key, not
+    declared here), and it is dropped to ``None`` when the row meters per plan
+    (``limit_model.counter_scope`` is ``plan``): every model on that plan draws
+    on one pool, so keying on the model would split one quota into counters that
+    each look healthy.
 
     The lab is a tenant like any other. Nothing here special-cases a house
     tenant, so our own keys are counted by the mechanism a customer's are.
     """
-    model = backend.model_name if backend.limit_model.counter_scope == "model" else None
+    model = model_name if backend.limit_model.counter_scope == "model" else None
     return (tenant_id, api_key_ref, backend.provider, backend.plan, model)
+
+
+def select_byok_model(
+    backend: ModelByokProviderBackend,
+    available_model_ids: Iterable[str],
+    *,
+    exclude: Iterable[str] = (),
+) -> str | None:
+    """The best model ``backend`` prefers among the ids a key can use (OMN-20157).
+
+    Pure. ``available_model_ids`` is what the provider's own models endpoint
+    listed for the key, with any ``models/`` resource prefix already removed.
+    Preference entries are tried in order; within an entry the highest
+    generation wins. ``exclude`` removes ids already known not to answer (a
+    model the provider just refused with 404), so a re-resolve never returns the
+    model that failed. ``None`` when nothing listed matches any entry.
+    """
+    excluded = frozenset(exclude)
+    candidates = sorted(
+        {model for model in available_model_ids if model and model not in excluded},
+        reverse=True,
+    )
+    for preference in backend.model_preference:
+        ranked = [
+            (generation, model)
+            for model in candidates
+            if (generation := preference.generation_of(model)) is not None
+        ]
+        if ranked:
+            return max(ranked)[1]
+    return None
+
+
+def resolve_byok_backend_by_endpoint(
+    endpoint_url: str | None,
+) -> ModelByokProviderBackend | None:
+    """The ROUTABLE catalogue row whose ``endpoint_url`` is ``endpoint_url``, or ``None``.
+
+    OMN-20157. The effect boundary holds an endpoint and a key, not a catalogue
+    row; this is how it finds the models endpoint and the preference to
+    re-resolve a customer route's model from. Matched verbatim, as the endpoint
+    is posted. A detection-only row is never returned.
+    """
+    if not endpoint_url:
+        return None
+    for backend in load_byok_plan_catalog().values():
+        if backend.customer_routable and backend.endpoint_url == endpoint_url:
+            return backend
+    return None
 
 
 __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
+    "BYOK_MODEL_UNRESOLVED",
     "CATALOG_PATH",
     "FORBIDDEN_PROVIDER_PATTERN",
     "ByokCatalogError",
     "ByokPlanNotPermittedError",
     "ModelByokLimitModel",
     "ModelByokLimitWindow",
+    "ModelByokModelPreference",
     "ModelByokNotOfferedProvider",
     "ModelByokPricing",
     "ModelByokProviderBackend",
@@ -764,7 +887,9 @@ __all__: list[str] = [
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",
     "require_byok_plan_permitted",
+    "resolve_byok_backend_by_endpoint",
     "resolve_byok_backend_by_id",
     "resolve_byok_declared_plan",
     "resolve_byok_provider_backend",
+    "select_byok_model",
 ]

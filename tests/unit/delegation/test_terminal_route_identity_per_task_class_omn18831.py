@@ -83,6 +83,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
 from omnimarket.routing.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH
+from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
 pytestmark = pytest.mark.unit
 
@@ -156,6 +157,9 @@ def local_tier_endpoints(
                     {
                         "backend_id": backend_id,
                         "endpoint_url": _UNROUTABLE_ENDPOINT,
+                        # The base contract carries no lab model id; the lane
+                        # overlay declares the served id (OMN-17099).
+                        "model_name": MODEL_LOCAL_201_SERVED_ID,
                         "tier": "local",
                     }
                     for backend_id in _local_tier_backend_ids()

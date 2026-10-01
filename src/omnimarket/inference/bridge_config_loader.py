@@ -55,6 +55,7 @@ from pydantic import SecretStr
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
+from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     get_openrouter_models,
@@ -167,6 +168,8 @@ def _build_static_model_configs(
 
     for key, url_env, model_env in _MODEL_KEY_REGISTRY:
         base_url = os.environ.get(url_env, "").strip()
+        if url_env == "LLM_GLM_URL":
+            base_url = glm_url_or_empty(base_url, source="bridge_config_loader.glm")
         if not base_url:
             continue
 

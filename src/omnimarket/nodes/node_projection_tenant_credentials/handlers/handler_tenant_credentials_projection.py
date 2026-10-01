@@ -72,7 +72,10 @@ from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
+from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,23 @@ def _registered_plan(data: dict[str, Any]) -> str | None:
         return None
     plan = metadata.get("plan")
     return str(plan) if plan else None
+
+
+def _registered_model(data: dict[str, Any]) -> str:
+    """The model a credential-registered event carries in ``metadata``.
+
+    OMN-20157. The intake resolves the model from the provider's own model list
+    with the customer's key and records it beside the plan. An event without one
+    (the list could not be read at registration, or the event predates model
+    discovery) yields the unresolved marker, which the effect resolves with the
+    key before the call. There is no pinned catalogue model to fall back to.
+    """
+    metadata = data.get("metadata")
+    if isinstance(metadata, dict):
+        model = metadata.get("model")
+        if isinstance(model, str) and model.strip():
+            return model.strip()
+    return BYOK_MODEL_UNRESOLVED
 
 
 class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
@@ -259,6 +279,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             provider=str(provider),
             api_key_ref=str(api_key_ref),
             plan=_registered_plan(data),
+            model=_registered_model(data),
         )
         await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
@@ -270,6 +291,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         provider: str,
         api_key_ref: str,
         plan: str | None = None,
+        model: str = BYOK_MODEL_UNRESOLVED,
     ) -> bool:
         """Mint the route that actually selects this customer's key (OMN-17372).
 
@@ -352,7 +374,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             backend.backend_id,
             backend.provider,
             backend.endpoint_url,
-            backend.model_name,
+            model,
             api_key_ref,
             backend.timeout_ms,
             backend.max_tokens,

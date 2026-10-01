@@ -16,9 +16,9 @@ identical shape (``endpoint_url: null`` in the committed contract, supplied by
 the overlay/store at deploy time, unauthenticated, ``tier: local``) — rather
 than deleted with the backend:
 
-  1. The committed contract declares the backend with a null ``endpoint_url``,
-     its served ``model_name``, ``tier: local``, and no ``secret_ref`` /
-     ``api_key_env``.
+  1. The committed contract declares the backend with null ``endpoint_url``
+     and ``model_name`` (supplied by the overlay), ``tier: local``, and no
+     ``secret_ref`` / ``api_key_env``.
   2. A stability-test-shaped overlay/store entry survives ``_merge_overlay``
      and resolves via the public ``resolve_delegation_backend`` entrypoint to a
      COMPLETE chat-completions URL, never the bare ``/v1`` base — the named
@@ -126,7 +126,7 @@ def test_committed_contract_declares_local_ds_v4_flash() -> None:
     )
     backend = backends["local-ds-v4-flash"]
 
-    assert backend["model_name"] == "deepseek-v4-flash"
+    assert backend["model_name"] is None
     assert backend["tier"] == "local"
     # Committed default is null; the real endpoint is supplied by the
     # stability-test overlay/store, never hardcoded here.
@@ -169,6 +169,7 @@ def test_stability_test_store_overlay_merges_onto_committed_local_ds_v4_flash() 
                     {
                         "backend_id": "local-ds-v4-flash",
                         "endpoint_url": _STABILITY_TEST_ENDPOINT,
+                        "model_name": "deepseek-v4-flash",
                     }
                 ]
             )
@@ -179,7 +180,7 @@ def test_stability_test_store_overlay_merges_onto_committed_local_ds_v4_flash() 
     ds_backend = next(b for b in backends if b["backend_id"] == "local-ds-v4-flash")
 
     assert ds_backend["endpoint_url"] == _STABILITY_TEST_ENDPOINT
-    # Committed fields not touched by the overlay survive the merge verbatim.
+    # The overlay supplies the served id; the committed tier survives the merge.
     assert ds_backend["model_name"] == "deepseek-v4-flash"
     assert ds_backend["tier"] == "local"
 
@@ -198,6 +199,7 @@ def test_resolve_delegation_backend_local_ds_v4_flash_ends_in_chat_completions()
                     {
                         "backend_id": "local-ds-v4-flash",
                         "endpoint_url": _STABILITY_TEST_ENDPOINT,
+                        "model_name": "deepseek-v4-flash",
                     }
                 ]
             )
@@ -229,7 +231,13 @@ def test_resolve_delegation_backend_rejects_bare_v1_base_class_of_failure() -> N
     store = _MockStore(
         {
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
-                [{"backend_id": "local-ds-v4-flash", "endpoint_url": bare_base}]
+                [
+                    {
+                        "backend_id": "local-ds-v4-flash",
+                        "endpoint_url": bare_base,
+                        "model_name": "deepseek-v4-flash",
+                    }
+                ]
             )
         }
     )

@@ -26,7 +26,9 @@ def _restore_byok_catalogue_cache() -> Iterator[None]:
     because it would show up somewhere else.
     """
     byok_provider_backends.load_byok_provider_catalog.cache_clear()
+    byok_provider_backends.load_byok_plan_catalog.cache_clear()
     byok_provider_backends.load_byok_not_offered_providers.cache_clear()
     yield
     byok_provider_backends.load_byok_provider_catalog.cache_clear()
+    byok_provider_backends.load_byok_plan_catalog.cache_clear()
     byok_provider_backends.load_byok_not_offered_providers.cache_clear()

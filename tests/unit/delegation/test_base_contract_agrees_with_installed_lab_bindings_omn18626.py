@@ -1,200 +1,126 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-18626: this repo's base contract must agree with the lab binding table.
-
-WHY THIS TEST IS IN OMNIMARKET AND COULD NOT BE ANYWHERE ELSE.
-
-The delegation contract the runtime reads is rendered at container start from
-two halves that live in different repositories and arrive by different routes:
-
-    half                         owner            how it reaches the container
-    ------------------------     --------------   ----------------------------
-    served_model_id              omnibase_infra   a read-only BIND MOUNT of the
-      (via the lane overlay,                      lane overlay from the host
-       constrained by the                         clone, advanced by the deploy
-       authorized binding table)                  agent's GIT PHASE
-    model_name                   omnimarket       BAKED INTO THE IMAGE, swapped
-      (the base contract)                         at the end of the build
-
-``render_bifrost_delegation_contract._merge_lane_overlay`` refuses outright when
-those two disagree. The refusal is correct: a disagreement means the contract
-cannot be rendered truthfully. But because the halves move at different moments,
-they can disagree with NO BUILD AT ALL, and the container that next starts does
-not route badly -- it fails to start.
-
-That happened on 2026-09-17. ``omnibase_infra#3721`` repointed the binding table
-and the overlays to ``Qwen3.8-27B`` and merged; its omnimarket twin did not, and
-from the moment a deploy job's git phase advanced the host clone, the dev lane
-was one container start away from a runtime that would not come up.
-
-**Neither repository can check this alone.** ``omnibase_infra`` cannot import
-``omnimarket`` -- that is the compat -> core -> spi -> infra layering, and
-reversing it would be a circular dependency. ``omnimarket`` cannot read the
-overlay FILES, because ``omnibase_infra`` does not package ``docker/`` and those
-files never reach an installed distribution.
-
-What omnimarket CAN see is both authorities: it installs ``omnibase_infra``, so
-``_AUTHORIZED_BINDINGS`` is importable, and it owns the base contract. And
-checking against the binding table is EQUIVALENT to checking against every valid
-overlay, because ``ModelBifrostLaneBackendBinding`` refuses any overlay whose
-``served_model_id`` differs from the table. So an overlay that disagrees with
-this test's expectation cannot be loaded in the first place.
-
-WHEN THIS FIRES, which is the useful part. It goes red at the moment the two
-halves would actually diverge in an image: the omnimarket bump of its
-``omnibase-infra`` floor. A bump that pulls in a repointed binding table without
-the matching base-contract change is refused here, in the repo making the bump,
-rather than discovered as a dead lane hours later.
-
-HONEST LIMIT. This is a static check over one installed pair. It cannot observe
-the running host, where the mounted overlay may be newer than the baked base.
-Closing THAT window needs provenance reporting at render time and is tracked as
-the next increment of OMN-18626. What this removes is the authoring mistake --
-landing one half of a two-repo change -- which is how the 2026-09-17 window was
-opened.
-
-OMN-17099 CHANGED WHAT THIS COMPARES AGAINST. The operator ruling of 2026-09-22
-deletes ``_AUTHORIZED_BINDINGS`` from omnibase_infra: the lane-overlay renderer
-now validates the overlay against the contract instead of a hardcoded table.
-omnimarket pins a published infra release, so this file cannot import a symbol
-the next release no longer exports. The served ids the table held are stated
-below as literal fixture values equal to the committed lab lane overlay, so
-this test now pins the base contract to the recorded lab served ids rather than
-reading them from the installed distribution. It therefore no longer fires on
-an infra floor bump by itself; a repoint must move this table and the base
-contract together.
-"""
+"""OMN-17099: local served model ids belong to the lane overlay."""
 
 from __future__ import annotations
 
 import importlib.resources
-from typing import Final
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_delegation_config,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+    ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing as routing,
+)
+
 pytestmark = pytest.mark.unit
 
-#: ``backend_id -> served_model_id`` of the committed lab lane overlay: the
-#: values omnibase_infra's authorization table held before OMN-17099 deleted it.
-_LAB_SERVED_MODEL_IDS: Final[dict[str, str]] = {
-    "local-coder": "Qwen3.8-27B",
-    "local-heavy-reasoning": "Qwen3.8-27B",
-    "local-ds-v4-flash": "deepseek-v4-flash",
-}
 
-_BASE_CONTRACT_RESOURCE: Final[str] = "configs/bifrost_delegation.yaml"
-
-
-def _base_contract_model_names() -> dict[str, str | None]:
-    """``backend_id -> model_name`` from THIS repo's packaged base contract.
-
-    Read through ``importlib.resources`` rather than by path so the test reads
-    the file the renderer will actually resolve, not a copy that happens to sit
-    beside the source tree.
-    """
-    resource = importlib.resources.files("omnimarket").joinpath(_BASE_CONTRACT_RESOURCE)
-    contract = yaml.safe_load(resource.read_text(encoding="utf-8"))
-    backends = contract.get("backends")
-    assert isinstance(backends, list), (
-        f"{_BASE_CONTRACT_RESOURCE} does not declare a backends list; the "
-        "renderer would refuse this contract outright, so this test has "
-        "nothing to compare"
+@pytest.fixture
+def packaged_base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Bind the packaged base explicitly, excluding any machine-local overlay."""
+    resource = importlib.resources.files("omnimarket").joinpath(
+        "configs/bifrost_delegation.yaml"
     )
-    assert backends, (
-        f"{_BASE_CONTRACT_RESOURCE} declares an EMPTY backends list. This test "
-        "would then pass vacuously, so it fails closed instead"
+    contract = tmp_path / "bifrost_delegation.yaml"
+    contract.write_text(resource.read_text(encoding="utf-8"), encoding="utf-8")
+    tiers = tmp_path / "routing_tiers.yaml"
+    tiers.write_text(
+        importlib.resources.files("omnimarket")
+        .joinpath("configs/routing_tiers.yaml")
+        .read_text(encoding="utf-8"),
+        encoding="utf-8",
     )
-    return {
-        backend["backend_id"]: backend.get("model_name")
-        for backend in backends
-        if isinstance(backend, dict) and "backend_id" in backend
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
+    monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(tiers))
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    routing._config = None
+    routing._load_bifrost_endpoints.cache_clear()
+    try:
+        yield contract
+    finally:
+        routing._config = None
+        routing._load_bifrost_endpoints.cache_clear()
+
+
+def test_every_packaged_local_backend_defers_its_model_to_the_overlay(
+    packaged_base: Path,
+) -> None:
+    contract = yaml.safe_load(packaged_base.read_text(encoding="utf-8"))
+    local = [backend for backend in contract["backends"] if backend["tier"] == "local"]
+    assert {backend["backend_id"] for backend in local} == {
+        "local-coder",
+        "local-heavy-reasoning",
+        "local-embedding",
+        "local-ds-v4-flash",
     }
+    assert all(backend["model_name"] is None for backend in local)
 
 
-def _disagreements(
-    base_model_names: dict[str, str | None],
-    authorized: dict[str, str],
-) -> list[str]:
-    """Every backend both sides declare where the names cannot both be true.
+def test_base_without_overlay_loads_but_local_rungs_are_unroutable(
+    packaged_base: Path,
+) -> None:
+    config = load_bifrost_delegation_config(config_path=packaged_base)
+    local = [backend for backend in config.backends if backend.tier == "local"]
+    assert local
+    assert all(
+        backend.endpoint_url is None and backend.model_name is None for backend in local
+    )
+    endpoints = routing._load_bifrost_endpoints()
+    assert endpoints  # Cloud declarations still load.
+    assert all(backend.backend_id not in endpoints for backend in local)
+    assert routing._get_config().tiers
 
-    A ``None`` base ``model_name`` is NOT a disagreement: the renderer treats it
-    as "the overlay is authoritative" and skips its comparison. That branch is
-    deliberate and is the shape the next increment moves to once a runtime
-    resolver stands behind it.
-    """
-    findings: list[str] = []
-    for backend_id, served in sorted(authorized.items()):
-        if backend_id not in base_model_names:
-            continue
-        declared = base_model_names[backend_id]
-        if declared is None or declared == served:
-            continue
-        findings.append(
-            f"{backend_id}: this repo's base contract says model_name="
-            f"{declared!r}, the recorded lab lane overlay says "
-            f"served_model_id={served!r}"
+
+def test_local_pick_posts_the_overlay_served_id_instead_of_the_tier_key(
+    packaged_base: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {
+                        "backend_id": "local-coder",
+                        "endpoint_url": "http://developer.invalid:8000/v1/chat/completions",
+                        "model_name": "dev-chosen-model-x",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay))
+    endpoints = routing._load_bifrost_endpoints()
+    assert "local-coder" in endpoints
+    assert (
+        not {"local-heavy-reasoning", "local-embedding", "local-ds-v4-flash"}
+        & endpoints.keys()
+    )
+    decision = routing.delta(
+        ModelDelegationRequest(
+            prompt="Write a small function that adds two integers.",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            emitted_at=datetime.now(UTC),
         )
-    return findings
-
-
-def test_base_contract_agrees_with_the_recorded_lab_served_ids() -> None:
-    """A half-applied two-repo repoint is refused here, not on the lane."""
-    authorized = dict(_LAB_SERVED_MODEL_IDS)
-    base_model_names = _base_contract_model_names()
-
-    shared = set(authorized) & set(base_model_names)
-    assert shared, (
-        "this repo's base contract and the recorded lab lane overlay "
-        "share no backend id at all, so this test would pass vacuously. "
-        f"base declares {sorted(base_model_names)}, the table declares "
-        f"{sorted(authorized)}"
     )
-
-    findings = _disagreements(base_model_names, authorized)
-    assert not findings, (
-        "The delegation contract cannot be rendered from this pair, so the next "
-        "container start on any lab lane will FAIL TO START rather than route "
-        "badly (render_bifrost_delegation_contract._merge_lane_overlay).\n\n"
-        + "\n".join(f"  - {finding}" for finding in findings)
-        + "\n\nThis is a two-repo change landed one half at a time. Either move "
-        "this repo's model_name to match, in the same window as the "
-        "omnibase_infra change, or set it to null so the overlay is "
-        "authoritative -- but null is only correct once a runtime resolver "
-        "stands behind it (OMN-18626 increment 2)."
+    assert decision.tier_name == "local"
+    assert decision.selected_backend_ref == "local-coder"
+    assert decision.selected_model == "dev-chosen-model-x"
+    assert decision.endpoint_url == "http://developer.invalid:8000/v1/chat/completions"
+    assert all(
+        model.id != "dev-chosen-model-x"
+        for tier in routing._get_config().tiers
+        for model in tier.models
     )
-
-
-def test_the_comparison_is_a_real_comparison() -> None:
-    """Positive control on the helper, both directions.
-
-    Without this, a helper that returned an empty list unconditionally would
-    make the test above pass forever while checking nothing -- which is the
-    exact failure mode this ticket exists to remove, so it gets its own control
-    rather than a comment.
-    """
-    authorized = {"local-coder": "ModelA", "local-ds-v4-flash": "ModelB"}
-
-    agreeing = _disagreements(
-        {"local-coder": "ModelA", "local-ds-v4-flash": "ModelB"}, authorized
-    )
-    assert agreeing == [], "an agreeing pair must produce no finding"
-
-    nulled = _disagreements(
-        {"local-coder": None, "local-ds-v4-flash": "ModelB"}, authorized
-    )
-    assert nulled == [], "a null base model_name defers to the overlay, by design"
-
-    disagreeing = _disagreements(
-        {"local-coder": "ModelA", "local-ds-v4-flash": "SomethingElse"}, authorized
-    )
-    assert len(disagreeing) == 1, "a disagreeing pair must produce exactly one finding"
-    assert "local-ds-v4-flash" in disagreeing[0]
-    assert "SomethingElse" in disagreeing[0]
-    assert "ModelB" in disagreeing[0], (
-        "the finding must print BOTH values; a message naming only one leaves "
-        "the reader unable to tell which half is ahead"
-    )
-
-    absent = _disagreements({"a-backend-the-table-does-not-know": "X"}, authorized)
-    assert absent == [], "a backend only one side declares is not a disagreement"

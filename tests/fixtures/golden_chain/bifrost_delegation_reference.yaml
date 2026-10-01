@@ -16,7 +16,7 @@ backends:
   - backend_id: local-coder
     provider: local
     endpoint_url: "http://test-local-coder:8000"
-    model_name: "test-local-coder"
+    model_name: "Qwen3.8-27B"
     tier: local
     timeout_ms: 30000
     capabilities: [code_completion, context_window_large]

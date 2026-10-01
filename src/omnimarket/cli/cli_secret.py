@@ -3,6 +3,7 @@
 """``onex secret`` — put your own provider key on your own machine (OMN-18695).
 
     onex secret set llm.openrouter.api_key      # value read from stdin
+    onex secret register-tenant-key openrouter --tenant dev   # stdin -> ref/event
     onex secret list
     onex secret delete llm.openrouter.api_key
 
@@ -30,16 +31,29 @@ HOW THIS COMMAND REACHES THE CLI
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from getpass import getpass
 
 import click
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
     register_local_byok_credential,
     revoke_local_byok_credential,
+)
+from omnimarket.projection.credential_publisher import (
+    CredentialPlanUndeterminedError,
+    CredentialStoreError,
+    ModelInferenceCredentialCreateRequest,
+    ProtocolCredentialEventBus,
+    register_inference_credential,
+)
+from omnimarket.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
 )
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
@@ -94,8 +108,12 @@ def _refuse_plan_not_permitted(provider: str, plan: str) -> None:
 
 def _resolve_plan(
     provider: str | None, value: str, plan_option: str | None
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """The plan this key registers under, decided BEFORE anything is stored.
+
+    Returns ``(plan, model)``. ``model`` is the model detection already resolved
+    for the detected plan from the key's own model list, or ``None`` when
+    detection did not run.
 
     OMN-20157. ``None`` for a provider that is not offered or has one plan:
     nothing to choose. Otherwise the named plan, checked against the catalogue,
@@ -116,7 +134,7 @@ def _resolve_plan(
                 "--plan applies to a provider the catalogue offers; this "
                 "reference names none."
             )
-        return None
+        return None, None
     declared = byok_provider_plans(provider)
     routable = byok_routable_plans(provider)
     if plan_option is not None:
@@ -127,9 +145,9 @@ def _resolve_plan(
                 f"{', '.join(routable)}. Nothing was stored."
             )
         _refuse_plan_not_permitted(provider, named)
-        return named
+        return named, None
     if len(declared) <= 1:
-        return None
+        return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
         "key with a one-token request to find which is yours."
@@ -140,7 +158,7 @@ def _resolve_plan(
     if detection.plan is not None:
         _refuse_plan_not_permitted(provider, detection.plan)
         click.echo(f"Detected plan: {detection.plan}.")
-        return detection.plan
+        return detection.plan, detection.model
     if detection.outcome == "rejected":
         raise click.ClickException(
             f"every {provider} plan refused that key. Check that you copied the "
@@ -157,6 +175,43 @@ def _resolve_plan(
         "not be reached, or answered with a throttle). Run the command again "
         f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
     )
+
+
+def _resolve_model(
+    provider: str, plan: str | None, value: str, known: str | None
+) -> str | None:
+    """The model this key's route will run, decided BEFORE anything is stored.
+
+    OMN-20157. The catalogue pins no model: it declares a preference, and the
+    provider's own model list for THIS key says what it may use (a provider
+    retires ids for new accounts while old ones keep them). ``known`` is a model
+    plan detection already resolved. A key the provider refuses, or whose list
+    names no preferred model, is refused here with the provider's words and
+    nothing is stored. A list that cannot be read stores no model, and the
+    first delegation resolves it instead.
+    """
+    if known is not None:
+        click.echo(f"Model: {known} (the best match your key's model list offers).")
+        return known
+    backend = resolve_byok_provider_backend(provider, plan=plan)
+    if backend is None:
+        return None
+    click.echo(f"Asking {provider} which models your key can use.")
+    discovery = discover_byok_model_sync(backend, value)
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise click.ClickException(f"{refusal} Nothing was stored.")
+    if discovery.model is None:
+        click.echo(
+            f"Could not read {provider}'s model list just now; the model will be "
+            "chosen from it at your first delegation."
+        )
+        return None
+    click.echo(
+        f"Model: {discovery.model} (the best match among the "
+        f"{discovery.listed_count} models your key can use)."
+    )
+    return discovery.model
 
 
 def _stdin_is_tty() -> bool:
@@ -206,6 +261,74 @@ def secret_group() -> None:  # stub-ok: a click group's body IS its subcommands
     """
 
 
+def _tenant_key_store() -> LocalByokCredentialStore:
+    """Use the SQLite credential store under this runtime's HOME."""
+    return LocalByokCredentialStore()
+
+
+def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
+    """Let the publisher construct and own this runtime's Settings-backed bus.
+
+    Tests may return an injected bus; production passes None so bootstrap and
+    producer lifecycle follow the same path as hosted credential intake.
+    """
+    return None
+
+
+@secret_group.command("register-tenant-key")
+@click.argument("provider")
+@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option("--name", default=None, help="Credential label; defaults to PROVIDER.")
+@click.option("--plan", default=None, help="Provider product; omit to detect the plan.")
+def register_tenant_key(
+    provider: str, tenant: str, name: str | None, plan: str | None
+) -> None:
+    """Register a tenant's provider key from stdin and publish its reference."""
+    if not tenant.strip():
+        raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    value = _read_value(f"llm.{provider}.api_key")
+    if not value:
+        raise click.ClickException("no value was read from stdin; nothing was stored.")
+    try:
+        request = ModelInferenceCredentialCreateRequest(
+            name=name if name is not None else provider,
+            provider=provider,
+            key_value=SecretStr(value),
+            plan=plan,
+        )
+        response = asyncio.run(
+            register_inference_credential(
+                request,
+                tenant_id=tenant,
+                secret_store=_tenant_key_store(),
+                event_bus=_tenant_key_event_bus(),
+            )
+        )
+    except ValidationError as exc:
+        # Pydantic input dumps can contain caller data. Surface only the
+        # catalogue/field refusal messages, with no request representation.
+        message = "; ".join(
+            error["msg"] for error in exc.errors(include_input=False, include_url=False)
+        )
+        raise click.ClickException(message) from exc
+    except (
+        CredentialStoreError,
+        CredentialPlanUndeterminedError,
+        ByokPlanNotPermittedError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        json.dumps(
+            {
+                "api_key_ref": response.api_key_ref,
+                "provider": response.provider,
+                "plan": response.plan,
+                "tenant": tenant,
+            }
+        )
+    )
+
+
 @secret_group.command("set")
 @click.argument("secret_ref")
 @click.option(
@@ -253,16 +376,26 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
         )
 
     provider = _offered_provider(secret_ref)
-    plan = _resolve_plan(provider, value, plan_option)
+    plan, detected_model = _resolve_plan(provider, value, plan_option)
+    model = (
+        _resolve_model(provider, plan, value, detected_model)
+        if provider is not None
+        else None
+    )
     asyncio.run(store.set_secret(secret_ref, value))
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
     if provider is not None:
         # The same key, under the tenant-shaped reference the customer route
         # carries. Replaces any earlier one for this provider (one key each).
         route_ref = register_local_byok_credential(
-            provider, value, plan=plan, db_path=store.db_path
+            provider, value, plan=plan, model=model, db_path=store.db_path
         )
-        suffix = f" (plan: {plan})" if plan is not None else ""
+        details = [
+            f"plan: {plan}" if plan is not None else None,
+            f"model: {model}" if model is not None else None,
+        ]
+        shown = [detail for detail in details if detail is not None]
+        suffix = f" ({', '.join(shown)})" if shown else ""
         click.echo(f"Registered it as your {provider} route key{suffix}: {route_ref}.")
 
 

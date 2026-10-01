@@ -34,9 +34,6 @@ env_dependencies:
   LLM_QWEN3_NEXT_URL:
     required: false
     description: "Qwen3-Next-80B endpoint URL (allowlisted for inference calls)"
-  LLM_GLM_URL:
-    required: false
-    description: "GLM cloud API base URL (allowlisted for inference calls)"
 
 descriptor:
   node_archetype: effect

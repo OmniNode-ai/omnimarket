@@ -46,7 +46,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
       - backend_id: local-coder
         provider: local
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
-        model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
+        model_name: Qwen3.8-27B  # onex-allow-model-id OMN-17099 reason="fixture declares the served id independently of the routing key"
         tier: local
         timeout_ms: 30000
         capabilities: []
@@ -60,7 +60,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
       - backend_id: local-heavy-reasoning
         provider: local
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-16442 reason="test fixture for contract-driven routing to the live lab .201 endpoint"
-        model_name: qwen3.8
+        model_name: Qwen3.8-27B
         tier: local
         timeout_ms: 30000
         capabilities: []
@@ -456,7 +456,7 @@ class TestDeltaContractRouting:
                   - backend_id: local-reasoner
                     provider: local
                     endpoint_url: "{_LOCAL_REASONER_ENDPOINT}"
-                    model_name: "Qwen3.6-27B"
+                    model_name: "{MODEL_QWEN3_27B_MTP}"
                     tier: local
                     timeout_ms: 30000
                     capabilities: [research]
