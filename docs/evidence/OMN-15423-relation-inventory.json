@@ -7182,6 +7182,7 @@
         "node_projection_pattern_learning",
         "node_projection_registration",
         "node_projection_routing_decision",
+        "node_projection_savings",
         "node_projection_session_outcome",
         "service:omnimarket_projection_migration_runner"
       ],
