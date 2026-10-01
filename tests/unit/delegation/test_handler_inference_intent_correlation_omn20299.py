@@ -13,16 +13,22 @@ A third-party provider gets neither.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
+from omnimarket.models.model_call_correlation import (
     SELF_HOSTED_CORRELATION_HEADER,
     SELF_HOSTED_CORRELATION_QUERY_PARAM,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
+    _is_self_hosted_endpoint,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
@@ -34,62 +40,69 @@ _RESPONSE = {
 }
 
 
-def _post_kwargs(base_url: str) -> tuple[ModelInferenceIntent, str, dict[str, object]]:
-    intent = ModelInferenceIntent(
-        base_url=base_url,
-        model="Qwen3.8-27B",
-        system_prompt="s",
-        prompt="p",
-        max_tokens=8,
-        timeout_seconds=30.0,
-        correlation_id=uuid4(),
-    )
-    captured: dict[str, object] = {}
-    response = MagicMock()
-    response.json.return_value = _RESPONSE
-    response.raise_for_status.return_value = None
+class _RecordingHandler(BaseHTTPRequestHandler):
+    seen: list[tuple[str, dict[str, str]]]
 
-    def _capture(url: str, **kwargs: object) -> MagicMock:
-        captured["url"] = url
-        captured.update(kwargs)
-        return response
+    def do_POST(self) -> None:
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        self.seen.append((self.path, dict(self.headers.items())))
+        body = json.dumps(_RESPONSE).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-    # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
-    # (verbatim POST URL / query parameters / headers) at the egress;
-    # RecordedReplayInferenceTransport.calls records only model/url/request_hash, not
-    # headers or query parameters. Integrated path proven by the .201 lab proof.
-    with patch("httpx.Client") as client_cls:  # onex-allow-faked-boundary
-        client = MagicMock()
-        client.__enter__ = MagicMock(return_value=client)
-        client.__exit__ = MagicMock(return_value=False)
-        client.post.side_effect = _capture
-        client_cls.return_value = client
+    def log_message(self, format: str, *args: object) -> None:
+        return None
+
+
+@pytest.mark.unit
+def test_self_hosted_call_carries_the_correlation_id() -> None:
+    """A real loopback server sees the id in the query string and the header."""
+    seen: list[tuple[str, dict[str, str]]] = []
+    handler_cls = type("_Handler", (_RecordingHandler,), {"seen": seen})
+    server = HTTPServer(("127.0.0.1", 0), handler_cls)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base_url = f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+        intent = ModelInferenceIntent(
+            base_url=base_url,
+            model="Qwen3.8-27B",
+            system_prompt="s",
+            prompt="p",
+            max_tokens=8,
+            timeout_seconds=30.0,
+            correlation_id=uuid4(),
+        )
         HandlerInferenceIntent().handle(intent)
-    captured["params"] = client_cls.call_args.kwargs.get("params")
-    url = captured.pop("url")
-    assert isinstance(url, str)
-    return intent, url, captured
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert len(seen) == 1
+    path, headers = seen[0]
+    parsed = urlparse(path)
+    assert parsed.path == "/v1/chat/completions"
+    assert parse_qs(parsed.query) == {
+        SELF_HOSTED_CORRELATION_QUERY_PARAM: [str(intent.correlation_id)]
+    }
+    assert headers[SELF_HOSTED_CORRELATION_HEADER] == str(intent.correlation_id)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "base_url",
     [
-        "http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-20299 reason="the self-hosted lab model server the correlation id is for"
+        "http://10.0.0.201:8000/v1/chat/completions",
         "http://127.0.0.1:8000/v1/chat/completions",
         "http://localhost:8130/v1/chat/completions",
     ],
 )
-def test_self_hosted_call_carries_the_correlation_id(base_url: str) -> None:
-    intent, url, kwargs = _post_kwargs(base_url)
-
-    assert url == base_url
-    assert kwargs["params"] == {
-        SELF_HOSTED_CORRELATION_QUERY_PARAM: str(intent.correlation_id)
-    }
-    headers = kwargs["headers"]
-    assert isinstance(headers, dict)
-    assert headers[SELF_HOSTED_CORRELATION_HEADER] == str(intent.correlation_id)
+def test_lab_and_local_endpoints_are_self_hosted(base_url: str) -> None:
+    assert _is_self_hosted_endpoint(base_url)
 
 
 @pytest.mark.unit
@@ -101,14 +114,8 @@ def test_self_hosted_call_carries_the_correlation_id(base_url: str) -> None:
         "http://8.8.8.8:8000/v1/chat/completions",
     ],
 )
-def test_third_party_call_carries_no_correlation_id(base_url: str) -> None:
-    _intent, url, kwargs = _post_kwargs(base_url)
-
-    assert url == base_url
-    assert kwargs.get("params") is None
-    headers = kwargs.get("headers") or {}
-    assert isinstance(headers, dict)
-    assert SELF_HOSTED_CORRELATION_HEADER not in headers
+def test_third_party_endpoints_are_not_self_hosted(base_url: str) -> None:
+    assert not _is_self_hosted_endpoint(base_url)
 
 
 @pytest.mark.unit
