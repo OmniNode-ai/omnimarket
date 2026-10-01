@@ -39,6 +39,9 @@ from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 # OMN-19436, the consumer-first half. The second half of that ticket adds
 # ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
@@ -62,12 +65,9 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # as real attempt fields below. They retain the provider facts stamped by the
 # producer and are no longer listed among the forthcoming keys.
 #
-# OMN-20165 adds ``rubric_verdict``, the per-attempt record of the class rubric
-# compute (node_delegation_rubric_check_compute), which records and decides
-# nothing. The producer and the declared field land in the change after the
-# release that carries this consumer.
+# OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "rubric_verdict"}
+    {"finish_reason", "truncated"}
 )
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
@@ -197,6 +197,10 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "Human-readable detail behind the accept/climb decision, e.g. the "
             "measured score against the required bar."
         ),
+    )
+    rubric_verdict: ModelAttemptRubricVerdict | None = Field(
+        default=None,
+        description="Recorded class rubric verdict; decides nothing. None when no gate judged this attempt.",
     )
     reasoning_preamble_rule: str | None = Field(
         default=None,

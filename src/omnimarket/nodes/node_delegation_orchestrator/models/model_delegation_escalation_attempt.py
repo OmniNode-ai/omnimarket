@@ -16,6 +16,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 
 class ModelDelegationEscalationAttempt(BaseModel):
@@ -164,6 +167,10 @@ class ModelDelegationEscalationAttempt(BaseModel):
             "Whether the output-token budget cut this rung's response short. "
             "Derived from finish_reason and refused when it disagrees."
         ),
+    )
+    rubric_verdict: ModelAttemptRubricVerdict | None = Field(
+        default=None,
+        description="Recorded class rubric verdict; decides nothing. None when no gate judged this attempt.",
     )
     reasoning_preamble_rule: str | None = Field(
         default=None,
