@@ -251,10 +251,10 @@ def test_contract_routes_only_writer_and_declares_relations() -> None:
     tables = {table["name"]: table for table in contract["db_io"]["db_tables"]}
     assert tables["delegation_events"]["access"] == "read"
     assert tables["delegation_dispositions"]["access"] == "read_write"
-    assert "delegation_disposition_usage" in tables
+    assert set(tables) == {"delegation_events", "delegation_dispositions"}
 
 
-def test_migrations_declare_tenant_isolation_and_invoker_view() -> None:
+def test_migrations_declare_tenant_isolation() -> None:
     migrations = NODE / "migrations"
     ddl = (migrations / "0000_create_delegation_dispositions.sql").read_text()
     assert "PRIMARY KEY (tenant_id, delegation_correlation_id)" in ddl
@@ -269,9 +269,8 @@ def test_migrations_declare_tenant_isolation_and_invoker_view() -> None:
         migrations / "0001_grant_tenant_projection_writer_delegation_dispositions.sql"
     ).read_text()
     assert "TO tenant_projection_writer" in grants
-    view = (migrations / "0003_create_delegation_disposition_usage.sql").read_text()
-    assert "security_invoker = true" in view
-    assert "d.tenant_id::text = e.tenant_id" in view
-    assert "d.delegation_correlation_id::text = e.correlation_id" in view
-    assert "GROUP BY e.tenant_id, e.model_name, e.task_type, e.caller_lane" in view
-    assert "TO app_dashboard" in view
+    assert len(list(migrations.glob("*.sql"))) == 3
+    assert all(
+        "delegation_events" not in migration.read_text()
+        for migration in migrations.glob("*.sql")
+    )

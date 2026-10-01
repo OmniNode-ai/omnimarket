@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20242: actual upsert ordering and invoker usage view on PostgreSQL.
+"""OMN-20242: actual upsert ordering and tenant-scoped usage query on PostgreSQL.
 
 All DDL and data are rolled back in a scratch schema. Credentials are the
 same integration environment seam as the delegation-eval template.
@@ -20,6 +20,9 @@ import pytest
 from omnimarket.events.delegation_disposition import ModelDelegationDispositionRecorded
 from omnimarket.nodes.node_projection_delegation_disposition.handlers.handler_delegation_disposition_writer import (
     _UPSERT_DISPOSITION,
+)
+from omnimarket.nodes.node_projection_delegation_disposition.queries import (
+    DISPOSITION_USAGE_QUERY,
 )
 
 _NODES = Path(__file__).resolve().parents[1] / "src/omnimarket/nodes"
@@ -61,7 +64,7 @@ def _scoped(statement: str, schema: str) -> str:
 
 
 @pytest.mark.integration
-async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
+async def test_disposition_ordering_and_usage_query_on_real_postgres() -> None:
     conn = await _connect_or_skip()
     schema = f"omn20242_dispositions_{uuid4().hex}"
     transaction = conn.transaction()
@@ -69,7 +72,7 @@ async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
         await transaction.start()
         await conn.execute(f"CREATE SCHEMA {schema}")
         await conn.execute(f"SET LOCAL search_path TO {schema}, public")
-        # Only the owning node's migrations needed by the view. 0048 carries
+        # Only the owning node's migrations needed by the query. 0048 carries
         # BEGIN/COMMIT, removed here to preserve the scratch transaction.
         for name in (
             "0007_delegation_events.sql",
@@ -171,7 +174,7 @@ async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
         assert stored_id == max(newer.disposition_id, high.disposition_id)
 
         # A disposition without a delegation_events row is still stored, but
-        # cannot inflate the usage view's delegation denominator.
+        # cannot inflate the usage query's delegation denominator.
         assert (
             await write(
                 ModelDelegationDispositionRecorded.build(
@@ -180,11 +183,9 @@ async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
             )
             == 1
         )
-        summary = await conn.fetchrow(
-            f"SELECT * FROM {schema}.delegation_disposition_usage WHERE tenant_id = $1",
-            str(_TENANT),
-        )
-        assert summary is not None
+        summaries = await conn.fetch(DISPOSITION_USAGE_QUERY, str(_TENANT))
+        assert len(summaries) == 1
+        summary = summaries[0]
         assert summary["delegations_total"] == 5
         for column in (
             "accepted_as_is_n",
@@ -194,11 +195,6 @@ async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
             "undisposed_n",
         ):
             assert summary[column] == 1
-        options = await conn.fetchval(
-            "SELECT reloptions FROM pg_class WHERE oid = $1::regclass",
-            f"{schema}.delegation_disposition_usage",
-        )
-        assert "security_invoker=true" in options
     finally:
         try:
             await transaction.rollback()
@@ -207,9 +203,9 @@ async def test_disposition_ordering_and_usage_view_on_real_postgres() -> None:
 
 
 @pytest.mark.integration
-async def test_usage_view_joins_a_uuid_tenant_column() -> None:
+async def test_usage_query_joins_a_uuid_tenant_column() -> None:
     """After node_projection_delegation 0031 the events tenant_id is UUID (the
-    dev lane's live shape); the view's join must be type-correct there too."""
+    dev lane's live shape); the query's join must be type-correct there too."""
     conn = await _connect_or_skip()
     schema = f"omn20242_uuid_tenant_{uuid4().hex}"
     transaction = conn.transaction()
@@ -227,6 +223,12 @@ async def test_usage_view_joins_a_uuid_tenant_column() -> None:
             await conn.execute(_scoped(migration.read_text(), schema))
         await conn.execute("SELECT set_config('app.tenant_id', $1, true)", str(_TENANT))
         correlation = uuid4()
+        # The same grouping keys in another tenant must not enter the total.
+        await conn.execute(
+            f"INSERT INTO {schema}.delegation_events VALUES ($1, $2, 'glm', 'review', 'lane-1')",
+            _OTHER,
+            str(correlation),
+        )
         await conn.execute(
             f"INSERT INTO {schema}.delegation_events VALUES ($1, $2, 'glm', 'review', 'lane-1')",
             _TENANT,
@@ -244,11 +246,9 @@ async def test_usage_view_joins_a_uuid_tenant_column() -> None:
         await conn.fetch(
             _scoped(_UPSERT_DISPOSITION, schema), *event.model_dump().values()
         )
-        summary = await conn.fetchrow(
-            f"SELECT * FROM {schema}.delegation_disposition_usage WHERE tenant_id = $1",
-            _TENANT,
-        )
-        assert summary is not None
+        summaries = await conn.fetch(DISPOSITION_USAGE_QUERY, str(_TENANT))
+        assert len(summaries) == 1
+        summary = summaries[0]
         assert summary["delegations_total"] == 1
         assert summary["rejected_n"] == 1
         assert summary["undisposed_n"] == 0

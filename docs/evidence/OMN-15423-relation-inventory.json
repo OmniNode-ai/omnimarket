@@ -1,13 +1,6 @@
 {
   "blocked_relations": [
     {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
-      "name": "delegation_disposition_usage",
-      "reason": "no authoritative CREATE TABLE migration found"
-    },
-    {
       "authoritative_sources": [
         "omnibase_infra/docker/migrations/forward/090_create_delegation_workflow_state.sql",
         "omnibase_infra/docker/migrations/forward/093_add_delegation_workflow_state_outbox_columns.sql"
@@ -104,8 +97,8 @@
     "extension": 1,
     "function": 15,
     "sequence": 31,
-    "table": 102,
-    "view": 11
+    "table": 101,
+    "view": 10
   },
   "relations": [
     {
@@ -3339,55 +3332,6 @@
         "node_projection_delegation_disposition",
         "service:omnimarket_projection_migration_runner"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
-      ],
-      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
-      "constraints": [],
-      "contract_sources": [
-        "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
-      ],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [],
-      "dependent_objects": [
-        "view:delegation_disposition_usage"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [
-        "SELECT TO app_dashboard",
-        "SELECT TO tenant_projection_writer"
-      ],
-      "indexes": [],
-      "internal_tenant_column_transform": null,
-      "keys": [],
-      "kind": "table",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
-      "name": "delegation_disposition_usage",
-      "owner_declaration": null,
-      "partitioning": [],
-      "producer": null,
-      "readers": [
-        "node_projection_delegation_disposition",
-        "service:omnimarket_projection_migration_runner"
-      ],
-      "target_schema": "public",
-      "writers": []
-    },
-    {
-      "accessor_nodes": [
-        "node_projection_delegation_disposition",
-        "service:omnimarket_projection_migration_runner"
-      ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0000_create_delegation_dispositions.sql"
       ],
@@ -3407,9 +3351,7 @@
         "public"
       ],
       "dependencies": [],
-      "dependent_objects": [
-        "view:delegation_disposition_usage"
-      ],
+      "dependent_objects": [],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
@@ -3633,7 +3575,6 @@
       ],
       "dependencies": [],
       "dependent_objects": [
-        "view:delegation_disposition_usage",
         "view:projection_cost_savings_overview",
         "view:projection_delegation_model_routing",
         "view:projection_delegation_quality_gate",
@@ -8230,51 +8171,6 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_delegation_disposition"
-      ],
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0003_create_delegation_disposition_usage.sql"
-      ],
-      "blocked_reasons": [],
-      "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "classified",
-      "constraints": [],
-      "contract_sources": [],
-      "current_schema": [
-        "public"
-      ],
-      "dependencies": [
-        "delegation_disposition_usage",
-        "delegation_dispositions",
-        "delegation_events"
-      ],
-      "dependent_objects": [
-        "view:delegation_disposition_usage"
-      ],
-      "domain": "TENANT",
-      "dsn_consumers": [
-        "OMNIDASH_ANALYTICS_DB_URL"
-      ],
-      "foreign_keys": [],
-      "grants": [
-        "SELECT TO app_dashboard",
-        "SELECT TO tenant_projection_writer"
-      ],
-      "indexes": [],
-      "keys": [],
-      "kind": "view",
-      "migration_root": "src/omnimarket/nodes",
-      "migration_stream": "node:node_projection_delegation_disposition",
-      "name": "delegation_disposition_usage",
-      "owner_declaration": "node_projection_delegation_disposition",
-      "partitioning": [],
-      "producer": "node_projection_delegation_disposition",
-      "readers": [],
-      "target_schema": "public",
-      "writers": []
-    },
-    {
-      "accessor_nodes": [
         "node_projection_capsule_store"
       ],
       "authoritative_sources": [
@@ -8720,7 +8616,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 92,
-    "source_declared_tables": 102
+    "source_declared_tables": 101
   },
   "runtime_evidence": {
     "dsn_key_provenance": {

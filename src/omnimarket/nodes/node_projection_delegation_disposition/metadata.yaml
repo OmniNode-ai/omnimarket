@@ -20,13 +20,6 @@ ownership:
     duplicate_migration_policy: forbid_cross_repo_create_table
     non_owner_repos: [omnibase_infra]
     rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
-  delegation_disposition_usage:
-    ddl_owner: omnimarket.nodes.node_projection_delegation_disposition
-    table_role: projection_read_model
-    create_migration: "migrations/0003_create_delegation_disposition_usage.sql"
-    duplicate_migration_policy: forbid_cross_repo_create_table
-    non_owner_repos: [omnibase_infra]
-    rationale: "Usage view reads delegation_events owned by node_projection_delegation."
 pack: "data"
 display_name: "Projection: Delegation Disposition"
 node_role: "effect"

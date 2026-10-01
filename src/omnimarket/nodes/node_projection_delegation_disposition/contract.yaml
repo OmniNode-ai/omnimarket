@@ -8,7 +8,7 @@ description: >
   OMN-20242. Rule-7a disposition projection, one row per tenant and delegation
   correlation. Producer-recorded time and disposition UUID order replacements.
   The content-free event records accepted, edited, rejected and ignored output.
-  The invoker-rights usage view reads delegation_events owned by
+  The tenant-scoped reader query reads delegation_events owned by
   node_projection_delegation to group usage by tenant, model, class and lane.
 handler:
   module: omnimarket.nodes.node_projection_delegation_disposition.handlers.handler_projection_delegation_disposition
@@ -41,8 +41,8 @@ dod_evidence:
     description: "Every non-empty result counts as handled"
   - test: tests/test_golden_chain_projection_delegation_disposition.py::test_each_disposition_is_written
     description: "All four dispositions persist with typed fields"
-  - test: tests/test_omn20242_delegation_disposition_real_postgres.py::test_disposition_ordering_and_usage_view_on_real_postgres
-    description: "Actual PostgreSQL conflict ordering and invoker usage view"
+  - test: tests/test_omn20242_delegation_disposition_real_postgres.py::test_disposition_ordering_and_usage_query_on_real_postgres
+    description: "Actual PostgreSQL conflict ordering and tenant-scoped usage query"
 db_io:
   db_tables:
     - name: delegation_dispositions
@@ -51,13 +51,7 @@ db_io:
       migration: "0000_create_delegation_dispositions.sql"
       access: read_write
       role: delegation_dispositions
-    - name: delegation_disposition_usage
-      database_ref: application
-      schema: public
-      migration: "0003_create_delegation_disposition_usage.sql"
-      access: read
-      role: delegation_disposition_usage
-    # Cross-node read: node_projection_delegation owns this relation and its DDL.
+    # Cross-node read: queries.py reads this relation; node_projection_delegation owns its DDL.
     - name: delegation_events
       database_ref: application
       schema: public

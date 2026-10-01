@@ -227,16 +227,14 @@ def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() 
 
 def test_disposition_relations_have_owners_and_cross_node_read_access() -> None:
     relations = _load_generator().build_inventory()["relations"]
-    for kind, name in (
-        ("table", "delegation_dispositions"),
-        ("view", "delegation_disposition_usage"),
-    ):
-        relation = next(
-            row for row in relations if row["kind"] == kind and row["name"] == name
-        )
-        assert relation["owner_declaration"] == "node_projection_delegation_disposition"
-        assert relation["classification_status"] == "classified"
-        assert relation["domain"] == "TENANT"
+    relation = next(
+        row
+        for row in relations
+        if row["kind"] == "table" and row["name"] == "delegation_dispositions"
+    )
+    assert relation["owner_declaration"] == "node_projection_delegation_disposition"
+    assert relation["classification_status"] == "classified"
+    assert relation["domain"] == "TENANT"
     events = next(
         row
         for row in relations
@@ -576,9 +574,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-19513 on top of both: node-owned tables declared and created in the same PR = 97.
     # +1 for OMN-19790 on top of OMN-19513 = 98.
     # +2 for OMN-19793 (the eval-run verdict and results tables) = 100.
-    # OMN-20242 declares its table and read view in db_io.db_tables, matching
-    # the existing aggregate view declarations. This census counts declarations.
-    assert census["source_declared_tables"] == 102
+    # +1 for OMN-20242: the disposition table is declared in db_io.db_tables.
+    # Its usage query creates no relation. This census counts declarations.
+    assert census["source_declared_tables"] == 101
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
