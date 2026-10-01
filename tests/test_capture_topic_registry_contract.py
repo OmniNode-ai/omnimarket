@@ -108,7 +108,9 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "work.ledger.ruling",
         "work.ledger.status",
         "work.ledger.terminal",
-        # OMN-20001: the core typed (v2) ledger row events keep the v1 tier; same bounded schema.
+        # OMN-20001: the v2 typed envelopes for the same eleven row types carry
+        # the same never-drop ledger state. None is a capture topic; each wraps
+        # one bounded core work event plus its normalized source row.
         "work.ledger.typed.ack",
         "work.ledger.typed.claim",
         "work.ledger.typed.correction",

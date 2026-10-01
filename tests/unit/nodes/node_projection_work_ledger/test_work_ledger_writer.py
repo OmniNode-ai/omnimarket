@@ -15,6 +15,7 @@ from omnimarket.events.enum_ledger_row_type import (
     EnumLedgerRowType,
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
+    ALL_SUBSCRIBE_TOPICS,
     SUBSCRIBE_TOPICS,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
@@ -34,9 +35,51 @@ TERM = (
 )
 
 
+class _FakeTransaction:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _FakeConnection:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    def transaction(self) -> _FakeTransaction:
+        return _FakeTransaction()
+
+    async def execute(self, sql: str, *args: Any) -> None:
+        if "pg_advisory_xact_lock" in sql:
+            self._db.locks.append(args)
+            return
+        await self._db.execute(sql, *args)
+
+
+class _FakeAcquire:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    async def __aenter__(self) -> _FakeConnection:
+        return _FakeConnection(self._db)
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _FakePool:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    def acquire(self) -> _FakeAcquire:
+        return _FakeAcquire(self._db)
+
+
 class _FakeDb:
     def __init__(self) -> None:
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
+        self.locks: list[tuple[Any, ...]] = []
         self.connected = 0
         self.closed = 0
 
@@ -48,6 +91,10 @@ class _FakeDb:
 
     async def execute(self, sql: str, *args: Any) -> None:
         self.statements.append((sql, args))
+
+    @property
+    def pool(self) -> _FakePool:
+        return _FakePool(self)
 
 
 def _writer(db: _FakeDb) -> WorkLedgerProjectionWriter:
@@ -62,10 +109,13 @@ def test_the_writer_declares_in_process_dispatch() -> None:
 
 def test_the_writer_subscribes_to_the_eleven_row_topics_the_contract_declares() -> None:
     assert sorted(_writer(_FakeDb()).subscribe_topics) == sorted(
-        t.topic for t in EnumLedgerRowType
+        topic for t in EnumLedgerRowType for topic in (t.topic, t.typed_topic)
     )
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
-    assert sorted(contract["event_bus"]["subscribe_topics"]) == sorted(SUBSCRIBE_TOPICS)
+    assert sorted(contract["event_bus"]["subscribe_topics"]) == sorted(
+        ALL_SUBSCRIBE_TOPICS
+    )
+    assert len(SUBSCRIBE_TOPICS) == 11
 
 
 def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
@@ -81,6 +131,9 @@ def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
     assert "work_ledger_state" in sqls[1]
     assert "opened_at" in sqls[1]
     assert db.statements[1][1][0] == "claim:alpha"
+    # The legacy arrival takes the same ledger lock the typed path holds, so it
+    # cannot interleave with typed reconciliation.
+    assert db.locks == [("work-ledger:rolling-work-ledger",)]
 
 
 def test_a_terminal_message_writes_only_the_closing_column_group() -> None:
