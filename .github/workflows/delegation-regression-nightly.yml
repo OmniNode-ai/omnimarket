@@ -209,7 +209,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       # OMN-18349: the placement check comes FIRST and costs a second. The
       # failure it catches is the one that consumed 60 nightly runs, and it was

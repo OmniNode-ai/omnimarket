@@ -404,7 +404,7 @@ jobs:
           set -euo pipefail
 
           attempt=1
-          until uv sync --locked --all-extras; do
+          until uv sync --locked; do
             status=$?
             if [ "$attempt" -ge "$UV_SYNC_ATTEMPTS" ]; then
               echo "::error::uv sync failed after ${attempt} attempt(s)"

@@ -61,7 +61,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       - name: Run node drift gate (all nodes, strict)
         env:

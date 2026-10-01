@@ -62,7 +62,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run the full suite under coverage and sweep it
         env:
           COVERAGE_SWEEP_TIMEOUT_SECONDS: "2400"

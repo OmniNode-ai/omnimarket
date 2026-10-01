@@ -50,7 +50,7 @@ jobs:
       - name: Enforce validator-requirements.yaml
         run: |
           cd omnibase_core
-          uv sync --all-extras
+          uv sync
           uv run python -m omnibase_core.validation.validator_requirements_consumer \
             --repo omnimarket \
             --repo-root .. \
