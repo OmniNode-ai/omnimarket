@@ -239,6 +239,7 @@ from omnimarket.routing.byok_provider_backends import (
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
+    is_customer_attributed,
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -250,7 +251,11 @@ from omnimarket.routing.delegation_backend_resolution import (
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
-from omnimarket.routing.local_byok_route import substitute_local_byok_route
+from omnimarket.routing.local_byok_route import (
+    resolve_pinned_byok_route,
+    substitute_any_registered_byok_route,
+    substitute_local_byok_route,
+)
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
@@ -889,6 +894,13 @@ def resolve_delegation_backend(
     Errors propagate verbatim: ``resolve_delegation_backend``'s fail-closed
     ``RuntimeError`` is what the pin/tier branches above are written against.
     """
+    # OMN-17373: a pinned ``byok-<provider>`` id names a catalogue backend, which
+    # the bifrost config never declares. Resolve it from the catalogue and the
+    # customer's own registered key; any other id resolves as before.
+    if backend_id is not None:
+        pinned = resolve_pinned_byok_route(backend_id)
+        if pinned is not None:
+            return pinned
     resolved = _resolve_delegation_backend_uncustomized(
         task_type, backend_id=backend_id
     )
@@ -1173,6 +1185,12 @@ class LocalDelegationDispatchPort:
                 house_refs=shipped_house_credential_refs(),
                 is_local_rung=_is_local_ladder_rung,
             )
+            # OMN-17373: a customer key for a provider the platform has no rung
+            # on (OpenAI) is not reached by the house-rung substitution. When
+            # the rung is still a platform credential and the customer holds a
+            # key for any catalogue provider, that provider answers.
+            if is_customer_attributed(resolved_tenant_id):
+                backend = substitute_any_registered_byok_route(backend)
             refuse_undeclared_local_model(
                 tenant_id=resolved_tenant_id,
                 backend=backend,

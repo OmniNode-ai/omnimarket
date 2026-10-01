@@ -14,8 +14,9 @@ edit away from breaking silently, so each is pinned here:
    census fails ``CI Summary`` closed exactly as before. ``SOFT_ALLOWLIST`` is
    empty, so no job fails without failing the summary.
 3. **The full suite still runs.** ``nightly-full-suite.yml`` runs the full
-   selection on ``dev`` on a schedule, with no opt-in input, and can never
-   become a PR context.
+   selection on one pinned ``dev`` sha on a schedule, split across shards and
+   folded by the same aggregator as the PR census (OMN-20316), with no opt-in
+   input, and can never become a PR context.
 """
 
 from __future__ import annotations
@@ -150,6 +151,15 @@ def test_census_stays_a_strict_gate() -> None:
     assert frozenset() == ci_summary_gate.SOFT_ALLOWLIST
 
 
+def _checkouts(job: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        s
+        for s in job["steps"]
+        if str(s.get("uses", "")).startswith("actions/checkout@")
+        and "repository" not in s.get("with", {})
+    ]
+
+
 def test_nightly_runs_full_selection_on_dev_only() -> None:
     nightly = _load(NIGHTLY_WORKFLOW)
     triggers = _triggers(nightly)
@@ -160,22 +170,52 @@ def test_nightly_runs_full_selection_on_dev_only() -> None:
     assert not triggers["workflow_dispatch"], "workflow_dispatch must take no inputs"
 
     jobs = nightly["jobs"]
-    assert len(jobs) == 1
-    (job,) = jobs.values()
-    checkout = [
-        s
-        for s in job["steps"]
-        if str(s.get("uses", "")).startswith("actions/checkout@")
-    ]
-    assert len(checkout) == 1
-    assert checkout[0].get("with", {}).get("ref") == "dev"
+    assert set(jobs) == {"resolve-head", "shard", "census"}, set(jobs)
 
-    run = _run_text(job)
-    assert FULL_RUN_SCRIPT in run
-    assert "--skip-generate" not in run
-    assert "-m " not in run, (
-        "marker selection is fixed inside the runner, not passed in"
+    # One dev sha, resolved once; every other job checks out exactly that sha,
+    # so the census can bind every shard artifact to one head (OMN-20316).
+    (resolve_checkout,) = _checkouts(jobs["resolve-head"])
+    assert resolve_checkout.get("with", {}).get("ref") == "dev"
+    pinned = "${{ needs.resolve-head.outputs.sha }}"
+    for job_id in ("shard", "census"):
+        (checkout,) = _checkouts(jobs[job_id])
+        assert checkout.get("with", {}).get("ref") == pinned, job_id
+        assert "resolve-head" in jobs[job_id]["needs"], job_id
+
+    # The shards run the FULL selection under one fixed marker expression,
+    # split over exactly the matrix the census expects.
+    shard = jobs["shard"]
+    run = _run_text(shard)
+    assert "uv run pytest tests/ " in run
+    assert '-m "not kafka"' in run
+    assert '--splits "$NIGHTLY_SPLIT_COUNT"' in run
+    split_count = int(nightly["env"]["NIGHTLY_SPLIT_COUNT"])
+    assert shard["strategy"]["matrix"]["split"] == list(range(1, split_count + 1))
+    assert shard["strategy"]["fail-fast"] is False
+    assert "postgres" in shard["services"], "real-DB proofs need the service"
+    # A red shard still uploads its coverage, so the census can name it.
+    (upload,) = [
+        step
+        for step in shard["steps"]
+        if step.get("name") == "Upload coverage shard artifact"
+    ]
+    assert upload["if"] == "always()"
+    assert "OMN20025_POSTGRES_BACKEND" in "".join(
+        str(step.get("env", {})) for step in shard["steps"]
     )
+    assert "postgresql-16" in run
+
+    census = jobs["census"]
+    census_run = _run_text(census)
+    assert AGGREGATE_SCRIPT in census_run
+    assert "--expected-head" in census_run
+    assert '--split-count "$NIGHTLY_SPLIT_COUNT"' in census_run
+    assert FULL_RUN_SCRIPT not in _run_text(shard) + census_run
+    # A red shard must still red the night after the census runs.
+    assert census["if"].startswith("always()")
+    assert "needs.shard.result != 'success'" in [
+        step.get("if") for step in census["steps"]
+    ]
 
 
 def test_nightly_is_never_a_pr_context() -> None:
@@ -183,8 +223,8 @@ def test_nightly_is_never_a_pr_context() -> None:
     triggers = _triggers(nightly)
     for pr_event in ("pull_request", "pull_request_target", "merge_group", "push"):
         assert pr_event not in triggers
-    (job,) = nightly["jobs"].values()
-    name = job["name"]
-    assert name not in ci_summary_gate.STRICT_GATE_JOBS
-    assert name not in ci_summary_gate.SKIPPABLE_GATE_JOBS
-    assert name not in ci_summary_gate.EXPECTED_EXTERNAL_CONTEXTS
+    for job in nightly["jobs"].values():
+        name = job["name"]
+        assert name not in ci_summary_gate.STRICT_GATE_JOBS
+        assert name not in ci_summary_gate.SKIPPABLE_GATE_JOBS
+        assert name not in ci_summary_gate.EXPECTED_EXTERNAL_CONTEXTS

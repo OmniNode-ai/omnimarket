@@ -236,8 +236,23 @@ def find_house_keyed_catalogue_entries(
         if match is not None and isinstance(backend_id, str):
             house_rung_ids[backend_id] = str(rung.get("secret_ref"))
 
+    catalogue = list(catalogue_rows)
+    # OMN-17373: a provider whose EVERY row declares ``mirrors_house_rung: false``
+    # is customer-only: the platform holds no key for it, so there is no house
+    # credential it could resolve to. Conjuncts 1 and 2 still bind it, and a
+    # house rung naming its slug puts it back under conjunct 3.
+    mirroring: dict[str, bool] = {}
+    for row in catalogue:
+        name = str(row.get("provider", "")).strip()
+        mirroring[name] = mirroring.get(name, False) or (
+            row.get("mirrors_house_rung", True) is not False
+        )
+    customer_only = frozenset(
+        name for name, any_mirror in mirroring.items() if not any_mirror
+    )
+
     findings: list[ModelHouseEntryFinding] = []
-    for row in catalogue_rows:
+    for row in catalogue:
         provider = str(row.get("provider", "")).strip() or "<unnamed row>"
 
         # Conjunct 1 — no house credential reference in ANY field value.
@@ -277,6 +292,8 @@ def find_house_keyed_catalogue_entries(
             if (match := _house_refs(rung)) is not None
             and match.group("slug") == provider
         ]
+        if not backing and provider in customer_only:
+            continue
         if not backing:
             findings.append(
                 ModelHouseEntryFinding(

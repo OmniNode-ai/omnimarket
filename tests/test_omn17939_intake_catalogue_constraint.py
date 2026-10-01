@@ -21,7 +21,7 @@ register a key for a provider that can never route:
   ticket that owns it; ``glm`` was on that list until OMN-17932 lifted it on
   2026-09-06 and ``gemini`` until OMN-20157, which is why both now appear in the
   ACCEPTED direction below and not the refused one),
-* a provider with no delegation backend at all (``openai`` — OMN-17373),
+* a provider with no delegation backend at all (``mistral``),
 * a bare typo (``openrooter``).
 
 In each case the credential is stored, a secret path is minted and a
@@ -83,6 +83,11 @@ def test_the_catalogue_is_non_empty() -> None:
     )
 
 
+def test_openai_is_in_the_catalogue() -> None:
+    """OMN-17373: a customer can register an OpenAI key."""
+    assert "openai" in customer_provider_catalogue()
+
+
 def test_every_catalogue_id_is_still_accepted() -> None:
     """The constraint must not pass by refusing everything."""
     for provider in customer_provider_catalogue():
@@ -99,7 +104,7 @@ def test_every_catalogue_id_is_still_accepted() -> None:
     [
         "notaprovider",
         "openrooter",  # a plain typo of the one offered id
-        "openai",  # no delegation backend at all (OMN-17373)
+        "mistral",  # no delegation backend at all
         "vertex",  # declared not_offered (OMN-17932)
     ],
 )

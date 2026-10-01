@@ -20,6 +20,7 @@ from pathlib import Path
 
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
+from omnimarket.config.settings import get_settings
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
@@ -27,14 +28,12 @@ from omnimarket.inference.provider_quota_state import (
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-    EnumDelegationSurface,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     delta as routing_delta,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.routing.customer_key_terminus import routing_surface_for_runtime
 from omnimarket.routing.dod_overlay import (
     ProtocolDodOutcomeReader,
     ProtocolEvalLineReader,
@@ -207,13 +206,19 @@ class HandlerRoutingIntent:
             roi_overlay=dod_overlay.roi_overlay if dod_overlay is not None else None,
             excluded_backend_refs=excluded_backend_refs,
             tenant_overlay=tenant_overlay,
-            # OMN-17082. This consumer IS the deployed multi-tenant cloud
-            # runtime, so it names that surface explicitly rather than relying
-            # on the (identical, deliberately strict) default. The surface is
-            # a property of WHICH entry point ran — never read from an env
-            # var, which a lane could set wrong and silently downgrade every
-            # customer's terminus to the permissive one.
-            surface=EnumDelegationSurface.CLOUD,
+            # OMN-17082. On a multi-tenant runtime this consumer serves the
+            # CLOUD surface, named explicitly rather than left to the
+            # (identical, deliberately strict) default. OMN-20203: a runtime
+            # whose own lane tenant is the request's tenant is that customer's
+            # own deployment (the laptop profile), so the customer-local
+            # terminus applies to that one tenant and to no other. A lane
+            # tenant set wrong reaches only requests attributed to it, never
+            # every customer's terminus, and the house-credential check holds
+            # on both surfaces.
+            surface=routing_surface_for_runtime(
+                tenant_id=tenant_id,
+                runtime_tenant_id=get_settings().onex_tenant_id,
+            ),
             quota_state=quota_snapshot,
         )
         logger.info(

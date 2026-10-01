@@ -11,20 +11,32 @@
 # `main` and `hotfix/**`, so nothing re-runs the suite after a merge to `dev`
 # either. This job carries that full run once a day.
 #
-# SHAPE (mirrors omnibase_infra's nightly-tests.yml):
-#   - full selection only: `pytest tests/ -m "not kafka"` via
-#     scripts/ci/run_coverage_sweep_gate.py, the same command the old Coverage
-#     Sweep Gate ran, followed by node_coverage_sweep. A failing test exits
-#     non-zero (the runner returns 2), so a red suite is a red night;
-#   - fixed marker selection, no environment-variable or dispatch-input opt-in;
-#   - never a required context: no pull_request trigger, and CI Summary does
-#     not poll it;
-#   - targets `dev`, not `main`, including on a manual dispatch from another
-#     branch: `main` is release-synced, so a nightly there would test the last
-#     release rather than current work.
+# SHAPE (OMN-20316). The first version ran `pytest tests/` serially in one job
+# under a 2400s budget. The suite grew from 23,690 collected tests (last green
+# night, run 35680333800, 1950s) to over 29,000, and every night from
+# 2026-09-23 to 2026-10-01 was reaped by that budget between 81% and 89%
+# (runs 36807970055, 36661423810, 36513896087). The same runs also ERRORed the
+# seven real-PostgreSQL proofs (test_omn18693_* and test_omn20025_*), which
+# fail closed by design when the job provides no PG16 server tools and no
+# OMN20025_POSTGRES_BACKEND. So the night now runs in the shape the PR `test`
+# job already proves:
+#   - resolve-head pins one `dev` sha, so every shard and the census bind to
+#     the same head even if `dev` moves mid-run;
+#   - `shard` runs the FULL selection, `pytest tests/ -m "not kafka"`, split
+#     NIGHTLY_SPLIT_COUNT ways with pytest-split, under the same Postgres
+#     service, PG16 tools, OCC checkout and integration env as ci.yml's `test`
+#     job. A failing or erroring test reds its shard, so a red suite is still
+#     a red night;
+#   - `census` combines the shard coverage files once and sweeps them with
+#     scripts/ci/aggregate_coverage_artifacts.py, the same census the required
+#     PR gate runs, and fails closed on a missing, wrong-head or stale shard.
+# Fixed marker selection, no environment-variable or dispatch-input opt-in.
+# Never a required context: no pull_request trigger, and CI Summary does not
+# poll it. Targets `dev`, not `main`, including on a manual dispatch from
+# another branch: `main` is release-synced, so a nightly there would test the
+# last release rather than current work.
 #
-# runs-on is ubuntu-latest, the placement the old Coverage Sweep Gate used.
-# Rollback: revert the OMN-18556 squash, which restores that job in ci.yml.
+# Rollback: revert the OMN-20316 squash, which restores the single serial job.
 
 name: Nightly Full Suite
 
@@ -40,15 +52,212 @@ concurrency:
   group: nightly-full-suite
   cancel-in-progress: false
 
+env:
+  # SYNC: the shard matrix below lists 1..NIGHTLY_SPLIT_COUNT.
+  NIGHTLY_SPLIT_COUNT: "10"
+
 jobs:
-  full-suite:
-    name: Full Suite Coverage Census (nightly)
+  resolve-head:
+    name: Resolve dev head (nightly)
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           ref: dev
+      - name: Pin the dev sha every shard and the census bind to
+        id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  shard:
+    name: Full Suite Shard ${{ matrix.split }} (nightly)
+    needs: resolve-head
+    runs-on: ubuntu-latest
+    # Measured serial full-suite time is ~45m on this runner class; a tenth of
+    # it per shard, with count-balancing slack when no durations cache exists.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # Same real-Postgres service as ci.yml's `test` job (OMN-14167), so the
+    # integration real-DB proofs execute instead of failing closed.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ needs.resolve-head.outputs.sha }}
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      # Same OCC checkout as ci.yml's `test` job (OMN-15390): the node_dod_verify
+      # supersession parity differential reads it at this path.
+      - name: Checkout onex_change_control (OCC parity differential)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/onex_change_control
+          ref: dev
+          path: onex_change_control
+          sparse-checkout: src
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Same as ci.yml's `test` job (OMN-18693): the shadow-comparison
+      # migration proof starts a private PG16 cluster and fails closed when
+      # initdb/pg_ctl are absent.
+      - name: Provision PostgreSQL 16 server tools for native migration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          pg16_bin=/usr/lib/postgresql/16/bin
+          for tool in initdb pg_ctl psql; do
+            test -x "${pg16_bin}/${tool}"
+          done
+          "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'
+          echo "${pg16_bin}" >> "$GITHUB_PATH"
+
+      - name: Resolve Postgres service host and export integration env
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          host="$(python - <<'PY'
+          import os
+          import socket
+
+          port = int(os.environ["POSTGRES_PORT"])
+
+          def can_connect(candidate: str) -> bool:
+              try:
+                  with socket.create_connection((candidate, port), timeout=1.0):
+                      return True
+              except OSError:
+                  return False
+
+          if can_connect("127.0.0.1"):
+              print("127.0.0.1")
+              raise SystemExit(0)
+
+          with open("/proc/net/route", encoding="utf-8") as routes:
+              for line in routes.readlines()[1:]:
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[1] == "00000000":
+                      gateway_hex = fields[2]
+                      gateway = ".".join(
+                          str(int(gateway_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                      )
+                      if can_connect(gateway):
+                          print(gateway)
+                          raise SystemExit(0)
+
+          raise SystemExit(
+              f"could not reach Postgres service on localhost or default gateway port {port}"
+          )
+          PY
+          )"
+          {
+            echo "INTEGRATION_POSTGRES_HOST=${host}"
+            echo "INTEGRATION_POSTGRES_PORT=${POSTGRES_PORT}"
+            echo "INTEGRATION_POSTGRES_USER=postgres"
+            echo "INTEGRATION_POSTGRES_PASSWORD=test_password"
+            echo "INTEGRATION_POSTGRES_DB=omnibase_infra"
+            echo "POSTGRES_PASSWORD=test_password"
+          } >> "$GITHUB_ENV"
+          echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
+
+      # Balance shards by the durations ci.yml's full-suite runs record
+      # (OMN-19684); pytest-split reads `.test_durations` by default. With no
+      # cache entry it balances by test count.
+      - name: Restore test durations cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .test_durations
+          key: test-durations-${{ needs.resolve-head.outputs.sha }}
+          restore-keys: |
+            test-durations-
+
+      - name: Run pytest (full suite, shard ${{ matrix.split }})
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
+          OMN20025_POSTGRES_BACKEND: ci
+          SPLIT: ${{ matrix.split }}
+        run: |
+          uv run pytest tests/ \
+            --splits "$NIGHTLY_SPLIT_COUNT" \
+            --group "$SPLIT" \
+            --cov=src --cov-report= \
+            -q --tb=short -rfE -m "not kafka" \
+            --timeout=300 --timeout-method=thread \
+            --junitxml="junit-${SPLIT}.xml"
+
+      - name: Emit coverage artifact metadata
+        if: always()
+        env:
+          HEAD_SHA: ${{ needs.resolve-head.outputs.sha }}
+          SPLIT: ${{ matrix.split }}
+          SPLIT_COUNT: ${{ env.NIGHTLY_SPLIT_COUNT }}
+          IS_FULL: "true"
+          SMART_FLAG: "false"
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: python scripts/ci/emit_coverage_shard_metadata.py
+
+      - name: Upload coverage shard artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-coverage-shard-${{ matrix.split }}
+          path: |
+            .coverage.${{ matrix.split }}
+            coverage-meta-${{ matrix.split }}.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-test-results-${{ matrix.split }}
+          path: junit-${{ matrix.split }}.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  census:
+    name: Full Suite Coverage Census (nightly)
+    needs: [resolve-head, shard]
+    # Runs after a red shard too, so a test failure still yields the census;
+    # the aggregator refuses a shard set that is missing or bound to another head.
+    if: always() && needs.resolve-head.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ needs.resolve-head.outputs.sha }}
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -63,10 +272,20 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked
-      - name: Run the full suite under coverage and sweep it
-        env:
-          COVERAGE_SWEEP_TIMEOUT_SECONDS: "2400"
-        run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
+      - name: Download per-shard coverage artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: nightly-coverage-shard-*
+          path: .coverage-artifacts
+          merge-multiple: true
+      - name: Combine shard coverage and sweep it
+        run: |
+          uv run python scripts/ci/aggregate_coverage_artifacts.py \
+            --artifacts-dir .coverage-artifacts \
+            --expected-head "${{ needs.resolve-head.outputs.sha }}" \
+            --split-count "$NIGHTLY_SPLIT_COUNT" \
+            --target-dir "$GITHUB_WORKSPACE" \
+            --out "$GITHUB_WORKSPACE/coverage.json"
       - name: Upload coverage.json
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -75,3 +294,10 @@ jobs:
           path: coverage.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Fail the census when a shard failed
+        if: needs.shard.result != 'success'
+        env:
+          SHARD_RESULT: ${{ needs.shard.result }}
+        run: |
+          echo "::error::full-suite shards concluded ${SHARD_RESULT}; see the failing shard's pytest summary"
+          exit 1

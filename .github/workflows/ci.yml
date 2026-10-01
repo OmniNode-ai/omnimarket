@@ -148,7 +148,11 @@ jobs:
 
           backoff=5
           elapsed=0
-          deadline=720
+          # The eligibility check bounds its own wait for the cited OCC companion at
+          # 1500 s, so this poller waits that long plus 180 s of scheduling slack.
+          # At 720 s it gave up on an eligibility run that was still waiting on its
+          # companion, failed, and skipped the test shards behind it.
+          deadline=1680
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -2389,10 +2393,10 @@ jobs:
   # suite under `pytest --cov`: it combines the per-shard coverage artifacts the
   # `test` matrix already emits (scripts/ci/aggregate_coverage_artifacts.py,
   # proven as the OMN-14680 shadow at parity with zero divergence) and dispatches
-  # node_coverage_sweep against that combined census. The full second-pass
-  # census (scripts/ci/run_coverage_sweep_gate.py) runs nightly on `dev` in
-  # .github/workflows/nightly-full-suite.yml, which carries what smart selection
-  # does not run on a PR. Rollback: revert the OMN-18556 commit.
+  # node_coverage_sweep against that combined census. The full suite runs
+  # nightly on `dev` in .github/workflows/nightly-full-suite.yml, sharded and
+  # folded by the same aggregator since OMN-20316, which carries what smart
+  # selection does not run on a PR. Rollback: revert the OMN-18556 commit.
   #
   # Fail-closed on missing / wrong-head / malformed / stale shard artifacts
   # (exit 3), combine-engine failure (exit 4) and a sweep `status="error"`
@@ -2996,6 +3000,75 @@ jobs:
       # PR is adding. Adopting repos pin `dev` instead -- see the input's docs.
       vocabulary_ref: ${{ github.sha }}
       context_name: merge-hold-gate / evaluate
+
+  # Canonical-file-shape ratchet (OMN-20304). Operator ruling 2026-10-01: no
+  # new scripts, plugins or exceptions in any repository. Refuses a new code
+  # file outside src/<pkg>/{nodes,handlers,models,protocols,contracts,enums}/,
+  # tests/ and docs/, new imperative lines in a SKILL.md, and any new baseline,
+  # allowlist, waiver or suppression entry. Existing files sit in the
+  # shrink-only .onex_ratchets/canonical_file_shape_baseline.txt. Same module
+  # and same omnibase_core commit as the canonical-file-shape pre-commit hook.
+  # Unconditional: no `if:`, no `needs:`. The positive-control step plants a
+  # bad sample on every run and fails unless the ratchet refuses it.
+  canonical-file-shape:
+    name: Canonical File Shape (OMN-20304)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@d17f5be8be88a8d35fc6a69e13cb8c1896c3025b"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Positive control (planted bad sample refused, clean sample accepted)
+        run: |
+          set -u
+          ratchet() {
+            uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
+              python -m omnibase_core.validators.canonical_file_shape "$@"
+          }
+          mkdir -p bin tests
+          printf '#!/bin/sh\necho planted\n' > bin/zz_canary_planted
+          git add bin/zz_canary_planted
+          if ratchet; then
+            echo "POSITIVE CONTROL FAILED: planted bin/zz_canary_planted was accepted"
+            exit 1
+          fi
+          echo "positive control: planted bad sample refused"
+          git rm -q --cached bin/zz_canary_planted
+          rm bin/zz_canary_planted
+          printf 'def test_canary() -> None:\n    assert True\n' > tests/zz_canary_clean.py
+          git add tests/zz_canary_clean.py
+          ratchet
+          echo "positive control: clean sample accepted"
+          git rm -q --cached tests/zz_canary_clean.py
+          rm tests/zz_canary_clean.py
+      - name: Refuse new non-canonical files and new exceptions
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -u
+          base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git merge-base "$base" HEAD)"
+            uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
+              python -m omnibase_core.validators.canonical_file_shape --base "$base" --head HEAD
+          else
+            echo "no base revision on this event; checking the tree against the baseline only"
+            uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
+              python -m omnibase_core.validators.canonical_file_shape --head HEAD
+          fi
 
   ci-summary:
     name: CI Summary
