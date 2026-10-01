@@ -65,11 +65,11 @@ _INSERT_EVENT = f"""
         parent_tool_use_id, parent_agent_id, workflow_run_id, spawn_depth,
         hook_event_name, tool_use_id, tool_name, prompt_id, turn_id,
         correlation_id, causation_id, emitted_at, payload, content_ref_ids,
-        source_topic, ingested_at
+        source_topic, goal_id, parent_goal_id, ingested_at
     )
     VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18::jsonb, $19, $20, NOW()
+        $15, $16, $17, $18::jsonb, $19, $20, $21, $22, NOW()
     )
     ON CONFLICT (event_id) DO NOTHING
     RETURNING event_id, projection_cursor, ingested_at
@@ -164,6 +164,8 @@ def _event_params(row: ModelClaudeHookEventRow) -> tuple[Any, ...]:
         json.dumps(row.payload, sort_keys=True, separators=(",", ":")),
         list(row.content_ref_ids),
         row.source_topic,
+        row.goal_id,
+        row.parent_goal_id,
     )
 
 

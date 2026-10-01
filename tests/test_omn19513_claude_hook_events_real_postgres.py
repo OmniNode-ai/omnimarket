@@ -45,6 +45,7 @@ _NODE_DIR = (
 _MIGRATIONS = (
     _NODE_DIR / "migrations" / "0000_create_claude_hook_events.sql",
     _NODE_DIR / "migrations" / "0003_add_span_model_and_description.sql",
+    _NODE_DIR / "migrations" / "0005_add_goal_id.sql",
 )
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude_hook_capture"
 _SCHEMA = "omn19513_claude_hook_events_write_path_test"
@@ -128,6 +129,11 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
         record = dict(row)
         record.pop("ingested_at")
         record.pop("projection_cursor")
+        # OMN-20031: no scenario event binds a goal, so both columns are NULL.
+        goal_id = record.pop("goal_id")
+        parent_goal_id = record.pop("parent_goal_id")
+        assert goal_id is None
+        assert parent_goal_id is None
         record["event_id"] = str(record["event_id"])
         record["correlation_id"] = str(record["correlation_id"])
         record["causation_id"] = (
@@ -232,6 +238,52 @@ async def test_span_model_and_description_read_back_and_survive_a_later_event() 
         assert (row["model"], row["description"]) == (
             "claude-sonnet-5-5",
             "fix the hook",
+        )
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_goal_ids_read_back_as_uuid_columns_and_the_index_is_partial() -> None:
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        writer = ClaudeHookEventsProjectionWriter()
+        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+        topic = "onex.evt.omniclaude.hook-event.v1"  # onex-topic-allow: the capture contract's metadata topic
+        binding = json.loads(
+            (_FIXTURES / "events" / "PreToolUse.goal_binding.json").read_text("utf-8")
+        )
+        plain = json.loads(
+            (_FIXTURES / "events" / "PreToolUse.json").read_text("utf-8")
+        )
+        await writer._project(topic, binding)
+        await writer._project(topic, plain)
+        rows = {
+            str(r["event_id"]): r
+            for r in await conn.fetch(
+                f"SELECT event_id, goal_id, parent_goal_id "
+                f"FROM {_SCHEMA}.claude_hook_events"
+            )
+        }
+        bound = rows[binding["event_id"]]
+        assert str(bound["goal_id"]) == binding["payload"]["goal_id"]
+        assert str(bound["parent_goal_id"]) == binding["payload"]["parent_goal_id"]
+        assert rows[plain["event_id"]]["goal_id"] is None
+        assert rows[plain["event_id"]]["parent_goal_id"] is None
+        index = await conn.fetchval(
+            "SELECT indexdef FROM pg_catalog.pg_indexes WHERE schemaname = $1 "
+            "AND indexname = 'idx_claude_hook_events_goal_id'",
+            _SCHEMA,
+        )
+        assert index is not None
+        assert "WHERE (goal_id IS NOT NULL)" in index
+        # The migration replays without error.
+        await conn.execute(
+            _scoped(
+                (_NODE_DIR / "migrations" / "0005_add_goal_id.sql").read_text("utf-8")
+            )
         )
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

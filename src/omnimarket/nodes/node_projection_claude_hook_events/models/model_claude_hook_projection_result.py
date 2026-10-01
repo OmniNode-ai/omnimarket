@@ -46,6 +46,8 @@ class ModelClaudeHookEventRow(BaseModel):
     payload: dict[str, JsonValue]
     content_ref_ids: tuple[str, ...]
     source_topic: str = Field(min_length=1)
+    goal_id: UUID | None = None
+    parent_goal_id: UUID | None = None
 
 
 class ModelClaudeAgentSpanUpdate(BaseModel):

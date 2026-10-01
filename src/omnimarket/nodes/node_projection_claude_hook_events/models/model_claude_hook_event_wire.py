@@ -67,6 +67,7 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "file_path_ref",
         "final",
         "glob_count",
+        "goal_id",
         "hook_event_name",
         "index",
         "interrupted",
@@ -83,6 +84,7 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "name_ref",
         "new_cwd_ref",
         "notification_type",
+        "parent_goal_id",
         "old_cwd_ref",
         "prompt_cache_likely_expired",
         "prompt_length",
@@ -142,6 +144,32 @@ TRANSPORT_STAMP_KEYS: frozenset[str] = frozenset(
         "workspace_path",
     }
 )
+
+
+def _canonical_goal_id(payload: dict[str, JsonValue], key: str) -> str | None:
+    """Return the goal id under ``key``, or refuse a value that is not canonical.
+
+    OMN-20031. Absent and null are both accepted. A present value must be the
+    canonical lowercase hyphenated UUID text, which is what the producer stamps
+    (``str(UUID(...))``): anything else is refused so it dead-letters rather
+    than being coerced or stored.
+    """
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"payload.{key} must be a uuid string or null")
+    try:
+        canonical = str(UUID(value))
+    except ValueError:
+        raise ValueError(f"payload.{key} is not a uuid") from None
+    if canonical != value:
+        raise ValueError(f"payload.{key} is not a canonical lowercase uuid")
+    return value
+
+
+def _goal_uuid(value: JsonValue) -> UUID | None:
+    return UUID(value) if isinstance(value, str) else None
 
 
 class ModelClaudeHookContentRefWire(BaseModel):
@@ -239,6 +267,10 @@ class ModelClaudeHookEventWire(BaseModel):
         tool_name = self.payload.get("tool_name")
         if tool_name is not None and not isinstance(tool_name, str):
             raise ValueError("payload.tool_name must be a string or null")
+        goal_id = _canonical_goal_id(self.payload, "goal_id")
+        parent_goal_id = _canonical_goal_id(self.payload, "parent_goal_id")
+        if parent_goal_id is not None and goal_id is None:
+            raise ValueError("payload.parent_goal_id is set without payload.goal_id")
 
         payload_refs: list[ModelClaudeHookContentRefWire] = []
         for key, value in self.payload.items():
@@ -253,6 +285,14 @@ class ModelClaudeHookEventWire(BaseModel):
                 "content_refs must list exactly the content references the payload uses"
             )
         return self
+
+    @property
+    def goal_id(self) -> UUID | None:
+        return _goal_uuid(self.payload.get("goal_id"))
+
+    @property
+    def parent_goal_id(self) -> UUID | None:
+        return _goal_uuid(self.payload.get("parent_goal_id"))
 
     @property
     def tool_name(self) -> str | None:

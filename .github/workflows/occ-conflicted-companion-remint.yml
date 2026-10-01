@@ -23,6 +23,14 @@
 # occ-receipt-runner.yml once per re-minted head, because a re-mint drops the
 # executed test_passes receipts that runner had pushed.
 #
+# WINDOW RE-DRIVE (OMN-17427)
+# The same pass republishes the window-mode autobind command for each of THIS
+# repository's open, ready PRs that is still unbound 15 minutes after its head
+# was pushed, but only while the repository has no open OCC batch window. The
+# emitter skips a member that arrives while its window is in flight
+# (skip:WINDOW_IN_FLIGHT, OMN-20042), and nothing published for that member
+# again after the window merged, so lanes hand-authored companions instead.
+#
 # SAFETY
 #   * Not a gate: not a required check, not referenced by any `needs:`.
 #   * Writes nothing to onex_change_control itself and edits no contract. The
