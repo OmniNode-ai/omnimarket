@@ -91,7 +91,11 @@ def resolve_baseline_model(
         "session_model"
     )
     if not model:
-        for config, case in ((overlay, "overlay"), (store, "store")):
+        configured: tuple[tuple[object, Literal["overlay", "store"]], ...] = (
+            (overlay, "overlay"),
+            (store, "store"),
+        )
+        for config, case in configured:
             if isinstance(config, dict):
                 pricing_config = config.get("pricing")
                 if isinstance(pricing_config, dict):
