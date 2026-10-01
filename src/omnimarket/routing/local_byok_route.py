@@ -41,9 +41,10 @@ says the true thing -- *where the platform would have spent its own money, the
 customer spends theirs* -- and leaves the ladder's shape, the tier order, and
 every escalation decision exactly as they were.
 
-Nothing here reads a secret VALUE. The catalogue supplies the endpoint, model
-and budgets; the local credential adapter supplies the REFERENCE; the value is
-resolved at the effect boundary and nowhere else.
+Nothing here reads a secret VALUE. The catalogue supplies the endpoint and
+budgets; the local credential adapter supplies the REFERENCE and the model the
+key resolved at registration (OMN-20157); the value is resolved at the effect
+boundary and nowhere else.
 
 Related:
     - OMN-18694: gap A, a customer's OpenRouter key routes a local delegation
@@ -59,10 +60,14 @@ import re
 from pathlib import Path
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    resolve_local_byok_credential_model,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
+from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
@@ -133,6 +138,16 @@ def substitute_local_byok_route(
     if customer_ref is None:
         return backend
 
+    # OMN-20157: the model is the one the customer's KEY resolved from the
+    # provider's own model list at registration, not an id pinned in the
+    # catalogue and not the house rung's (which only says what OUR key can
+    # use). A registration that could not resolve one carries the unresolved
+    # marker, and the effect resolves it with the key before the call.
+    model_id = (
+        resolve_local_byok_credential_model(slug, db_path=db_path)
+        or BYOK_MODEL_UNRESOLVED
+    )
+
     # Logged values are taken from the CATALOGUE row, never from anything
     # derived from a ``secret_ref``. ``slug`` and ``customer_ref`` are both
     # safe to print by construction -- a provider slug is a public string and a
@@ -149,7 +164,7 @@ def substitute_local_byok_route(
     )
     return ModelResolvedDelegationBackend(
         backend_id=byok.backend_id,
-        model_id=byok.model_name,
+        model_id=model_id,
         endpoint_ref=byok.endpoint_url,
         tier=backend.tier,
         # The catalogue's budgets are the customer's, not the house rung's.
@@ -171,9 +186,9 @@ def substitute_local_byok_route(
         # nothing for a future call site to thread through either.
         api_key_env=None,
         model_id_source=(
-            "byok_provider_backends.v1.yaml "
-            f"(local BYOK credential registered for provider {slug!r} plan "
-            f"{byok.plan!r})"
+            "provider model list via byok_provider_backends.v1.yaml "
+            "model_preference (local BYOK credential registered for provider "
+            f"{slug!r} plan {byok.plan!r})"
         ),
     )
 

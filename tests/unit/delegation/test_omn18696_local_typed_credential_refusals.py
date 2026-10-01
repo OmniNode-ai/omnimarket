@@ -352,7 +352,10 @@ def test_ac4_silencing_the_status_classifier_breaks_the_ac2_chain(
     import omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call as call_module
 
     monkeypatch.setattr(
-        call_module, "failure_class_for_status", lambda _status: None, raising=True
+        call_module,
+        "failure_class_for_status",
+        lambda _status, _detail=None: None,
+        raising=True,
     )
 
     result = HandlerLlmDelegationCall().handle(

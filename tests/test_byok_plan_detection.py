@@ -39,6 +39,33 @@ pytestmark = pytest.mark.unit
 CODING = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 GENERAL = "https://api.z.ai/api/paas/v4/chat/completions"
 KEY = "zai-test-key-do-not-print-0123456789"
+#: OMN-20157: each plan's probe model is read from the key's own model list.
+CODING_MODELS = "https://api.z.ai/api/coding/paas/v4/models"
+GENERAL_MODELS = "https://api.z.ai/api/paas/v4/models"
+_LISTED = {"data": [{"id": "glm-4.5"}, {"id": "glm-5.3"}, {"id": "glm-5.3-flash"}]}
+
+
+def _get(
+    lists: dict[str, Any] | None = None, seen: list[str] | None = None
+) -> Callable[..., Any]:
+    """A stand-in for the list-models read: every plan lists ``_LISTED``."""
+
+    def get(
+        *,
+        url: str,
+        timeout_seconds: float,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Any:
+        if seen is not None:
+            seen.append(url)
+        answer = (lists or {}).get(url, _LISTED)
+        if isinstance(answer, httpx.Response):
+            raise httpx.HTTPStatusError(
+                "refused", request=httpx.Request("GET", url), response=answer
+            )
+        return answer
+
+    return get
 
 
 def _ok() -> httpx.Response:
@@ -99,7 +126,7 @@ async def _detect(
     routes: dict[str, httpx.Response | Exception],
 ) -> tuple[ModelByokPlanDetection, list[str]]:
     seen: list[str] = []
-    result = await detect_byok_plan("glm", KEY, post=_post(routes, seen))
+    result = await detect_byok_plan("glm", KEY, post=_post(routes, seen), get=_get())
     return result, seen
 
 
@@ -217,16 +244,55 @@ class TestProbeRequest:
             "glm",
             KEY,
             post=_post({GENERAL: _err(401), CODING: _err(401)}, [], calls),
+            get=_get(),
         )
         first = calls[0]
         assert first["url"] == GENERAL
         assert first["headers"] == {"Authorization": f"Bearer {KEY}"}
         body = first["payload"]
         assert body["max_tokens"] == 1
-        assert body["model"] == "glm-4.5-flash"
+        # OMN-20157: the probe model is the plan's preferred model on the key's
+        # own list, not a pinned id.
+        assert body["model"] == "glm-5.3-flash"
         assert body["stream"] is False
         assert calls[1]["url"] == CODING
         assert calls[1]["payload"]["model"] == "glm-5.3-flash"
+
+
+class TestProbeModelComesFromTheKeysList:
+    """OMN-20157: a plan is probed with a model the key's provider lists."""
+
+    async def test_a_key_the_models_endpoint_rejects_is_a_rejection_with_no_probe(
+        self,
+    ) -> None:
+        seen: list[str] = []
+        result = await detect_byok_plan(
+            "glm",
+            KEY,
+            post=_post({}, seen),
+            get=_get(
+                {
+                    GENERAL_MODELS: _err(401, "1000"),
+                    CODING_MODELS: _err(401, "1000"),
+                }
+            ),
+        )
+        assert result.outcome == "rejected"
+        assert seen == [], "no completion is sent for a key the list refused"
+
+    async def test_an_unreadable_list_is_inconclusive_not_a_rejection(self) -> None:
+        result = await detect_byok_plan(
+            "glm",
+            KEY,
+            post=_post({}, []),
+            get=_get({GENERAL_MODELS: _err(503), CODING_MODELS: _err(503)}),
+        )
+        assert result.outcome == "inconclusive"
+
+    async def test_the_detected_plan_carries_the_model_it_answered_on(self) -> None:
+        result, _ = await _detect({GENERAL: _ok(), CODING: _err(401, "1001")})
+        assert result.plan == "general_api"
+        assert result.model == "glm-5.3-flash"
 
 
 class TestNoKeyLeak:

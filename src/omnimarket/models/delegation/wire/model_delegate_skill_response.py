@@ -753,6 +753,15 @@ _TERMINAL_CAUSE_BY_FAILURE_CLASS: Mapping[str, EnumDelegationTerminalFailureCaus
     EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING.value: (
         EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     ),
+    # OMN-20157: the provider refused on the account's billing or on the model.
+    # Both are the provider answering with an error, and the fine-grained class
+    # stays on ``attempts[].failure_class`` for the reader who needs it.
+    EnumDelegationFailureClass.PROVIDER_BILLING.value: (
+        EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+    ),
+    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND.value: (
+        EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+    ),
 }
 
 

@@ -187,22 +187,18 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
             assert mirroring, f"{provider!r} mirrors no rung"
             for backend in mirroring:
                 mirrored = [
-                    b
-                    for b in backends
-                    if b.get("endpoint_url") == backend.endpoint_url
-                    and b.get("model_name") == backend.model_name
+                    b for b in backends if b.get("endpoint_url") == backend.endpoint_url
                 ]
                 if not mirrored:
                     # OMN-20173: the platform GLM Coding Plan rung is PARKED (null
                     # endpoint) because the plan's terms bar direct API use from
                     # our own systems. The customer row still mirrors that declared
-                    # rung by model and provider slug.
+                    # rung by provider slug (OMN-20157: rows pin no model).
                     mirrored = [
                         b
                         for b in backends
                         if b.get("endpoint_url") is None
                         and b.get("endpoint_url_env")
-                        and b.get("model_name") == backend.model_name
                         and b.get("provider") == provider
                     ]
                 assert mirrored, f"{provider!r} plan {backend.plan!r} mirrors no rung"
@@ -250,7 +246,8 @@ class TestNoClaudeEntry:
                         "provider": "claude",
                         "backend_id": "byok-claude",
                         "endpoint_url": "https://example.invalid/v1/chat/completions",
-                        "model_name": "x",
+                        "models_url": "https://example.invalid/v1/models",
+                        "model_preference": [{"pattern": "x", "tags": ["fixture"]}],
                     }
                 ]
             ),
@@ -303,7 +300,8 @@ class TestNoHouseCredentialByConstruction:
                         "provider": "openrouter",
                         "backend_id": "byok-openrouter",
                         "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
-                        "model_name": "x",
+                        "models_url": "https://example.invalid/v1/models",
+                        "model_preference": [{"pattern": "x", "tags": ["fixture"]}],
                         "secret_ref": "llm.openrouter.api_key",
                     }
                 ]

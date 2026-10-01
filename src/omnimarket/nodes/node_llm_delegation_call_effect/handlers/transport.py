@@ -231,6 +231,30 @@ def _curl_get_json(url: str, *, timeout_seconds: float) -> dict[str, Any] | None
     return body if isinstance(body, dict) else None
 
 
+def get_provider_json(
+    *,
+    url: str,
+    timeout_seconds: float,
+    extra_headers: dict[str, str] | None = None,
+) -> Any:
+    """GET a provider's JSON endpoint VERBATIM and return the decoded body.
+
+    OMN-20157: the read a BYOK registration and a call-time re-resolve use to
+    ask a provider which models a customer's key may use. httpx on every
+    runtime profile, deliberately: the curl transport exists for the ``.201``
+    LAN, this read only ever addresses a provider's public endpoint, and httpx
+    keeps the credential header off a subprocess argv, where ``ps`` would show
+    it. A non-2xx raises ``httpx.HTTPStatusError`` with the provider's status
+    and body preserved, the same shape the chat POST raises, so one classifier
+    reads both.
+    """
+    _require_http_url(url)
+    with httpx.Client(timeout=timeout_seconds) as client:
+        response = client.get(url, headers=extra_headers or {}, timeout=timeout_seconds)
+    response.raise_for_status()
+    return response.json()
+
+
 def post_chat_completion(
     *,
     endpoint_url: str,
@@ -424,6 +448,7 @@ def _curl_post(
 
 __all__ = [
     "ModelTransportResponse",
+    "get_provider_json",
     "health_probe_url",
     "post_chat_completion",
     "probe_health",

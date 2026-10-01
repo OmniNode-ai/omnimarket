@@ -129,7 +129,7 @@ class TestRedOnAnInjectedHouseKeyedRow:
         # `extra="forbid"` already refuses an unknown `secret_ref` KEY at load
         # (OMN-17353). The reach this conjunct adds is the same house value on
         # a field the row is allowed to carry.
-        injected[0]["model_name"] = str(real["secret_ref"])
+        injected[0]["models_url"] = str(real["secret_ref"])
 
         findings = find_house_keyed_catalogue_entries(injected, rungs)
         classes = {f.finding_class for f in findings}
@@ -162,7 +162,7 @@ class TestRedOnAnInjectedHouseKeyedRow:
         assertion in both existing suites passing, and the resulting catalogue
         row could only ever be served by the house credential.
 
-        The injected row borrows the openrouter row's endpoint and model
+        The injected row borrows the openrouter row's endpoint and model preference
         deliberately: the real vertex rung carries ``endpoint_url: null``, so an
         endpoint join finds nothing for it. The row still fails, on its SLUG,
         which is the relation conjunct 3 turns on.
@@ -178,7 +178,8 @@ class TestRedOnAnInjectedHouseKeyedRow:
                 "provider": "vertex",
                 "backend_id": "byok-vertex",
                 "endpoint_url": rows[0]["endpoint_url"],
-                "model_name": rows[0]["model_name"],
+                "models_url": rows[0]["models_url"],
+                "model_preference": copy.deepcopy(rows[0]["model_preference"]),
                 "max_retries": 2,
             }
         )

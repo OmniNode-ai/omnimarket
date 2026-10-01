@@ -58,9 +58,10 @@ provider codes. Provider-specific reading of the response is confined to the
 small tables below; the quota mechanics that interpret the same codes at
 delegation time are owned by OMN-20154.
 
-The probe costs at most a one-token completion per plan, each against the plan's
-declared default model. On a pay-as-you-go plan that is a free model. A
-detection-only plan is probed only for a key every routable plan refused.
+The probe costs one list-models read and at most a one-token completion per
+plan, each against the plan's preferred model on the key's own model list
+(OMN-20157; the catalogue pins no model). A detection-only plan is probed only
+for a key every routable plan refused.
 """
 
 from __future__ import annotations
@@ -76,6 +77,10 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
     ModelTransportResponse,
     post_chat_completion,
+)
+from omnimarket.routing.byok_model_discovery import (
+    GetJson,
+    discover_byok_model_sync,
 )
 from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
@@ -117,6 +122,10 @@ class ModelByokPlanProbe(BaseModel):
     http_status: int | None
     provider_code: str | None
     verdict: Literal["answered", "rejected", "inconclusive"]
+    #: OMN-20157. The model the probe asked for: the plan's preferred model on
+    #: the key's own model list. ``None`` when the list could not be read, in
+    #: which case no completion was sent.
+    model: str | None = None
 
 
 class ModelByokPlanDetection(BaseModel):
@@ -141,6 +150,9 @@ class ModelByokPlanDetection(BaseModel):
     refused_plan: str | None = None
     #: ``not_permitted`` only: the catalogue's typed refusal code for that plan.
     refusal_code: str | None = None
+    #: OMN-20157. ``detected`` only: the model the key answered on for that plan,
+    #: resolved from the key's own model list. Stored with the credential.
+    model: str | None = None
 
 
 def _error_code(body: Any) -> str | None:
@@ -189,12 +201,33 @@ class _ModelProbeRequest(BaseModel):
 
 
 def _probe_sync(
-    post: PostChatCompletion, backend: ModelByokProviderBackend, api_key: str
+    post: PostChatCompletion,
+    backend: ModelByokProviderBackend,
+    api_key: str,
+    get: GetJson | None = None,
 ) -> ModelByokPlanProbe:
+    # OMN-20157: the probe model is the plan's preferred model on the key's OWN
+    # model list, not a pinned id: a retired id answers 404 for a new key and
+    # would read as "this plan does not know the key".
+    discovery = discover_byok_model_sync(backend, api_key, get=get)
+    if discovery.outcome == "rejected":
+        return ModelByokPlanProbe(
+            plan=backend.plan,
+            http_status=discovery.http_status,
+            provider_code=None,
+            verdict="rejected",
+        )
+    if discovery.model is None:
+        return ModelByokPlanProbe(
+            plan=backend.plan,
+            http_status=discovery.http_status,
+            provider_code=None,
+            verdict="inconclusive",
+        )
     status: int | None = None
     body: Any = None
     request = _ModelProbeRequest(
-        model=backend.model_name,
+        model=discovery.model,
         messages=({"role": "user", "content": "ping"},),
     )
     try:
@@ -223,7 +256,11 @@ def _probe_sync(
         )
     verdict, code = _classify(status, body)
     return ModelByokPlanProbe(
-        plan=backend.plan, http_status=status, provider_code=code, verdict=verdict
+        plan=backend.plan,
+        http_status=status,
+        provider_code=code,
+        verdict=verdict,
+        model=discovery.model,
     )
 
 
@@ -250,6 +287,7 @@ async def detect_byok_plan(
     api_key: str | SecretStr,
     *,
     post: PostChatCompletion = post_chat_completion,
+    get: GetJson | None = None,
 ) -> ModelByokPlanDetection:
     """Find which plan ``api_key`` belongs to for ``provider``.
 
@@ -259,6 +297,8 @@ async def detect_byok_plan(
             probe; never logged, stored or returned.
         post: the contract transport call. Tests pass a fake; production uses
             the delegation effect's own transport.
+        get: the list-models read each plan's probe model is resolved through
+            (OMN-20157). Tests pass a fake.
 
     Returns:
         The detection. ``outcome`` is ``single_plan`` (no network, the
@@ -281,15 +321,16 @@ async def detect_byok_plan(
     secret = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
     probes: list[ModelByokPlanProbe] = []
     for row in routable:
-        probes.append(await asyncio.to_thread(_probe_sync, post, row, secret))
+        probes.append(await asyncio.to_thread(_probe_sync, post, row, secret, get))
 
-    answered = [probe.plan for probe in probes if probe.verdict == "answered"]
+    answered = [probe for probe in probes if probe.verdict == "answered"]
     if len(answered) == 1:
         return ModelByokPlanDetection(
             provider=normalized,
-            plan=answered[0],
+            plan=answered[0].plan,
             outcome="detected",
             probes=tuple(probes),
+            model=answered[0].model,
         )
     if len(answered) > 1:
         return ModelByokPlanDetection(
@@ -314,7 +355,7 @@ async def detect_byok_plan(
     # routing.
     refused: ModelByokProviderBackend | None = None
     for row in detection_only:
-        probe = await asyncio.to_thread(_probe_sync, post, row, secret)
+        probe = await asyncio.to_thread(_probe_sync, post, row, secret, get)
         probes.append(probe)
         if probe.verdict == "answered" and refused is None:
             refused = row
