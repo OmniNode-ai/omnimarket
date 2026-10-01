@@ -851,7 +851,11 @@ def refuse_undeclared_local_model(
         f"yours in {target}, e.g. 'backends: [{{backend_id: local-coder, "
         "endpoint_url: http://127.0.0.1:8000/v1/chat/completions, "  # url-authority-ok: documentation example of a customer loopback model
         "model_name: <served model id>}]', or register your own provider key "
-        "on this machine, then retry (OMN-16200)."
+        "on this machine, then retry (OMN-16200). "
+        # OMN-17373: also say the second half plainly, so a customer with no
+        # model and no key is told the key is what is missing. Worded for the
+        # consume boundary: no command here, it carries a collapsing token.
+        "Your own provider key is missing too: no provider key is registered here."
     )
     raise ProtocolConfigurationError(msg)
 
