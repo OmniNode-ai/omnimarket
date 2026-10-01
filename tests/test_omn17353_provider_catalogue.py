@@ -109,13 +109,39 @@ class TestHandlerBackedSetDerivation:
         assert "openrouter" in house_keyed_provider_slugs(_platform_backends())
 
 
+def _customer_only_providers() -> frozenset[str]:
+    """Providers every one of whose plans mirrors no house rung (OMN-17373).
+
+    The platform holds no key for these (OpenAI), so no house-keyed rung can back
+    them. They are exempt from the handler-backed parity direction only; the
+    endpoint check (no bifrost rung addresses a customer-only endpoint) in
+    test_omn17372_byok_routing_overlay_bridge.py still binds them.
+    """
+    mirrored: dict[str, bool] = {}
+    for backend in load_byok_plan_catalog().values():
+        mirrored[backend.provider] = (
+            mirrored.get(backend.provider, False) or backend.mirrors_house_rung
+        )
+    return frozenset(
+        provider for provider, any_mirror in mirrored.items() if not any_mirror
+    )
+
+
 class TestCatalogueIsExactlyTheHandlerBackedSet:
+    def test_openai_is_a_customer_only_provider(self) -> None:
+        # Positive control for the exemption: it must name openai and nothing
+        # that a house rung backs.
+        assert "openai" in _customer_only_providers()
+        assert not _customer_only_providers() & house_keyed_provider_slugs(
+            _platform_backends()
+        )
+
     def test_every_house_keyed_rung_is_offered_or_declared_not_offered(
         self,
     ) -> None:
         gap = catalogue_parity_gap(
             house_keyed_provider_slugs(_platform_backends()),
-            offered=customer_provider_catalogue(),
+            offered=set(customer_provider_catalogue()) - _customer_only_providers(),
             not_offered=tuple(load_byok_not_offered_providers()),
         )
         assert gap.missing_from_catalogue == (), (
@@ -143,7 +169,10 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
     def test_a_catalogue_row_with_no_backend_fails(self) -> None:
         gap = catalogue_parity_gap(
             house_keyed_provider_slugs(_platform_backends()),
-            offered=(*customer_provider_catalogue(), "nobackend"),
+            offered=(
+                *(set(customer_provider_catalogue()) - _customer_only_providers()),
+                "nobackend",
+            ),
             not_offered=tuple(load_byok_not_offered_providers()),
         )
         assert gap.unbacked_in_catalogue == ("nobackend",)
@@ -183,6 +212,8 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
             by_provider.setdefault(backend.provider, []).append(backend)
         assert by_provider, "positive control: the plan catalogue must not be empty"
         for provider, rows in by_provider.items():
+            if provider in _customer_only_providers():
+                continue
             mirroring = [row for row in rows if row.mirrors_house_rung]
             assert mirroring, f"{provider!r} mirrors no rung"
             for backend in mirroring:

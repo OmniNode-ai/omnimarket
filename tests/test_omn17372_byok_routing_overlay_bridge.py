@@ -114,10 +114,18 @@ class TestCatalog:
         )
 
     def test_undeclared_provider_resolves_to_none_not_a_platform_backend(self) -> None:
-        # OMN-17373: openai has no delegation backend yet. Fail-closed means
-        # None, never "the nearest platform rung".
-        assert resolve_byok_provider_backend("openai") is None
+        # Fail-closed means None, never "the nearest platform rung".
+        assert resolve_byok_provider_backend("mistral") is None
         assert resolve_byok_provider_backend("anthropic") is None
+
+    def test_openai_resolves_to_its_own_customer_only_backend(self) -> None:
+        # OMN-17373: a customer's OpenAI key binds to byok-openai, not to a
+        # platform rung (the platform holds no OpenAI key).
+        backend = resolve_byok_provider_backend("openai")
+        assert backend is not None
+        assert backend.backend_id == "byok-openai"
+        assert backend.endpoint_url == "https://api.openai.com/v1/chat/completions"
+        assert backend.mirrors_house_rung is False
 
     def test_no_declared_backend_carries_a_secret_ref_field(self) -> None:
         """The house-credential inheritance path is absent by construction.
@@ -311,7 +319,7 @@ class TestOverlayWrite:
         paid for on OmniNode's credential.
         """
         assert await runner.project_event(
-            TOPIC_REGISTERED, _registered_event(provider="openai"), _make_meta()
+            TOPIC_REGISTERED, _registered_event(provider="mistral"), _make_meta()
         )
 
         assert _overlay_calls(mock_db) == []
