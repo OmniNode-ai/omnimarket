@@ -83,6 +83,8 @@ from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # Bifrost contract with one routable backend (local-coder). The endpoint is a
 # COMPLETE URL (OMN-12815) so the routing reducer posts it verbatim with no
 # construction. A task only local can serve proves the canonical "skip a tier

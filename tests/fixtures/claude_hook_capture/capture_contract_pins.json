@@ -61,6 +61,7 @@
     "file_path_ref",
     "final",
     "glob_count",
+    "goal_id",
     "hook_event_name",
     "index",
     "interrupted",
@@ -78,6 +79,7 @@
     "new_cwd_ref",
     "notification_type",
     "old_cwd_ref",
+    "parent_goal_id",
     "prompt_cache_likely_expired",
     "prompt_length",
     "prompt_ref",
@@ -130,6 +132,8 @@
         "payload",
         "content_ref_ids",
         "source_topic",
+        "goal_id",
+        "parent_goal_id",
         "ingested_at"
       ],
       "name": "omninode_internal.claude_hook_events"
@@ -160,5 +164,5 @@
       ]
     }
   },
-  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370)"
+  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370); goal_id and parent_goal_id keys and columns added for OMN-20031"
 }

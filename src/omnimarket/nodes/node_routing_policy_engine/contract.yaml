@@ -9,6 +9,7 @@
 name: node_routing_policy_engine
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Deterministic model-selection engine. Accepts a task type, capability

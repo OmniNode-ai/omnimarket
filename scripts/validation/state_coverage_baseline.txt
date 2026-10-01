@@ -28,8 +28,6 @@ node_adr_draft_generation_compute markdown
 node_adr_draft_generation_compute onex.evt.omnimarket.adr-draft-generation-completed.v1
 node_adr_draft_generation_compute run_id
 node_adr_draft_generation_compute status
-node_agent_coordinator_orchestrator onex.evt.omnimemory.coordination-completed.v1
-node_agent_coordinator_orchestrator onex.evt.omnimemory.memory-notification.v1
 node_audit_trail_compactor onex.evt.omnimarket.audit-trail-compacted.v1
 node_authorize onex.evt.omnimarket.authorize-completed.v1
 node_authorize onex.evt.omnimarket.authorize-failed.v1
@@ -142,7 +140,6 @@ node_knowledge_context_assembler_reducer assembled
 node_knowledge_context_assembler_reducer assembling
 node_knowledge_health_compute onex.evt.omnimarket.knowledge-health-classified.v1
 node_knowledge_health_probe_effect onex.evt.omnimarket.knowledge-health-probed.v1
-node_knowledge_query_federation_orchestrator onex.evt.omnimarket.knowledge-query-federated.v1
 node_ledger_hash_compute onex.evt.omnimarket.ledger-hash-computed.v1
 node_ledger_state_reducer reduced
 node_llm_eval_harness onex.evt.omnimarket.llm-eval-harness-sample.v1
@@ -169,7 +166,6 @@ node_monitor_alert_responder onex.evt.omnimarket.alert-response-completed.v1
 node_monitor_alert_responder onex.evt.omnimarket.monitor-alert-unhandled.v1
 node_morning_handoff_generator onex.evt.omnimarket.morning-handoff-generated.v1
 node_morning_handoff_generator run_id
-node_navigation_history_reducer reduced
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-build-completed.v1
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-classify-completed.v1
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-closeout-completed.v1

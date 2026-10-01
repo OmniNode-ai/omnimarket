@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Bifrost delegation local backend render hints."""
+"""Bifrost local render hints and overlay-owned served ids."""
 
 from __future__ import annotations
 
@@ -8,86 +8,132 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
+
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_delegation_config,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelDelegationBackendConfig,
+)
+from omnimarket.routing.delegation_backend_resolution import resolve_delegation_backend
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "configs"
-    / "bifrost_delegation.yaml"
+    / "src/omnimarket/configs/bifrost_delegation.yaml"
 )
-
-# OMN-16833: the model registry is the corroborating authority for a backend's
-# SERVED model name (`model_name`), distinct from its routing catalog key.
-_MODEL_REGISTRY_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "data"
-    / "model_registry"
-    / "model_registry_v1.yaml"
-)
-
-
-def _model_registry() -> dict[str, object]:
-    registry: dict[str, object] = yaml.safe_load(
-        _MODEL_REGISTRY_PATH.read_text(encoding="utf-8")
-    )
-    return registry
 
 
 @pytest.mark.unit
-def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
-    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
-    backends = {backend["backend_id"]: backend for backend in contract["backends"]}
+def test_only_local_qwen_backends_declare_inline_reasoning(tmp_path: Path) -> None:
+    overlay = tmp_path / "empty.yaml"
+    overlay.write_text("backends: []\n", encoding="utf-8")
+    config = load_bifrost_delegation_config(_CONTRACT_PATH, overlay)
+    for backend in config.backends:
+        expected = (
+            "</think>"
+            if backend.backend_id in {"local-coder", "local-heavy-reasoning"}
+            else None
+        )
+        assert backend.inline_reasoning_terminator == expected, backend.backend_id
 
-    assert backends["local-coder"]["endpoint_url_env"] == (
-        "BIFROST_LOCAL_CODER_ENDPOINT_URL"
+
+@pytest.mark.unit
+@pytest.mark.parametrize("terminator", ["</think>", None])
+def test_resolved_backend_carries_inline_reasoning_contract(
+    terminator: str | None,
+) -> None:
+    resolved = resolve_delegation_backend(
+        "code_generation",
+        backends=[
+            {
+                "backend_id": "local-coder",
+                "model_name": "test-qwen",
+                "endpoint_url": "https://inference.example/v1/chat/completions",
+                "tier": "local",
+                "capabilities": ["code_generation"],
+                "max_tokens": 4096,
+                "timeout_ms": 60000,
+                "inline_reasoning_terminator": terminator,
+            }
+        ],
     )
-    # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to the live-verified SGLang
-    # served id at .201:8000 ("qwen3.8"); see bifrost_delegation.yaml.
-    # OMN-16999: .201:8000 was redeployed SGLang -> vLLM and serves
-    # "Qwen3.6-35B-A3B" again (live re-probe 2026-09-05, http=200,
-    # max_model_len 131072), superseding OMN-16419's "qwen3.8".
-    assert backends["local-coder"]["model_name"] == "Qwen3.8-27B"
+    assert resolved.inline_reasoning_terminator == terminator
 
-    assert backends["local-heavy-reasoning"]["endpoint_url_env"] == (
-        "BIFROST_LOCAL_CODER_ENDPOINT_URL"
+
+@pytest.mark.unit
+def test_reasoning_parser_lane_overlay_clears_inline_reasoning(tmp_path: Path) -> None:
+    overlay = tmp_path / "parser.yaml"
+    overlay.write_text(
+        "backends:\n"
+        "  - backend_id: local-coder\n"
+        "    inline_reasoning_terminator: null\n"
+        "  - backend_id: local-heavy-reasoning\n"
+        "    inline_reasoning_terminator: null\n",
+        encoding="utf-8",
     )
-    # Same .201:8000 endpoint as local-coder, so the same OMN-16999 id.
-    assert backends["local-heavy-reasoning"]["model_name"] == "Qwen3.8-27B"
+    config = load_bifrost_delegation_config(_CONTRACT_PATH, overlay)
+    assert all(
+        backend.inline_reasoning_terminator is None for backend in config.backends
+    )
 
-    # OMN-16442: `local-reasoner` and `local-coder-mlx` were DELETED from the
-    # contract — their endpoints (.201:8001 and .200:8401) were both re-probed
-    # 2026-08-28 and return curl exit 7 "Couldn't connect to server", and the
-    # canonical inventory (omni_home/docs/reference/AI_LAB_HARDWARE.md,
-    # verified 2026-08-28) records .201:8001 as DEAD / RETIRED (RTX 4090 pulled
-    # for RMA, OMN-16407). The assertions that pinned their model_names are
-    # inverted into absence checks so a revival is caught here.
-    for retired in ("local-reasoner", "local-coder-mlx"):
-        assert retired not in backends, (
-            f"{retired} points at a dead endpoint and must stay deleted; "
-            "register the replacement hardware under a new backend_id instead"
+
+@pytest.mark.unit
+def test_backend_undeclared_terminator_defaults_to_none_and_empty_is_invalid() -> None:
+    fields = {"backend_id": "test", "model_name": "test", "tier": "local"}
+    assert (
+        ModelDelegationBackendConfig.model_validate(fields).inline_reasoning_terminator
+        is None
+    )
+    with pytest.raises(ValidationError, match="inline_reasoning_terminator"):
+        ModelDelegationBackendConfig.model_validate(
+            {**fields, "inline_reasoning_terminator": ""}
         )
 
-    # OMN-16442: model_name was the literal backend_id "local-embedding", not a
-    # served id. Live readback 2026-08-28, GET .201:8002/v1/models -> id
-    # "text-embedding-qwen3" (vLLM, Qwen/Qwen3-Embedding-0.6B, 1024-dim).
-    assert backends["local-embedding"]["model_name"] == "text-embedding-qwen3"
 
-    assert backends["local-ds-v4-flash"]["endpoint_url_env"] == (
-        "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL"
+@pytest.mark.unit
+def test_local_delegation_backends_declare_renderable_endpoint_envs(
+    tmp_path: Path,
+) -> None:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    backends = {backend["backend_id"]: backend for backend in contract["backends"]}
+    expected_envs = {
+        "local-coder": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
+        "local-heavy-reasoning": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
+        "local-ds-v4-flash": "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL",
+    }
+    for backend_id, env in expected_envs.items():
+        assert backends[backend_id]["endpoint_url_env"] == env
+    for retired in ("local-reasoner", "local-coder-mlx"):
+        assert retired not in backends
+    served_ids = {
+        "local-coder": "Qwen3.8-27B",
+        "local-heavy-reasoning": "Qwen3.8-27B",
+        "local-embedding": "text-embedding-qwen3",
+        "local-ds-v4-flash": "deepseek-v4-flash",
+    }
+    assert all(backends[backend_id]["model_name"] is None for backend_id in served_ids)
+    overlay = tmp_path / "lab-overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {
+                        "backend_id": backend_id,
+                        "model_name": model,
+                        "endpoint_url": "http://lab-fixture.invalid:8000/v1/chat/completions",
+                    }
+                    for backend_id, model in served_ids.items()
+                ]
+            }
+        ),
+        encoding="utf-8",
     )
-    # OMN-16833: was "ds-v4-flash" — that string is the routing CATALOG KEY, not
-    # the served id.  model_registry_v1.yaml's `ds-v4-flash:` entry already
-    # declares `model_name: "deepseek-v4-flash"` for this same backend; the
-    # bifrost contract had drifted from it.  Live readback 2026-08-28: GET
-    # /v1/models on the .200:8101 DS-V4-Flash endpoint lists exactly
-    # {"deepseek-v4-flash", "deepseek-v4-pro"}, so "ds-v4-flash" is rejected by
-    # the OMN-16419 served-model guard.  Pinned against the registry so the two
-    # cannot drift apart again.
-    assert backends["local-ds-v4-flash"]["model_name"] == "deepseek-v4-flash"
-    assert (
-        backends["local-ds-v4-flash"]["model_name"]
-        == _model_registry()["models"]["ds-v4-flash"]["model_name"]
+    loaded = load_bifrost_delegation_config(
+        config_path=_CONTRACT_PATH, overlay_path=overlay
     )
+    assert {
+        backend.backend_id: backend.model_name
+        for backend in loaded.backends
+        if backend.tier == "local"
+    } == served_ids

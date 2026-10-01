@@ -13,6 +13,10 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     ModelTestTargetsParams,
 )
 
+CITED_LINES_PATTERN = (
+    r"(?<![\w/])(?P<path>[A-Za-z_./][\w./-]*):(?P<start>\d+)(?:-(?P<end>\d+))?"
+)
+
 
 def result(
     criterion: ModelRubricCriterion,
@@ -37,6 +41,38 @@ def normalized(text: str) -> str:
 def compact(text: str) -> str:
     """Whitespace-free form: a quote reflowed across lines still matches."""
     return "".join(text.split())
+
+
+def added_diff_lines(text: str) -> str | None:
+    """Added lines of a unified diff, or None when text holds no hunk header."""
+    hunk_header = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@")
+    in_hunk = False
+    saw_hunk = False
+    collected: list[str] = []
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if hunk_header.match(line):
+            in_hunk = True
+            saw_hunk = True
+            continue
+        if line.startswith("diff --git "):
+            in_hunk = False
+            continue
+        if (
+            line.startswith("--- ")
+            and index + 1 < len(lines)
+            and lines[index + 1].startswith("+++ ")
+        ):
+            in_hunk = False
+            continue
+        if in_hunk:
+            if line.startswith("+"):
+                collected.append(line[1:])
+            elif line[:1] in (" ", "-", "\\") or line == "":
+                pass
+            else:
+                in_hunk = False
+    return "\n".join(collected) if saw_hunk else None
 
 
 def fences(text: str) -> tuple[tuple[str, str], ...]:

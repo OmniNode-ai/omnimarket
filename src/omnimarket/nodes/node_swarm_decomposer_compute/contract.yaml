@@ -7,6 +7,7 @@ node_name: node_swarm_decomposer_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 description: >
   Pure compute node for swarm task decomposition. Parses pre-fetched planner
   LLM output into typed subtasks with validation. Never calls an LLM directly.
@@ -42,7 +43,6 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: []
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}

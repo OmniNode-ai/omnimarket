@@ -46,7 +46,6 @@ import importlib
 import logging
 import os
 import re
-from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -72,7 +71,11 @@ from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
     resolve_path_config,
 )
-from omnimarket.inference.provider_quota_state import quota_domain_disabled
+from omnimarket.inference.provider_quota_state import (
+    ModelProviderQuotaBlock,
+    ModelProviderQuotaSnapshot,
+    quota_block_for_backend,
+)
 from omnimarket.inference.requested_response_shape import (
     resolve_requested_response_shape,
 )
@@ -297,10 +300,44 @@ def _backend_secret_available(backend: BifrostBackendRef) -> bool:
     )
 
 
+def _quota_block(
+    backend: BifrostBackendRef, quota_state: ModelProviderQuotaSnapshot | None
+) -> ModelProviderQuotaBlock | None:
+    """The active quota block on this backend's key, from the snapshot."""
+    return quota_block_for_backend(
+        quota_state,
+        endpoint_url=backend.endpoint_url,
+        api_key_ref=backend.api_key_ref,
+        model_name=backend.model_name,
+    )
+
+
+def quota_blocked_backend_refs(
+    quota_state: ModelProviderQuotaSnapshot | None,
+) -> frozenset[str]:
+    """Every declared backend whose quota key ``quota_state`` blocks (OMN-20154).
+
+    The escalation helpers (``next_eligible_tier``,
+    ``sibling_backend_available_in_tier``, ``backend_id_for_tier``) already
+    take a set of backends to skip, so a caller that holds a quota snapshot
+    folds this set into that one: a quota-blocked backend is skipped exactly
+    the way a backend that failed earlier in the workflow is, and a ladder
+    whose remaining rungs are all blocked reaches its declared terminal instead
+    of spending a call to relearn the cap. ``None`` blocks nothing.
+    """
+    if quota_state is None:
+        return frozenset()
+    return frozenset(
+        ref
+        for ref, backend in _load_bifrost_endpoints().items()
+        if _quota_block(backend, quota_state) is not None
+    )
+
+
 def _backend_routable(
     backend: BifrostBackendRef,
     *,
-    now: datetime | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
     require_credential: bool = True,
 ) -> bool:
     """Return whether a backend may be selected RIGHT NOW.
@@ -317,12 +354,14 @@ def _backend_routable(
     exhausted Gemini quota. Provider health is the third eligibility term, and
     it has to outlive the workflow.
 
-    The quota check reads the ledger the contract-declared quota classifier
-    writes (``provider_quota_state``), keyed by provider quota DOMAIN, so the
-    judge leg's 429 correctly bars every backend sharing that counter. Entries
-    lift themselves at the provider's stated reset, so this can only ever
-    withhold a rung the provider itself declared unusable, and only for as long
-    as the provider said.
+    OMN-20154: the quota check reads ``quota_state``, a snapshot of the durable
+    ``provider_quota_state`` projection taken once per decision, keyed by
+    tenant, credential reference, provider quota DOMAIN and model scope, so a
+    provider-wide refusal bars every backend sharing that counter and a
+    per-model one bars only that model. Blocks lift at the provider's stated
+    reset. An UNREADABLE snapshot bars every metered provider (fail closed).
+    ``quota_state=None`` means the caller took no quota input and bars nothing;
+    the deployed routing consumer always passes one.
 
     ``require_credential`` (OMN-18696) relaxes the FIRST term and nothing else,
     so a caller can ask the counterfactual "would this backend be selectable if
@@ -336,7 +375,7 @@ def _backend_routable(
     """
     if require_credential and not _backend_secret_available(backend):
         return False
-    return quota_domain_disabled(backend.endpoint_url, now=now) is None
+    return _quota_block(backend, quota_state) is None
 
 
 def _select_model_for_task(
@@ -352,6 +391,7 @@ def _select_model_for_task(
     spread_key: str | None = None,
     spread_peers: dict[str, tuple[str, ...]] | None = None,
     spread_member_weights: dict[str, float] | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -380,6 +420,7 @@ def _select_model_for_task(
             contract_model_ref_is_explicit_override
         ),
         require_credential=require_credential,
+        quota_state=quota_state,
     )
     if selected is None or spread_key is None or not spread_peers:
         return selected
@@ -390,7 +431,7 @@ def _select_model_for_task(
             continue
         backend = bifrost_backends.get(peer_ref)
         if backend is None or not _backend_routable(
-            backend, require_credential=require_credential
+            backend, require_credential=require_credential, quota_state=quota_state
         ):
             continue
         member = next(
@@ -427,6 +468,7 @@ def _select_primary_model_for_task(
     *,
     contract_model_ref_is_explicit_override: bool = False,
     require_credential: bool = True,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -507,7 +549,9 @@ def _select_primary_model_for_task(
             if model.id == contract_model_ref
             and model.backend_ref not in exclude_backend_refs
             and (backend := bifrost_backends.get(model.backend_ref)) is not None
-            and _backend_routable(backend, require_credential=require_credential)
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
             and estimated_tokens <= model.max_context_tokens
         ]
         for model in id_matches:
@@ -530,7 +574,9 @@ def _select_primary_model_for_task(
             and model.fast_path_threshold_tokens is not None
             and estimated_tokens <= model.fast_path_threshold_tokens
             and backend
-            and _backend_routable(backend, require_credential=require_credential)
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
         ):
             return model
 
@@ -541,7 +587,9 @@ def _select_primary_model_for_task(
         if (
             task_type in model.use_for
             and backend
-            and _backend_routable(backend, require_credential=require_credential)
+            and _backend_routable(
+                backend, require_credential=require_credential, quota_state=quota_state
+            )
             and estimated_tokens <= model.max_context_tokens
         ):
             return model
@@ -1891,7 +1939,9 @@ def backend_id_for_tier(
     return selected.backend_ref
 
 
-def credential_withheld_rung(task_type: str) -> ModelCredentialWithheldRung | None:
+def credential_withheld_rung(
+    task_type: str, *, quota_state: ModelProviderQuotaSnapshot | None = None
+) -> ModelCredentialWithheldRung | None:
     """The cheapest rung this task class loses ONLY to an unresolvable credential.
 
     Walks the task class's closed-set ``escalation_policy.tier_order`` in the
@@ -1934,15 +1984,18 @@ def credential_withheld_rung(task_type: str) -> ModelCredentialWithheldRung | No
 
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
+    blocked = quota_blocked_backend_refs(quota_state)
     for tier in _tier_order_from_contract(config, entry):
         if backend_id_for_tier(tier.name, task_type) is not None:
             # The tier serves this task class today. Nothing is withheld here,
             # whatever the state of any OTHER backend the tier declares.
             continue
         relaxed = backend_id_for_tier(tier.name, task_type, require_credential=False)
-        if relaxed is None:
-            # Declined for a reason the credential term does not explain. Saying
-            # "register a key" here would send the customer after the wrong fact.
+        if relaxed is None or relaxed in blocked:
+            # Declined for a reason the credential term does not explain (for
+            # OMN-20154, a provider quota block the caller's snapshot holds).
+            # Saying "register a key" here would send the customer after the
+            # wrong fact.
             continue
         backend = bifrost_backends.get(relaxed)
         if backend is None:
@@ -2268,7 +2321,7 @@ def _candidate_exclusion_reason(
     estimated_tokens: int,
     bifrost_backends: dict[str, BifrostBackendRef],
     excluded_backend_refs: frozenset[str],
-    now: datetime | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> tuple[EnumRoutingExclusionReason | None, BifrostBackendRef | None]:
     """The first fact that rules this candidate out, in a fixed order.
 
@@ -2292,7 +2345,7 @@ def _candidate_exclusion_reason(
         return (EnumRoutingExclusionReason.BACKEND_NOT_DECLARED_WITH_AN_ENDPOINT, None)
     if not _backend_secret_available(backend):
         return (EnumRoutingExclusionReason.BACKEND_SECRET_REF_UNRESOLVED, backend)
-    if quota_domain_disabled(backend.endpoint_url, now=now) is not None:
+    if _quota_block(backend, quota_state) is not None:
         return (EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED, backend)
     if task_type not in model.use_for:
         return (EnumRoutingExclusionReason.TASK_TYPE_NOT_IN_USE_FOR, backend)
@@ -2307,7 +2360,7 @@ def build_routing_exclusion_report(
     min_tier_name: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
-    now: datetime | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelRoutingExclusionReport:
     """Walk the resolved ladder and record why each rung was not taken.
 
@@ -2315,7 +2368,7 @@ def build_routing_exclusion_report(
     it costs nothing on a request that routes. It re-resolves the same config,
     the same backends and the same tier order ``delta`` did, and reuses
     ``delta``'s own predicates (``_backend_secret_available``,
-    ``quota_domain_disabled``, ``_tier_allowed_by_contract``'s branches) rather
+    ``_quota_block``, ``_tier_allowed_by_contract``'s branches) rather
     than restating them, because a diagnosis that drifts from the selector it
     explains is worse than no diagnosis at all.
 
@@ -2376,13 +2429,13 @@ def build_routing_exclusion_report(
                 estimated_tokens=estimated_tokens,
                 bifrost_backends=bifrost_backends,
                 excluded_backend_refs=excluded_backend_refs,
-                now=now,
+                quota_state=quota_state,
             )
             if reason is None:
                 routable += 1
                 continue
-            quota_state = (
-                quota_domain_disabled(backend.endpoint_url, now=now)
+            quota_block = (
+                _quota_block(backend, quota_state)
                 if backend is not None
                 and reason is EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED
                 else None
@@ -2404,10 +2457,10 @@ def build_routing_exclusion_report(
                         else None
                     ),
                     quota_domain=(
-                        quota_state.quota_domain if quota_state is not None else None
+                        quota_block.quota_domain if quota_block is not None else None
                     ),
                     quota_lifts_at=(
-                        quota_state.disabled_until if quota_state is not None else None
+                        quota_block.disabled_until if quota_block is not None else None
                     ),
                     estimated_tokens=estimated_tokens if exceeds_context else None,
                     max_context_tokens=(
@@ -2441,6 +2494,7 @@ def delta(
     excluded_backend_refs: frozenset[str] = frozenset(),
     tenant_overlay: ModelTenantRoutingOverlayBackend | None = None,
     surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -2490,6 +2544,12 @@ def delta(
     keep returning to a backend that already failed.
 
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
+
+    When ``quota_state`` is set (OMN-20154) it is a snapshot of the durable
+    ``provider_quota_state`` projection, read at the caller's I/O boundary like
+    the ROI overlay, and a backend whose (credential, provider, model) key it
+    blocks is not selectable. An unreadable snapshot blocks every metered
+    provider. ``None`` applies no quota input.
 
     When ``tenant_overlay`` is set (OMN-15631 v1(a) — per-tenant delegation
     routing), it WHOLESALE-REPLACES the platform-resolved BACKEND for this
@@ -2777,7 +2837,7 @@ def delta(
                         and estimated_tokens <= model.max_context_tokens
                         and (pinned_backend := bifrost_backends.get(model.backend_ref))
                         is not None
-                        and _backend_routable(pinned_backend)
+                        and _backend_routable(pinned_backend, quota_state=quota_state)
                     ),
                     None,
                 )
@@ -2797,6 +2857,7 @@ def delta(
                     spread_key=str(request.correlation_id),
                     spread_peers=spread_peers,
                     spread_member_weights=spread_member_weights,
+                    quota_state=quota_state,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
@@ -2821,11 +2882,12 @@ def delta(
                 f"You are a helpful assistant completing a {task_type} task.",
             )
 
-            # Local endpoints use the served model id declared in routing_tiers.yaml.
-            # Cloud/CLI backends keep using bifrost model_name because provider model
-            # names can differ from stable routing keys such as openrouter-glm-flash.
+            # The backend declares the lane's served id; selected.id remains the
+            # routing key. Unbound local declarations fall back to that key.
             model_name = (
-                selected.id if tier.name in _LOCAL_TIERS else backend.model_name
+                (backend.model_name or selected.id)
+                if tier.name in _LOCAL_TIERS
+                else backend.model_name
             )
 
             rationale = (
@@ -2959,6 +3021,7 @@ def delta(
         min_tier_name=min_tier_name,
         roi_overlay=roi_overlay,
         excluded_backend_refs=excluded_backend_refs,
+        quota_state=quota_state,
     )
     if requested_backend_ref is not None:
         msg = (

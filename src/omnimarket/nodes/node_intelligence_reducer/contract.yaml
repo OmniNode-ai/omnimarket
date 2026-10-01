@@ -25,6 +25,7 @@ node_version:
   patch: 0
 name: "node_intelligence_reducer"
 node_type: "REDUCER_GENERIC"
+runtime_profiles: [main]
 description: >-
   Unified reducer for all intelligence FSMs. Pure reducer with all state stored in PostgreSQL fsm_state
   table. Handles INGESTION, PATTERN_LEARNING, QUALITY_ASSESSMENT, and PATTERN_LIFECYCLE FSM types via

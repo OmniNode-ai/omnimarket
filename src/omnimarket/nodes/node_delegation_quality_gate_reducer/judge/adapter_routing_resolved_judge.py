@@ -28,17 +28,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from datetime import UTC, datetime
 from typing import Any
 
+from omnimarket.events.provider_quota import EnumProviderQuotaSource
+from omnimarket.inference import provider_quota_state
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
     ModelInferenceJsonObjectResponseFormat,
 )
 from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
-from omnimarket.inference.provider_quota_policy import classify_quota_response
+from omnimarket.inference.provider_quota_observation import (
+    EmitEffectQuotaObservationSink,
+    ProtocolProviderQuotaObservationSink,
+    build_quota_observation,
+    observe_failed_call,
+)
 from omnimarket.inference.provider_quota_state import (
-    quota_domain_disabled,
-    record_quota_verdict,
+    ProtocolProviderQuotaReader,
+    quota_block_for_backend,
+    read_provider_quota_snapshot,
 )
 from omnimarket.inference.secret_store_resolver import (
     api_key_ref_available,
@@ -98,8 +108,29 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
     delegation transport. Never passes a tier name to the inference layer.
     """
 
-    def __init__(self, *, backend_id: str = _DEFAULT_JUDGE_BACKEND_ID) -> None:
+    def __init__(
+        self,
+        *,
+        backend_id: str = _DEFAULT_JUDGE_BACKEND_ID,
+        quota_reader: ProtocolProviderQuotaReader | None = None,
+        observation_sink: ProtocolProviderQuotaObservationSink | None = None,
+    ) -> None:
         self._backend_id = backend_id
+        # OMN-20154: quota state is read from the durable projection and
+        # written as observations; the adapter keeps none of it in memory.
+        # Resolved lazily so construction does no I/O.
+        self._quota_reader = quota_reader
+        self._observation_sink = observation_sink
+
+    def _reader(self) -> ProtocolProviderQuotaReader | None:
+        if self._quota_reader is None:
+            self._quota_reader = provider_quota_state.resolve_provider_quota_reader()
+        return self._quota_reader
+
+    def _sink(self) -> ProtocolProviderQuotaObservationSink:
+        if self._observation_sink is None:
+            self._observation_sink = EmitEffectQuotaObservationSink()
+        return self._observation_sink
 
     def _resolve_backend(self) -> ModelResolvedDelegationBackend:
         """Resolve the reviewer this machine can actually call.
@@ -165,71 +196,121 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         return None
 
     def quota_disabled(self) -> bool:
-        """Return whether the judge's provider is a known-exhausted quota domain.
+        """Return whether the judge's quota key is blocked in the projection.
 
-        OMN-16932. ``cloud-glm-judge`` was repointed onto Gemini by OMN-14625
-        (z.ai GLM is unreachable from ``.201``), which put the judge on the SAME
-        free-tier counter as the ``cheap_cloud`` escalation rung. Against a cap
-        of 20 requests, one judge call per delegation exhausts the lane in ~10
-        delegations — and the judge kept calling afterwards, so every subsequent
-        delegation spent a guaranteed-429 call to rediscover the same cap.
+        OMN-16932 put this check in front of the call: one judge call per
+        delegation against a 20-request free tier exhausted the lane in ~10
+        delegations, and every later delegation spent a guaranteed 429 to
+        rediscover the cap. OMN-20154 moves the state it reads from process
+        memory to the durable ``provider_quota_state`` projection, read under
+        the lane's tenant. An unreadable projection withholds a metered judge
+        (fail closed); a local reviewer rung is never withheld by it.
 
-        Asking before calling turns that into a single 429 for the whole
-        cooldown. Resolution failures are swallowed to ``False``: a judge that
-        cannot resolve its own backend must still attempt the call and fail
-        closed to ``JUDGE_FAILED`` through the existing path, never be silently
-        skipped on an unrelated error.
+        Resolution failures are swallowed to ``False``: a judge that cannot
+        resolve its own backend must still attempt the call and fail closed to
+        ``JUDGE_FAILED`` through the existing path, never be silently skipped
+        on an unrelated error.
         """
         try:
-            endpoint = self._resolve_backend().endpoint_ref
+            backend = self._resolve_backend()
         except Exception:  # pragma: no cover - resolution errors surface on call
             return False
-        return quota_domain_disabled(endpoint) is not None
+        snapshot = read_provider_quota_snapshot(self._reader(), tenant_id=None)
+        block = quota_block_for_backend(
+            snapshot,
+            endpoint_url=backend.endpoint_ref,
+            api_key_ref=backend.secret_ref,
+            model_name=backend.model_id,
+        )
+        if block is not None:
+            logger.info(
+                "judge withheld by quota state: provider=%s scope=%s until=%s (%s)",
+                block.provider_id,
+                block.model_scope,
+                block.blocked_until,
+                block.disposition,
+            )
+        return block is not None
 
-    def record_quota_failure(self, *, endpoint_url: str, error: object) -> None:
-        """Fold a judge-leg 429 into the routing-visible quota ledger.
+    def record_quota_failure(
+        self,
+        *,
+        backend: ModelResolvedDelegationBackend,
+        error: object,
+        latency_ms: int = 0,
+    ) -> None:
+        """Emit the observation for a failed judge call.
 
-        The judge is the FIRST metered call in a delegation, so it is usually
-        the one that discovers an exhausted quota. Recording it here is what
-        lets the escalation target resolution (a different node, same process)
-        know the provider is dead before it routes there — closing the loop that
-        previously spent a second metered call per delegation to learn the same
-        fact.
+        The judge is usually the FIRST metered call of a delegation, so it is
+        usually the one that discovers an exhausted quota; the observation it
+        emits is what lets the next routing decision skip that key.
 
         ``error`` is duck-typed rather than annotated as a concrete transport
         exception: this module lives inside a REDUCER node, where ARCH-002
         forbids importing a transport library at runtime. Reading
-        ``error.response.status_code`` / ``.json()`` structurally keeps the
-        reducer transport-agnostic and works for any transport whose error
-        carries the provider's response. Anything that does not carry one is
-        simply not a quota signal and is ignored.
+        ``error.response`` structurally keeps the reducer transport-agnostic.
+        An error with no HTTP response (a timeout, a refused connection) is
+        still a call and is observed as one.
         """
         response: Any = getattr(error, "response", None)
-        if response is None or getattr(response, "status_code", None) != 429:
-            return
-        body: object = None
-        json_reader = getattr(response, "json", None)
-        if callable(json_reader):
-            try:
-                body = json_reader()
-            except Exception:  # pragma: no cover - non-JSON error bodies
-                body = None
-        verdict = classify_quota_response(
-            status_code=429,
-            endpoint_url=endpoint_url,
-            body=body if isinstance(body, dict) else None,
+        status = (
+            getattr(response, "status_code", None) if response is not None else None
         )
-        if verdict is None:
-            return
-        record_quota_verdict(endpoint_url=endpoint_url, verdict=verdict)
-        if not verdict.retryable:
+        body: object = None
+        headers: dict[str, str] = {}
+        if response is not None:
+            json_reader = getattr(response, "json", None)
+            if callable(json_reader):
+                try:
+                    body = json_reader()
+                except Exception:  # pragma: no cover - non-JSON error bodies
+                    body = None
+            raw_headers = getattr(response, "headers", None)
+            if raw_headers is not None:
+                try:
+                    headers = {str(k): str(v) for k, v in dict(raw_headers).items()}
+                except Exception:  # pragma: no cover - exotic header objects
+                    headers = {}
+        observation, verdict = observe_failed_call(
+            tenant_id=None,
+            endpoint_url=backend.endpoint_ref,
+            api_key_ref=backend.secret_ref,
+            model_name=backend.model_id,
+            error_message=str(error),
+            observed_at=datetime.now(UTC),
+            latency_ms=latency_ms,
+            source=EnumProviderQuotaSource.JUDGE,
+            http_status=status if isinstance(status, int) else None,
+            body=body if isinstance(body, dict) else None,
+            headers=headers or None,
+        )
+        if observation is not None:
+            self._sink().emit(observation)
+        if verdict is not None and not verdict.retryable:
             logger.warning(
-                "judge_quota_disable provider=%s code=%s until=%s: %s",
+                "judge_quota_block provider=%s code=%s until=%s: %s",
                 verdict.provider_id,
                 verdict.provider_code,
                 verdict.disabled_until,
                 verdict.reason,
             )
+
+    def _record_quota_success(
+        self, *, backend: ModelResolvedDelegationBackend, latency_ms: int
+    ) -> None:
+        observation = build_quota_observation(
+            tenant_id=None,
+            endpoint_url=backend.endpoint_ref,
+            api_key_ref=backend.secret_ref,
+            model_name=backend.model_id,
+            succeeded=True,
+            observed_at=datetime.now(UTC),
+            latency_ms=latency_ms,
+            source=EnumProviderQuotaSource.JUDGE,
+            http_status=200,
+        )
+        if observation is not None:
+            self._sink().emit(observation)
 
     def resolved_model_id(self) -> str:
         """Return the concrete model id resolved from the routing contract."""
@@ -316,6 +397,7 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         backend_timeout = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
         effective_timeout = min(timeout_seconds, backend_timeout)
 
+        started = time.monotonic()
         try:
             response = transport.post_chat_completion(
                 endpoint_url=backend.endpoint_ref,
@@ -333,8 +415,15 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
             # or a connection error falls straight through. The raise is
             # unchanged — HandlerJudgeAdequacy still fails closed to
             # JUDGE_FAILED on every one of these.
-            self.record_quota_failure(endpoint_url=backend.endpoint_ref, error=exc)
+            self.record_quota_failure(
+                backend=backend,
+                error=exc,
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
             raise
+        self._record_quota_success(
+            backend=backend, latency_ms=int((time.monotonic() - started) * 1000)
+        )
         return str(response.json_body["choices"][0]["message"]["content"])
 
 

@@ -121,6 +121,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "golden_chain"
 _FIXTURE_PATH = _FIXTURE_DIR / "delegation_test_artifact_chain.json"
 _BIFROST_CONTRACT_PATH = _FIXTURE_DIR / "bifrost_delegation_reference.yaml"

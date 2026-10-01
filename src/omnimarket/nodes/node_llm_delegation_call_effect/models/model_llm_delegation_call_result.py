@@ -7,13 +7,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -33,6 +34,11 @@ class ModelLlmDelegationCallResult(BaseModel):
 
     # Populated on success
     content: str | None = None
+    reasoning_stripped_chars: int = Field(
+        default=0,
+        ge=0,
+        description="Characters removed as leading inline reasoning by the adapter.",
+    )
     output_hash: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
@@ -58,6 +64,16 @@ class ModelLlmDelegationCallResult(BaseModel):
     # that no signal accompanied the response — never a claim that the response
     # completed.
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT
+
+    # OMN-20154: the HTTP status the provider answered and its native error
+    # code, so the attempt record built from this result can say what the
+    # provider said. None when no HTTP response was received.
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    provider_code: str | None = None
+    # OMN-20154: this call's provider quota observation, for the caller to
+    # deliver (the in-process port emits it to the provider_quota_state
+    # projection). None for a call to an unmetered endpoint.
+    quota_observation: ModelProviderQuotaObserved | None = None
 
     # Quality gate result
     quality_score: float | None = None

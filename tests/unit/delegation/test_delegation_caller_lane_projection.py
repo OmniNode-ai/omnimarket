@@ -15,9 +15,8 @@ event stream. This module proves the consumer half:
   dead-lettering the delegation's own row;
 * the sync writer stores the lane and the session, and a later laneless re-emit
   for the same correlation leaves the stored lane alone;
-* the delegate-skill response decodes ``caller_lane`` and ``session_id`` keys
-  before any producer emits them (the consumer-first half of the OMN-18868
-  rule), while declaring no field, so this release emits nothing new.
+* the delegate-skill response declares and carries ``caller_lane`` and a
+  canonical UUID string ``session_id`` after the consumer-first release.
 """
 
 from __future__ import annotations
@@ -120,6 +119,13 @@ def test_a_non_string_lane_does_not_fail_terminal_decoding() -> None:
 def test_the_terminal_projection_model_keeps_a_uuid_session() -> None:
     session = uuid4()
     assert _terminal(session_id=str(session)).session_id == session
+
+
+def test_the_terminal_projection_model_keeps_identity_aliases() -> None:
+    session = uuid4()
+    terminal = _terminal(callerLane=_LANE, sessionId=session.hex.upper())
+    assert terminal.caller_lane == _LANE
+    assert terminal.session_id == session
 
 
 @pytest.mark.parametrize("value", ["not-a-uuid", "session:abc", 17, ""])
@@ -240,24 +246,27 @@ _RESPONSE: dict[str, object] = {
 @pytest.mark.parametrize(
     "model", [ModelDelegateSkillResponse, ModelDelegateSkillCompleted]
 )
-def test_the_response_decodes_caller_identity_before_it_declares_it(
+def test_the_response_declares_and_keeps_caller_identity(
     model: type,
 ) -> None:
-    """Step 1 of the consumer-first order: decode, do not declare, emit nothing."""
+    """Step 2 follows the released decoder: declare and carry attribution."""
+    session = uuid4()
     decoded = model.model_validate(
         {
             **_RESPONSE,
             "correlation_id": str(uuid4()),
             "caller_lane": _LANE,
-            "session_id": str(uuid4()),
+            "session_id": session.hex.upper(),
         }
     )
     for key in (CALLER_LANE_WIRE_KEY, SESSION_ID_WIRE_KEY):
-        assert key not in type(decoded).model_fields
-        assert key not in decoded.model_dump()
+        assert key in type(decoded).model_fields
+    assert decoded.model_dump()[CALLER_LANE_WIRE_KEY] == _LANE
+    assert decoded.model_dump()[SESSION_ID_WIRE_KEY] == str(session)
 
 
 def test_the_failed_variant_decodes_caller_identity_too() -> None:
+    session = uuid4()
     decoded = ModelDelegateSkillFailed.model_validate(
         {
             **_RESPONSE,
@@ -265,11 +274,11 @@ def test_the_failed_variant_decodes_caller_identity_too() -> None:
             "quality_gate_passed": False,
             "correlation_id": str(uuid4()),
             "caller_lane": _LANE,
-            "session_id": "free text a producer should never send",
+            "session_id": str(session),
         }
     )
-    assert CALLER_LANE_WIRE_KEY not in decoded.model_dump()
-    assert SESSION_ID_WIRE_KEY not in decoded.model_dump()
+    assert decoded.model_dump()[CALLER_LANE_WIRE_KEY] == _LANE
+    assert decoded.model_dump()[SESSION_ID_WIRE_KEY] == str(session)
 
 
 def test_the_response_still_refuses_an_unknown_key() -> None:

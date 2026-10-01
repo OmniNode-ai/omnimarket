@@ -66,6 +66,13 @@ class EnumReasoningBoundaryRule(StrEnum):
     UNPAIRED_CLOSING_TAG = "unpaired_closing_tag"
     """A reasoning-trace terminator with no matching opener before it."""
 
+    LEADING_PAIRED_BLOCK = "leading_paired_block"
+    """A paired reasoning block that OPENS the response (OMN-18278).
+
+    The caller receives the text after it. A paired block anywhere else stays
+    in the answer, where the residual-tag floor refuses it.
+    """
+
     ANSWER_MARKER = "answer_marker"
     """A line equal to a contract-declared answer marker, after a lead-in."""
 
@@ -157,6 +164,21 @@ def _unpaired_closing_tag_offset(
     return best
 
 
+def _leading_paired_block_offset(
+    content: str, policy: ModelReasoningPreamblePolicy
+) -> int | None:
+    """Offset just past a paired trace block that opens the response, if any."""
+    stripped = content.lstrip()
+    lead = len(content) - len(stripped)
+    for closing in policy.closing_trace_tags:
+        opening = f"<{closing[2:]}"
+        if stripped.startswith(opening):
+            index = content.find(closing, lead + len(opening))
+            if index != -1:
+                return index + len(closing)
+    return None
+
+
 def _has_paired_trace_block(content: str, policy: ModelReasoningPreamblePolicy) -> bool:
     """Whether a PAIRED reasoning block is present, opener and closer both.
 
@@ -219,6 +241,23 @@ def _structural_offset(content: str, pattern: re.Pattern[str]) -> int | None:
     return match.start()
 
 
+def strip_leading_inline_reasoning(
+    content: str, terminator: str | None
+) -> tuple[str, int]:
+    """Remove only the leading block through the backend-declared terminator.
+
+    Any later tags remain verbatim for the deterministic floor to evaluate.
+    The count includes whitespace removed from the start of the answer.
+    """
+    if terminator is None:
+        return content, 0
+    index = content.find(terminator)
+    if index == -1:
+        return content, 0
+    answer = content[index + len(terminator) :].lstrip()
+    return answer, len(content) - len(answer)
+
+
 def segment_reasoning_preamble(content: str) -> ModelReasoningSegmentation:
     """Split ``content`` into a leaked reasoning preamble and the answer.
 
@@ -237,6 +276,12 @@ def segment_reasoning_preamble(content: str) -> ModelReasoningSegmentation:
 
     offset = _unpaired_closing_tag_offset(content, policy)
     rule = EnumReasoningBoundaryRule.UNPAIRED_CLOSING_TAG
+    if offset is None:
+        # OMN-18278: a paired block that OPENS the response is the model's
+        # reasoning ahead of its answer. Left in place it reached the caller,
+        # and the residual-tag floor would now refuse an answer that is fine.
+        offset = _leading_paired_block_offset(content, policy)
+        rule = EnumReasoningBoundaryRule.LEADING_PAIRED_BLOCK
 
     # OMN-18967 AC3: remembered so an unresolved boundary can say WHY it is
     # unresolved. A lead-in with no boundary behind it is a different outcome
@@ -319,6 +364,13 @@ def _unresolved(content: str) -> ModelReasoningSegmentation:
 #: The gate check name recorded when no deliverable region resolved.
 UNRESOLVED_PREAMBLE_CHECK_NAME = "deliverable_region_resolved"
 
+#: A declared trace tag remains in the answer after leading segmentation.
+RESIDUAL_REASONING_TAG_CHECK_NAME = "no_residual_reasoning_tag"
+RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON = (
+    "WEAK_OUTPUT: the answer still contains a reasoning trace tag, so the model "
+    "did not finish separating its reasoning from the deliverable"
+)
+
 #: The gate failure reason a scratchpad-only response carries (OMN-18967 AC3).
 #:
 #: ``WEAK_OUTPUT`` rather than ``MALFORMED``, for the same reason the
@@ -375,10 +427,13 @@ def output_refusal_for_segmentation(
 
 
 __all__: list[str] = [
+    "RESIDUAL_REASONING_TAG_CHECK_NAME",
+    "RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON",
     "UNRESOLVED_PREAMBLE_CHECK_NAME",
     "UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON",
     "EnumReasoningBoundaryRule",
     "ModelReasoningSegmentation",
     "output_refusal_for_segmentation",
     "segment_reasoning_preamble",
+    "strip_leading_inline_reasoning",
 ]

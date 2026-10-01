@@ -71,17 +71,16 @@ def test_contract_routes_resolve_to_real_handler_methods() -> None:
         handler_ref = entry["handler"]
         assert isinstance(handler_ref, dict)
         module_name = handler_ref["module"]
-        handler_key = entry["handler_key"]
+        operation = entry["operation"]
         assert isinstance(module_name, str)
-        assert isinstance(handler_key, str)
+        assert isinstance(operation, str)
 
-        class_name, method_name = handler_key.split(".", maxsplit=1)
         module = importlib.import_module(module_name)
-        handler_class = getattr(module, class_name)
+        handler_class = getattr(module, handler_ref["name"])
         handler = handler_class()
 
         assert handler_class is HandlerPersonaRebuild
-        assert callable(getattr(handler, method_name))
+        assert callable(getattr(handler, operation))
 
 
 def test_contract_declares_memory_runtime_ownership() -> None:

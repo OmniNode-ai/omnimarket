@@ -88,6 +88,8 @@ from omnimarket.routing.tenant_overlay_resolver import (
     ModelTenantRoutingOverlayBackend,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CUSTOMER = "acme-corp"
 
 # A ref carrying the minted tenant-credential shape (OMN-16944 /

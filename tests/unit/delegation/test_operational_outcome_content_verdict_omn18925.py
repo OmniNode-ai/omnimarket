@@ -52,7 +52,10 @@ from omnibase_core.models.delegation.wire import (
 )
 from pydantic import ValidationError
 
-from omnimarket.delegation.reasoning_preamble import UNRESOLVED_PREAMBLE_CHECK_NAME
+from omnimarket.delegation.reasoning_preamble import (
+    RESIDUAL_REASONING_TAG_CHECK_NAME,
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.provider_finish_reason import TRUNCATION_CHECK_NAME
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
@@ -327,7 +330,12 @@ class TestGateOutcomePair:
         assert pair == (_OUTCOME.SCHEMA_REJECTED, _VERDICT.UNUSABLE)
 
     @pytest.mark.parametrize(
-        "floor", [TRUNCATION_CHECK_NAME, UNRESOLVED_PREAMBLE_CHECK_NAME]
+        "floor",
+        [
+            TRUNCATION_CHECK_NAME,
+            UNRESOLVED_PREAMBLE_CHECK_NAME,
+            RESIDUAL_REASONING_TAG_CHECK_NAME,
+        ],
     )
     def test_a_content_floor_names_the_failure_even_under_a_contract(
         self, floor: str

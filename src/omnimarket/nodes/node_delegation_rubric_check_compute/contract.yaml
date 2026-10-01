@@ -53,6 +53,10 @@ inputs:
     type: tuple
     required: false
     description: Caller-supplied test execution evidence.
+  transcript:
+    type: object
+    required: false
+    description: Caller-supplied typed tool-use run transcript.
 outputs:
   task_class:
     type: str

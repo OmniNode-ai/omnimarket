@@ -2776,8 +2776,13 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      # OMN-20261: no --all-extras. The `intelligence` extra resolves
+      # adaptive-classifier and with it torch and the CUDA wheels (~3 GB),
+      # which this gate never imports; a cold hosted-runner pull of that set
+      # intermittently overran the job timeout. The base environment is all
+      # the gate needs (verified: the gate and its golden-chain tests pass).
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync
 
       # Fail closed on ANY missing package -- both the runtime-soundness pair
       # (ACTIVE_RUNTIME_PACKAGES) and the full census scope (GRAPH_PACKAGES).

@@ -12,6 +12,7 @@
 ---
 name: "node_pr_lifecycle_inventory_compute"
 node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 2

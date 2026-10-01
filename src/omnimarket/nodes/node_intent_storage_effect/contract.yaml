@@ -175,28 +175,19 @@ handler_routing:
   handlers:
     # Store operation: persist a classified intent linked to a session
     - operation: store
-      routing_key: "store"
       handler:
         name: "HandlerIntentStorageAdapter"
         module: "omnimemory.nodes.node_intent_storage_effect.adapters"
-      priority: 0
-      output_events: []
     # Get session operation: retrieve intents for a specific session
     - operation: get_session
-      routing_key: "get_session"
       handler:
         name: "HandlerIntentStorageAdapter"
         module: "omnimemory.nodes.node_intent_storage_effect.adapters"
-      priority: 0
-      output_events: []
     # Get distribution operation: aggregate intent category distribution
     - operation: get_distribution
-      routing_key: "get_distribution"
       handler:
         name: "HandlerIntentStorageAdapter"
         module: "omnimemory.nodes.node_intent_storage_effect.adapters"
-      priority: 0
-      output_events: []
   default_handler: null
 
 # =============================================================================

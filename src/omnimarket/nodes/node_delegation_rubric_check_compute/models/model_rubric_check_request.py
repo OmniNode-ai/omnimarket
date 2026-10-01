@@ -12,6 +12,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_class_ru
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_rubric_execution_result import (
     ModelRubricExecutionResult,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_tool_use_transcript import (
+    ModelToolUseTranscript,
+)
 
 
 class ModelRubricCheckRequest(BaseModel):
@@ -21,6 +24,7 @@ class ModelRubricCheckRequest(BaseModel):
     answer_text: str
     source_text: str | None = None
     rubric: ModelClassRubric
+    transcript: ModelToolUseTranscript | None = None
     execution_results: tuple[ModelRubricExecutionResult, ...] = ()
 
     @property

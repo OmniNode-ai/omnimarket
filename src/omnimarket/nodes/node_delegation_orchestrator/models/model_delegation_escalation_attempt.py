@@ -16,6 +16,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 
 class ModelDelegationEscalationAttempt(BaseModel):
@@ -99,6 +102,34 @@ class ModelDelegationEscalationAttempt(BaseModel):
             "an endpoint URL. None when the decision carried no key."
         ),
     )
+    # OMN-20154: which provider this rung called and what it answered. Every
+    # attempt in 7 days of lab rows carried failure_class null and no provider
+    # or status, so a 429 storm could not be counted per provider from the
+    # record. None when the rung made no provider call.
+    provider_id: str | None = Field(
+        default=None,
+        description=(
+            "Quota domain of the endpoint called: the quota policy's "
+            "provider_id (zai, openrouter, google-gemini) or host:<host>."
+        ),
+    )
+    http_status: int | None = Field(
+        default=None,
+        ge=100,
+        le=599,
+        description="HTTP status the provider answered; None when none was received.",
+    )
+    provider_code: str | None = Field(
+        default=None,
+        description="Provider-native error code (z.ai 1302, RESOURCE_EXHAUSTED).",
+    )
+    failure_class: str | None = Field(
+        default=None,
+        description=(
+            "EnumDelegationFailureClass value of a rung that did not answer "
+            "acceptably; None for the accepted rung."
+        ),
+    )
     # OMN-16932: the accept/climb verdict for this rung, as a TYPED pair rather
     # than prose. The orchestrator has always made this decision and never
     # recorded it, so an escalation past a working free rung was only inferable
@@ -136,6 +167,10 @@ class ModelDelegationEscalationAttempt(BaseModel):
             "Whether the output-token budget cut this rung's response short. "
             "Derived from finish_reason and refused when it disagrees."
         ),
+    )
+    rubric_verdict: ModelAttemptRubricVerdict | None = Field(
+        default=None,
+        description="Recorded class rubric verdict; decides nothing. None when no gate judged this attempt.",
     )
     reasoning_preamble_rule: str | None = Field(
         default=None,

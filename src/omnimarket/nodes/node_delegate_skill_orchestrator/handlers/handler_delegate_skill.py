@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -48,12 +48,19 @@ from omnimarket.local_deployment.tenant_identity import (
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_caller_lane import (
+    DELEGATION_CALLER_LANE_METADATA_KEY,
+    caller_lane_refusal,
+)
 from omnimarket.models.delegation.delegation_ticket_id import (
     DELEGATION_TICKET_METADATA_KEY,
     ticket_id_refusal,
 )
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
+)
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -436,6 +443,18 @@ def _as_optional_int(value: object) -> int | None:
     return None
 
 
+def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
+    """The OMN-20154 provider facts a rung carries, typed or dropped."""
+    provider_id = raw.get("provider_id")
+    provider_code = raw.get("provider_code")
+    status = _as_optional_int(raw.get("http_status"))
+    return {
+        "provider_id": str(provider_id) if provider_id else None,
+        "http_status": status if status is not None and 100 <= status <= 599 else None,
+        "provider_code": str(provider_code) if provider_code else None,
+    }
+
+
 def _attempt_records(
     result: dict[str, object],
 ) -> list[ModelDelegateSkillAttemptRecord]:
@@ -467,6 +486,13 @@ def _attempt_records(
     for raw in attempt_values:
         if not isinstance(raw, dict):
             continue
+        rubric_verdict = None
+        raw_verdict = raw.get("rubric_verdict")
+        if isinstance(raw_verdict, dict):
+            try:
+                rubric_verdict = ModelAttemptRubricVerdict.model_validate(raw_verdict)
+            except ValidationError:
+                rubric_verdict = None
         if from_escalation_history:
             failure_reasons = _as_str_list(raw.get("failure_reasons"))
             decision = _as_acceptance_decision(raw.get("acceptance_decision"))
@@ -514,6 +540,8 @@ def _attempt_records(
                     # OMN-19436: the gate's own record of the seam, carried on
                     # the rung by the workflow. None when no gate judged it.
                     reasoning_preamble_rule=_preamble_rule(raw),
+                    **_provider_facts(raw),
+                    rubric_verdict=rubric_verdict,
                 )
             )
             continue
@@ -542,11 +570,13 @@ def _attempt_records(
                     else None
                 ),
                 error_message=str(raw.get("error_message", "")),
+                **_provider_facts(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
                 # typed terminal always read "no segmentation attempted".
                 acceptance_detail=str(raw.get("acceptance_detail") or ""),
                 reasoning_preamble_rule=_preamble_rule(raw),
+                rubric_verdict=rubric_verdict,
                 reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
                 input_tokens_measured=_as_optional_int(
@@ -648,6 +678,39 @@ def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
         )
         return None
     return value
+
+
+def _request_caller_lane(request: ModelDelegateSkillRequest) -> str | None:
+    """The lane the caller named in metadata, or None; never guess a lane."""
+    value = request.metadata.get(DELEGATION_CALLER_LANE_METADATA_KEY)
+    if value is None:
+        return None
+    refusal = caller_lane_refusal(value)
+    if refusal is not None:
+        logger.warning(
+            "delegate-skill request caller lane refused (correlation_id=%s): %s",
+            request.correlation_id,
+            refusal,
+        )
+        return None
+    return value
+
+
+def _request_session_id(request: ModelDelegateSkillRequest) -> str | None:
+    """The caller's session, with dispatch's precedence and UUID spelling."""
+    value = request.session_id or request.metadata.get("session_id")
+    if value is None:
+        return None
+    try:
+        return str(UUID(str(value)))
+    except ValueError:
+        logger.warning(
+            "delegate-skill request session refused (correlation_id=%s): "
+            "session_id %r is not a UUID",
+            request.correlation_id,
+            value,
+        )
+        return None
 
 
 def _response_from_result(
@@ -878,19 +941,27 @@ class HandlerDelegateSkill:
     async def _dispatch_and_build_terminal(
         self, request: ModelDelegateSkillRequest
     ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
-        """Dispatch, build the terminal, and stamp the request's ticket on it.
+        """Dispatch, build the terminal, and stamp the request's attribution.
 
-        OMN-19514: every terminal this handler builds -- completed, refused,
-        timed out or failed -- carries the ticket the caller named, so the
-        projection can join the run to its ticket and to the DoD verdicts for
-        it. Stamped in one place rather than at each construction site, so a
-        future terminal path cannot forget it.
+        OMN-19514 / OMN-19860: every terminal this handler builds -- completed,
+        refused, timed out, failed or runtime shutdown -- carries the ticket,
+        caller lane and UUID session the caller named. Stamp them in one place
+        so a future terminal path cannot forget them and the projection can
+        join the run to its ticket and identify who issued it.
         """
         terminal = await self._dispatch_and_build_untagged_terminal(request)
-        ticket_id = _request_ticket_id(request)
-        if ticket_id is None:
+        attribution = {
+            key: value
+            for key, value in (
+                ("ticket_id", _request_ticket_id(request)),
+                ("caller_lane", _request_caller_lane(request)),
+                ("session_id", _request_session_id(request)),
+            )
+            if value is not None
+        }
+        if not attribution:
             return terminal
-        return terminal.model_copy(update={"ticket_id": ticket_id})
+        return terminal.model_copy(update=attribution)
 
     async def _dispatch_and_build_untagged_terminal(
         self, request: ModelDelegateSkillRequest

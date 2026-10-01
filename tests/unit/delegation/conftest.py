@@ -40,6 +40,8 @@ from typing import Any
 
 import pytest
 
+from tests.constants import MODEL_LOCAL_201_SERVED_ID
+
 # OMN-13861: cloud-tier routability in the routing reducer consults
 # ``api_key_ref_available(secret_ref)`` — now that the default secret store honors
 # the logical-ref → ENV_VAR convention (``llm.glm.api_key`` → ``LLM_GLM_API_KEY``),
@@ -260,6 +262,12 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
       max_shadow_latency_ms: 5.0
     """
 )
+
+# The two local rungs share one endpoint, so they declare one served id, as a
+# lane overlay does now that the base contract carries none (OMN-17099).
+BIFROST_FRONTIER_UNCONFIGURED = BIFROST_FRONTIER_UNCONFIGURED.replace(
+    "model_name: qwen-coder", f"model_name: {MODEL_LOCAL_201_SERVED_ID}"
+).replace("model_name: qwen-heavy", f"model_name: {MODEL_LOCAL_201_SERVED_ID}")
 
 
 @pytest.fixture

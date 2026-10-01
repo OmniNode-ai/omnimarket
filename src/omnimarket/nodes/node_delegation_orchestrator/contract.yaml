@@ -25,6 +25,7 @@ node_version:
   minor: 5
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
+runtime_profiles: [main]
 terminal_events:
   success: "onex.evt.omnibase-infra.delegation-completed.v1"
   failure: "onex.evt.omnibase-infra.delegation-failed.v1"
@@ -154,6 +155,9 @@ event_bus:
     # point (quality-gate-recommends-fallback, or retryable-inference-error, with
     # a routable next tier). Consumed by node_delegation_routing_feedback_reducer.
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
+    # OMN-20154: one observation per metered provider call on the live route,
+    # folded by node_projection_provider_quota into provider_quota_state.
+    - "onex.evt.omnimarket.provider-quota-observed.v1"
 published_events:
   - event_type: "RoutingIntent"
     topic: "onex.cmd.omnibase-infra.delegation-routing-request.v1"
@@ -202,6 +206,11 @@ published_events:
   - event_type: "LlmDelegationEscalationTriggeredEvent"
     topic: "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     description: "Terminal escalation event emitted when the orchestrator escalates a delegation to a higher routing tier (quality-gate fallback or retryable inference error)."
+  # OMN-20154: the provider quota observation returned beside the workflow's
+  # events from handle_inference_response.
+  - event_type: "ProviderQuotaObserved"
+    topic: "onex.evt.omnimarket.provider-quota-observed.v1"
+    description: "One metered provider call and its capacity outcome, projected into provider_quota_state."
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: delegation_orchestrator

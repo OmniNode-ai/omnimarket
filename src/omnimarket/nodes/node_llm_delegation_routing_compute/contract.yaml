@@ -11,6 +11,7 @@
 #   - OMN-11775: Routing compute node implementation
 name: "node_llm_delegation_routing_compute"
 node_type: compute
+runtime_profiles: [main]
 contract_version:
   major: 0
   minor: 1

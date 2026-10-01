@@ -2,6 +2,7 @@
 name: verification_receipt_generator
 contract_version: {major: 1, minor: 0, patch: 1}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 1}
 
 description: >

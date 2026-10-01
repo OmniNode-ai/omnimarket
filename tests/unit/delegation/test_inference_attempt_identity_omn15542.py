@@ -71,6 +71,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _LOCAL_MODEL = "qwen3-coder-30b"
 _LOCAL_ENDPOINT = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for the local AIPC LLM endpoint"
 _CLOUD_MODEL = "gemini-2.5-flash"

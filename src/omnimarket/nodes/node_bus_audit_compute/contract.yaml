@@ -2,6 +2,7 @@
 name: node_bus_audit_compute
 contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 1, patch: 0}
 description: >
   Audits event bus topic registry declarations against node contract event_bus

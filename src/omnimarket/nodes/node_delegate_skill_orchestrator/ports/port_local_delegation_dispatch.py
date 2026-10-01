@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 from uuid import UUID
 
+import yaml
 from omnibase_core.models.delegation.wire import (
     EnumDelegationOutputRefusalReason,
     EnumDelegationOutputShape,
@@ -99,6 +100,10 @@ from omnimarket.delegation.response_contract_instruction import (
     render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
+from omnimarket.delegation.rubric.attempt_verdict import (
+    record_attempt_rubric_verdict,
+    rubric_check_error_verdict,
+)
 from omnimarket.delegation.structured_output import (
     provider_response_format_for_contract,
 )
@@ -109,6 +114,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     resolve_inference_protocol_default_temperature,
@@ -116,6 +124,16 @@ from omnimarket.inference.protocol_config import (
 from omnimarket.inference.provider_finish_reason import (
     EnumProviderFinishReason,
     is_truncated_by_output_budget,
+)
+from omnimarket.inference.provider_quota_observation import (
+    EmitEffectQuotaObservationSink,
+    ProtocolProviderQuotaObservationSink,
+)
+from omnimarket.inference.provider_quota_state import (
+    ModelProviderQuotaSnapshot,
+    ProtocolProviderQuotaReader,
+    quota_domain_for_endpoint,
+    read_provider_quota_snapshot,
 )
 from omnimarket.local_deployment.tenant_identity import (
     ensure_install_identity_mirrored,
@@ -182,6 +200,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     is_free_tier,
     measure_grounding_input_tokens,
     next_eligible_tier,
+    quota_blocked_backend_refs,
     resolve_backend_grounding_budget,
     resolve_requested_shape_for_prompt,
     resolve_task_class_dod_checks,
@@ -531,6 +550,14 @@ def _response_contract_evidence_for_attempt(
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
     )
+
+
+def _attempt_provider_id(endpoint_ref: str) -> str | None:
+    """The quota domain an attempt's endpoint belongs to (OMN-20154); never raises."""
+    try:
+        return quota_domain_for_endpoint(endpoint_ref)
+    except Exception:
+        return None
 
 
 def _is_local_ladder_rung(backend_id: str) -> bool:
@@ -920,7 +947,18 @@ class LocalDelegationDispatchPort:
         roi_db: DatabaseAdapter | None = None,
         roi_overlay_reader: Callable[[str], ModelRoutingRoiOverlay | None]
         | None = None,
+        quota_reader: ProtocolProviderQuotaReader | None = None,
+        quota_observation_sink: ProtocolProviderQuotaObservationSink | None = None,
+        terminal_publisher: EmitEffectTopicPublisher | None = None,
     ) -> None:
+        self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-20154: this path reads provider quota state from the SAME durable
+        # projection the runtime reads, and delivers each call's observation to
+        # it (through node_event_emit_effect: spool, then the bus). A laptop
+        # delegation is one more tenant call, never a separate quota path.
+        # Both resolve lazily so construction does no I/O.
+        self._quota_reader = quota_reader
+        self._quota_observation_sink = quota_observation_sink
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation(
             publisher=_LocalEvidenceNoRepublishPublisher()
@@ -959,6 +997,37 @@ class LocalDelegationDispatchPort:
         self._roi_overlay_reader = (
             roi_overlay_reader or self._default_roi_overlay_reader
         )
+
+    def _quota_snapshot(
+        self, observed: Sequence[ModelProviderQuotaObserved]
+    ) -> ModelProviderQuotaSnapshot:
+        """The lane tenant's quota state plus this dispatch's own refusals."""
+        if self._quota_reader is None:
+            self._quota_reader = (
+                provider_quota_state.resolve_provider_quota_reader_for_local_store(
+                    self._evidence_db.db_path
+                    if isinstance(self._evidence_db, SqliteDatabaseAdapter)
+                    else None
+                )
+            )
+        snapshot = read_provider_quota_snapshot(self._quota_reader, tenant_id=None)
+        for observation in observed:
+            snapshot = snapshot.with_observation(observation)
+        return snapshot
+
+    def _deliver_quota_observation(
+        self,
+        result: ModelLlmDelegationCallResult,
+        observed: list[ModelProviderQuotaObserved],
+    ) -> None:
+        """Deliver the effect's observation of one call and remember it."""
+        observation = result.quota_observation
+        if observation is None:
+            return
+        observed.append(observation)
+        if self._quota_observation_sink is None:
+            self._quota_observation_sink = EmitEffectQuotaObservationSink()
+        self._quota_observation_sink.emit(observation)
 
     def _default_roi_overlay_reader(
         self, task_type: str
@@ -1080,11 +1149,13 @@ class LocalDelegationDispatchPort:
         #    selection for the INITIAL attempt only — see _resolve_initial_backend.
         # OMN-19432: the run's correlation id is the spread key, as it is on the
         # bus path, so a spread-placed peer shares first-choice traffic here too.
+        quota_observations: list[ModelProviderQuotaObserved] = []
         backend = self._resolve_initial_backend(
             task_type,
             roi_overlay=roi_overlay,
             backend_id=backend_id,
             spread_key=str(correlation_id),
+            quota_state=self._quota_snapshot(quota_observations),
         )
         # OMN-16200: a customer who has declared no model lands on a cloud rung
         # carrying OmniNode's key, which the terminus below refuses without
@@ -1250,6 +1321,7 @@ class LocalDelegationDispatchPort:
                         roi_overlay=roi_overlay,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
                         spread_key=str(correlation_id),
+                        quota_state=self._quota_snapshot(quota_observations),
                     )
                 if over_budget_next is None:
                     # No rung can hold this input. Terminal FAILED naming the
@@ -1342,6 +1414,7 @@ class LocalDelegationDispatchPort:
                     transport_failure_class = None
                     transport_failure_message = ""
                     transport_is_failure = False
+            self._deliver_quota_observation(transport_result, quota_observations)
 
             if transport_is_failure:
                 current_tier = _routing_tier_name(backend)
@@ -1385,6 +1458,7 @@ class LocalDelegationDispatchPort:
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        quota_state=self._quota_snapshot(quota_observations),
                     )
                 if transport_sibling is None and not byok_same_backend_retry:
                     excluded_tiers.add(current_tier)
@@ -1402,6 +1476,7 @@ class LocalDelegationDispatchPort:
                         roi_overlay=roi_overlay,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
                         spread_key=str(correlation_id),
+                        quota_state=self._quota_snapshot(quota_observations),
                     )
 
                 # A transport failure never runs the quality gate, so bank its
@@ -1425,6 +1500,11 @@ class LocalDelegationDispatchPort:
                             if transport_failure_class is not None
                             else None
                         ),
+                        # OMN-20154: which provider this rung called and what
+                        # it answered, the same facts the bus path records.
+                        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                        "http_status": transport_result.http_status,
+                        "provider_code": transport_result.provider_code,
                         # OMN-14063: surface WHY this tier was skipped (e.g. "endpoint
                         # ... failed health probe") on the attempt record itself, not
                         # only in the capture-file log line — a local->cloud escalation
@@ -1632,6 +1712,22 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            # OMN-20165: acceptance is settled above; the rubric verdict is
+            # recorded on this attempt and read by no decision.
+            try:
+                rubric_verdict = record_attempt_rubric_verdict(
+                    task_class=task_type,
+                    request_text=(
+                        attempt_outcome.request_text
+                        if attempt_outcome.request_text is not None
+                        else prompt
+                    ),
+                    answer_text=result.content or "",
+                )
+            except Exception as exc:
+                # A recording fault must never fail the delegation it describes.
+                logger.warning("Rubric recording failed: %s", type(exc).__name__)
+                rubric_verdict = rubric_check_error_verdict(task_type)
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -1641,6 +1737,15 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-20154: the provider answered; a rung the gate did not
+                    # accept is a quality-gate failure, typed as one.
+                    "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                    "http_status": result.http_status,
+                    "failure_class": (
+                        None
+                        if quality_passed
+                        else EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
+                    ),
                     "acceptance_decision": acceptance_decision.value,
                     "acceptance_reason": acceptance_reason.value,
                     "acceptance_detail": acceptance_detail,
@@ -1649,6 +1754,7 @@ class LocalDelegationDispatchPort:
                     # seam. Retained so a refusal can be audited against
                     # exactly the text that was judged.
                     "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
+                    "rubric_verdict": rubric_verdict.model_dump(mode="json"),
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
@@ -1843,6 +1949,7 @@ class LocalDelegationDispatchPort:
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
                     excluded_model_ids=frozenset({backend.model_id}),
+                    quota_state=self._quota_snapshot(quota_observations),
                 )
             )
             if gate_sibling is None:
@@ -1891,6 +1998,7 @@ class LocalDelegationDispatchPort:
                     roi_overlay=roi_overlay,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
                     spread_key=str(correlation_id),
+                    quota_state=self._quota_snapshot(quota_observations),
                 )
 
             if next_backend is None:
@@ -2095,7 +2203,9 @@ class LocalDelegationDispatchPort:
         Returns ``{}`` when nothing was withheld, so the key stays absent rather
         than null on every other terminal.
         """
-        rung = credential_withheld_rung(task_type)
+        # OMN-20154: a rung the provider's quota state withholds is not a
+        # credential problem, so the projection's blocks are honoured here too.
+        rung = credential_withheld_rung(task_type, quota_state=self._quota_snapshot(()))
         if rung is None:
             return {}
         logger.warning(
@@ -2116,6 +2226,7 @@ class LocalDelegationDispatchPort:
         roi_overlay: ModelRoutingRoiOverlay | None = None,
         backend_id: str | None = None,
         spread_key: str | None = None,
+        quota_state: ModelProviderQuotaSnapshot | None = None,
     ) -> ModelResolvedDelegationBackend:
         """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
 
@@ -2175,6 +2286,32 @@ class LocalDelegationDispatchPort:
             backend_id = backend_id_for_tier(
                 first_tier, task_type, spread_key=spread_key
             )
+            blocked = quota_blocked_backend_refs(quota_state)
+            if backend_id is not None and backend_id in blocked:
+                # OMN-20154: the cheapest rung's quota key is blocked. Take an
+                # unblocked sibling in the same tier, else the next tier, with
+                # the blocked backends skipped like already-failed ones.
+                logger.info(
+                    "LocalDelegationDispatch: initial backend=%s is quota-blocked; "
+                    "resolving past it (task_type=%s tier=%s)",
+                    backend_id,
+                    task_type,
+                    first_tier,
+                )
+                past_block = self._resolve_sibling_backend(
+                    current_tier=first_tier,
+                    task_type=task_type,
+                    excluded_backend_refs=blocked,
+                ) or self._resolve_next_backend(
+                    current_tier=first_tier,
+                    task_type=task_type,
+                    excluded_tiers=frozenset(),
+                    roi_overlay=roi_overlay,
+                    excluded_backend_refs=blocked,
+                    spread_key=spread_key,
+                )
+                if past_block is not None:
+                    return past_block
             if backend_id is not None:
                 try:
                     return resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -2199,6 +2336,7 @@ class LocalDelegationDispatchPort:
         task_type: str,
         excluded_backend_refs: frozenset[str],
         excluded_model_ids: frozenset[str] = frozenset(),
+        quota_state: ModelProviderQuotaSnapshot | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
 
@@ -2246,7 +2384,7 @@ class LocalDelegationDispatchPort:
             sibling_ref = sibling_backend_available_in_tier(
                 current_tier,
                 task_type,
-                frozenset(tried),
+                frozenset(tried) | quota_blocked_backend_refs(quota_state),
             )
             if sibling_ref is None:
                 return None
@@ -2300,6 +2438,7 @@ class LocalDelegationDispatchPort:
         roi_overlay: ModelRoutingRoiOverlay | None = None,
         excluded_backend_refs: frozenset[str] = frozenset(),
         spread_key: str | None = None,
+        quota_state: ModelProviderQuotaSnapshot | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
 
@@ -2336,6 +2475,10 @@ class LocalDelegationDispatchPort:
         Returns None when the ladder is exhausted or the escalated backend has no
         populated endpoint in the local overlay (fail-closed, no silent hang).
         """
+        # OMN-20154: quota-blocked backends are skipped like failed ones.
+        excluded_backend_refs = excluded_backend_refs | quota_blocked_backend_refs(
+            quota_state
+        )
         next_tier = next_eligible_tier(
             current_tier,
             excluded_tiers,
@@ -2613,6 +2756,7 @@ class LocalDelegationDispatchPort:
             # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
             # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
             api_key_env=backend.api_key_env,
+            inline_reasoning_terminator=backend.inline_reasoning_terminator,
             # OMN-15482: the caller's response-format directive, forwarded as a
             # real wire parameter on the outbound chat-completions payload.
             # ``None`` omits the key entirely (pre-existing behavior).
@@ -2779,6 +2923,7 @@ class LocalDelegationDispatchPort:
             # prose. The gate vetoes on this signal; without it the gate has no
             # non-heuristic way to tell the two apart.
             finish_reason=result.finish_reason,
+            reasoning_stripped_chars=result.reasoning_stripped_chars,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -2790,7 +2935,8 @@ class LocalDelegationDispatchPort:
         # untouched.
         segmentation = segment_reasoning_preamble(result.content or "")
         if (
-            segmentation.boundary_rule
+            result.reasoning_stripped_chars == 0
+            and segmentation.boundary_rule
             is not EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
         ):
             logger.info(
@@ -2834,6 +2980,7 @@ class LocalDelegationDispatchPort:
         return _AttemptOutcome(
             result=result,
             gate_result=gate_result,
+            request_text=outbound_prompt,
             failure_message=None,
             timeout_result=None,
             preamble_chars=extraction.preamble_chars,
@@ -2858,6 +3005,7 @@ class LocalDelegationDispatchPort:
         response_contract: dict[str, object] | None = None,
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
+        reasoning_stripped_chars: int = 0,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -2962,6 +3110,7 @@ class LocalDelegationDispatchPort:
             response_contract=effective_response_contract,
             grounding_source=prompt,
             finish_reason=finish_reason,
+            reasoning_stripped_chars=reasoning_stripped_chars,
         )
 
     def _project_evidence(
@@ -3142,6 +3291,47 @@ class LocalDelegationDispatchPort:
                 correlation_id,
                 exc_info=True,
             )
+        # OMN-20154: the SAME terminal the local row was projected from also
+        # goes on the bus, on this node's own contract terminal topic, so the
+        # platform's delegation_events (which the dashboards, quota tracking
+        # and the DoD overlay read) holds this run too. Before this, every
+        # in-process `onex delegate` a lane ran lived only in the machine's
+        # local store. Idempotent downstream: the projection upserts on
+        # correlation_id.
+        self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _publish_terminal(
+        self, payload: Mapping[str, object], *, quality_passed: bool
+    ) -> None:
+        topic = _local_terminal_topic(success=quality_passed)
+        if topic is None:
+            return
+        correlation = str(payload.get("correlation_id") or "")
+        self._terminal_publisher.publish(
+            topic=topic,
+            event_type=(
+                "delegate_skill.completed"
+                if quality_passed
+                else "delegate_skill.failed"
+            ),
+            payload=payload,
+            event_id=f"delegate-skill-terminal-{correlation}",
+            correlation_id=correlation or None,
+            partition_key=correlation or None,
+        )
+
+
+def _local_terminal_topic(*, success: bool) -> str | None:
+    """This node's declared terminal topic for the outcome (OMN-20154)."""
+    contract = Path(__file__).resolve().parents[1] / "contract.yaml"
+    try:
+        raw = yaml.safe_load(contract.read_text(encoding="utf-8"))
+        terminals = raw["runtime_dispatch"]["terminal_events"]
+        topic = terminals["success" if success else "failure"]
+    except Exception:
+        logger.warning("delegate-skill terminal topic unresolved from %s", contract)
+        return None
+    return str(topic)
 
 
 class _AttemptOutcome:
@@ -3161,6 +3351,7 @@ class _AttemptOutcome:
         "gate_result",
         "output_refusal",
         "preamble_chars",
+        "request_text",
         "response_contract_evidence",
         "result",
         "timeout_result",
@@ -3176,6 +3367,7 @@ class _AttemptOutcome:
         preamble_chars: int,
         output_refusal: ModelDelegationOutputRefusal | None,
         response_contract_evidence: ModelDelegationContractEvidence | None = None,
+        request_text: str | None = None,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
@@ -3184,6 +3376,7 @@ class _AttemptOutcome:
         self.preamble_chars = preamble_chars
         self.output_refusal = output_refusal
         self.response_contract_evidence = response_contract_evidence
+        self.request_text = request_text
 
 
 __all__ = ["LocalDelegationDispatchPort"]

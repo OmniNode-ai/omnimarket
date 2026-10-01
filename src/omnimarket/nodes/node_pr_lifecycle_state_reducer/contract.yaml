@@ -14,6 +14,7 @@
 #   - OMN-8070: PR Lifecycle Domain epic
 name: node_pr_lifecycle_state_reducer
 node_type: reducer
+runtime_profiles: [main]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 

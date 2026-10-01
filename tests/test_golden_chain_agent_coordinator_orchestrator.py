@@ -81,14 +81,31 @@ class TestAgentCoordinatorOrchestratorGoldenChain:
         assert req.topic == "memory.item.updated"
         assert req.event is not None
 
-    def test_enum_values_match_routing_keys(self) -> None:
-        """Enum string values match contract.yaml routing keys."""
+    def test_enum_values_match_contract_operations(self) -> None:
+        """Enum string values match canonical handler operations."""
+        from pathlib import Path
+
+        import yaml
+
         assert EnumAgentCoordinatorAction.SUBSCRIBE.value == "subscribe"
         assert EnumAgentCoordinatorAction.UNSUBSCRIBE.value == "unsubscribe"
         assert (
             EnumAgentCoordinatorAction.LIST_SUBSCRIPTIONS.value == "list_subscriptions"
         )
         assert EnumAgentCoordinatorAction.NOTIFY.value == "notify"
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_agent_coordinator_orchestrator/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        routing = contract["handler_routing"]
+        assert isinstance(routing, dict)
+        operations = {
+            entry["operation"]
+            for entry in routing["handlers"]
+            if isinstance(entry, dict)
+        }
+        assert operations == {action.value for action in EnumAgentCoordinatorAction}
 
     def test_all_four_actions_exist(self) -> None:
         """All 4 routing actions are declared in the enum."""
