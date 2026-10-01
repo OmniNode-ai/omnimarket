@@ -36,38 +36,21 @@ Selecting SQLite for a bus-less CLI remains valid — the point is that it is no
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.runner import projection_runtime_binding_from_overlay_env
 from omnimarket.projection.sqlite_database import (
+    SQLITE_SCHEMES,
     SqliteDatabaseAdapter,
     default_evidence_db_path,
+    sqlite_path_from_dsn,
 )
 
 logger = logging.getLogger(__name__)
 
 _POSTGRES_SCHEMES = frozenset({"postgres", "postgresql"})
-_SQLITE_SCHEMES = frozenset({"sqlite", "file"})
-
-
-def _sqlite_path_from_dsn(dsn: str) -> Path:
-    """Extract a filesystem path from a ``sqlite:``/``file:`` DSN or bare path.
-
-    Follows the SQLAlchemy-style slash convention: ``sqlite:///rel/path`` is a
-    relative path (``rel/path``) and ``sqlite:////abs/path`` is absolute
-    (``/abs/path``) — i.e. exactly one leading slash from the URL path component
-    is the scheme separator and is stripped.
-    """
-    split = urlsplit(dsn)
-    if split.scheme in _SQLITE_SCHEMES:
-        raw = split.path or split.netloc
-        if raw.startswith("/"):
-            raw = raw[1:]
-        return Path(raw)
-    return Path(dsn)
 
 
 def _adapter_for_dsn(
@@ -82,8 +65,8 @@ def _adapter_for_dsn(
     scheme = urlsplit(dsn).scheme.lower()
     if scheme in _POSTGRES_SCHEMES:
         return PostgresSyncProjectionAdapter(dsn, schema=postgres_schema)
-    if scheme in _SQLITE_SCHEMES or not scheme:
-        return SqliteDatabaseAdapter(_sqlite_path_from_dsn(dsn))
+    if scheme in SQLITE_SCHEMES or not scheme:
+        return SqliteDatabaseAdapter(sqlite_path_from_dsn(dsn))
     raise ValueError(
         f"unsupported delegation evidence database_url scheme {scheme!r}; "
         "use a postgres[ql]:// or sqlite:/file: DSN"

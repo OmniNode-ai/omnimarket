@@ -11,7 +11,8 @@ description: >
   Read-only EFFECT node that answers a typed read of one contract-declared
   projection exposure (a node contract's projection_api block) from the table
   its writer materializes, through the runtime's own projection database
-  binding. Pages with the same function as the standalone projection API's
+  binding, which names Postgres or the local SQLite store (local MVP mode 1,
+  OMN-20329). Pages with the same function as the standalone projection API's
   GET /projection/{topic}, so both read paths answer a request identically.
   Reachable through the runtime's Pattern B /skill edge (OMN-20159).
 node_type: effect
