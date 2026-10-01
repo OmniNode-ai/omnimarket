@@ -22,10 +22,12 @@ shelled-CLI tier remains. The former ``cli://`` subprocess backend was removed.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import time
 from pathlib import Path
 from typing import Any, Final, Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -49,6 +51,10 @@ from omnimarket.inference.provider_response_error import (
     provider_error_from_body,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.models.model_call_correlation import (
+    SELF_HOSTED_CORRELATION_HEADER,
+    SELF_HOSTED_CORRELATION_QUERY_PARAM,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
@@ -86,6 +92,13 @@ _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # ``cli://`` shell-out tier) are a config-drift error and fail closed here — there
 # is no subprocess fallback.
 _SUPPORTED_URL_SCHEMES = ("http://", "https://")
+
+# OMN-20299: a request a self-hosted model server answered either joins a
+# ``delegation_events`` run or bypassed the delegation nodes, and the server's
+# own log is the one record no caller can skip. The .201 vLLM access log keeps
+# each request's path and query string, so the run's correlation id rides in the
+# query string, and in a header for any log that records headers. Only a
+# private or loopback address gets them; a third-party provider never does.
 
 # OMN-18852: the ceiling ONE outbound provider call may occupy, read from this
 # node's own contract at import time (the same fail-fast posture as the topic
@@ -580,6 +593,18 @@ def _re_aim_intent(
     )
 
 
+def _is_self_hosted_endpoint(endpoint_url: str) -> bool:
+    """Whether ``endpoint_url`` is a lab or local model server (OMN-20299)."""
+    host = (urlparse(endpoint_url).hostname or "").lower()
+    if host == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback
+
+
 def _resolve_effective_timeout(intent: ModelInferenceIntent) -> float:
     """Return the seconds this provider call may occupy, clamped to the ceiling.
 
@@ -862,11 +887,18 @@ class HandlerInferenceIntent:
             headers["Authorization"] = f"Bearer {api_key}"
         if intent.extra_headers:
             headers.update(intent.extra_headers)
+        params: dict[str, str] | None = None
+        if _is_self_hosted_endpoint(intent.base_url):
+            correlation_id = str(intent.correlation_id)
+            params = {SELF_HOSTED_CORRELATION_QUERY_PARAM: correlation_id}
+            headers[SELF_HOSTED_CORRELATION_HEADER] = correlation_id
 
         timeout = _resolve_effective_timeout(intent)
         started = time.monotonic()
 
-        with httpx.Client(timeout=timeout) as client:
+        # OMN-20299: the correlation query parameter is the client's, so the
+        # POST below still takes ``intent.base_url`` verbatim (OMN-12815).
+        with httpx.Client(timeout=timeout, params=params) as client:
             # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
             # resolved by the routing authority; post it VERBATIM — no path
             # append, no construction.

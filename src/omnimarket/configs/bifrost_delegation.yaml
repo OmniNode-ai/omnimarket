@@ -1179,3 +1179,18 @@ shadow_mode:
   log_sample_rate: 1.0
   comparison_logging_enabled: true
   max_shadow_latency_ms: 5.0
+# Ollama on a developer Mac: the port, the chat path and the default model per
+# memory size. The HOST is deliberately not declared here -- the onboarding
+# script chooses host.docker.internal from inside Docker and localhost otherwise.
+# The first entry whose min_memory_gb <= the Mac's memory wins; entries are
+# ordered by min_memory_gb strictly descending and the last one is 0.
+ollama:
+  port: 11434
+  chat_path: /v1/chat/completions
+  models:
+    - min_memory_gb: 16
+      model: qwen2.5-coder:7b
+      download_gb: 5
+    - min_memory_gb: 0
+      model: qwen2.5-coder:1.5b
+      download_gb: 1

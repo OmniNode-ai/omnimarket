@@ -3672,6 +3672,7 @@
         "node_delegate_skill_orchestrator",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_llm_delegation_call_effect",
         "node_metering_summary_compute",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
