@@ -68,6 +68,26 @@ CREATE TABLE IF NOT EXISTS omninode_internal.delegation_events_outcome_backfill_
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: delegation_events_outcome_backfill_omn20276 ----
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS delegation_event_id UUID;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS prior_operational_outcome TEXT;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS prior_content_verdict TEXT;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS new_operational_outcome TEXT;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS new_content_verdict TEXT;
+ALTER TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ DEFAULT now();
+-- ---- END OMN-15376 shape reconciliation: delegation_events_outcome_backfill_omn20276 ----
+
+-- Migration 099's default privileges hand omninode_runtime read/write on every new
+-- omninode_internal table. This one is control state for this migration pair, read
+-- only by its rollback, so the runtime role gets nothing on it.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'omninode_runtime') THEN
+        REVOKE ALL ON omninode_internal.delegation_events_outcome_backfill_omn20276 FROM omninode_runtime;
+    END IF;
+END$$;
+
 COMMENT ON TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 IS
     'OMN-20276: prior outcome and verdict of each delegation_events row 0051 rewrote; read by its rollback, dropped by it.';
 
