@@ -63,6 +63,7 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "error_details_ref",
         "error_ref",
         "event",
+        "exit_code",
         "expansion_type",
         "file_path_ref",
         "final",
@@ -120,8 +121,9 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
 _REF_SUFFIX = "_ref"
 
 #: Top-level keys emit seams stamp onto every record, which the capture
-#: contract's event does not declare. The appender adds ``lane``,
-#: ``lane_source``, ``lane_ticket``, ``workspace_path``, and ``turn_id``; the
+#: contract's event does not declare. The appender adds ``lane`` (kept: see
+#: ``ModelClaudeHookEventWire.lane``), ``lane_source``, ``lane_ticket``,
+#: ``workspace_path``, and ``turn_id``; the
 #: drainer adds ``correlation_id``, ``causation_id``, ``entity_id``, and
 #: ``session_id``, and ``hook_fired_at`` (the fire instant; the event's own
 #: ``emitted_at`` is authoritative); governed redaction adds
@@ -135,7 +137,6 @@ TRANSPORT_STAMP_KEYS: frozenset[str] = frozenset(
         "correlation_id",
         "entity_id",
         "hook_fired_at",
-        "lane",
         "lane_source",
         "lane_ticket",
         "redaction_state",
@@ -227,6 +228,11 @@ class ModelClaudeHookEventWire(BaseModel):
     emitted_at: AwareDatetime
     actor: Literal["claude"]
     claude_code_version: str | None = None
+    #: OMN-17427: the hostname of the machine that emitted the event.
+    host: str | None = Field(default=None, min_length=1)
+    #: OMN-17427: the appender's lane stamp. Empty means the emitter asked and
+    #: resolved no lane; the fold stores that as NULL.
+    lane: str | None = None
     lineage: ModelClaudeHookLineageWire
     payload: dict[str, JsonValue]
     content_refs: tuple[ModelClaudeHookContentRefWire, ...]
@@ -271,6 +277,11 @@ class ModelClaudeHookEventWire(BaseModel):
         parent_goal_id = _canonical_goal_id(self.payload, "parent_goal_id")
         if parent_goal_id is not None and goal_id is None:
             raise ValueError("payload.parent_goal_id is set without payload.goal_id")
+        exit_code = self.payload.get("exit_code")
+        if exit_code is not None and (
+            isinstance(exit_code, bool) or not isinstance(exit_code, int)
+        ):
+            raise ValueError("payload.exit_code must be an integer or null")
 
         payload_refs: list[ModelClaudeHookContentRefWire] = []
         for key, value in self.payload.items():
@@ -293,6 +304,23 @@ class ModelClaudeHookEventWire(BaseModel):
     @property
     def parent_goal_id(self) -> UUID | None:
         return _goal_uuid(self.payload.get("parent_goal_id"))
+
+    @property
+    def exit_code(self) -> int | None:
+        value = self.payload.get("exit_code")
+        return value if isinstance(value, int) else None
+
+    @property
+    def model(self) -> str | None:
+        """The model that ran the event, where the event states one.
+
+        A subagent's model rides ``lineage.agent_model`` (the harness sidecar);
+        the main thread's is stated only by ``SessionStart``'s ``model``.
+        """
+        if self.lineage.agent_model:
+            return self.lineage.agent_model
+        value = self.payload.get("model")
+        return value if isinstance(value, str) and value else None
 
     @property
     def tool_name(self) -> str | None:

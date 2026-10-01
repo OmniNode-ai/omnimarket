@@ -34,6 +34,9 @@ import pytest
 from omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_claude_hook_events_writer import (
     ClaudeHookEventsProjectionWriter,
 )
+from omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_projection_claude_hook_events import (
+    SOURCE_TOPIC,
+)
 
 _NODE_DIR = (
     Path(__file__).resolve().parents[1]
@@ -46,6 +49,7 @@ _MIGRATIONS = (
     _NODE_DIR / "migrations" / "0000_create_claude_hook_events.sql",
     _NODE_DIR / "migrations" / "0003_add_span_model_and_description.sql",
     _NODE_DIR / "migrations" / "0005_add_goal_id.sql",
+    _NODE_DIR / "migrations" / "0006_add_lane_model_host_exit_code.sql",
 )
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude_hook_capture"
 _SCHEMA = "omn19513_claude_hook_events_write_path_test"
@@ -110,12 +114,17 @@ async def _setup(conn: asyncpg.Connection) -> None:
         await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
 
 
+def _scoped_writer(conn: asyncpg.Connection) -> ClaudeHookEventsProjectionWriter:
+    """The real writer, its adapter seam retargeted at the scoped schema."""
+    writer = ClaudeHookEventsProjectionWriter()
+    writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+    return writer
+
+
 async def _project_all(writer: ClaudeHookEventsProjectionWriter) -> None:
     for name in _SCENARIOS:
         for event in _jsonl(_FIXTURES / "scenarios" / f"{name}.events.jsonl"):
-            await writer._project(
-                "onex.evt.omniclaude.hook-event.v1", event
-            )  # onex-topic-allow: the capture contract's metadata topic
+            await writer._project(SOURCE_TOPIC, event)
 
 
 def _iso(value: Any) -> Any:
@@ -134,6 +143,10 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
         parent_goal_id = record.pop("parent_goal_id")
         assert goal_id is None
         assert parent_goal_id is None
+        # OMN-17427: the scenario events carry no lane stamp, host or exit
+        # code. A SubagentStart may carry a sidecar model, which is promoted.
+        for column in ("lane", "host", "exit_code", "model"):
+            record.pop(column)
         record["event_id"] = str(record["event_id"])
         record["correlation_id"] = str(record["correlation_id"])
         record["causation_id"] = (
@@ -180,8 +193,7 @@ async def test_scenarios_read_back_from_real_postgres() -> None:
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
-        writer = ClaudeHookEventsProjectionWriter()
-        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+        writer = _scoped_writer(conn)
 
         await _project_all(writer)
         expected_events, expected_spans = _expected()
@@ -220,13 +232,12 @@ async def test_span_model_and_description_read_back_and_survive_a_later_event() 
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
-        writer = ClaudeHookEventsProjectionWriter()
-        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+        writer = _scoped_writer(conn)
         events = _jsonl(_FIXTURES / "scenarios" / "subagent_tree.events.jsonl")
         start = json.loads(json.dumps(events[2]))
         start["lineage"]["agent_model"] = "claude-sonnet-5-5"
         start["lineage"]["agent_description"] = "fix the hook"
-        topic = "onex.evt.omniclaude.hook-event.v1"  # onex-topic-allow: the capture contract's metadata topic
+        topic = SOURCE_TOPIC
         await writer._project(topic, start)
         await writer._project(topic, events[3])
         row = await conn.fetchrow(
@@ -249,9 +260,8 @@ async def test_goal_ids_read_back_as_uuid_columns_and_the_index_is_partial() -> 
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
-        writer = ClaudeHookEventsProjectionWriter()
-        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
-        topic = "onex.evt.omniclaude.hook-event.v1"  # onex-topic-allow: the capture contract's metadata topic
+        writer = _scoped_writer(conn)
+        topic = SOURCE_TOPIC
         binding = json.loads(
             (_FIXTURES / "events" / "PreToolUse.goal_binding.json").read_text("utf-8")
         )
@@ -283,6 +293,60 @@ async def test_goal_ids_read_back_as_uuid_columns_and_the_index_is_partial() -> 
         await conn.execute(
             _scoped(
                 (_NODE_DIR / "migrations" / "0005_add_goal_id.sql").read_text("utf-8")
+            )
+        )
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_lane_model_host_and_exit_code_read_back_from_their_columns() -> None:
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        writer = _scoped_writer(conn)
+        topic = SOURCE_TOPIC
+        event = json.loads(
+            (_FIXTURES / "events" / "PostToolUseFailure.json").read_text("utf-8")
+        )
+        event["payload"]["tool_name"] = "Bash"
+        event["payload"]["exit_code"] = 2
+        event["lane"] = "hook-projection-fields"
+        event["host"] = "h201"
+        event["lineage"]["agent_id"] = "a0123456789abcdef"
+        event["lineage"]["is_subagent"] = True
+        event["lineage"]["agent_model"] = "claude-opus-5-5"
+        plain = json.loads(
+            (_FIXTURES / "events" / "PreToolUse.json").read_text("utf-8")
+        )
+        await writer._project(topic, event)
+        await writer._project(topic, plain)
+        rows = {
+            str(r["event_id"]): r
+            for r in await conn.fetch(
+                f"SELECT event_id, lane, model, host, exit_code "
+                f"FROM {_SCHEMA}.claude_hook_events"
+            )
+        }
+        stored = rows[event["event_id"]]
+        assert stored["lane"] == "hook-projection-fields"
+        assert stored["model"] == "claude-opus-5-5"
+        assert stored["host"] == "h201"
+        assert stored["exit_code"] == 2
+        bare = rows[plain["event_id"]]
+        assert (bare["lane"], bare["model"], bare["host"], bare["exit_code"]) == (
+            None,
+            None,
+            None,
+            None,
+        )
+        # The migration replays without error.
+        await conn.execute(
+            _scoped(
+                (
+                    _NODE_DIR / "migrations" / "0006_add_lane_model_host_exit_code.sql"
+                ).read_text("utf-8")
             )
         )
     finally:

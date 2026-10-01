@@ -117,6 +117,10 @@ class HandlerProjectionClaudeHookEvents:
             source_topic=request.source_topic or SOURCE_TOPIC,
             goal_id=event.goal_id,
             parent_goal_id=event.parent_goal_id,
+            lane=event.lane or None,
+            model=event.model,
+            host=event.host,
+            exit_code=event.exit_code,
         )
 
         span_update: ModelClaudeAgentSpanUpdate | None = None
