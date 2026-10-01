@@ -113,13 +113,9 @@ handler_routing:
     major: 1
     minor: 0
     patch: 0
-  routing_strategy: default
+  routing_strategy: operation_match
   handlers:
     - operation: agent_learning_retrieval
-      routing_key: "retrieve"
-      handler_key: "HandlerAgentLearningRetrieval"
-      priority: 0
-      output_events: []
       handler:
         name: "HandlerAgentLearningRetrieval"
         module: "omnimarket.nodes.node_agent_learning_retrieval_effect.handlers.handler_agent_learning_retrieval"
