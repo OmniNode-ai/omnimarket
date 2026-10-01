@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-18278, consumer first: a released consumer must decode the next shape.
+"""OMN-18278: the backend config now declares ``inline_reasoning_terminator``.
 
-The change after this consumer's release declares ``inline_reasoning_terminator``
-on a backend in the bifrost delegation config. A consumer that forbids extra
-keys would dead-letter that payload, so this release accepts the key and drops it.
+The consumer-first release accepted the key and dropped it. This change declares
+it, so a decoded backend keeps the terminator instead of discarding it.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 )
 
 
-def test_backend_config_accepts_and_drops_inline_reasoning_terminator() -> None:
+def test_backend_config_keeps_inline_reasoning_terminator() -> None:
     cfg = ModelDelegationBackendConfig.model_validate(
         {
             "backend_id": "local-reasoner",
@@ -22,4 +21,4 @@ def test_backend_config_accepts_and_drops_inline_reasoning_terminator() -> None:
             "inline_reasoning_terminator": "</think>",
         }
     )
-    assert "inline_reasoning_terminator" not in cfg.model_dump()
+    assert cfg.model_dump()["inline_reasoning_terminator"] == "</think>"
