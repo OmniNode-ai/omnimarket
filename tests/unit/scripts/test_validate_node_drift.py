@@ -11,8 +11,10 @@ Regression coverage:
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -36,6 +38,65 @@ def drift_module() -> object:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("changed_ref", [None, "HEAD"])
+@pytest.mark.parametrize("condition", ["live", "repaired", "deleted"])
+def test_stale_known_violation_gate(
+    drift_module: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    changed_ref: str | None,
+    condition: str,
+) -> None:
+    nodes = tmp_path / "nodes"
+    nodes.mkdir()
+    node = nodes / "node_example"
+    if condition != "deleted":
+        node.mkdir()
+        (node / "contract.yaml").write_text(
+            "name: node_example\nnode_type: effect\n"
+            + ("handler: {}\n" if condition == "repaired" else "")
+            # This advisory finding must not keep a repaired exemption alive.
+            + "event_bus:\n  subscribe_topics: [onex.cmd.omnimarket.example.v1]\n"
+        )
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project.entry-points."onex.nodes"]\nnode_example = "example"\n'
+    )
+    monkeypatch.setattr(drift_module, "NODES_DIR", nodes)
+    monkeypatch.setattr(drift_module, "PYPROJECT", pyproject)
+    monkeypatch.setattr(drift_module, "KNOWN_MAIN_VIOLATIONS", {"node_example"})
+    if changed_ref:
+        monkeypatch.setattr(
+            drift_module, "collect_nodes", lambda **_kwargs: ([], set())
+        )
+    code = drift_module.run(
+        changed_ref=changed_ref,
+        strict=False,
+        check_orphan_nodes=False,
+        output_json=True,
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert code == (0 if condition == "live" else 1)
+    stale = [
+        f
+        for r in output["results"]
+        for f in r["findings"]
+        if f["check"] == "stale_baseline_entry"
+    ]
+    assert bool(stale) is (condition != "live")
+    if stale:
+        assert stale[0]["level"] == "FAIL"
+        assert "remove it" in stale[0]["message"]
+
+
+@pytest.mark.unit
+def test_real_known_violations_have_no_stale_entries(drift_module: ModuleType) -> None:
+    entries = drift_module._load_entry_points(REPO_ROOT / "pyproject.toml")
+    assert drift_module._stale_known_main_violations(entries) == []
+
+
+@pytest.mark.unit
 def test_validate_node_strict_only_on_directly_modified(
     drift_module: object,
     tmp_path: Path,
@@ -44,6 +105,9 @@ def test_validate_node_strict_only_on_directly_modified(
     """Pre-existing-on-main violation MUST stay WARN unless the node itself was modified."""
     nodes_dir = tmp_path / "nodes"
     nodes_dir.mkdir()
+    monkeypatch.setattr(
+        drift_module, "KNOWN_MAIN_VIOLATIONS", {"node_overseer_observer"}
+    )
     # Build a node that intentionally lacks a handler block (effect type).
     bad_node = nodes_dir / "node_overseer_observer"  # in KNOWN_MAIN_VIOLATIONS
     bad_node.mkdir()
@@ -161,9 +225,13 @@ def test_collect_nodes_check_all_returns_none_strict_eligible(
 def test_orphan_node_check_fails_known_violation_without_allowlist(
     drift_module: object,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Node liveness findings must not use KNOWN_MAIN_VIOLATIONS WARN mode."""
-    bad_node = tmp_path / "node_overseer_observer"  # in KNOWN_MAIN_VIOLATIONS
+    monkeypatch.setattr(
+        drift_module, "KNOWN_MAIN_VIOLATIONS", {"node_overseer_observer"}
+    )
+    bad_node = tmp_path / "node_overseer_observer"
     bad_node.mkdir()
     (bad_node / "contract.yaml").write_text(
         "name: node_overseer_observer\n"

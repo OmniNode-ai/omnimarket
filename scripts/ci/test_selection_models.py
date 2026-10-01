@@ -14,6 +14,8 @@ class EnumFullSuiteReason(StrEnum):
     SHARED_MODULE = "shared_module"
     THRESHOLD_MODULES = "threshold_modules"
     TEST_INFRASTRUCTURE = "test_infrastructure"
+    PROTECTED_SURFACE = "protected_surface"
+    UNMAPPED_MODULE = "unmapped_module"
     MAIN_BRANCH = "main_branch"
     MERGE_GROUP = "merge_group"
     SCHEDULED = "scheduled"

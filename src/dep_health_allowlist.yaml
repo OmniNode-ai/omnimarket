@@ -2,7 +2,7 @@
 # OMN-11058: CRITICAL topic triage — runtime ownership verification (2026-05-15)
 #
 # Format: each entry must have a `topic` key (used as literal match by the sweep engine).
-# Optional keys: reason, owner_repo, planned_subscriber, expires_at (all informational).
+# Optional keys: reason, owner_repo, planned_subscriber, expires_at. An entry past its expires_at (UTC date) is not honored.
 #
 # Topics on this list are SUPPRESSED from MISSING_TOPIC_EDGE findings when
 # scanning this repo root. Only use for:
@@ -13,123 +13,6 @@
 #
 # Review this list quarterly. Remove entries when the subscriber is wired.
 allowlist:
-  # --- pattern-b-dispatch (stability runtime bridge) ---
-  # Published/consumed across the stability runtime via the omnimarket Pattern B
-  # broker contract. omnimarket keeps these literals in the Codex runtime adapter
-  # until the bridge topics are loaded from the central runtime contract.
-  # Expires: 2026-08-29 — replace with central cross-repo topic registry
-  # ownership once the runtime bridge contracts are unified.
-  - topic: "onex.cmd.omnimarket.pattern-b-dispatch.v1"
-    reason: "Codex runtime adapter targets the active stability omnimarket Pattern B command topic."
-    owner_repo: omnimarket
-    planned_subscriber: node_pattern_b_runtime_bridge
-    expires_at: "2026-08-29"
-  - topic: "onex.evt.omnimarket.pattern-b-dispatch-completed.v1"
-    reason: "Codex runtime adapter waits for the active stability omnimarket Pattern B completion topic."
-    owner_repo: omnimarket
-    planned_subscriber: node_pattern_b_runtime_bridge
-    expires_at: "2026-08-29"
-
-  # --- delegation-inference-request ---
-  # Published by: node_delegation_orchestrator (omnimarket)
-  # Intended consumer: omnibase_infra LLM inference effect layer (delegation-specific path)
-  # Status: genuinely_unwired — node_llm_inference_effect subscribes to
-  #         onex.cmd.omnibase-infra.llm-inference-request.v1 (different topic).
-  #         Delegation-specific inference path not yet wired in omnibase_infra.
-  # Expires: 2026-08-15 — wire node_llm_inference_effect to delegation-inference-request
-  #           OR remove the topic if llm-inference-request is the canonical path.
-  - topic: "onex.cmd.omnibase-infra.delegation-inference-request.v1"
-    reason: "Delegation-specific LLM inference topic; omnibase_infra subscriber planned but not yet contract-declared."
-    owner_repo: omnibase_infra
-    planned_subscriber: node_llm_inference_effect
-    expires_at: "2026-08-15"
-
-  # --- delegation-quality-gate-request ---
-  # Published by: node_delegation_orchestrator (omnimarket)
-  # Intended consumer: omnibase_infra node_delegation_quality_gate_reducer
-  # Status: genuinely_unwired — the reducer node exists in omnibase_infra but has
-  #         no contract.yaml and no event_bus subscription declared.
-  # Expires: 2026-08-15 — add contract.yaml + event_bus to node_delegation_quality_gate_reducer
-  - topic: "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
-    reason: "Quality gate reducer exists in omnibase_infra but has no contract.yaml — subscription not declared."
-    owner_repo: omnibase_infra
-    planned_subscriber: node_delegation_quality_gate_reducer
-    expires_at: "2026-08-15"
-
-  # --- baseline-comparison-request: RESOLVED (OMN-15051) ---
-  # Removed 2026-07-24. node_delegation_orchestrator no longer publishes
-  # onex.cmd.omnibase-infra.baseline-comparison-request.v1. Investigation
-  # confirmed no Kafka consumer was ever planned for this shape:
-  # node_baseline_comparison_compute (the name-adjacent guess in the original
-  # 2026-05-15 triage) is OMN-2155's A/B pattern-ROI compute node — its
-  # ModelBaselineComparisonInput (paired ModelBaselineRunResult objects) is a
-  # structurally unrelated shape to the orchestrator's ModelBaselineIntent
-  # (flat per-task cost telemetry) and was never the intended target. The real
-  # cost-savings telemetry this event carried is already fully derivable from
-  # the canonical delegation-{completed,failed}.v1 terminal, which
-  # node_projection_savings already consumes directly, re-deriving the same
-  # Claude-cost counterfactual from served tokens. See handler_delegation_
-  # workflow.py OMN-15051 comment for the full evidence chain.
-
-  # --- alert-fix-requested ---
-  # Published by: node_monitor_alert_responder (omnimarket)
-  # Intended consumer: fix-dispatch agent / automation node (planned, not yet created)
-  # Status: genuinely_unwired — this topic drives auto-remediation dispatch for
-  #         RECOVERABLE alerts. The consuming node is not yet implemented.
-  # Expires: 2026-08-15 — implement node_fix_dispatch_effect or similar consumer
-  - topic: "onex.cmd.omnimarket.alert-fix-requested.v1"
-    reason: "Auto-remediation dispatch node not yet implemented; topic is forward-wired for planned subscriber."
-    owner_repo: omnimarket
-    planned_subscriber: node_fix_dispatch_effect
-    expires_at: "2026-08-15"
-
-  # --- build-dispatch-effect-start ---
-  # Published by: node_swarm_supervisor_orchestrator (omnimarket)
-  # Intended consumer: node_build_dispatch_effect (omnimarket) — but current
-  #   node_build_dispatch_effect subscribes to onex.cmd.omnimarket.build-loop-build.v1
-  #   not this topic. The swarm supervisor emits a separate "start" command that
-  #   no current contract subscribes to.
-  # Status: genuinely_unwired — topology mismatch between supervisor publish and
-  #         build dispatch subscribe topic.
-  # Expires: 2026-08-15 — align node_build_dispatch_effect to subscribe to this
-  #           topic OR rename to build-loop-build in the supervisor contract.
-  - topic: "onex.cmd.omnimarket.build-dispatch-effect-start.v1"
-    reason: "Supervisor publishes build-dispatch-effect-start; build_dispatch_effect subscribes to build-loop-build — topic mismatch, not yet reconciled."
-    owner_repo: omnimarket
-    planned_subscriber: node_build_dispatch_effect
-    expires_at: "2026-08-15"
-
-  # --- cross-cli-delegation-requested ---
-  # Published by: node_cross_cli_originator (omnimarket, created 2026-05-09, OMN-10143)
-  # Intended consumer: node_delegation_orchestrator (omnimarket) or similar ingress
-  # Status: genuinely_unwired — new node with no subscriber yet. The omnimarket
-  #         node_delegation_orchestrator subscribes to the omnibase-infra prefixed
-  #         delegation-request topic, not this omnimarket-prefixed one.
-  # Expires: 2026-08-15 — wire node_delegation_orchestrator to also subscribe to
-  #           this cross-cli topic, or route through a bridge node.
-  - topic: "onex.cmd.omnimarket.cross-cli-delegation-requested.v1"
-    reason: "New cross-CLI originator node (OMN-10143, 2026-05-09); subscriber not yet wired in any contract."
-    owner_repo: omnimarket
-    planned_subscriber: node_delegation_orchestrator
-    expires_at: "2026-08-15"
-
-  # --- delegation-request (omnimarket prefix) ---
-  # Published by: node_dispatch_worker_execution_effect (omnimarket)
-  # NOTE: node_build_dispatch_effect was removed from this list in OMN-7720 —
-  #       it now publishes to onex.cmd.omnimarket.ticket-pipeline-start.v1.
-  # Intended consumer: delegation orchestration layer
-  # Status: genuinely_unwired — omnimarket node_delegation_orchestrator subscribes
-  #         to onex.cmd.omnibase-infra.delegation-request.v1 (different service prefix).
-  #         The omnimarket-prefixed variant has no subscriber.
-  #         omniclaude/node_delegation_orchestrator subscribes to the omnibase-infra
-  #         variant, not this one.
-  # Expires: 2026-08-15 — unify topic prefix or add subscribe in delegation orchestrator.
-  - topic: "onex.cmd.omnimarket.delegation-request.v1"
-    reason: "Delegation orchestrators subscribe to omnibase-infra prefixed topic; omnimarket prefix variant has no subscriber — prefix inconsistency."
-    owner_repo: omnimarket
-    planned_subscriber: node_delegation_orchestrator
-    expires_at: "2026-08-15"
-
   # --- diagnostic.daemon-health (cross-cutting diagnostic topic) ---
   # Published by: node_emit_daemon (omnimarket) — synthetic health probe round-trip
   # Intended consumer: observability / monitoring layer (external to omnimarket)
@@ -144,26 +27,6 @@ allowlist:
     owner_repo: omnimarket
     planned_subscriber: observability_platform
     expires_at: "2026-11-15"
-
-  # --- golden-chain-generation (context pack pipeline, OMN-11680) ---
-  # Published by: node_golden_chain_generator (omnimarket) — Milestone 2.2
-  # Intended consumer: node_context_pack_builder (omnimarket, planned in OMN-11674 Milestone 3.2)
-  # Status: genuinely_unwired — consumer not yet implemented; pipeline is being built
-  #   incrementally. node_golden_chain_generator is the first node in the chain.
-  # Expires: 2026-08-15 — wire node_context_pack_builder
-  - topic: "onex.evt.omnimarket.golden-chain-generation-completed.v1"
-    reason: "New context pack pipeline node (OMN-11680); consumer node_context_pack_builder planned in OMN-11674 Milestone 3.2 but not yet implemented."
-    owner_repo: omnimarket
-    planned_subscriber: node_context_pack_builder
-    expires_at: "2026-08-15"
-
-  # Published trigger for node_golden_chain_generator — subscriber is this node.
-  # Allowlisted because the producer (node_test_generator, planned OMN-11679) is not yet merged.
-  - topic: "onex.cmd.omnimarket.golden-chain-generation-requested.v1"
-    reason: "New context pack pipeline command topic (OMN-11680); producer node_test_generator planned in OMN-11679 but not yet merged."
-    owner_repo: omnimarket
-    planned_subscriber: node_golden_chain_generator
-    expires_at: "2026-08-15"
 
   # --- task-delegated (legacy compat topic, OMN-13629) ---
   # After OMN-13629 (WS-F Phase 1), the canonical delegation terminals collapsed to

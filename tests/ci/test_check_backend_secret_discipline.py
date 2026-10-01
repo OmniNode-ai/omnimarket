@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -23,7 +24,7 @@ _SCRIPT = (
 )
 
 
-def _load_module() -> object:
+def _load_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "check_backend_secret_discipline", _SCRIPT
     )
@@ -211,6 +212,35 @@ def test_cloud_backend_missing_ref_detected() -> None:
     }
     violations = module._scan_bifrost_backends("fake.yaml", data)
     assert any("requires a logical secret reference" in v for v in violations)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("tier", ["judge", "typed_decision", "future_tier", ""])
+def test_non_local_backend_requires_ref_in_every_tier(tier: str) -> None:
+    module = _load_module()
+    backend = {"backend_id": "cloud-new", "tier": tier}
+    violations = module._scan_bifrost_backends("fake.yaml", {"backends": [backend]})
+    assert len(violations) == 1
+    assert violations[0].startswith(
+        f"fake.yaml: cloud backend 'cloud-new' (tier={tier!r}) requires a "
+        "logical secret reference"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("tier", ["judge", "typed_decision", "future_tier", ""])
+@pytest.mark.parametrize("ref_field", ["secret_ref", "api_key_ref", "credential_ref"])
+def test_non_local_backend_with_logical_ref_passes(tier: str, ref_field: str) -> None:
+    module = _load_module()
+    backend = {"backend_id": "cloud-new", "tier": tier, ref_field: "llm.test.key"}
+    assert module._scan_bifrost_backends("fake.yaml", {"backends": [backend]}) == []
+
+
+@pytest.mark.unit
+def test_local_backend_without_ref_passes() -> None:
+    module = _load_module()
+    backend = {"backend_id": "local-test", "tier": "local"}
+    assert module._scan_bifrost_backends("fake.yaml", {"backends": [backend]}) == []
 
 
 @pytest.mark.unit

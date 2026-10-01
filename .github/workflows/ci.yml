@@ -419,6 +419,13 @@ jobs:
       # SYNC with pre-commit hook 'house-inference-credential-gate'.
       - name: House inference-credential gate (enforce)
         run: uv run python scripts/ci/check_backend_secret_discipline.py
+      # OMN-20182: CI twin of the check-duplicate-registry-ids hook, in the
+      # lint job asserted by CI Summary's STRICT_GATE_JOBS.
+      - name: Duplicate registry IDs gate (enforce)
+        run: |
+          test -f .duplicate-id-registries.yaml
+          uv run python -m omnibase_core.validation.validator_duplicate_config_ids \
+            --manifest .duplicate-id-registries.yaml --repo-root .
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
       # route_source from contract+authority AND that no demo-path source reads
@@ -643,11 +650,12 @@ jobs:
       # It also enforces scripts/ci/parity_red_on_base_baseline.py as a SHRINK-ONLY
       # ratchet: growth hard-fails, a stale entry hard-fails, and removing an entry
       # re-arms assertion 7 for that node and EXECUTES it. The inline fetch makes
-      # origin/dev's tip available for flip-discovery (this checkout is shallow); the
-      # gate NOTEs and exits 0 if it is still unavailable, exactly as in core.
+      # origin/dev's tip available for flip-discovery. Fetch and ref verification
+      # must succeed before the gate runs, since it exits 0 on an unavailable base.
       - name: Canonical-shape flip-bundle seam gate (OMN-15344 fan-out)
         run: |
-          git fetch --no-tags --prune origin +refs/heads/dev:refs/remotes/origin/dev || true
+          git fetch --no-tags --prune origin +refs/heads/dev:refs/remotes/origin/dev
+          git rev-parse --verify origin/dev
           uv run python ../omnibase_core/scripts/ci/verify_flip_bundle.py \
             --package omnimarket --src-root src \
             --baseline scripts/ci/canonical_handler_shape_baseline.py \
@@ -999,6 +1007,7 @@ jobs:
         if: vars.ENABLE_SMART_TESTS == 'true' && needs.detect-changes.outputs.is_full_suite == 'false'
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
+          OMN20025_POSTGRES_BACKEND: ci
         run: |
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \

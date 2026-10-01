@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -173,8 +174,38 @@ class ContractTopologyParser:
         data = self._load_yaml(path)
         if data is None:
             return
+        today = datetime.now(UTC).date()
         for entry in data.get("allowlist", []) or []:
             if isinstance(entry, dict) and "topic" in entry:
+                raw_expiry = entry.get("expires_at")
+                if raw_expiry is not None:
+                    # OMN-20181: expires_at is enforced. An expired or unreadable
+                    # expiry does not suppress anything, so the finding it hid
+                    # surfaces again and the gate judges it. It never raises:
+                    # the same parser sweeps other repos' allowlists, and one
+                    # stale row there must not crash the whole sweep.
+                    try:
+                        expires_at = date.fromisoformat(str(raw_expiry))
+                    except ValueError:
+                        logger.warning(
+                            "%s: invalid expires_at %r for topic %s (expected "
+                            "YYYY-MM-DD); entry not honored",
+                            path,
+                            raw_expiry,
+                            entry["topic"],
+                        )
+                        continue
+                    if expires_at < today:
+                        logger.warning(
+                            "%s: expired allowlist entry for topic %s "
+                            "(expires_at=%s, today=%s); entry not honored, "
+                            "remove it or fix the topic edge",
+                            path,
+                            entry["topic"],
+                            expires_at,
+                            today,
+                        )
+                        continue
                 allowlisted.add(str(entry["topic"]))
 
     def _find_undeclared_topics(

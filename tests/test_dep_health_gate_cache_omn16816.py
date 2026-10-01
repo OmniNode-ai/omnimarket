@@ -7,7 +7,7 @@ invocation with no caching and no cross-process serialization, so N concurrent
 worktree lanes ran N full scans at once. These tests pin the two properties that
 fix costs:
 
-* the cache key is a pure function of the bytes the sweep actually reads, so two
+* the cache key tracks the bytes the sweep reads and the UTC expiry date, so two
   checkouts with identical content share a cache entry and an unrelated edit
   (a ``.md`` file, a ``.pyc``) does not invalidate it;
 * the cache-miss scan is serialized machine-wide, and a lock the process cannot
@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +78,42 @@ def _key(root: Path, **overrides: Any) -> str:
     }
     kwargs.update(overrides)
     return str(gate.compute_scan_key(**kwargs))
+
+
+def test_cached_verdict_expires_at_utc_day_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _make_tree(tmp_path / "repo")
+    cache = tmp_path / "cache"
+    current = datetime(2026, 9, 30, 23, 59, tzinfo=UTC)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return current.astimezone(tz)
+
+    monkeypatch.setattr(gate, "datetime", FixedDatetime)
+    calls = 0
+
+    def run_sweep(_root: Path, _args: list[str]) -> tuple[int, str]:
+        nonlocal calls
+        calls += 1
+        if current.date() > datetime(2026, 9, 30, tzinfo=UTC).date():
+            return 2, "expired allowlist entry"
+        return 0, "clean"
+
+    kwargs = {
+        "repo_root": root,
+        "cache_root": cache,
+        "run_sweep": run_sweep,
+        "collect_inputs": lambda scan_root: (_scanned(scan_root), []),
+    }
+    assert gate.run_gate(**kwargs) == 0
+    assert gate.run_gate(**kwargs) == 0
+    assert calls == 1
+    current += timedelta(minutes=2)
+    assert gate.run_gate(**kwargs) == 2
+    assert calls == 2
 
 
 # ---------------------------------------------------------------------------
