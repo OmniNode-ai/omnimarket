@@ -60,7 +60,14 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # OMN-20154 now declares ``provider_id``, ``http_status`` and ``provider_code``
 # as real attempt fields below. They retain the provider facts stamped by the
 # producer and are no longer listed among the forthcoming keys.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+#
+# OMN-20165 adds ``rubric_verdict``, the per-attempt record of the class rubric
+# compute (node_delegation_rubric_check_compute), which records and decides
+# nothing. The producer and the declared field land in the change after the
+# release that carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "rubric_verdict"}
+)
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
