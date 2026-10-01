@@ -17,15 +17,18 @@
 # named by the RUNG_EVAL_TABLE_DIR repository variable (one JSON-lines file per
 # night); a database projection of it is the next slice.
 #
+# Schedule removed (OMN-19456): this repository is public, and the lab base URLs
+# the rungs need cannot be set as repository variables without printing them in
+# public run logs. The nightly eval moves to a lab-host timer under OMN-19456, so
+# no lab URLs live in this repo. Only workflow_dispatch remains. A consumer for the
+# rung table must be wired before any schedule is re-enabled.
+#
 # Self-hosted only: the rungs are lab hosts with no route from a hosted runner
 # (scripts/ci/check_lane_job_placement.py).
 
 name: Delegation rung eval (nightly)
 
 on:
-  schedule:
-    # 08:10Z, after the 07:30Z delegation nightly so the two never share a rung.
-    - cron: '10 8 * * *'
   workflow_dispatch:
     inputs:
       window_days:
@@ -53,9 +56,6 @@ jobs:
       RUNG_EVAL_LAB_202_MODEL: ${{ vars.RUNG_EVAL_LAB_202_MODEL }}
       RUNG_EVAL_PLANNER_200_BASE_URL: ${{ vars.RUNG_EVAL_PLANNER_200_BASE_URL }}
       RUNG_EVAL_PLANNER_200_MODEL: ${{ vars.RUNG_EVAL_PLANNER_200_MODEL }}
-      RUNG_EVAL_CLOUD_GLM_BASE_URL: ${{ vars.RUNG_EVAL_CLOUD_GLM_BASE_URL }}
-      RUNG_EVAL_CLOUD_GLM_MODEL: ${{ vars.RUNG_EVAL_CLOUD_GLM_MODEL }}
-      RUNG_EVAL_CLOUD_GLM_API_KEY: ${{ secrets.RUNG_EVAL_CLOUD_GLM_API_KEY }}
       RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL }}
       RUNG_EVAL_CLOUD_OPENROUTER_MODEL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_MODEL }}
       RUNG_EVAL_CLOUD_OPENROUTER_API_KEY: ${{ secrets.RUNG_EVAL_CLOUD_OPENROUTER_API_KEY }}

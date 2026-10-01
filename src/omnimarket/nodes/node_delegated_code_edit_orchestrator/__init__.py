@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Delegated code edit loop orchestrator node (OMN-20290).
+
+A task and a git worktree in; a verified diff, a loop receipt and a tool_use
+rubric verdict out. Each model turn is one ``onex delegate`` run whose reply is
+a typed list of actions (view, ls, grep, write, edit, run_check, finish); the
+loop applies them confined to the worktree and the declared writable paths,
+runs only declared checks, and ends accepted when every check passes.
+"""
+
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator import (
+    HandlerDelegatedCodeEditOrchestrator,
+    normalise_path,
+    writable,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
+    RESPONSE_CONTRACT,
+    TOOL_SCHEMAS,
+    build_turn_prompt,
+    parse_turn_reply,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    EnumCodeEditStatus,
+    EnumCodeEditTool,
+    ModelCheckResult,
+    ModelCodeEditAction,
+    ModelCodeEditResult,
+    ModelDeclaredCheck,
+    ModelDelegatedCodeEditRequest,
+    ModelObservation,
+    ModelTurnReply,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.protocols.protocol_delegated_code_edit_ports import (
+    LoopReceiptExistsError,
+    ProtocolDelegatedCodeEditPorts,
+    WorkspacePathError,
+)
+
+
+class NodeDelegatedCodeEditOrchestrator(HandlerDelegatedCodeEditOrchestrator):
+    """ONEX entry-point wrapper for HandlerDelegatedCodeEditOrchestrator."""
+
+
+__all__ = [
+    "RESPONSE_CONTRACT",
+    "TOOL_SCHEMAS",
+    "EnumCodeEditStatus",
+    "EnumCodeEditTool",
+    "HandlerDelegatedCodeEditOrchestrator",
+    "LoopReceiptExistsError",
+    "ModelCheckResult",
+    "ModelCodeEditAction",
+    "ModelCodeEditResult",
+    "ModelDeclaredCheck",
+    "ModelDelegatedCodeEditRequest",
+    "ModelObservation",
+    "ModelTurnReply",
+    "NodeDelegatedCodeEditOrchestrator",
+    "ProtocolDelegatedCodeEditPorts",
+    "WorkspacePathError",
+    "build_turn_prompt",
+    "normalise_path",
+    "parse_turn_reply",
+    "writable",
+]
