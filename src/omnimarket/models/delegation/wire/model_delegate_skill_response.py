@@ -67,6 +67,10 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 #
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+# OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
+_FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
+    {"baseline_source", "baseline_state"}
+)
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
@@ -317,12 +321,6 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
-    baseline_source: Literal["session_model", "overlay", "store", "fixed_default"] = (
-        Field(default="fixed_default")
-    )
-    baseline_state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = Field(
-        default="RESOLVED"
-    )
     pricing_manifest_version: int = Field(default=0, ge=0)
     prompt_text: str = Field(default="")
     response: str = Field(default="")
@@ -538,6 +536,27 @@ class ModelDelegateSkillResponse(BaseModel):
             for key, item in data.items()
             if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
         }
+
+    # OMN-20274, step 1 of 2 (OMN-19969): a CONSUMER that decodes the savings
+    # baseline keys before any producer emits them. omnimarket#3172 declares
+    # ``baseline_source`` and ``baseline_state`` on this model; the Wire
+    # Compatibility Gate refuses that while the last release forbids extras, so
+    # this release tolerates and drops the keys, and #3172 declares them once a
+    # release carrying this is out. Only an undeclared key is dropped, so this
+    # decoder is a no-op the moment the fields are declared.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_baseline_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in _FORTHCOMING_BASELINE_RESPONSE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
     # producer on this package emits it (the OMN-18931 pattern on the request).
