@@ -19,7 +19,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.delegation.deciding_cause import (
     is_gate_refusal,
@@ -34,6 +34,7 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_caller_lane import CALLER_LANE_PATTERN
 from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
@@ -451,6 +452,45 @@ class ModelDelegateSkillResponse(BaseModel):
             "no ticket was named; a malformed name is never guessed into one."
         ),
     )
+    # OMN-19860, step 2: the released consumer already decodes these keys.
+    # The handler stamps the caller's lane and session at the same point as
+    # ticket_id; absent identity leaves an anonymous terminal's wire unchanged.
+    caller_lane: str | None = Field(
+        default=None,
+        pattern=CALLER_LANE_PATTERN.pattern,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Lane that issued the delegation, as the caller named it. Absent "
+            "means no lane was named; a malformed name is never guessed into one."
+        ),
+    )
+    session_id: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Session that issued the delegation, as the caller named it, stored "
+            "as a canonical UUID string. Absent means no UUID session was named."
+        ),
+    )
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _canonical_session_id(cls, value: object) -> str | None:
+        """Store a UUID session in its canonical spelling; drop anything else.
+
+        Attribution, not policy (the same posture as the projection model): a
+        session that is not a UUID is dropped rather than refused, so a
+        malformed session never dead-letters the terminal that carries it and
+        is never guessed into one.
+        """
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            try:
+                return str(UUID(value))
+            except ValueError:
+                return None
+        return None
 
     # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
     # they are declared. The wire compatibility gate (OMN-18868) refuses a new
@@ -496,19 +536,11 @@ class ModelDelegateSkillResponse(BaseModel):
             return data
         return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
 
-    # OMN-19860, step 1 of 2: a CONSUMER that decodes ``caller_lane`` and
-    # ``session_id`` before any producer on this package emits them, exactly
-    # as OMN-19514 did for ``ticket_id``. The last released response model
-    # forbids extras, so a producer that stamped either key today would
-    # dead-letter on every consumer still carrying that release; the OMN-18868
-    # wire compatibility gate refuses that producer until a release carrying
-    # this decoder is out. Step 2 declares both fields and the delegate-skill
-    # handler copies the request's lane and session onto the terminal.
-    #
-    # Dropping is safe for the same reason it was for the ticket: both keys
-    # are attribution, not policy. A subclass that declares a key (the
-    # terminal projection model declares both) keeps it; only a class that
-    # does not declare it drops it. Every other unknown key is still refused.
+    # OMN-19860, step 2 is done: both identity fields are now declared, so this
+    # released step-1 decoder is a no-op for this class. Keep the validator in
+    # place for subclasses and older payloads that still route through it:
+    # only an undeclared identity key is dropped; every other unknown key is
+    # still refused.
     @model_validator(mode="before")
     @classmethod
     def _tolerate_caller_identity_before_it_is_declared(cls, data: Any) -> Any:
