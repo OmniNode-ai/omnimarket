@@ -43,6 +43,9 @@ from omnibase_core.constants.constants_runtime_profiles import (
     CONSUMER_ATTACHED_RUNTIME_PROFILES,
     REGISTERED_RUNTIME_PROFILES,
 )
+from omnibase_core.validation.validator_runtime_profiles import (
+    load_default_allowlist,
+)
 
 PROFILE: Final[str] = "tenant-projection"
 OWNING_TICKET: Final[str] = "OMN-17556"
@@ -97,19 +100,26 @@ def _declared_profiles(raw: dict[str, object]) -> tuple[str, ...]:
     )
 
 
-def _allowlist_node_ids() -> list[str]:
-    raw = yaml.safe_load(_ALLOWLIST_PATH.read_text(encoding="utf-8"))
-    assert isinstance(raw, dict), f"{_ALLOWLIST_PATH} did not parse as a mapping"
+def _allowlist_node_ids(path: Path = _ALLOWLIST_PATH) -> list[str]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict), f"{path} did not parse as a mapping"
     entries = raw.get("allowlist") or raw.get("entries") or []
     if not isinstance(entries, list):
         raise AssertionError(
-            f"{_ALLOWLIST_PATH}: expected a list of entries, got "
+            f"{path}: expected a list of entries, got "
             f"{type(entries).__name__}. The lookup shape changed; a zero from "
             "this function would be a false clean bill of health."
         )
     return [
         str(e["node_id"]) for e in entries if isinstance(e, dict) and "node_id" in e
     ]
+
+
+def _carried(node_ids: list[str]) -> list[str]:
+    return sorted(
+        set(node_ids)
+        & (set(TENANT_PROJECTION_CONTRACTS) | set(TENANT_PROJECTION_CONTRACTS.values()))
+    )
 
 
 @pytest.mark.unit
@@ -181,7 +191,9 @@ def test_each_contract_states_permanent_ownership_not_interim_orphaning(
 
 
 @pytest.mark.unit
-def test_no_contract_is_carried_by_an_allowlist_exemption() -> None:
+def test_no_contract_is_carried_by_an_allowlist_exemption(
+    tmp_path: Path,
+) -> None:
     """The eight survive on the registration alone -- the load-bearing check.
 
     Deleting the interim block is only safe while this holds. If it ever stops
@@ -190,25 +202,30 @@ def test_no_contract_is_carried_by_an_allowlist_exemption() -> None:
     """
     node_ids = _allowlist_node_ids()
 
-    # POSITIVE CONTROL, per the empty-result-is-not-evidence rule: the
-    # allowlist really does parse and really does still carry the OMN-12957
-    # baseline freeze. Without this, a renamed key would make the assertion
-    # below pass vacuously against an empty list.
-    assert len(node_ids) >= 10, (
-        f"{_ALLOWLIST_PATH} yielded only {len(node_ids)} node_ids. The "
-        "OMN-12957 baseline freeze alone is larger than that, so this is a "
-        "parse failure, not an empty allowlist -- the zero asserted below "
-        "would be meaningless."
+    # POSITIVE CONTROL, per the empty-result-is-not-evidence rule: a planted
+    # tenant-projection row must be visible to the lookup, and the lookup must
+    # agree with the validator's own loader on the real file. Without these,
+    # a renamed key would make the zero asserted below pass vacuously against
+    # an empty list.
+    synthetic = tmp_path / "runtime_profiles_allowlist.yaml"
+    synthetic.write_text(
+        "allowlist:\n  - node_id: canary_score_reducer\n    reason: positive control\n",
+        encoding="utf-8",
     )
-    assert "version_skew_detector" in node_ids, (
-        "expected the OMN-12957 baseline freeze to still be present; its "
-        "absence means the lookup shape changed."
+    planted = _allowlist_node_ids(synthetic)
+    assert planted == ["canary_score_reducer"], (
+        "the lookup must see a planted tenant-projection row, else the zero "
+        "below is not evidence."
+    )
+    assert _carried(planted) == ["canary_score_reducer"], (
+        "the lookup must see a planted tenant-projection row, else the zero "
+        "below is not evidence."
+    )
+    assert set(node_ids) == set(load_default_allowlist(_ALLOWLIST_PATH)), (
+        "this lookup must agree with the validator's own loader on the real file."
     )
 
-    carried = sorted(
-        set(node_ids)
-        & (set(TENANT_PROJECTION_CONTRACTS) | set(TENANT_PROJECTION_CONTRACTS.values()))
-    )
+    carried = _carried(node_ids)
     assert carried == [], (
         f"these tenant-projection contracts are still carried by an allowlist "
         f"exemption: {carried}. {PROFILE!r} is registered, so the exemption is "

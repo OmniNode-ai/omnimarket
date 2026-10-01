@@ -12,11 +12,18 @@ from pydantic import ValidationError
 from omnimarket.delegation.rubric.contract_loader import (
     load_delegation_class_rubrics,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_code_generation import (
+    ids_traceable,
+)
+from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_common import (
+    added_diff_lines,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
     HandlerDelegationRubricCheck,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     ModelClassRubric,
+    ModelIdsTraceableParams,
     ModelRubricCheckRequest,
     ModelRubricExecutionResult,
     ModelRubricVerdict,
@@ -958,3 +965,136 @@ def test_claims_traceable_qualified_ref_matches_a_bare_source_ref():
         source="widget#41 and #42 merged.",
     )
     assert (row.outcome, row.reason_code) == ("PASS", "claims_verified")
+
+
+def _diff(context, removed, added_lines):
+    body = "".join("+" + line + "\n" for line in added_lines)
+    return (
+        "diff --git a/src/widget.py b/src/widget.py\n"
+        "--- a/src/widget.py\n"
+        "+++ b/src/widget.py\n"
+        "@@ -1,3 +1,4 @@\n"
+        " " + context + "\n"
+        "-" + removed + "\n" + body
+    )
+
+
+def test_ids_traceable_context_line_id_not_scored():
+    row = criterion(
+        "ids_traceable",
+        task_class="code_generation",
+        answer=_diff("# see OMN-9001", "old_line = 1", ["x = 1"]),
+        prompt="Write the code",
+        source="Some context",
+    )
+    assert (row.outcome, row.reason_code) == ("UNDETERMINED", "not_applicable")
+
+
+def test_ids_traceable_removed_line_id_not_scored():
+    row = criterion(
+        "ids_traceable",
+        task_class="code_generation",
+        answer=_diff("context = 0", "# OMN-9002 old", ["x = 2"]),
+        prompt="Write the code",
+        source="Some context",
+    )
+    assert (row.outcome, row.reason_code) == ("UNDETERMINED", "not_applicable")
+
+
+def test_ids_traceable_added_line_invented_id_fails():
+    row = criterion(
+        "ids_traceable",
+        task_class="code_generation",
+        answer=_diff("# see OMN-9001", "old_line = 1", ["# OMN-9003 new"]),
+        prompt="Write the code for OMN-9001",
+        source="Context about OMN-9001",
+    )
+    assert (row.outcome, row.reason_code) == ("FAIL", "invented_id")
+    assert "OMN-9003" in row.detail
+    assert "OMN-9003" in row.facts
+    assert "OMN-9001" not in row.detail
+    assert "OMN-9001" not in row.facts
+
+
+def test_ids_traceable_added_line_id_in_request_passes():
+    row = criterion(
+        "ids_traceable",
+        task_class="code_generation",
+        answer=_diff("context = 0", "old_line = 1", ["# OMN-9004"]),
+        prompt="Implement OMN-9004",
+        source="Some context",
+    )
+    assert (row.outcome, row.reason_code) == ("PASS", "ids_verified")
+    assert row.facts == ("OMN-9004",)
+
+
+def test_ids_traceable_non_diff_answer_still_scored_whole():
+    row = criterion(
+        "ids_traceable",
+        task_class="code_generation",
+        answer="# SYN-999",
+        prompt="Write the code",
+        source="SYN-101",
+    )
+    assert (row.outcome, row.reason_code) == ("FAIL", "invented_id")
+
+
+def test_ids_traceable_whole_answer_scope_still_scores_context():
+    rubric = load_delegation_class_rubrics().for_class("code_generation")
+    row = next(r for r in rubric.criteria if r.criterion_id == "ids_traceable")
+    whole = row.model_copy(
+        update={
+            "params": ModelIdsTraceableParams(
+                ticket_id_pattern=row.params.ticket_id_pattern,
+                diff_scope="whole_answer",
+            )
+        }
+    )
+    item = request(
+        task_class="code_generation",
+        answer=_diff("# see OMN-9005", "old_line = 1", ["x = 1"]),
+        prompt="Write the code",
+        source="Some context",
+    )
+    result = ids_traceable(item, whole)
+    assert (result.outcome, result.reason_code) == ("FAIL", "invented_id")
+
+
+@pytest.mark.parametrize("task_class", ["code_generation", "test"])
+def test_ids_traceable_contract_declares_added_lines(task_class):
+    rubric = load_delegation_class_rubrics().for_class(task_class)
+    row = next(r for r in rubric.criteria if r.criterion_id == "ids_traceable")
+    assert row.params.diff_scope == "added_lines"
+
+
+def test_ids_traceable_params_require_diff_scope():
+    with pytest.raises(ValidationError):
+        ModelIdsTraceableParams(ticket_id_pattern="x")
+
+
+def test_added_diff_lines_parser():
+    assert added_diff_lines("plain prose only") is None
+    two_added = added_diff_lines(
+        "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n"
+        "@@ -1,3 +1,4 @@\n context line\n-removed line\n+a\n+b\n more context\n"
+    )
+    assert two_added == "a\nb"
+    file_headers = added_diff_lines(
+        "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n"
+        "@@ -1,3 +1,4 @@\n context\n-removed\n+a\n"
+        "diff --git a/g.py b/g.py\n--- a/g.py\n+++ b/g.py\n"
+        "@@ -1,2 +1,3 @@\n context\n-removed\n+b\n"
+    )
+    assert file_headers == "a\nb"
+    ignored = added_diff_lines(
+        "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n"
+        "@@ -1,3 +1,4 @@\n # OMN-9001\n-# OMN-9002\n+x = 1\n"
+    )
+    assert ignored == "x = 1"
+    interrupted = added_diff_lines(
+        "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n"
+        "@@ -1,3 +1,4 @@\n context\n+a\nSome prose line\n+b\n"
+        "```\n+c\n"
+        "@@ -2,2 +2,2 @@\n context\n+d\n"
+    )
+    assert interrupted == "a\nd"

@@ -39,6 +39,9 @@ from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 # OMN-19436, the consumer-first half. The second half of that ticket adds
 # ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
@@ -62,12 +65,11 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # as real attempt fields below. They retain the provider facts stamped by the
 # producer and are no longer listed among the forthcoming keys.
 #
-# OMN-20165 adds ``rubric_verdict``, the per-attempt record of the class rubric
-# compute (node_delegation_rubric_check_compute), which records and decides
-# nothing. The producer and the declared field land in the change after the
-# release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "rubric_verdict"}
+# OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+# OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
+_FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
+    {"baseline_source", "baseline_state"}
 )
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
@@ -197,6 +199,10 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "Human-readable detail behind the accept/climb decision, e.g. the "
             "measured score against the required bar."
         ),
+    )
+    rubric_verdict: ModelAttemptRubricVerdict | None = Field(
+        default=None,
+        description="Recorded class rubric verdict; decides nothing. None when no gate judged this attempt.",
     )
     reasoning_preamble_rule: str | None = Field(
         default=None,
@@ -536,6 +542,27 @@ class ModelDelegateSkillResponse(BaseModel):
             for key, item in data.items()
             if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
         }
+
+    # OMN-20274, step 1 of 2 (OMN-19969): a CONSUMER that decodes the savings
+    # baseline keys before any producer emits them. omnimarket#3172 declares
+    # ``baseline_source`` and ``baseline_state`` on this model; the Wire
+    # Compatibility Gate refuses that while the last release forbids extras, so
+    # this release tolerates and drops the keys, and #3172 declares them once a
+    # release carrying this is out. Only an undeclared key is dropped, so this
+    # decoder is a no-op the moment the fields are declared.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_baseline_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in _FORTHCOMING_BASELINE_RESPONSE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
     # producer on this package emits it (the OMN-18931 pattern on the request).

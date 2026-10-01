@@ -274,6 +274,15 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     routable = {item["node_name"]: item for item in report["routable"]}
 
     assert (
+        routable["node_projection_delegation_disposition"]["input_model"]
+        == "omnimarket.nodes.node_projection_delegation_disposition.models.model_delegation_disposition.ModelDelegationDispositionProjectionRequest"
+    )
+    assert (
+        routable["node_projection_delegation_disposition"]["handler"]
+        == "omnimarket.nodes.node_projection_delegation_disposition.handlers.handler_projection_delegation_disposition.HandlerProjectionDelegationDisposition"
+    )
+
+    assert (
         routable["node_ab_compare_orchestrator"]["input_model"]
         == "omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start.ModelAbCompareStart"
     )

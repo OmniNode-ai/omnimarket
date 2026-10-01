@@ -9,7 +9,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Protocol, Self
+from typing import Any, Protocol, Self
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
@@ -374,6 +374,23 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
         ge=0,
         description="Served output tokens. None = not recorded by the source.",
     )
+
+    # OMN-20274, step 1 of 2 (OMN-19969): tolerate the baseline keys omnimarket
+    # #3172 adds to this row before they are declared (see the response model).
+    # Only an undeclared key is dropped, so this is a no-op once declared.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_baseline_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in ("baseline_source", "pricing_manifest_version")
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     @model_validator(mode="after")
     def _amounts_match(self) -> Self:

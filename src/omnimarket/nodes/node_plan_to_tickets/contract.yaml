@@ -2,6 +2,7 @@
 name: node_plan_to_tickets
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 # OMN-13718: top-level input_model is required so RuntimeLocal's event-driven

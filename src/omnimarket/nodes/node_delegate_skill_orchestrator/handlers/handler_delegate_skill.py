@@ -59,6 +59,9 @@ from omnimarket.models.delegation.delegation_ticket_id import (
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -487,6 +490,13 @@ def _attempt_records(
     for raw in attempt_values:
         if not isinstance(raw, dict):
             continue
+        rubric_verdict = None
+        raw_verdict = raw.get("rubric_verdict")
+        if isinstance(raw_verdict, dict):
+            try:
+                rubric_verdict = ModelAttemptRubricVerdict.model_validate(raw_verdict)
+            except ValidationError:
+                rubric_verdict = None
         if from_escalation_history:
             failure_reasons = _as_str_list(raw.get("failure_reasons"))
             decision = _as_acceptance_decision(raw.get("acceptance_decision"))
@@ -535,6 +545,7 @@ def _attempt_records(
                     # the rung by the workflow. None when no gate judged it.
                     reasoning_preamble_rule=_preamble_rule(raw),
                     **_provider_facts(raw),
+                    rubric_verdict=rubric_verdict,
                 )
             )
             continue
@@ -569,6 +580,7 @@ def _attempt_records(
                 # typed terminal always read "no segmentation attempted".
                 acceptance_detail=str(raw.get("acceptance_detail") or ""),
                 reasoning_preamble_rule=_preamble_rule(raw),
+                rubric_verdict=rubric_verdict,
                 reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
                 input_tokens_measured=_as_optional_int(

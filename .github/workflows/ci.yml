@@ -32,6 +32,14 @@ concurrency:
     }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # GitHub-hosted runners hit PyPI download timeouts at uv's 30s default
+  # (files.pythonhosted.org; torch/CUDA wheels from the intelligence extra
+  # and small wheels alike). 2026-10-01 07:18-08:32Z every omnimarket PR and
+  # the dev head went red on "Failed to download distribution due to network
+  # timeout". omnibase_infra, omnibase_core and omniclaude already set this.
+  UV_HTTP_TIMEOUT: "600"
+
 jobs:
   # =============================================================================
   # Per-run runner routing (OMN-18031)
@@ -287,7 +295,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
       - name: Ruff format check
@@ -755,7 +763,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
 
@@ -916,7 +924,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       # OMN-18693: the shadow-comparison migration proof starts a private,
       # socket-only PostgreSQL 16 cluster through the standard integration
@@ -1348,7 +1356,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       # OMN-18693: the shadow-comparison migration proof starts a private,
       # socket-only PostgreSQL 16 cluster through the standard integration
@@ -1468,7 +1476,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Topic naming lint (OMN-8507)
         env:
           OMNIBASE_INFRA_PATH: ../omnibase_infra
@@ -1500,7 +1508,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Check topic enum drift (OMN-13331)
         run: |
           echo "================================================================"
@@ -1530,7 +1538,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Check topic drift (OMN-13331)
         run: |
           echo "================================================================"
@@ -1639,7 +1647,7 @@ jobs:
         # those import omnibase_core and sibling omnimarket modules. A missing
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Every changed wire payload must decode on the last release (OMN-18868)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
@@ -1710,7 +1718,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
 
@@ -1739,7 +1747,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Verify entry point wiring
         run: uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 
@@ -1778,7 +1786,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run handler contract compliance sweep
         run: uv run python -m omnimarket.nodes.node_compliance_sweep --target-dirs .
 
@@ -1908,7 +1916,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Golden-chain census gate (OMN-14536)
         run: |
           # The golden_chain_sweep node is a pure validator over projected_rows.
@@ -1993,7 +2001,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run golden chain suite
         run: |
           uv run pytest             tests/test_golden_chain_*.py             tests/unit/nodes/test_golden_chain_*.py             tests/nodes/*/test_golden_chain_*.py             -v --tb=short -q -m "not kafka"             --junit-xml=golden-chain-results.xml
@@ -2032,7 +2040,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run SEA acceptance chain and session-defect error chains
         run: |
           uv run pytest \
@@ -2078,7 +2086,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run generated-node golden-chain tests
         run: |
           uv run pytest \
@@ -2224,7 +2232,7 @@ jobs:
 
       - name: Install onex_change_control
         working-directory: onex_change_control
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       - name: Validate contract YAML files
         working-directory: onex_change_control
@@ -2282,7 +2290,7 @@ jobs:
         with:
           version: "latest"
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Run contract sweep scope-invariant gate
         run: uv run python scripts/ci/run_contract_sweep_gate.py --strict
 
@@ -2410,7 +2418,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
       - name: Download per-shard coverage artifacts
         uses: actions/download-artifact@v4
         with:
@@ -2776,8 +2784,13 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      # OMN-20261: no --all-extras. The `intelligence` extra resolves
+      # adaptive-classifier and with it torch and the CUDA wheels (~3 GB),
+      # which this gate never imports; a cold hosted-runner pull of that set
+      # intermittently overran the job timeout. The base environment is all
+      # the gate needs (verified: the gate and its golden-chain tests pass).
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync
 
       # Fail closed on ANY missing package -- both the runtime-soundness pair
       # (ACTIVE_RUNTIME_PACKAGES) and the full census scope (GRAPH_PACKAGES).

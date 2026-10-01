@@ -66,6 +66,9 @@ class ModelLlmDelegationCallRequest(BaseModel):
     persisted or published to Kafka.
     """
 
+    inline_reasoning_terminator: str | None = None
+    """Backend-declared end of leading inline reasoning; None strips nothing."""
+
     task_type: str = "generic"
     task_id: str | None = None
 

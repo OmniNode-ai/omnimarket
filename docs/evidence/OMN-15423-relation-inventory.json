@@ -97,7 +97,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 32,
-    "table": 101,
+    "table": 102,
     "view": 10
   },
   "relations": [
@@ -3377,6 +3377,65 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0000_create_delegation_dispositions.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "delegation_dispositions_artifact_kind_check",
+        "delegation_dispositions_disposition_check",
+        "delegation_dispositions_edit_ratio_check"
+      ],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [
+        "idx_delegation_dispositions_tenant_disposition",
+        "idx_delegation_dispositions_tenant_lane"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, delegation_correlation_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_disposition",
+      "name": "delegation_dispositions",
+      "owner_declaration": "node_projection_delegation_disposition",
+      "partitioning": [],
+      "producer": "node_projection_delegation_disposition",
+      "readers": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_delegation_eval",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -3544,6 +3603,7 @@
     {
       "accessor_nodes": [
         "node_projection_delegation",
+        "node_projection_delegation_disposition",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -3555,7 +3615,8 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -3615,6 +3676,7 @@
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
+        "node_projection_delegation_disposition",
         "node_projection_dod_verdict",
         "node_projection_live_events",
         "node_projection_pattern_learning",
@@ -8663,8 +8725,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 92,
-    "source_declared_tables": 101
+    "source_created_tables": 93,
+    "source_declared_tables": 102
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8680,7 +8742,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 92 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 93 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

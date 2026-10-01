@@ -10,6 +10,7 @@
 #   - OMN-8985: Merge Sweep Phase 2 epic
 name: "node_polish_task_classifier"
 node_type: compute
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0

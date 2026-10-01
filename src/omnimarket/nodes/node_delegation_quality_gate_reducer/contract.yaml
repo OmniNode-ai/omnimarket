@@ -23,6 +23,7 @@ node_version:
   minor: 2
   patch: 0
 node_type: "REDUCER_GENERIC"
+runtime_profiles: [main]
 description: >
   Deterministic quality gate reducer for the delegation pipeline. Evaluates LLM output quality using DoD checks declared in the task-class contract: deterministic structural/schema checks (output_parses, signature_preserved, response_non_empty, etc.) BLOCK delegation result injection on failure but are reject-only pass-side diagnostics; heuristic pre-filters (no_refusal, min_length_chars, cites_* markers, methodical_analysis markers, sentence-count checks, etc.) are also reject-only and may not promote output to adequate by themselves (OMN-13370). Substantive task checks such as semantic_adequacy may serve as adequacy authority only when explicitly declared in the task contract. Reads dod_deterministic and dod_heuristic from ModelQualityGateInput (OMN-10616). Pure function, no I/O.
 

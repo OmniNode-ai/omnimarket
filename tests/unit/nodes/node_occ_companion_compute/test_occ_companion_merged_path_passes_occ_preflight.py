@@ -511,6 +511,15 @@ def test_red_control_unfiltered_dump_reproduces_omn15028_extra_forbidden(
         # omnibase-core 0.47.25 added optional goal identity to the nested
         # receipt; the pinned-main replica predates that additive field.
         "replacement.goal_id",
+        # omnibase-core 0.47.28 added the attempt-identity block to the nested
+        # receipt; the pinned-main replica predates those additive fields.
+        "replacement.repository",
+        "replacement.contract_revision",
+        "replacement.contract_schema_version",
+        "replacement.attempt_id",
+        "replacement.attempt_sequence",
+        "replacement.attempt_result_sha256",
+        "replacement.artifact_sha256",
     }
     assert set(errors) == expected_dev_only_fields
     assert all(kind == "extra_forbidden" for kind in errors.values())

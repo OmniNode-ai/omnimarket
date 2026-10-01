@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_projection_read_effect"
+contract_name: node_projection_read_effect
+node_name: node_projection_read_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Read-only EFFECT node that answers a typed read of one contract-declared
+  projection exposure (a node contract's projection_api block) from the table
+  its writer materializes, through the runtime's own projection database
+  binding. Pages with the same function as the standalone projection API's
+  GET /projection/{topic}, so both read paths answer a request identically.
+  Reachable through the runtime's Pattern B /skill edge (OMN-20159).
+node_type: effect
+input_model:
+  name: ModelProjectionReadRequest
+  module: omnimarket.nodes.node_projection_read_effect.models.model_projection_read_request
+output_model:
+  name: ModelProjectionReadResult
+  module: omnimarket.nodes.node_projection_read_effect.models.model_projection_read_result
+
+outputs:
+  ok:
+    type: bool
+    description: True when the page was read; false with a named error otherwise.
+  error:
+    type: str
+    required: false
+    description: >
+      The named refusal (for example unknown_topic, tenant_context_unresolved,
+      tenant_conflict, not_yet_bus_backed, projection_table_missing,
+      projection_binding_unconfigured). Never set on an ok read.
+  rows:
+    type: array
+    description: The page's rows; empty on a refusal, never a stand-in for one.
+  tenant:
+    type: str
+    required: false
+    description: The tenant the rows are scoped to; absent for an unscoped exposure.
+
+handler:
+  name: HandlerProjectionRead
+  module: omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read
+  class: HandlerProjectionRead
+  input_model: omnimarket.nodes.node_projection_read_effect.models.model_projection_read_request.ModelProjectionReadRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection-read.read
+      message_category: command
+      handler:
+        name: HandlerProjectionRead
+        module: omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read
+      event_model:
+        name: ModelProjectionReadRequest
+        module: omnimarket.nodes.node_projection_read_effect.models.model_projection_read_request
+      event_type: omnimarket.projection-read
+      description: Read one contract-declared projection exposure's page.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles:
+    - effects
+
+# One terminal, no failure terminal: a refusal (an undeclared topic, a missing
+# tenant, an unmaterialized table) is the answer the caller asked for, carried
+# on the result as ok=false with a named error. It is not a dispatch failure,
+# and routing it to a second topic would only make the caller race two topics
+# for one answer.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.projection-read.v1
+  terminal_events:
+    success: onex.evt.omnimarket.projection-read-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.projection-read.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-read-completed.v1
+
+terminal_event: onex.evt.omnimarket.projection-read-completed.v1
+
+published_events:
+  - event_type: ProjectionReadResult
+    topic: onex.evt.omnimarket.projection-read-completed.v1
+    description: The page of the requested exposure, or its named refusal.
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-read-completed.v1
+
+io_operations:
+  - operation_type: "database_read"
+    atomic: false
+    timeout_seconds: 15
+    validation_enabled: true
+
+tags:
+  - projection
+  - effect
+  - read
+  - postgres
+  - dashboard

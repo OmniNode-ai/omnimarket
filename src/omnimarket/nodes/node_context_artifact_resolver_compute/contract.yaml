@@ -4,6 +4,7 @@
 name: node_context_artifact_resolver_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Pure deterministic resolver that materialises the per-factor

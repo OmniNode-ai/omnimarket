@@ -100,6 +100,10 @@ from omnimarket.delegation.response_contract_instruction import (
     render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
+from omnimarket.delegation.rubric.attempt_verdict import (
+    record_attempt_rubric_verdict,
+    rubric_check_error_verdict,
+)
 from omnimarket.delegation.structured_output import (
     provider_response_format_for_contract,
 )
@@ -1708,6 +1712,22 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            # OMN-20165: acceptance is settled above; the rubric verdict is
+            # recorded on this attempt and read by no decision.
+            try:
+                rubric_verdict = record_attempt_rubric_verdict(
+                    task_class=task_type,
+                    request_text=(
+                        attempt_outcome.request_text
+                        if attempt_outcome.request_text is not None
+                        else prompt
+                    ),
+                    answer_text=result.content or "",
+                )
+            except Exception as exc:
+                # A recording fault must never fail the delegation it describes.
+                logger.warning("Rubric recording failed: %s", type(exc).__name__)
+                rubric_verdict = rubric_check_error_verdict(task_type)
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -1734,6 +1754,7 @@ class LocalDelegationDispatchPort:
                     # seam. Retained so a refusal can be audited against
                     # exactly the text that was judged.
                     "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
+                    "rubric_verdict": rubric_verdict.model_dump(mode="json"),
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
@@ -2735,6 +2756,7 @@ class LocalDelegationDispatchPort:
             # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
             # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
             api_key_env=backend.api_key_env,
+            inline_reasoning_terminator=backend.inline_reasoning_terminator,
             # OMN-15482: the caller's response-format directive, forwarded as a
             # real wire parameter on the outbound chat-completions payload.
             # ``None`` omits the key entirely (pre-existing behavior).
@@ -2901,6 +2923,7 @@ class LocalDelegationDispatchPort:
             # prose. The gate vetoes on this signal; without it the gate has no
             # non-heuristic way to tell the two apart.
             finish_reason=result.finish_reason,
+            reasoning_stripped_chars=result.reasoning_stripped_chars,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -2912,7 +2935,8 @@ class LocalDelegationDispatchPort:
         # untouched.
         segmentation = segment_reasoning_preamble(result.content or "")
         if (
-            segmentation.boundary_rule
+            result.reasoning_stripped_chars == 0
+            and segmentation.boundary_rule
             is not EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
         ):
             logger.info(
@@ -2956,6 +2980,7 @@ class LocalDelegationDispatchPort:
         return _AttemptOutcome(
             result=result,
             gate_result=gate_result,
+            request_text=outbound_prompt,
             failure_message=None,
             timeout_result=None,
             preamble_chars=extraction.preamble_chars,
@@ -2980,6 +3005,7 @@ class LocalDelegationDispatchPort:
         response_contract: dict[str, object] | None = None,
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
+        reasoning_stripped_chars: int = 0,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -3084,6 +3110,7 @@ class LocalDelegationDispatchPort:
             response_contract=effective_response_contract,
             grounding_source=prompt,
             finish_reason=finish_reason,
+            reasoning_stripped_chars=reasoning_stripped_chars,
         )
 
     def _project_evidence(
@@ -3324,6 +3351,7 @@ class _AttemptOutcome:
         "gate_result",
         "output_refusal",
         "preamble_chars",
+        "request_text",
         "response_contract_evidence",
         "result",
         "timeout_result",
@@ -3339,6 +3367,7 @@ class _AttemptOutcome:
         preamble_chars: int,
         output_refusal: ModelDelegationOutputRefusal | None,
         response_contract_evidence: ModelDelegationContractEvidence | None = None,
+        request_text: str | None = None,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
@@ -3347,6 +3376,7 @@ class _AttemptOutcome:
         self.preamble_chars = preamble_chars
         self.output_refusal = output_refusal
         self.response_contract_evidence = response_contract_evidence
+        self.request_text = request_text
 
 
 __all__ = ["LocalDelegationDispatchPort"]

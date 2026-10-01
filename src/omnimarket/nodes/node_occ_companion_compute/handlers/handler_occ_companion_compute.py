@@ -534,8 +534,15 @@ def _supersede_file(
     # hygiene, not a version-detection hack — it holds for every future
     # optional field omnibase_core adds ahead of its next main promotion, not
     # just today's six.
+    dumped = record.model_dump(mode="json", exclude_defaults=True)
+    # omnibase-core 0.47.28 gives the nested receipt a contract_schema_version
+    # that survives exclude_defaults yet serializes to null; a main-pinned gate
+    # schema-rejects the key (extra_forbidden), so drop the null placeholder.
+    nested = dumped.get("replacement")
+    if isinstance(nested, dict) and nested.get("contract_schema_version") is None:
+        nested.pop("contract_schema_version", None)
     content = "---\n" + yaml.dump(
-        record.model_dump(mode="json", exclude_defaults=True),
+        dumped,
         Dumper=_BlockScalarDumper,
         sort_keys=False,
         default_flow_style=False,

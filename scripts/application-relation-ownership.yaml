@@ -163,6 +163,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-20242: tenant-scoped current dispositions.
+    - name: delegation_dispositions
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0000_create_delegation_dispositions.sql
+      access: read_write
+      role: delegation_dispositions
     # OMN-19790: tenant-scoped labels, corrected by newer observations.
     - name: delegation_eval_items
       database_ref: application

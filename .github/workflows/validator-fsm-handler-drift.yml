@@ -82,7 +82,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
 
       - name: Install omnimarket
-        run: uv sync --all-extras
+        run: uv sync
 
       - name: Install omnibase_compat
         run: uv pip install --python .venv/bin/python -e ../omnibase_compat

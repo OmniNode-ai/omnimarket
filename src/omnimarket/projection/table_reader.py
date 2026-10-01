@@ -389,6 +389,17 @@ class TableRowSource:
         self._pool_lock = asyncio.Lock()
         self._column_types: dict[tuple[str, str], str] = {}
 
+    @classmethod
+    def for_database_url(cls, database_url: str) -> TableRowSource:
+        """Read every exposure through one database (OMN-20159).
+
+        The runtime-resident read node is bound to the runtime's own projection
+        database, where the writers materialize every table, so every relation
+        schema is read through that one binding rather than per-schema DSNs.
+        """
+        dsn_envs = (DEFAULT_DSN_ENV, *_RELATION_SCHEMA_DSN_ENV.values())
+        return cls(environ=dict.fromkeys(dsn_envs, database_url))
+
     async def close(self) -> None:
         pools, self._pools = self._pools, {}
         for pool in pools.values():
