@@ -9,6 +9,7 @@ from omnibase_core.models.nodes.work_ledger_state import ModelWorkLedgerFoldInpu
 from omnibase_core.nodes.node_work_ledger_state_compute.handler import (
     NodeWorkLedgerStateCompute,
 )
+from pydantic import BaseModel
 
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
     HandlerProjectionWorkLedger,
@@ -23,8 +24,8 @@ from tests.nodes.work_ledger_fixtures import (
 )
 
 
-def _semantic_state_dump(state: object) -> dict[str, object]:
-    return state.model_dump(mode="json", exclude={"line_count"})  # type: ignore[attr-defined]
+def _semantic_state_dump(state: BaseModel) -> dict[str, object]:
+    return state.model_dump(mode="json", exclude={"line_count"})
 
 
 def test_shuffled_and_redelivered_all_row_types_match_released_core_fold() -> None:
