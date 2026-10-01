@@ -92,14 +92,8 @@ _SCANNED_SOURCE_ROOT = "src/omnimarket"
 # rule. Only a real read of the process environment, or a real
 # ``env_var_fallback=`` argument, counts.
 
-# Local backends do not require cloud auth; identified by tier == "local" or a
-# base_url_env pointing at a local inference endpoint.
+# Local backends do not require cloud auth; identified by tier == "local".
 _LOCAL_TIERS: frozenset[str] = frozenset({"local"})
-
-# Tiers whose backends route to a provider that requires authentication.
-_CLOUD_TIERS: frozenset[str] = frozenset(
-    {"cheap_cloud", "cheap_frontier", "frontier_api"}
-)
 
 # Backend ids that are dispatched via subprocess (CLI agents) or use OAuth with
 # no committed secret (Claude Code OAuth) — no secret/credential ref required.
@@ -271,7 +265,7 @@ def _string_constant(node: ast.expr | None) -> str | None:
     return None
 
 
-def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.expr, str]]:
     """Yield (node, kind) for every real house-credential read.
 
     Three shapes, all resolved on the AST so comments and docstrings are
@@ -283,7 +277,7 @@ def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str]]:
         which is serviced by a direct ``os.environ.get`` after the store lookup
         and therefore bypasses the lane secret mapping.
     """
-    found: list[tuple[ast.AST, str]] = []
+    found: list[tuple[ast.expr, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript) and _is_os_environ(node.value):
             name = _string_constant(node.slice)
@@ -323,7 +317,9 @@ def _scan_bifrost_backends(rel: str, data: dict[str, Any]) -> list[str]:
             continue
         if tier in _LOCAL_TIERS:
             continue
-        if tier in _CLOUD_TIERS and not _backend_has_logical_ref(backend):
+        # Fail closed for every non-local, non-exempt backend, including
+        # judge/typed_decision and tiers introduced after this checker.
+        if not _backend_has_logical_ref(backend):
             violations.append(
                 f"{rel}: cloud backend {backend_id!r} (tier={tier!r}) requires a "
                 f"logical secret reference (secret_ref/api_key_ref/api_key_env for "
