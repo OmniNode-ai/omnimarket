@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+_FORTHCOMING_BACKEND_KEYS: frozenset[str] = frozenset({"inline_reasoning_terminator"})
 
 
 class ModelDelegationShadowConfig(BaseModel):
@@ -211,18 +213,6 @@ class ModelDelegationBackendConfig(BaseModel):
             "budget nobody measured."
         ),
     )
-    inline_reasoning_terminator: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "OMN-18278, consumer first: the backend serves a reasoning model and "
-            "its server runs no reasoning parser, so response content may open "
-            "with the model's reasoning, ended by this terminator. None means not "
-            "declared. This release only accepts the key; the response adapter "
-            "that strips on it lands in the change after the release carrying "
-            "this consumer."
-        ),
-    )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Capabilities this backend supports.",
@@ -247,6 +237,19 @@ class ModelDelegationBackendConfig(BaseModel):
             "backend, never by reading a vendor's documentation."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a backend from a producer one release ahead (OMN-18278).
+
+        ``inline_reasoning_terminator`` is declared by the change after the
+        release that carries this consumer. This release accepts the key and
+        drops it, so the wire gate sees no new emitted field.
+        """
+        if not isinstance(data, dict) or _FORTHCOMING_BACKEND_KEYS.isdisjoint(data):
+            return data
+        return {k: v for k, v in data.items() if k not in _FORTHCOMING_BACKEND_KEYS}
 
     @model_validator(mode="after")
     def _validate_secret_ref_fields(self) -> ModelDelegationBackendConfig:

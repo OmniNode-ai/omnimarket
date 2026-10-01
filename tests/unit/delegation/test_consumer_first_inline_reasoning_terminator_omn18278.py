@@ -4,7 +4,7 @@
 
 The change after this consumer's release declares ``inline_reasoning_terminator``
 on a backend in the bifrost delegation config. A consumer that forbids extra
-keys would dead-letter that payload, so this release accepts the key.
+keys would dead-letter that payload, so this release accepts the key and drops it.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 )
 
 
-def test_backend_config_accepts_inline_reasoning_terminator() -> None:
+def test_backend_config_accepts_and_drops_inline_reasoning_terminator() -> None:
     cfg = ModelDelegationBackendConfig.model_validate(
         {
             "backend_id": "local-reasoner",
@@ -22,11 +22,4 @@ def test_backend_config_accepts_inline_reasoning_terminator() -> None:
             "inline_reasoning_terminator": "</think>",
         }
     )
-    assert cfg.inline_reasoning_terminator == "</think>"
-
-
-def test_backend_config_terminator_defaults_to_none() -> None:
-    cfg = ModelDelegationBackendConfig.model_validate(
-        {"backend_id": "local-reasoner", "tier": "local"}
-    )
-    assert cfg.inline_reasoning_terminator is None
+    assert "inline_reasoning_terminator" not in cfg.model_dump()
