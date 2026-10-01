@@ -32,7 +32,7 @@ import argparse
 import ast
 import os
 import sys
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -619,16 +619,6 @@ def main(argv: list[str] | None = None) -> int:
         default=_DEFAULT_MARKET_REGISTRY,
     )
     parser.add_argument("--baseline", type=Path, default=_DEFAULT_BASELINE)
-    parser.add_argument(
-        "--tolerate-consumer-ahead",
-        action="store_true",
-        help=(
-            "Treat registry entries the omniclaude source lacks as consumer-ahead "
-            "(this repo registered them before the pinned omniclaude carries them) "
-            "and do not fail on them. Source entries missing from the registry "
-            "still fail."
-        ),
-    )
     args = parser.parse_args(argv)
 
     repo_root = resolve_repo_root(args.repo_root)
@@ -642,15 +632,6 @@ def main(argv: list[str] | None = None) -> int:
         market_registry_path=args.market_registry,
         baseline_path=args.baseline,
     )
-
-    if args.tolerate_consumer_ahead:
-        report = replace(
-            report,
-            topic_report=replace(report.topic_report, registry_only=frozenset()),
-            structural_report=replace(
-                report.structural_report, event_registry_only=frozenset()
-            ),
-        )
 
     if report.has_drift:
         lines = [

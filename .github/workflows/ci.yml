@@ -1750,7 +1750,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - name: Validate event registry drift
-        run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude --tolerate-consumer-ahead
+        run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
 
   # ============================================================================
   # RUNTIME SWEEP GATE (OMN-8611)
