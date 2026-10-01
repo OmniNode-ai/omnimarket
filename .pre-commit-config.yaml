@@ -60,15 +60,6 @@ repos:
         require_serial: true
         args: [src]
 
-  # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
-  # on the change-control preflight and never reads its result. BLOCKING, zero
-  # baseline, no allowlist, no suppression comment. CI twin: the
-  # shape-gate-independence job in .github/workflows/ci.yml (STRICT CI Summary gate).
-  - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 5220ecf1758b4475c2963ec13171b6431fdc2224 # pragma: allowlist secret
-    hooks:
-      - id: check-shape-gate-independence
-
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
   # Rejects NEW non-canonical model-inference surfaces: shelled model CLIs
   # (codex/claude/gemini/opencode) and *_MODEL/*_PROVIDER env reads. Structural
@@ -118,8 +109,13 @@ repos:
   # moving ref like @dev (required gate; deterministic-truth doctrine). The token below
   # is a HOLD placeholder; this PR stays unopened until the real post-merge SHA is set.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 5220ecf1758b4475c2963ec13171b6431fdc2224 # pragma: allowlist secret
+    rev: d17f5be8be88a8d35fc6a69e13cb8c1896c3025b # pragma: allowlist secret
     hooks:
+      # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
+      # on the change-control preflight and never reads its result. BLOCKING, zero
+      # baseline, no allowlist, no suppression comment. CI twin: the
+      # shape-gate-independence job in .github/workflows/ci.yml (STRICT CI Summary gate).
+      - id: check-shape-gate-independence
       - id: no-noncanonical-lifecycle-classes
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
