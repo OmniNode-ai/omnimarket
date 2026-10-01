@@ -48,39 +48,10 @@ NODE_TYPES_REQUIRING_HANDLER = {"compute", "effect", "reducer"}
 
 LIFECYCLE_EXEMPTIONS = {"deprecated", "experimental"}
 
-# Nodes with pre-existing violations on main as of 2026-04-25 (F0 audit OMN-9718 + F3 scan).
-# These receive WARN (not FAIL) in non-strict mode so --check-all exits 0 on current main.
-# In --strict mode (used by CI on changed nodes) these nodes FAIL if they are touched.
-# Remove entries here once the underlying violation is repaired.
-#
-# 4 nodes missing pyproject entry (OMN-9718 F0):
-#   node_full_triage_orchestrator, node_overseer_observer,
-#   node_routing_policy_engine, node_state_persist_effect
-#
-# 23 compute/effect/reducer nodes missing handler block (F3 scan):
-KNOWN_MAIN_VIOLATIONS: set[str] = {
-    # Missing pyproject entry
-    "node_full_triage_orchestrator",
-    "node_overseer_observer",
-    "node_routing_policy_engine",
-    "node_state_persist_effect",
-    # Missing handler block (compute/effect/reducer type but no handler declared)
-    "node_agent_learning_retrieval_effect",
-    "node_build_dispatch_effect",
-    # node_intent_query_effect: fixed in OMN-10738 (handler block added)
-    "node_loop_state_reducer",
-    "node_memory_retrieval_effect",
-    "node_memory_storage_effect",
-    "node_monitor_alert_responder",
-    "node_navigation_history_reducer",
-    "node_persona_builder_compute",
-    "node_persona_retrieval_effect",
-    "node_persona_storage_effect",
-    "node_pr_lifecycle_fix_effect",
-    "node_pr_lifecycle_merge_effect",
-    "node_pr_lifecycle_state_reducer",
-    "node_similarity_compute",
-}
+# Pre-existing hard violations may be WARN in non-strict mode. Every listed
+# node must still have a live hard violation; repaired/deleted nodes fail the
+# stale-entry check in all modes. The OMN-20181 audit removed all 18 stale nodes.
+KNOWN_MAIN_VIOLATIONS: set[str] = set()
 
 
 @dataclass
@@ -434,6 +405,23 @@ def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | No
     return all_nodes, None
 
 
+def _stale_known_main_violations(entry_points: set[str]) -> list[str]:
+    """Audit only findings downgraded by KNOWN_MAIN_VIOLATIONS.
+
+    Topic alignment is always advisory and node liveness is never allowlisted;
+    neither can justify keeping an exemption for a repaired node.
+    """
+    stale: list[str] = []
+    for name in sorted(KNOWN_MAIN_VIOLATIONS):
+        node_dir = NODES_DIR / name
+        if (
+            not node_dir.is_dir()
+            or validate_node(node_dir, entry_points, strict=True).passed
+        ):
+            stale.append(name)
+    return stale
+
+
 def run(
     *,
     changed_ref: str | None,
@@ -443,8 +431,9 @@ def run(
 ) -> int:
     entry_points = _load_entry_points(PYPROJECT)
     nodes, strict_eligible = collect_nodes(changed_ref=changed_ref)
+    stale = _stale_known_main_violations(entry_points)
 
-    if not nodes:
+    if not nodes and not stale:
         msg = {
             "status": "ok",
             "message": "no node directories to validate",
@@ -471,6 +460,21 @@ def run(
                 entry_points,
                 strict=node_strict,
                 check_orphan_nodes=check_orphan_nodes,
+            )
+        )
+
+    by_name = {r.node: r for r in results}
+    for name in stale:
+        if name not in by_name:
+            result = NodeResult(node=name)
+            results.append(result)
+            by_name[name] = result
+        by_name[name].findings.append(
+            NodeFinding(
+                node=name,
+                check="stale_baseline_entry",
+                level="FAIL",
+                message="stale KNOWN_MAIN_VIOLATIONS entry, remove it",
             )
         )
 

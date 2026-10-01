@@ -27,6 +27,9 @@ Exit codes:
 
 Flags:
   --check-all             Validate every node_* directory (used locally)
+                          Also refuse stale baseline entries
+  --check-stale           Refuse stale baseline entries across all nodes,
+                          even with --check-changed
   --check-changed <ref>   Validate only nodes modified since <ref> (used by CI)
   --head-ref <ref>        Bind changed-node selection to an explicit end ref
   --strict                Promote baselined WARN violations to FAIL for
@@ -611,13 +614,15 @@ def run(
     changed_head_ref: str | None = None,
     strict: bool,
     output_json: bool,
+    check_stale: bool = False,
 ) -> int:
     baseline = _load_baseline()
     nodes, strict_eligible = collect_nodes(
         changed_ref=changed_ref, changed_head_ref=changed_head_ref
     )
 
-    if not nodes:
+    check_stale = check_stale or changed_ref is None
+    if not nodes and not check_stale:
         msg = {
             "status": "ok",
             "message": "no node directories to validate",
@@ -644,13 +649,34 @@ def run(
             )
         )
 
+    stale_entries: list[tuple[str, str]] = []
+    if check_stale:
+        # Changed-node strictness stays scoped to the diff. Baseline freshness
+        # must also inspect untouched and deleted nodes, even on an empty diff.
+        audited = {r.node: r for r in results}
+        for node_name in sorted({node for node, _state in baseline} - audited.keys()):
+            node_dir = NODES_DIR / node_name
+            if node_dir.is_dir():
+                audited[node_name] = validate_node(
+                    node_dir, baseline=baseline, strict=False, test_corpus=test_corpus
+                )
+        live_uncovered = {
+            (r.node, state)
+            for r in audited.values()
+            for state in r.uncovered + r.baselined_uncovered
+        }
+        stale_entries = sorted(baseline - live_uncovered)
+
     fail_results = [r for r in results if not r.passed]
     warn_results = [r for r in results if r.passed and r.baselined_uncovered]
     ok_results = [r for r in results if r.passed and not r.baselined_uncovered]
 
     if output_json:
         output: dict[str, Any] = {
-            "status": "fail" if fail_results else "ok",
+            "status": "fail" if fail_results or stale_entries else "ok",
+            "stale_baseline_entries": [
+                {"node": node, "state": state} for node, state in stale_entries
+            ],
             "summary": {
                 "total": len(results),
                 "failed": len(fail_results),
@@ -684,13 +710,15 @@ def run(
             )
         for r in fail_results:
             print(f"  [FAIL] {r.node} ({r.kind}): uncovered states: {r.uncovered}")
+        for node, state in stale_entries:
+            print(f"  [FAIL] {node} {state}: stale baseline entry, remove it")
 
-        if fail_results:
+        if fail_results or stale_entries:
             print("\nstate-coverage-gate: FAIL")
         else:
             print("\nstate-coverage-gate: PASS")
 
-    return 1 if fail_results else 0
+    return 1 if fail_results or stale_entries else 0
 
 
 def main() -> int:
@@ -719,6 +747,11 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--check-stale",
+        action="store_true",
+        help="refuse stale baseline entries, including on untouched/deleted nodes",
+    )
+    parser.add_argument(
         "--json", action="store_true", dest="output_json", help="output JSON"
     )
     args = parser.parse_args()
@@ -732,6 +765,7 @@ def main() -> int:
         changed_head_ref=args.head_ref,
         strict=args.strict,
         output_json=args.output_json,
+        check_stale=args.check_stale,
     )
 
 

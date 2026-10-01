@@ -14,8 +14,7 @@
 # node-drift-gate's OMN-12706 fix): a required status check must report on
 # every PR, including ones that touch neither src/omnimarket/nodes/** nor
 # tests/**, otherwise it stays permanently "expected" and blocks the queue.
-# `--check-changed` naturally short-circuits to a fast PASS when no node
-# directory was touched by the diff.
+# `--check-stale` audits baseline freshness even when no node was touched.
 
 name: state-coverage-gate
 
@@ -122,4 +121,4 @@ jobs:
           HEAD_SHA: ${{ steps.validation_range.outputs.head_sha }}
         run: |
           uv run python scripts/validate_state_coverage.py \
-            --check-changed "$BASE_SHA" --head-ref "$HEAD_SHA" --strict
+            --check-changed "$BASE_SHA" --head-ref "$HEAD_SHA" --strict --check-stale

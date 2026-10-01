@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import textwrap
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 from omnimarket.nodes.node_dependency_health_sweep.engine.contract_topology import (
     ContractTopologyParser,
@@ -25,6 +28,60 @@ def _write_contract(path: Path, content: str) -> None:
 # ---------------------------------------------------------------------------
 # Fixture 1: Matched pub/sub — no orphans
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("quoted", [True, False])
+@pytest.mark.parametrize("days", [-1, 0, 1])
+def test_allowlist_expiry_is_enforced(tmp_path: Path, days: int, quoted: bool) -> None:
+    topic = "onex.evt.omnimarket.expiry-example.v1"
+    _write_contract(
+        tmp_path / "node_example" / "contract.yaml",
+        f"name: example\nevent_bus:\n  publish_topics: [{topic}]\n",
+    )
+    expires_at = (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
+    expiry_yaml = f'"{expires_at}"' if quoted else expires_at
+    (tmp_path / "dep_health_allowlist.yaml").write_text(
+        f"allowlist:\n  - topic: {topic}\n    expires_at: {expiry_yaml}\n"
+    )
+    parser = ContractTopologyParser()
+    orphans = parser.parse([tmp_path]).orphan_topics
+    if days < 0:
+        # Expired: the suppression is not honored, so the finding surfaces.
+        assert orphans == [topic]
+    else:
+        assert orphans == []
+
+
+@pytest.mark.unit
+def test_malformed_allowlist_expiry_is_not_honored(tmp_path: Path) -> None:
+    topic = "onex.evt.omnimarket.example.v1"
+    _write_contract(
+        tmp_path / "node_example" / "contract.yaml",
+        f"name: example\nevent_bus:\n  publish_topics: [{topic}]\n",
+    )
+    (tmp_path / "dep_health_allowlist.yaml").write_text(
+        f"allowlist:\n  - topic: {topic}\n    expires_at: never\n"
+    )
+    assert ContractTopologyParser().parse([tmp_path]).orphan_topics == [topic]
+
+
+@pytest.mark.unit
+def test_this_repo_allowlist_has_no_expired_entries() -> None:
+    """The committed allowlist carries no row past its expires_at."""
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    data = yaml.safe_load((root / "src" / "dep_health_allowlist.yaml").read_text())
+    today = datetime.now(UTC).date()
+    expired = [
+        (entry["topic"], str(entry["expires_at"]))
+        for entry in data.get("allowlist", []) or []
+        if isinstance(entry, dict)
+        and entry.get("expires_at") is not None
+        and str(entry["expires_at"]) < today.isoformat()
+    ]
+    assert expired == [], f"expired dep-health allowlist rows: {expired}"
 
 
 def test_matched_pub_sub_no_orphans(tmp_path: Path) -> None:

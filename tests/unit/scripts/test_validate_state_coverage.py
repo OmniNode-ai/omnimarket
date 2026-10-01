@@ -14,11 +14,17 @@ Regression coverage:
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "validate_state_coverage.py"
@@ -39,6 +45,103 @@ def _load_module() -> object:
 @pytest.fixture(scope="module")
 def scc_module() -> object:
     return _load_module()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("changed_ref", [None, "HEAD"])
+@pytest.mark.parametrize("stale_state", [None, "covered", "removed"])
+def test_stale_baseline_gate(
+    scc_module: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    changed_ref: str | None,
+    stale_state: str | None,
+) -> None:
+    nodes = tmp_path / "nodes"
+    node = nodes / "node_example"
+    node.mkdir(parents=True)
+    (node / "contract.yaml").write_text("outputs:\n  covered: {}\n  gap: {}\n")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_node_example.py").write_text('assert result.state == "covered"\n')
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(
+        "node_example gap\n" + (f"node_example {stale_state}\n" if stale_state else "")
+    )
+    monkeypatch.setattr(scc_module, "NODES_DIR", nodes)
+    monkeypatch.setattr(scc_module, "TESTS_DIR", tests)
+    monkeypatch.setattr(scc_module, "BASELINE_PATH", baseline)
+    if changed_ref:
+        monkeypatch.setattr(scc_module, "collect_nodes", lambda **_kwargs: ([], set()))
+    code = scc_module.run(
+        changed_ref=changed_ref,
+        strict=False,
+        output_json=True,
+        check_stale=changed_ref is not None,
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert code == (1 if stale_state else 0)
+    assert output["stale_baseline_entries"] == (
+        [{"node": "node_example", "state": stale_state}] if stale_state else []
+    )
+
+
+@pytest.mark.unit
+def test_deleted_node_baseline_fails(
+    scc_module: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("node_deleted gap\n")
+    monkeypatch.setattr(scc_module, "NODES_DIR", tmp_path)
+    monkeypatch.setattr(scc_module, "TESTS_DIR", tmp_path)
+    monkeypatch.setattr(scc_module, "BASELINE_PATH", baseline)
+    assert scc_module.run(changed_ref=None, strict=False, output_json=False) == 1
+    assert "stale baseline entry, remove it" in capsys.readouterr().out
+
+
+@pytest.mark.unit
+def test_real_baseline_passes_full_mode() -> None:
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--check-all", "--json"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=280,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["stale_baseline_entries"] == []
+
+
+@pytest.mark.unit
+def test_stale_check_wired_in_ci_and_precommit() -> None:
+    import yaml
+
+    config = yaml.safe_load((REPO_ROOT / ".pre-commit-config.yaml").read_text())
+    hook = next(
+        hook
+        for repo in config["repos"]
+        for hook in repo["hooks"]
+        if hook["id"] == "state-coverage-gate"
+    )
+    assert "--check-stale" in hook["entry"]
+    import re
+
+    assert re.search(hook["files"], "scripts/validation/state_coverage_baseline.txt")
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github/workflows/state-coverage-gate.yml").read_text()
+    )
+    commands = [
+        step.get("run", "")
+        for step in workflow["jobs"]["state-coverage-gate"]["steps"]
+        if "scripts/validate_state_coverage.py" in step.get("run", "")
+    ]
+    assert commands
+    assert all("--check-stale" in command for command in commands)
 
 
 @pytest.mark.unit
@@ -461,6 +564,7 @@ def test_changed_nodes_uses_explicit_pr_range_not_a_newer_target_tip(
         return subprocess.run(
             ["git", *args],
             cwd=tmp_path,
+            env=scrub_git_location_env(os.environ),
             check=True,
             capture_output=True,
             text=True,

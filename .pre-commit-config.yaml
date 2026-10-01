@@ -848,9 +848,9 @@ repos:
 
       # OMN-13781: contract-state-coverage gate. Diffs each touched node's
       # declared state set (contract.yaml) against states asserted by its
-      # tests. --check-changed HEAD scopes to locally staged/unstaged diffs
-      # so this stays fast; SYNC with state-coverage-gate.yml (which scopes
-      # to the PR/merge_group base ref instead).
+      # tests. --check-changed HEAD scopes strictness to local diffs;
+      # --check-stale audits the whole baseline. SYNC with state-coverage-gate.yml
+      # (which scopes strictness to the PR/merge_group base ref instead).
       # OMN-18043: every projection_api exposure must declare a cursor_column.
       # Without one api_server.py cannot populate next_cursor (it gates on
       # `cfg.cursor_column is not None`), so a truncated page reports
@@ -907,8 +907,8 @@ repos:
       - id: state-coverage-gate
         name: Contract-state-coverage gate
         language: system
-        entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict
-        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py)$
+        entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict --check-stale
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py|scripts/validate_state_coverage\.py|scripts/validation/state_coverage_baseline\.txt)$
         pass_filenames: false
         stages: [pre-commit]
 
