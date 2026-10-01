@@ -54,7 +54,7 @@ def test_cli_default_profile_prints_joined_projection_table(
     assert "savings_estimates:1" in result.output
     # OMN-13001: usage_source is now persisted in the DB enum's vocabulary
     # (MEASURED -> API) by the per-call llm_call_metrics writer.
-    assert "usage_source=API" in result.output
+    assert "usage_source=measured" in result.output
 
 
 @pytest.mark.unit
@@ -185,4 +185,4 @@ profiles:
     assert payload["profile"]["local_delegate"] == "tiny-delegate"
     assert payload["profile"]["local_model_id"] == "phi4-mini"
     # OMN-13001: persisted usage_source is the DB enum value (MEASURED -> API).
-    assert payload["joined"]["usage_source"] == "API"
+    assert payload["joined"]["usage_source"] == "measured"

@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS llm_call_metrics (
     total_tokens       INTEGER,
     estimated_cost_usd REAL,
     latency_ms         REAL,
-    usage_source       TEXT NOT NULL DEFAULT 'MISSING',
+    usage_source       TEXT NOT NULL DEFAULT 'unknown',
     usage_is_estimated INTEGER NOT NULL DEFAULT 0,
     usage_raw          TEXT,
     input_hash         TEXT,
@@ -247,6 +247,16 @@ class SqliteDatabaseAdapter:
         if "token_provenance" in columns and "correlation_id" not in columns:
             conn.execute(
                 f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
+            )
+        elif "usage_source" in columns:
+            # OMN-19968: rows written before the shared vocabulary move onto it
+            # (EnumUsageSource; omnibase_infra migration 077). Idempotent: it
+            # touches only rows still holding a retired label.
+            conn.execute(
+                "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+                "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+                "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+                "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
             )
 
     @staticmethod

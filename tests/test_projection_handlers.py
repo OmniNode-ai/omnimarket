@@ -208,7 +208,7 @@ class TestLlmCostHandler:
         # to the DB enum's MISSING value. call_args[0] is SQL; the 10th INSERT
         # column (usage_source) is the 10th positional bind -> index 10.
         call_args = mock_db.execute.call_args[0]
-        assert call_args[10] == "MISSING"
+        assert call_args[10] == "unknown"
 
 
 class TestDelegationHandler:
