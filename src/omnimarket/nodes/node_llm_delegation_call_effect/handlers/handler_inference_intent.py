@@ -51,7 +51,7 @@ from omnimarket.inference.provider_response_error import (
     provider_error_from_body,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key
-from omnimarket.model_call_reconcile.correlation import (
+from omnimarket.models.model_call_correlation import (
     SELF_HOSTED_CORRELATION_HEADER,
     SELF_HOSTED_CORRELATION_QUERY_PARAM,
 )

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-20299: the access-log join names bypasses and attributes runs."""
 
-from omnimarket.model_call_reconcile.reconcile import (
+from omnimarket.handlers.handler_model_call_reconcile import (
     EnumServedRequestClass,
     build_report,
     classify,

@@ -13,14 +13,17 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from enum import StrEnum
 from typing import Final
 from urllib.parse import parse_qs
 
-from pydantic import BaseModel, ConfigDict
-
-from omnimarket.model_call_reconcile.correlation import (
+from omnimarket.models.model_call_correlation import (
     SELF_HOSTED_CORRELATION_QUERY_PARAM,
+)
+from omnimarket.models.model_call_reconcile import (
+    EnumServedRequestClass,
+    ModelClassifiedRequest,
+    ModelReconcileReport,
+    ModelServedRequest,
 )
 
 UNATTRIBUTED_LANE: Final[str] = "unattributed"
@@ -41,42 +44,6 @@ _INFERENCE_PATHS: Final[frozenset[str]] = frozenset(
     }
 )
 _ISO_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T")
-
-
-class EnumServedRequestClass(StrEnum):
-    ATTRIBUTED = "attributed"
-    ORPHAN_CORRELATION_ID = "orphan_correlation_id"
-    BYPASS = "bypass"
-
-
-class ModelServedRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    server: str
-    timestamp: str | None
-    path: str
-    status: int
-    correlation_id: str | None
-
-
-class ModelClassifiedRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    request: ModelServedRequest
-    classification: EnumServedRequestClass
-    caller_lane: str | None
-
-
-class ModelReconcileReport(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    total: int
-    attributed: int
-    orphan_correlation_id: int
-    bypass: int
-    attributed_by_lane: dict[str, int]
-    bypass_by_server: dict[str, int]
-    bypass_samples: list[ModelServedRequest]
 
 
 def parse_access_log_line(line: str, server: str) -> ModelServedRequest | None:
