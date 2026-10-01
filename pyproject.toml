@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.273"
+version = "0.4.274"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -320,6 +320,7 @@ node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_comp
 node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
 node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_loop_orchestrator"
+node_delegated_code_edit_orchestrator = "omnimarket.nodes.node_delegated_code_edit_orchestrator"
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
@@ -755,6 +756,10 @@ local = "omnimarket.cli.cli_local:local_group"
 # same reason as "cloud" and "local": the CLI discovers this group over
 # installed distributions.
 test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
+# OMN-20290: `onex code-edit` -- run the delegated code edit loop over a git
+# worktree, each model turn one onex delegate run. Discovered over installed
+# distributions like the groups above.
+code-edit = "omnimarket.cli.cli_code_edit:code_edit_group"
 # OMN-20105: `onex lab-work` -- serve lab work units on a pool host, list the
 # pool's capacity advertisements, and place and send one heavy command over the
 # bus. Discovered over installed distributions like the groups above.

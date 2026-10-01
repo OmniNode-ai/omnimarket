@@ -30,10 +30,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from omnimarket.delegation.rubric.attempt_verdict import attempt_verdict_from
 from omnimarket.delegation.rubric.contract_loader import (
     load_delegation_class_rubrics,
 )
+from omnimarket.delegation.rubric.tool_use_record import score
 from omnimarket.delegation.rubric.tool_use_transcript import (
     TOOL_USE_CLASS,
     CrushMessage,
@@ -41,16 +41,10 @@ from omnimarket.delegation.rubric.tool_use_transcript import (
     crush_request,
     declared_tools_from_schemas,
 )
-from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
-    HandlerDelegationRubricCheck,
-)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
-    ModelRubricCheckRequest,
     ModelRubricExecutionResult,
     ModelWorkspaceFile,
 )
-
-RECORD_SCHEMA = "tool-use-rubric-verdict.v1"
 
 
 def _json_list(path: Path) -> list[object]:
@@ -143,37 +137,6 @@ def read_crush_session(db: Path, session: str | None) -> tuple[str, list[CrushMe
     finally:
         con.close()
     return session, messages
-
-
-def score(
-    request: ModelRubricCheckRequest, source: str, run_ref: str
-) -> dict[str, object]:
-    """The verdict record of one scored run."""
-    verdict = HandlerDelegationRubricCheck().handle(request)
-    transcript = request.transcript
-    assert transcript is not None
-    return {
-        "schema": RECORD_SCHEMA,
-        "source": source,
-        "run_ref": run_ref,
-        "verdict": verdict.model_dump(mode="json"),
-        "attempt_verdict": attempt_verdict_from(verdict).model_dump(mode="json"),
-        "measured": {
-            "engine": transcript.engine,
-            "turns": transcript.turn_count,
-            "tool_calls": len(transcript.tool_calls),
-            "wall_time_ms": transcript.wall_time_ms,
-        },
-        "inputs": {
-            "declared_tools": len(transcript.declared_tools),
-            "workspace_manifest": "absent"
-            if transcript.workspace_files is None
-            else f"{len(transcript.workspace_files)} files",
-            "execution_results": [
-                row.model_dump(mode="json") for row in request.execution_results
-            ],
-        },
-    }
 
 
 def build_parser() -> argparse.ArgumentParser:
