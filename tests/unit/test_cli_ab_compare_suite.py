@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,6 +17,11 @@ from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_resul
     ModelAbCompareResult,
     ModelComparisonRow,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
+        _ResolvedModel,
+    )
 
 
 def _result(correlation_id: str, tokens: int) -> ModelAbCompareResult:
@@ -62,7 +68,9 @@ def test_cli_help_prints_suite_options() -> None:
     assert "--tasks-file" in result.output
     assert "--models" in result.output
     assert "--transport" in result.output
-    assert "--no-include-glm" in result.output
+    # OMN-20173: the direct GLM baseline is retired.
+    assert "--include-glm" not in result.output
+    assert "--no-include-glm" not in result.output
     assert "--output-file" in result.output
 
 
@@ -83,7 +91,7 @@ def test_cli_runs_multiple_tasks_and_prints_aggregate() -> None:
                 "all",
                 "--transport",
                 "orchestrator",
-                "--no-include-glm",
+                # OMN-20173: GLM is no longer an A/B suite option.
             ],
         )
 
@@ -114,7 +122,7 @@ def test_cli_json_output_is_machine_readable() -> None:
                 "orchestrator",
                 "--output",
                 "json",
-                "--no-include-glm",
+                # OMN-20173: GLM is no longer an A/B suite option.
             ],
         )
 
@@ -147,7 +155,7 @@ def test_cli_writes_output_file(tmp_path: Path) -> None:
                 "orchestrator",
                 "--output-file",
                 str(output_file),
-                "--no-include-glm",
+                # OMN-20173: GLM is no longer an A/B suite option.
             ],
         )
 
@@ -178,7 +186,7 @@ def test_cli_loads_tasks_file(tmp_path: Path) -> None:
                 "orchestrator",
                 "--output",
                 "json",
-                "--no-include-glm",
+                # OMN-20173: GLM is no longer an A/B suite option.
             ],
         )
 
@@ -188,29 +196,16 @@ def test_cli_loads_tasks_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_cli_includes_glm_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LLM_GLM_URL", "https://glm.example")
-    monkeypatch.setenv("LLM_GLM_API_KEY", "secret")
+def test_cli_ignores_glm_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # OMN-20173: retain aggregation coverage while proving no GLM HTTP call.
+    monkeypatch.setenv("LLM_GLM_URL", "https://api.z.ai/api/coding/paas/v4")
     monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
-
-    async def fake_call_glm(**_: object) -> ModelComparisonRow:
-        return ModelComparisonRow(
-            model_key="glm-4.5",
-            display_name="glm-4.5 (z.ai)",
-            total_tokens=30,
-            cost_usd=0.000015,
-            latency_ms=500,
-        )
-
     with (
         patch(
             "omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator.HandlerAbCompareOrchestrator",
             return_value=_mock_handler(),
         ),
-        patch(
-            "omnimarket.cli.cli_ab_compare_suite._call_glm",
-            side_effect=fake_call_glm,
-        ),
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock) as post,
     ):
         result = CliRunner().invoke(
             main,
@@ -225,18 +220,23 @@ def test_cli_includes_glm_when_configured(monkeypatch: pytest.MonkeyPatch) -> No
                 "json",
             ],
         )
-
     assert result.exit_code == 0
+    post.assert_not_called()
     payload = json.loads(result.output)
     aggregate = {item["model_key"]: item for item in payload["aggregate"]}
-    assert aggregate["glm-4.5"]["successes"] == 2
-    assert aggregate["glm-4.5"]["total_tokens"] == 60
+    assert aggregate["qwen3-next-80b"]["successes"] == 2
+    assert "glm-4.5" not in aggregate
+    assert all(
+        "glm" not in skipped
+        for row in payload["results"]
+        for skipped in row["models_skipped"]
+    )
 
 
 @pytest.mark.unit
 def test_cli_direct_transport_uses_registry_calls() -> None:
     async def fake_call_registry_model_direct(**kwargs: object) -> ModelComparisonRow:
-        model = kwargs["model"]
+        model = cast("_ResolvedModel", kwargs["model"])
         return ModelComparisonRow(
             model_key=model.model_id,
             display_name=model.display_name,
@@ -273,7 +273,7 @@ def test_cli_direct_transport_uses_registry_calls() -> None:
                 "task one",
                 "--models",
                 "all",
-                "--no-include-glm",
+                # OMN-20173: GLM is no longer an A/B suite option.
                 "--output",
                 "json",
             ],
