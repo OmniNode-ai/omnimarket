@@ -62,7 +62,7 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 _DELEGATE_TIMEOUT_SECONDS = 900
 #: Linux bounds one argv word at 128 KiB; the prompt travels as one.
 MAX_PROMPT_BYTES = 120_000
-_MAX_MANIFEST_FILES = 5_000
+_MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
 _OUTPUT_TAIL = 6_000
@@ -87,6 +87,16 @@ def _git_env() -> dict[str, str]:
     """The environment without inherited git location variables: a GIT_DIR from
     a calling hook would otherwise redirect every git call to the wrong repo."""
     return scrub_git_location_env(os.environ)
+
+
+def _check_env() -> dict[str, str]:
+    """A check's environment: no git location variables, and no VIRTUAL_ENV of
+    the process running the loop, so the worktree's own project environment is
+    the one a check uses."""
+    env = _git_env()
+    env.pop("VIRTUAL_ENV", None)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
 
 
 def _run_subprocess(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -330,7 +340,7 @@ class DelegatedCodeEditPorts:
                 text=True,
                 timeout=check.timeout_seconds,
                 check=False,
-                env={**_git_env(), "PYTHONDONTWRITEBYTECODE": "1"},
+                env=_check_env(),
             )
         except subprocess.TimeoutExpired as exc:
             out = (exc.stdout or "") if isinstance(exc.stdout, str) else ""

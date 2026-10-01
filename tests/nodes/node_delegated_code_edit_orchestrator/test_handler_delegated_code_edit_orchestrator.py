@@ -376,3 +376,30 @@ def test_request_refuses_relative_root_and_escaping_globs() -> None:
 )
 def test_glob_semantics(glob: str, path: str, expected: bool) -> None:
     assert writable(_request(writable_globs=(glob,)), path) is expected
+
+
+def test_file_index_lists_files_near_the_task_first() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator import (
+        relevant_first,
+    )
+
+    request = _request(
+        writable_globs=("src/pkg/validators/*.yaml", "tests/unit/pkg/test_x.py"),
+        context_paths=("src/pkg/models/m.py",),
+    )
+    paths = [
+        "a.md",
+        "docs/x.md",
+        "src/pkg/models/m.py",
+        "src/pkg/validators/b.yaml",
+        "tests/unit/pkg/test_x.py",
+        "z.txt",
+    ]
+    assert relevant_first(request, paths) == [
+        "src/pkg/models/m.py",
+        "src/pkg/validators/b.yaml",
+        "tests/unit/pkg/test_x.py",
+        "a.md",
+        "docs/x.md",
+        "z.txt",
+    ]

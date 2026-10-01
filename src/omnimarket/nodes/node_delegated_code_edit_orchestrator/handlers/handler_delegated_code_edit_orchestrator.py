@@ -113,6 +113,28 @@ def writable(request: ModelDelegatedCodeEditRequest, path: str) -> bool:
     return any(glob_regex(glob).match(path) for glob in request.writable_globs)
 
 
+def _anchor_dir(path: str) -> str:
+    """The directory a glob or path is rooted in, up to its first wildcard."""
+    head = re.split(r"[*?\[]", path, maxsplit=1)[0]
+    return posixpath.dirname(head) if head != path else posixpath.dirname(path)
+
+
+def relevant_first(
+    request: ModelDelegatedCodeEditRequest, paths: list[str]
+) -> list[str]:
+    """The file index with files near the writable and context paths first, so a
+    large repository's index shows the model the files the task is about."""
+    anchors = {
+        _anchor_dir(p) for p in (*request.writable_globs, *request.context_paths)
+    }
+    anchors.discard("")
+
+    def near(path: str) -> bool:
+        return any(path.startswith(anchor + "/") for anchor in anchors)
+
+    return [p for p in paths if near(p)] + [p for p in paths if not near(p)]
+
+
 def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
     if len(text) <= limit:
         return text
@@ -272,7 +294,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         context: tuple[tuple[str, str], ...],
         state: _State,
     ) -> EnumCodeEditStatus:
-        index = [path for path, _ in manifest]
+        index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
         for turn in range(1, request.max_turns + 1):
             prompt = self._prompt(request, index, context, state, turn)
@@ -593,5 +615,6 @@ __all__ = [
     "HandlerDelegatedCodeEditOrchestrator",
     "glob_regex",
     "normalise_path",
+    "relevant_first",
     "writable",
 ]
