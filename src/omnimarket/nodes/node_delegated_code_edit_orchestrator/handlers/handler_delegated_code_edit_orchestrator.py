@@ -54,11 +54,13 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     MAX_VIEW_WINDOW_BYTES,
     MAX_WRITE_BYTES,
     VIEW_WINDOW_LINES,
+    WRITING_TOOLS,
     EnumCodeEditStatus,
     EnumCodeEditTool,
     ModelCheckResult,
     ModelCodeEditAction,
     ModelCodeEditResult,
+    ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
     ModelObservation,
     ModelTurnReply,
@@ -501,9 +503,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             return ModelObservation(
                 ok=False, output=f"refused: {raw!r} leaves the worktree"
             )
-        if tool in (EnumCodeEditTool.WRITE, EnumCodeEditTool.EDIT) and not writable(
-            request, path
-        ):
+        if tool in WRITING_TOOLS and not writable(request, path):
             state.refusals += 1
             return ModelObservation(
                 ok=False,
@@ -537,6 +537,8 @@ class HandlerDelegatedCodeEditOrchestrator:
                     0 if action.content.endswith("\n") or not action.content else 1
                 )
                 return ModelObservation(ok=True, output=f"wrote {path} ({lines} lines)")
+            if tool == EnumCodeEditTool.FORMAT:
+                return self._format(request, path, state)
             # EDIT
             current = self._ports.read_file(request, path)
             old_string, new_string = action.old_string, action.new_string
@@ -558,6 +560,33 @@ class HandlerDelegatedCodeEditOrchestrator:
             return ModelObservation(ok=True, output=f"edited {path}")
         except WorkspacePathError as exc:
             return ModelObservation(ok=False, output=f"error: {exc}")
+
+    def _format(
+        self, request: ModelDelegatedCodeEditRequest, path: str, state: _State
+    ) -> ModelObservation:
+        """Run the declared formatter over one writable file, in place."""
+        if not request.formatter:
+            state.refusals += 1
+            return ModelObservation(
+                ok=False, output="refused: no formatter is declared for this task"
+            )
+        if path.startswith("-"):
+            state.refusals += 1
+            return ModelObservation(
+                ok=False, output=f"refused: {path!r} reads as a flag"
+            )
+        self._ports.read_file(request, path)
+        argv = (*request.formatter, path)
+        result = self._ports.run_check(
+            request, ModelDeclaredCheck(name="format", argv=argv)
+        )
+        return ModelObservation(
+            ok=result.status == "passed",
+            output=_cap(
+                f"$ {' '.join(argv)}\n{result.status} (exit {result.exit_code})\n"
+                f"{result.output_tail}"
+            ),
+        )
 
     @staticmethod
     def _record_finish(

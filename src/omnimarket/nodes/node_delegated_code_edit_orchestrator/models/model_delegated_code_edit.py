@@ -44,12 +44,15 @@ class EnumCodeEditTool(StrEnum):
     GREP = "grep"
     WRITE = "write"
     EDIT = "edit"
+    FORMAT = "format"
     RUN_CHECK = "run_check"
     FINISH = "finish"
 
 
 #: Tools that change the worktree.
-WRITING_TOOLS = frozenset({EnumCodeEditTool.WRITE, EnumCodeEditTool.EDIT})
+WRITING_TOOLS = frozenset(
+    {EnumCodeEditTool.WRITE, EnumCodeEditTool.EDIT, EnumCodeEditTool.FORMAT}
+)
 
 
 class EnumCodeEditStatus(StrEnum):
@@ -105,6 +108,11 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         default=(), description="Worktree-relative files shown in the first turn."
     )
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
+    formatter: tuple[str, ...] = Field(
+        default=(),
+        description="argv of the formatter the format tool runs; the file's "
+        "worktree-relative path is appended as the last word. Empty: no format tool.",
+    )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
     task_type: Literal["code_generation"] = "code_generation"
     caller_lane: str | None = Field(
