@@ -83,6 +83,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
     HandlerRoutingIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src"

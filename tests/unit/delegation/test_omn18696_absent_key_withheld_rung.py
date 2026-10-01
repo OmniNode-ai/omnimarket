@@ -53,10 +53,12 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 
 import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.inference.provider_quota_state import ModelProviderQuotaSnapshot
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
@@ -82,6 +84,13 @@ GLM_REF = "llm.glm.api_key"
 # them proves nothing: the tier declares siblings and stays selectable through
 # another, which is itself pinned below.
 CHEAP_CLOUD_REFS = frozenset({GLM_REF, "llm.gemini.api_key", "llm.vertex.access_token"})
+
+
+# OMN-20154: an unreadable quota snapshot blocks every metered provider, which
+# is the simplest way to put every cloud rung behind a quota refusal.
+_EVERY_METERED_BLOCKED = ModelProviderQuotaSnapshot.unknown(
+    as_of=datetime(2026, 9, 30, tzinfo=UTC), reason="test: every metered key blocked"
+)
 
 
 @pytest.fixture
@@ -188,7 +197,6 @@ def test_the_named_rung_follows_the_references_that_are_actually_missing(
 
 
 def test_a_rung_declined_for_a_quota_state_is_not_reported_as_a_credential(
-    monkeypatch: pytest.MonkeyPatch,
     unresolvable: Callable[[frozenset[str] | set[str]], None],
 ) -> None:
     """The counterfactual relaxes the credential term ONLY.
@@ -200,17 +208,14 @@ def test_a_rung_declined_for_a_quota_state_is_not_reported_as_a_credential(
     ONLY way a rung could be reported is if relaxation leaked past its term.
     """
     unresolvable(set())
-    monkeypatch.setattr(
-        routing,
-        "quota_domain_disabled",
-        lambda _endpoint_url, now=None: "quota exhausted until tomorrow",  # noqa: ARG005
-    )
 
-    assert routing.credential_withheld_rung("document") is None
+    assert (
+        routing.credential_withheld_rung("document", quota_state=_EVERY_METERED_BLOCKED)
+        is None
+    )
 
 
 def test_quota_and_credential_together_are_not_reported_as_a_credential(
-    monkeypatch: pytest.MonkeyPatch,
     unresolvable: Callable[[frozenset[str] | set[str]], None],
 ) -> None:
     """The sharp case: BOTH terms fail, so a key alone would not unlock the rung.
@@ -222,13 +227,13 @@ def test_quota_and_credential_together_are_not_reported_as_a_credential(
     key would not have made it usable.
     """
     unresolvable({OPENROUTER_REF, GLM_REF})
-    monkeypatch.setattr(
-        routing,
-        "quota_domain_disabled",
-        lambda _endpoint_url, now=None: "quota exhausted until tomorrow",  # noqa: ARG005
-    )
 
-    assert routing.credential_withheld_rung("document") is None
+    assert (
+        routing.credential_withheld_rung("document", quota_state=_EVERY_METERED_BLOCKED)
+        is None
+    )
+    # Control: without the quota block, the same missing keys ARE reported.
+    assert routing.credential_withheld_rung("document") is not None
 
 
 def test_an_unknown_task_class_reports_nothing_rather_than_guessing(

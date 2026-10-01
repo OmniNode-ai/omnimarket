@@ -30,10 +30,17 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.events.provider_quota import (
+    EnumProviderQuotaOutcome,
+    EnumProviderQuotaSource,
+    ModelProviderQuotaObserved,
+)
+from omnimarket.inference.provider_quota_observation import build_quota_observation
 from omnimarket.inference.provider_quota_policy import classify_quota_response
 from omnimarket.inference.provider_quota_state import (
-    clear_provider_quota_state,
-    record_quota_verdict,
+    ModelProviderQuotaSnapshot,
+    StaticProviderQuotaReader,
+    quota_block_for_backend,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
@@ -57,7 +64,15 @@ _GEMINI_429_BODY: dict[str, object] = {
 }
 
 
-def _disable_gemini_now(now: datetime) -> None:
+def _gemini_capped_at(
+    now: datetime, *, api_key_ref: str | None = None
+) -> ModelProviderQuotaSnapshot:
+    """OMN-20154: the quota state a reader sees once a Gemini 429 is observed.
+
+    The verdict becomes the observation event every call path emits, and the
+    snapshot derives its block from it as the projection does. ``api_key_ref``
+    matches the ladder under test, whose Gemini rung declares no secret_ref.
+    """
     verdict = classify_quota_response(
         status_code=429,
         endpoint_url=_GEMINI_ENDPOINT,
@@ -66,14 +81,19 @@ def _disable_gemini_now(now: datetime) -> None:
     )
     assert verdict is not None
     assert not verdict.retryable
-    record_quota_verdict(endpoint_url=_GEMINI_ENDPOINT, verdict=verdict)
-
-
-@pytest.fixture(autouse=True)
-def _clean_quota_state() -> object:
-    clear_provider_quota_state()
-    yield
-    clear_provider_quota_state()
+    observation = build_quota_observation(
+        tenant_id=None,
+        endpoint_url=_GEMINI_ENDPOINT,
+        api_key_ref=api_key_ref,
+        model_name="gemini-2.5-flash",
+        succeeded=False,
+        observed_at=now,
+        latency_ms=0,
+        source=EnumProviderQuotaSource.JUDGE,
+        http_status=429,
+        verdict=verdict,
+    )
+    return ModelProviderQuotaSnapshot.empty(as_of=now).with_observation(observation)
 
 
 # A self-contained contract whose metered rung is a REAL Gemini host, so the
@@ -185,13 +205,17 @@ class TestJudgeSkipsAQuotaDeadProvider:
                 return "gemini-2.5-flash"
 
             def quota_disabled(self) -> bool:
-                from omnimarket.inference.provider_quota_state import (
-                    quota_domain_disabled,
+                return (
+                    quota_block_for_backend(
+                        capped,
+                        endpoint_url=_GEMINI_ENDPOINT,
+                        api_key_ref=None,
+                        model_name="gemini-2.5-flash",
+                    )
+                    is not None
                 )
 
-                return quota_domain_disabled(_GEMINI_ENDPOINT) is not None
-
-        _disable_gemini_now(datetime.now(UTC))
+        capped = _gemini_capped_at(datetime.now(UTC))
 
         judge = HandlerJudgeAdequacy(inference_bridge=_RecordingBridge())
         verdict = await judge.score(
@@ -249,30 +273,95 @@ class TestJudgeSkipsAQuotaDeadProvider:
     ) -> None:
         """The first 429 must be the LAST one — self-reinforcing loop broken.
 
-        Before this, each delegation independently rediscovered the exhausted
-        quota, so the judge kept issuing calls that could not succeed.
+        OMN-20154: the judge no longer writes process memory. It emits the
+        observation every call path emits, and the NEXT judge decision (another
+        process, after a restart) reads the block back from the projection.
         """
         import httpx
 
-        from omnimarket.inference.provider_quota_state import quota_domain_disabled
         from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.adapter_routing_resolved_judge import (
             RoutingResolvedJudgeInferenceAdapter,
         )
+        from omnimarket.routing.delegation_backend_resolution import (
+            ModelResolvedDelegationBackend,
+        )
 
-        adapter = RoutingResolvedJudgeInferenceAdapter()
+        emitted: list[ModelProviderQuotaObserved] = []
+
+        class _Sink:
+            def emit(self, observation: ModelProviderQuotaObserved) -> None:
+                emitted.append(observation)
+
+        adapter = RoutingResolvedJudgeInferenceAdapter(observation_sink=_Sink())
+        backend = ModelResolvedDelegationBackend(
+            backend_id="cloud-glm-judge",
+            model_id="gemini-2.5-flash",
+            endpoint_ref=_GEMINI_ENDPOINT,
+            secret_ref="llm.gemini.api_key",
+            max_tokens=8192,
+            timeout_ms=60000,
+        )
         response = httpx.Response(
             429,
             json=_GEMINI_429_BODY,
             request=httpx.Request("POST", _GEMINI_ENDPOINT),
         )
         adapter.record_quota_failure(
-            endpoint_url=_GEMINI_ENDPOINT,
+            backend=backend,
             error=httpx.HTTPStatusError(
                 "429", request=response.request, response=response
             ),
         )
 
-        assert quota_domain_disabled(_GEMINI_ENDPOINT) is not None
+        assert len(emitted) == 1
+        observed = emitted[0]
+        assert observed.outcome is EnumProviderQuotaOutcome.LIMIT_HIT
+        assert observed.provider_id == "google-gemini"
+        assert observed.credential_ref == "llm.gemini.api_key"
+        assert observed.source is EnumProviderQuotaSource.JUDGE
+        # The next decision, reading the projection that folded it, is blocked.
+        later = ModelProviderQuotaSnapshot.empty(as_of=observed.observed_at)
+        assert (
+            quota_block_for_backend(
+                later.with_observation(observed),
+                endpoint_url=_GEMINI_ENDPOINT,
+                api_key_ref="llm.gemini.api_key",
+                model_name="gemini-2.5-flash",
+            )
+            is not None
+        )
+
+    def test_the_judge_reads_the_projection_before_calling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A block the projection holds keeps the judge from calling at all."""
+        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
+            adapter_routing_resolved_judge as judge_mod,
+        )
+        from omnimarket.routing.delegation_backend_resolution import (
+            ModelResolvedDelegationBackend,
+        )
+
+        backend = ModelResolvedDelegationBackend(
+            backend_id="cloud-glm-judge",
+            model_id="gemini-2.5-flash",
+            endpoint_ref=_GEMINI_ENDPOINT,
+            secret_ref="llm.gemini.api_key",
+            max_tokens=8192,
+            timeout_ms=60000,
+        )
+        capped = _gemini_capped_at(datetime.now(UTC), api_key_ref="llm.gemini.api_key")
+        adapter = judge_mod.RoutingResolvedJudgeInferenceAdapter(
+            quota_reader=StaticProviderQuotaReader(capped.blocks)
+        )
+        monkeypatch.setattr(adapter, "_resolve_backend", lambda: backend)
+        assert adapter.quota_disabled() is True
+
+        clean = judge_mod.RoutingResolvedJudgeInferenceAdapter(
+            quota_reader=StaticProviderQuotaReader(())
+        )
+        monkeypatch.setattr(clean, "_resolve_backend", lambda: backend)
+        assert clean.quota_disabled() is False
 
 
 class TestEscalationCannotTargetAQuotaDeadProvider:
@@ -299,8 +388,8 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
         )
         assert _backend_routable(backend) is True
 
-        _disable_gemini_now(datetime.now(UTC))
-        assert _backend_routable(backend) is False
+        capped = _gemini_capped_at(datetime.now(UTC))
+        assert _backend_routable(backend, quota_state=capped) is False
 
     def test_the_local_rung_is_never_collateral_damage(self) -> None:
         """A cloud cap must not take down the zero-cost rung that still works."""
@@ -309,7 +398,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             _backend_routable,
         )
 
-        _disable_gemini_now(datetime.now(UTC))
+        capped = _gemini_capped_at(datetime.now(UTC))
         local = BifrostBackendRef(
             endpoint_url="http://local.test:8000/v1/chat/completions",
             model_name="qwen3.8",
@@ -317,7 +406,12 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             max_tokens=122880,
             api_key_ref=None,
         )
-        assert _backend_routable(local) is True
+        assert _backend_routable(local, quota_state=capped) is True
+        # Even an UNREADABLE quota state never withholds an unmetered rung.
+        unknown = ModelProviderQuotaSnapshot.unknown(
+            as_of=datetime.now(UTC), reason="test"
+        )
+        assert _backend_routable(local, quota_state=unknown) is True
 
     def test_routability_returns_when_the_cap_resets(self) -> None:
         """Bounded by the provider's own stated reset — not a permanent removal."""
@@ -327,7 +421,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
         )
 
         now = datetime(2026, 8, 29, 12, 13, 33, tzinfo=UTC)
-        _disable_gemini_now(now)
+        capped = _gemini_capped_at(now)
         backend = BifrostBackendRef(
             endpoint_url=_GEMINI_ENDPOINT,
             model_name="gemini-2.5-flash",
@@ -335,8 +429,9 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             max_tokens=8192,
             api_key_ref=None,
         )
-        assert _backend_routable(backend, now=now) is False
-        assert _backend_routable(backend, now=now + timedelta(seconds=60)) is True
+        assert _backend_routable(backend, quota_state=capped) is False
+        later = capped.model_copy(update={"as_of": now + timedelta(seconds=60)})
+        assert _backend_routable(backend, quota_state=later) is True
 
     def test_ladder_dead_ends_on_a_declared_terminal_not_a_429_burn(
         self, gemini_ladder: None
@@ -363,6 +458,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             NO_HIGHER_TIER_REASON_TOKEN,
             describe_no_higher_tier_available,
             next_eligible_tier,
+            quota_blocked_backend_refs,
         )
 
         # Baseline: the metered rung IS the declared next step while it is live.
@@ -373,16 +469,29 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             == "cheap_cloud"
         )
 
-        _disable_gemini_now(datetime.now(UTC))
+        # OMN-20154: the orchestrator folds the quota snapshot's blocked
+        # backends into the exclusion set it already passes.
+        blocked = quota_blocked_backend_refs(_gemini_capped_at(datetime.now(UTC)))
+        assert blocked == frozenset({"cloud-gemini-pro"})
 
         # Both metered rungs in this ladder resolve the SAME Gemini backend, so
         # one cap must remove both — the quota domain is the failure domain.
         assert (
-            next_eligible_tier("local", frozenset(), task_type="code_generation")
+            next_eligible_tier(
+                "local",
+                frozenset(),
+                task_type="code_generation",
+                excluded_backend_refs=blocked,
+            )
             is None
         )
         assert (
-            next_eligible_tier("cheap_cloud", frozenset(), task_type="code_generation")
+            next_eligible_tier(
+                "cheap_cloud",
+                frozenset(),
+                task_type="code_generation",
+                excluded_backend_refs=blocked,
+            )
             is None
         )
 
@@ -391,12 +500,13 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
             current_tier_name="local",
             excluded_tiers=frozenset(),
             task_type="code_generation",
+            excluded_backend_refs=blocked,
         )
         assert reason.startswith(NO_HIGHER_TIER_REASON_TOKEN)
 
 
 class TestTheEscalationCallItselfRecordsTheCap:
-    """The delegation call effect is the SECOND write site into the ledger.
+    """The delegation call effect is the SECOND observation site (OMN-20154).
 
     The judge leg usually discovers an exhausted quota first, but it only runs
     for ``JUDGE_COMBINABLE_TASK_TYPES``. For every other task class the
@@ -413,7 +523,6 @@ class TestTheEscalationCallItselfRecordsTheCap:
         """RED before OMN-16932: OMN-16891 classified the 429 and only LOGGED it."""
         import httpx
 
-        from omnimarket.inference.provider_quota_state import quota_domain_disabled
         from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
             handler_llm_delegation_call as call_mod,
         )
@@ -439,8 +548,6 @@ class TestTheEscalationCallItselfRecordsTheCap:
         monkeypatch.setattr(call_mod.transport, "post_chat_completion", fake_post)
         monkeypatch.setattr(call_mod, "_is_endpoint_healthy", always_healthy)
 
-        assert quota_domain_disabled(_GEMINI_ENDPOINT) is None
-
         handler = call_mod.HandlerLlmDelegationCall()
         result = handler(
             call_mod.ModelLlmDelegationCallRequest(
@@ -459,8 +566,13 @@ class TestTheEscalationCallItselfRecordsTheCap:
         )
 
         assert result.success is False
-        # The cap is now ROUTING STATE, not just a log line — which is the whole
-        # point of the ticket: the next delegation cannot select this rung.
-        state = quota_domain_disabled(_GEMINI_ENDPOINT)
-        assert state is not None
-        assert state.quota_domain == "google-gemini"
+        # OMN-20154: the cap rides the result as the observation the caller
+        # delivers to the projection; the next routing decision reads it back.
+        observed = result.quota_observation
+        assert observed is not None
+        assert observed.outcome is EnumProviderQuotaOutcome.LIMIT_HIT
+        assert observed.provider_id == "google-gemini"
+        assert observed.http_status == 429
+        assert observed.provider_code == "RESOURCE_EXHAUSTED"
+        assert result.http_status == 429
+        assert result.provider_code == "RESOURCE_EXHAUSTED"

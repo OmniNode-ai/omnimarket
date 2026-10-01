@@ -85,7 +85,7 @@ from omnibase_infra.topology.physical_schema_mapping import (
     physical_grant_schema_for_table,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 

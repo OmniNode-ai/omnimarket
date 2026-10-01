@@ -516,9 +516,15 @@ def _provider_http_error_message(exc: httpx.HTTPStatusError) -> str:
         body = body[:_MAX_PROVIDER_ERROR_BODY_CHARS] + "...[truncated]"
     if not body:
         body = "<empty>"
+    # OMN-20154: the provider's Retry-After is the authority for how long a
+    # capacity refusal lasts, and this message is the only thing the
+    # orchestrator receives, so the header rides in it (before the body, whose
+    # text is free-form).
+    retry_after = (response.headers.get("retry-after") or "").strip()
+    retry_part = f"retry_after={retry_after}; " if retry_after else ""
     return (
         f"provider HTTP {response.status_code} {response.reason_phrase} "
-        f"for {response.request.url}; response_body={body}"
+        f"for {response.request.url}; {retry_part}response_body={body}"
     )
 
 

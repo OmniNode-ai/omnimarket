@@ -87,7 +87,7 @@ from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "receipts"
 

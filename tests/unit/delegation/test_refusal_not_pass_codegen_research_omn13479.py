@@ -96,6 +96,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src"

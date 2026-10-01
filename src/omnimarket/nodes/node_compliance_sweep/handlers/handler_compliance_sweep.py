@@ -635,9 +635,8 @@ class NodeComplianceSweep:
         non-empty ``handler_routing.handlers`` table (multi-operation
         ``operation_match`` dispatch) is only actually reachable at runtime
         if the canonical handler appears somewhere in that table — as a
-        per-operation entry (matched by module path, or by class name when
-        the entry omits a module, per the ``handler_key``/``handler_class``
-        contract dialects) or as ``handler_routing.default_handler``. If
+        per-operation entry using its canonical nested handler reference or
+        as ``handler_routing.default_handler``. If
         neither, the declared canonical handler can never be dispatched —
         this is the real-world "no dispatcher found" failure mode (a routing
         table that silently drops the node's own primary handler).
@@ -716,22 +715,18 @@ class NodeComplianceSweep:
         """Return True if ``top_module``/``top_class`` is reachable through
         ``entries`` (per-operation routing) or ``routing.default_handler``.
 
-        Handles the three contract dialects observed in the live workspace:
-        nested ``handler: {module, name|class}``, flat ``handler_module`` /
-        ``handler_class``, and bare ``handler_key`` (class-name only, no
-        module path).
+        Reads only the canonical nested ``handler: {module, name|class}``
+        contract reference.
         """
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
+            nested = entry.get("handler")
             module = None
             cls = None
-            nested = entry.get("handler")
             if isinstance(nested, dict):
                 module = nested.get("module")
                 cls = nested.get("name") or nested.get("class")
-            module = module or entry.get("handler_module")
-            cls = cls or entry.get("handler_class") or entry.get("handler_key")
             if module and module == top_module:
                 return True
             if module is None and cls and top_class and cls == top_class:
@@ -778,7 +773,6 @@ class NodeComplianceSweep:
                 continue
             nested = entry.get("handler")
             module = nested.get("module") if isinstance(nested, dict) else None
-            module = module or entry.get("handler_module")
             if not module:
                 continue
             parts = str(module).split(".")

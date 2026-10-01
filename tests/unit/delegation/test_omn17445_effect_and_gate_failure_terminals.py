@@ -106,7 +106,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
     ModelLlmDelegationCallResult,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _NODES = _REPO_ROOT / "src" / "omnimarket" / "nodes"
