@@ -774,6 +774,8 @@ def _receipt_passes_strict_model(payload: dict[str, object], ticket_id: str) -> 
         return False
     if receipt.status is not EnumReceiptStatus.PASS:
         return False
+    if receipt.ticket_id is None:
+        return False
     return _norm_omn(receipt.ticket_id) == _norm_omn(ticket_id)
 
 
