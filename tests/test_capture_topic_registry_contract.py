@@ -68,6 +68,13 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         # transition is never silently dropped. It is not a capture topic:
         # its schema contains only bounded PR-state fields.
         "pr.state.observed",
+        # OMN-20154: a provider quota observation and the in-process delegation
+        # terminals are duty-critical so a refusal or a delegation is never
+        # silently dropped. None is a capture topic: each carries only bounded
+        # scalar fields, with no transform and no free-form payload.
+        "provider.quota.observed",
+        "delegate_skill.completed",
+        "delegate_skill.failed",
         # OMN-17019 (C9). The five work-obligation lifecycle kinds are
         # duty_critical DELIBERATELY, and the tier is the whole point of the
         # ticket: an obligation READ may degrade to the last-good projection
