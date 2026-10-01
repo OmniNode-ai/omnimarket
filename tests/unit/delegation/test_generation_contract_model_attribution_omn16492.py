@@ -21,6 +21,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_delegation_config,
+)
+
 _SRC_ROOT = Path(__file__).resolve().parents[3] / "src" / "omnimarket"
 
 _GENERATION_CONTRACT_PATH = (
@@ -44,13 +48,34 @@ def _generation_model_routing() -> dict[str, object]:
     return model_routing
 
 
-def _bifrost_backends() -> dict[str, dict[str, object]]:
-    contract = yaml.safe_load(_BIFROST_CONTRACT_PATH.read_text(encoding="utf-8"))
-    return {backend["backend_id"]: backend for backend in contract["backends"]}
+@pytest.fixture
+def lab_backends(tmp_path: Path) -> dict[str, dict[str, object]]:
+    """The lab served id is declared by a lane overlay, not the base."""
+    overlay = tmp_path / "lab-overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {
+                        "backend_id": "local-coder",
+                        "model_name": "Qwen3.8-27B",
+                        "endpoint_url": "http://lab-fixture.invalid:8000/v1/chat/completions",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    contract = load_bifrost_delegation_config(
+        config_path=_BIFROST_CONTRACT_PATH, overlay_path=overlay
+    )
+    return {backend.backend_id: backend.model_dump() for backend in contract.backends}
 
 
 @pytest.mark.unit
-def test_generation_served_model_id_matches_routing_authority() -> None:
+def test_generation_served_model_id_matches_routing_authority(
+    lab_backends: dict[str, dict[str, object]],
+) -> None:
     """contract.yaml served_model_id == bifrost model_name for its endpoint_ref.
 
     The delegation path reconciles the backend's ``model_name`` against the
@@ -64,7 +89,7 @@ def test_generation_served_model_id_matches_routing_authority() -> None:
     assert isinstance(endpoint_ref, str)
     assert endpoint_ref
 
-    backends = _bifrost_backends()
+    backends = lab_backends
     assert endpoint_ref in backends, (
         f"model_routing.endpoint_ref {endpoint_ref!r} is not a declared bifrost "
         "backend — the generation contract routes through the routing authority"
@@ -111,7 +136,9 @@ def test_swarm_endpoint_registry_carries_no_dead_8001_endpoint() -> None:
 
 
 @pytest.mark.unit
-def test_swarm_local_primary_model_matches_routing_authority() -> None:
+def test_swarm_local_primary_model_matches_routing_authority(
+    lab_backends: dict[str, dict[str, object]],
+) -> None:
     """The swarm registry's .201:8000 entry names the same served model the
     routing authority declares for local-coder (the live-guarded value)."""
     registry = yaml.safe_load(_ENDPOINT_REGISTRY_PATH.read_text(encoding="utf-8"))
@@ -119,7 +146,7 @@ def test_swarm_local_primary_model_matches_routing_authority() -> None:
         ep for ep in registry["endpoints"] if ep["base_url"].endswith(":8000/v1")
     ]
     assert primary, "no .201:8000 entry in the swarm endpoint registry"
-    local_coder_model = _bifrost_backends()["local-coder"]["model_name"]
+    local_coder_model = lab_backends["local-coder"]["model_name"]
     for ep in primary:
         assert ep["model_id"] == local_coder_model, (
             f"swarm registry entry {ep['id']!r} pins model_id {ep['model_id']!r} "

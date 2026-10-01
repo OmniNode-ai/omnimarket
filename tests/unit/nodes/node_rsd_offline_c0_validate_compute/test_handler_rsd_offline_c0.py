@@ -39,8 +39,14 @@ def _sha256(payload: bytes) -> str:
 
 
 def _overlay(*backend_refs: str) -> bytes:
+    served = {
+        "local-coder": "Qwen3.8-27B",
+        "local-heavy-reasoning": "Qwen3.8-27B",
+        "local-ds-v4-flash": "deepseek-v4-flash",
+    }
     rows = "\n".join(
         f"  - backend_id: {backend_ref}\n    endpoint_url: {_ENDPOINT}"
+        f"\n    model_name: {served.get(backend_ref, 'unknown-model')}"
         for backend_ref in backend_refs
     )
     return f"backends:\n{rows}\n".encode()
