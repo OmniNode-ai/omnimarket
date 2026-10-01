@@ -2882,11 +2882,12 @@ def delta(
                 f"You are a helpful assistant completing a {task_type} task.",
             )
 
-            # Local endpoints use the served model id declared in routing_tiers.yaml.
-            # Cloud/CLI backends keep using bifrost model_name because provider model
-            # names can differ from stable routing keys such as openrouter-glm-flash.
+            # The backend declares the lane's served id; selected.id remains the
+            # routing key. Unbound local declarations fall back to that key.
             model_name = (
-                selected.id if tier.name in _LOCAL_TIERS else backend.model_name
+                (backend.model_name or selected.id)
+                if tier.name in _LOCAL_TIERS
+                else backend.model_name
             )
 
             rationale = (

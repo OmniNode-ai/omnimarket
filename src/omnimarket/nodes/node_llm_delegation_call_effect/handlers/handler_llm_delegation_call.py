@@ -43,6 +43,9 @@ from omnimarket.events.provider_quota import (
     EnumProviderQuotaSource,
     ModelProviderQuotaObserved,
 )
+from omnimarket.inference.local_byok_credential_adapter import (
+    record_local_byok_model,
+)
 from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_observation import (
     build_quota_observation,
@@ -50,6 +53,7 @@ from omnimarket.inference.provider_quota_observation import (
 )
 from omnimarket.inference.provider_quota_policy import ModelQuotaVerdict
 from omnimarket.inference.provider_response_error import (
+    describe_provider_refusal,
     failure_class_for_status,
     provider_error_from_body,
 )
@@ -84,7 +88,17 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing.byok_provider_backends import byok_declared_price_per_1m
+from omnimarket.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+)
+from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    byok_declared_price_per_1m,
+    resolve_byok_backend_by_endpoint,
+)
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 _subscribe = contract_subscribe_topics(_CONTRACT)
@@ -492,6 +506,157 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
+        """Execute the call, resolving a customer route's model from its key.
+
+        OMN-20157. A customer's BYOK route (a tenant-shaped credential reference
+        on an endpoint the BYOK catalogue declares) runs the model its key
+        resolved from the provider's own model list. Two cases are settled here,
+        at the one boundary that holds the key:
+
+        * the route carries the unresolved marker (the list could not be read at
+          registration, or the credential predates model discovery): the model
+          is resolved BEFORE the call, so no request is sent for a model nobody
+          chose;
+        * the provider answers 404 model-not-found: the model is re-resolved
+          ONCE from the same list, excluding the one that failed, and the call
+          is re-issued with it. A second 404, or a list naming no other
+          preferred model, is the typed ``PROVIDER_MODEL_NOT_FOUND`` refusal.
+
+        This is not a transport retry and it never changes backend: it is the
+        same customer route asking its own provider which model it offers. A
+        house route (house-shaped reference) is never touched.
+        """
+        byok = self._customer_byok_row(request, endpoint_url)
+        if byok is None:
+            return self._execute_call_once(request, endpoint_url, event_publisher)
+        configured = request.model_id
+        if request.model_id == BYOK_MODEL_UNRESOLVED:
+            resolved = self._resolve_byok_model(request, byok, exclude=())
+            if isinstance(resolved, ModelLlmDelegationCallResult):
+                return resolved
+            request = resolved
+        result = self._execute_call_once(request, endpoint_url, event_publisher)
+        if (
+            not result.success
+            and result.failure_class
+            is EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND
+        ):
+            retry = self._resolve_byok_model(
+                request, byok, exclude=(request.model_id,), refused=result
+            )
+            if isinstance(retry, ModelLlmDelegationCallResult):
+                return retry
+            request = retry
+            result = self._execute_call_once(request, endpoint_url, event_publisher)
+        if (
+            result.success
+            and request.model_id != configured
+            and result.served_model_id is None
+        ):
+            # The model came off the provider's own list for this key and just
+            # answered, so it is the attribution, not the route's stale value.
+            result = result.model_copy(update={"served_model_id": request.model_id})
+        return result
+
+    @staticmethod
+    def _customer_byok_row(
+        request: ModelLlmDelegationCallRequest, endpoint_url: str
+    ) -> ModelByokProviderBackend | None:
+        """The BYOK catalogue row this call is a customer route on, or ``None``."""
+        if not is_tenant_credential_ref(request.secret_ref):
+            return None
+        return resolve_byok_backend_by_endpoint(endpoint_url)
+
+    def _resolve_byok_model(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        byok: ModelByokProviderBackend,
+        *,
+        exclude: tuple[str, ...],
+        refused: ModelLlmDelegationCallResult | None = None,
+    ) -> ModelLlmDelegationCallRequest | ModelLlmDelegationCallResult:
+        """Ask the provider which model this key may use; return the re-aimed request.
+
+        Returns a failure result instead when no model can be resolved:
+        ``refused`` (the provider's own 404 refusal) when the list was read and
+        offers nothing else, the discovery's typed refusal when the provider
+        refused the key or its billing, and a retryable ``MODEL_UNAVAILABLE``
+        when the list could not be read at all.
+        """
+        try:
+            api_key, _source = resolve_api_key_with_source_loop_safe(
+                request.secret_ref, env_var_fallback=None
+            )
+        except SecretResolutionError as exc:
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text=str(exc),
+            )
+        if api_key is None:
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text="",
+            )
+        discovery = discover_byok_model_sync(byok, api_key, exclude=exclude)
+        if discovery.model is not None:
+            logger.info(
+                "byok model resolved from the provider's list provider=%s plan=%s "
+                "model=%s (was %s) correlation=%s",
+                byok.provider,
+                byok.plan,
+                discovery.model,
+                request.model_id,
+                request.correlation_id,
+            )
+            if request.secret_ref is not None:
+                # A local credential remembers it, so the next delegation runs
+                # it without re-learning. A hosted reference has no local row
+                # and updates nothing.
+                record_local_byok_model(request.secret_ref, discovery.model)
+            return request.model_copy(
+                update={
+                    "model_id": discovery.model,
+                    "model_id_source": (
+                        f"{byok.models_url} (the key's own model list, "
+                        "byok_provider_backends.v1.yaml model_preference)"
+                    ),
+                }
+            )
+        if discovery.outcome == "rejected":
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
+                detail_text=discovery.provider_message or "",
+            )
+        if discovery.outcome == "billing":
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                describe_discovery_refusal(discovery) or "PROVIDER_BILLING",
+            )
+        if refused is not None:
+            return refused
+        if discovery.outcome == "no_match":
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                describe_discovery_refusal(discovery) or "PROVIDER_MODEL_NOT_FOUND",
+            )
+        return self._failure_result(
+            request,
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+            f"could not read {byok.provider}'s model list at {byok.models_url} to "
+            "resolve this route's model; no request was sent",
+        )
+
+    def _execute_call_once(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
         messages: list[dict[str, str]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
@@ -609,8 +774,14 @@ class HandlerLlmDelegationCall:
             # outage, and being retryable it escalated up the ladder instead of
             # refusing. MODEL_UNAVAILABLE remains the fallback for every status
             # the shared classifier does not name, unchanged.
+            raw_text = exc.response.text
+            status_text = raw_text if isinstance(raw_text, str) else ""
+            # OMN-20157: the body is read too, so a 402, a billing refusal on a
+            # 400/403, Google's 400 "API key not valid" and a 404 model-not-found
+            # each land in their own non-retryable class instead of the
+            # retryable MODEL_UNAVAILABLE catch-all below.
             failure_class = (
-                failure_class_for_status(exc.response.status_code)
+                failure_class_for_status(exc.response.status_code, status_text)
                 or EnumDelegationFailureClass.MODEL_UNAVAILABLE
             )
             # OMN-16530: ``str(exc)`` alone is a bare "Client error '400 ...'"
@@ -690,6 +861,30 @@ class HandlerLlmDelegationCall:
                     request,
                     EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
                     detail_text=detail,
+                )
+            if failure_class in (
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+            ):
+                # OMN-20157: a typed refusal about the account or the model. The
+                # message leads with the class, quotes the provider verbatim
+                # (credential shapes scrubbed) and says what the customer can do,
+                # so the receipt and the CLI carry the provider's own words
+                # rather than a timeout several retries later.
+                return self._failure_result(
+                    request,
+                    failure_class,
+                    describe_provider_refusal(
+                        failure_class,
+                        status_code=exc.response.status_code,
+                        provider_text=status_text,
+                        model_id=request.model_id,
+                    ),
+                    http_status=exc.response.status_code,
+                    provider_code=verdict.provider_code
+                    if verdict is not None
+                    else None,
+                    quota_observation=observation,
                 )
             return self._failure_result(
                 request,

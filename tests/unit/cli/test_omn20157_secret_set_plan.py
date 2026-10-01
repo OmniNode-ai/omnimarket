@@ -23,6 +23,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_ref,
 )
 from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
@@ -105,7 +106,7 @@ def test_a_detected_general_api_key_routes_to_the_general_endpoint(
     routed = substitute_local_byok_route(_glm_house())
     assert routed.backend_id == "byok-glm-general"
     assert routed.endpoint_ref == "https://api.z.ai/api/paas/v4/chat/completions"
-    assert routed.model_id == "glm-4.5-flash"
+    assert routed.model_id == BYOK_MODEL_UNRESOLVED
 
 
 def test_a_coding_plan_only_key_is_refused_with_the_typed_code_and_stores_nothing(
@@ -272,7 +273,7 @@ def test_a_gemini_key_substitutes_the_customer_gemini_route() -> None:
     routed = substitute_local_byok_route(house)
 
     assert routed.backend_id == "byok-gemini"
-    assert routed.model_id == "gemini-2.5-flash-lite"
+    assert routed.model_id == BYOK_MODEL_UNRESOLVED
     assert routed.secret_ref is not None
     assert routed.secret_ref.startswith("cred_localinstall_gemini_")
     assert asyncio.run(LocalByokCredentialStore().get_secret(routed.secret_ref)) == _KEY

@@ -117,8 +117,18 @@ class TestTheRoutingDecisionNamesTheBackend:
     """AC1: two backends serving one model id differ in backend identity."""
 
     def test_same_model_two_backends_differ_on_the_decision(
-        self, frontier_unconfigured_bifrost: None
+        self, frontier_unconfigured_bifrost: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as reducer,
+        )
+
+        # This regression requires two backends declaring the same served id.
+        backends = reducer._load_bifrost_endpoints()
+        for backend_id in ("local-coder", "local-heavy-reasoning"):
+            monkeypatch.setattr(
+                backends[backend_id], "model_name", MODEL_LOCAL_201_SERVED_ID
+            )
         routing = HandlerRoutingIntent()
         decisions = []
         for task_type in ("code_generation", "research"):

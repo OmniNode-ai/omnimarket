@@ -52,4 +52,18 @@ class EnumDelegationFailureClass(StrEnum):
     # request sat on the bus with no matching response, the FSM row stayed
     # ROUTED/in_flight, and the customer's delegation never terminalised.
     RUNTIME_RESTART_DURING_DELEGATION = "runtime_restart_during_delegation"
+    # OMN-20157: the provider answered and said the MODEL this route names does
+    # not exist or is not available to this key (HTTP 404, e.g. Google's "no
+    # longer available to new users"). Distinct from MODEL_UNAVAILABLE, which is
+    # the retryable "the endpoint could not be used right now" class: re-asking
+    # the same backend for the same model cannot make it exist. A customer's
+    # route re-resolves its model once from the provider's own model list, then
+    # refuses with this class.
+    PROVIDER_MODEL_NOT_FOUND = "provider_model_not_found"
+    # OMN-20157: the provider answered and refused on the ACCOUNT's billing: HTTP
+    # 402, or a body naming prepaid credits, a balance or billing (e.g. a new
+    # Google project with no prepaid credits). On a customer's own key this is
+    # the customer's bill (INV-098), so it is told to them plainly and never
+    # retried: no retry and no other tier of theirs can add credit to an account.
+    PROVIDER_BILLING = "provider_billing"
     UNKNOWN = "unknown"

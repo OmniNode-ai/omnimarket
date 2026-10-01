@@ -228,6 +228,10 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
 )
+from omnimarket.routing.byok_provider_backends import (
+    byok_backend_max_retries,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
@@ -592,6 +596,31 @@ def _is_retryable_transport_failure(
     failure is PROVEN non-retryable.
     """
     return failure_class not in _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES
+
+
+# OMN-20157: typed provider refusals about the ACCOUNT or the MODEL. The
+# provider answered, so re-asking the same backend cannot change the answer, and
+# none of them is ever retried there. On a customer's own BYOK route there is no
+# house fallback (INV-068, OMN-17082), so each one terminalises at once with the
+# provider's message. On a house route it may still move to the next responder
+# (INV-063), which is what MODEL_UNAVAILABLE, the class both used to fall into,
+# already did.
+_TYPED_ACCOUNT_OR_MODEL_REFUSALS: frozenset[EnumDelegationFailureClass] = frozenset(
+    {
+        EnumDelegationFailureClass.PROVIDER_BILLING,
+        EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+    }
+)
+
+
+def _is_customer_byok_route(backend: ModelResolvedDelegationBackend) -> bool:
+    """Whether ``backend`` is a customer's own BYOK route (OMN-20157).
+
+    Keyed on the catalogue ``backend_id`` the local substitution stamps
+    (``byok-gemini``, ``byok-openrouter``, ...), the same key the bus path's
+    retry budget is read by.
+    """
+    return resolve_byok_backend_by_id(backend.backend_id) is not None
 
 
 # OMN-13597: hard ceiling buffer (seconds) added to the contract-resolved
@@ -1189,6 +1218,14 @@ class LocalDelegationDispatchPort:
         # 3 total $0 drafts), lifting the $0 pass-rate before paying. Keyed per tier
         # so each free tier on the ladder gets its own best-of-N budget.
         local_retry_counts: dict[str, int] = {}
+        # OMN-20157: same-backend re-issues already spent per customer BYOK
+        # route, bounded by the catalogue's ``max_retries`` for that route. A
+        # customer's chain has one responder, so a TRANSIENT failure (a 5xx, a
+        # timeout, a throttle) is retried on that responder and nowhere else.
+        # Before this, the retry was accidental: every house sibling in the tier
+        # was re-substituted to the SAME BYOK backend, so one route was asked
+        # again once per house rung, for minutes, whatever the failure was.
+        byok_retry_counts: dict[str, int] = {}
 
         while True:
             # OMN-17434: the single point on this bus-less port where a
@@ -1379,6 +1416,31 @@ class LocalDelegationDispatchPort:
                 current_tier = _routing_tier_name(backend)
                 excluded_backend_refs.add(backend.backend_id)
 
+                # OMN-20157: a customer's own route is retried only on itself and
+                # only for a transient failure, within its declared budget. A
+                # typed refusal about the account or the model terminalises it:
+                # there is no house fallback for a customer (INV-068).
+                customer_route = _is_customer_byok_route(backend)
+                typed_refusal = (
+                    transport_failure_class in _TYPED_ACCOUNT_OR_MODEL_REFUSALS
+                )
+                byok_same_backend_retry = False
+                if (
+                    customer_route
+                    and not typed_refusal
+                    and _is_retryable_transport_failure(transport_failure_class)
+                ):
+                    spent = byok_retry_counts.get(backend.backend_id, 0)
+                    budget = byok_backend_max_retries(backend.backend_id) or 0
+                    if spent < budget:
+                        byok_retry_counts[backend.backend_id] = spent + 1
+                        byok_same_backend_retry = True
+                may_move_on = (
+                    _is_retryable_transport_failure(transport_failure_class)
+                    and not byok_same_backend_retry
+                    and not (customer_route and typed_refusal)
+                )
+
                 # OMN-13640: exclude the BACKEND first, and only give up on the
                 # TIER once the routing authority reports it has no untried
                 # backend left for this task class. Excluding the tier on the
@@ -1387,20 +1449,20 @@ class LocalDelegationDispatchPort:
                 # free-tier 429 terminated the whole delegation while the same
                 # tier's GLM rung sat untried.
                 transport_sibling: ModelResolvedDelegationBackend | None = None
-                if _is_retryable_transport_failure(transport_failure_class):
+                if may_move_on:
                     transport_sibling = self._resolve_sibling_backend(
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
                         quota_state=self._quota_snapshot(quota_observations),
                     )
-                if transport_sibling is None:
+                if transport_sibling is None and not byok_same_backend_retry:
                     excluded_tiers.add(current_tier)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
                 if (
                     transport_sibling is None
-                    and _is_retryable_transport_failure(transport_failure_class)
+                    and may_move_on
                     and escalation_count < max_escalations
                 ):
                     escalated_backend = self._resolve_next_backend(
@@ -1458,6 +1520,21 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 )
+
+                if byok_same_backend_retry:
+                    logger.info(
+                        "LocalDelegationDispatch: customer route retry "
+                        "task_type=%s backend=%s re-issue %d/%d on transport "
+                        "failure_class=%s correlation=%s reason=%s",
+                        task_type,
+                        backend.backend_id,
+                        byok_retry_counts[backend.backend_id],
+                        byok_backend_max_retries(backend.backend_id) or 0,
+                        transport_failure_class,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    continue
 
                 if transport_sibling is not None:
                     # A sideways hop inside the SAME tier. Not an escalation:
@@ -2306,6 +2383,20 @@ class LocalDelegationDispatchPort:
                     task_type,
                 )
                 continue
+            if sibling.backend_id in excluded_backend_refs:
+                # OMN-20157: a house sibling the local BYOK substitution turns
+                # into a backend this dispatch already tried (every house rung
+                # of one provider becomes that provider's ONE customer route).
+                # Re-issuing it would ask the same route again under another
+                # name, which is how one failure used to repeat for minutes.
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s resolves to already-tried backend=%s; skipping it",
+                    current_tier,
+                    sibling_ref,
+                    sibling.backend_id,
+                )
+                continue
             if sibling.model_id in excluded_model_ids:
                 logger.info(
                     "LocalDelegationDispatch: same-tier sibling tier=%s "
@@ -2395,7 +2486,7 @@ class LocalDelegationDispatchPort:
             )
             return None
         try:
-            return resolve_delegation_backend(task_type, backend_id=backend_id)
+            escalated = resolve_delegation_backend(task_type, backend_id=backend_id)
         except RuntimeError:
             # The escalated tier's backend has no populated COMPLETE endpoint in
             # the active overlay — treat the ladder as exhausted rather than
@@ -2408,6 +2499,20 @@ class LocalDelegationDispatchPort:
                 task_type,
             )
             return None
+        if escalated.backend_id in excluded_backend_refs:
+            # OMN-20157: the next tier's house rung is substituted to a customer
+            # route this dispatch already tried. Same backend, same key: not a
+            # new responder.
+            logger.info(
+                "LocalDelegationDispatch: escalation tier=%s backend=%s resolves "
+                "to already-tried backend=%s for task_type=%s; ladder exhausted",
+                next_tier,
+                backend_id,
+                escalated.backend_id,
+                task_type,
+            )
+            return None
+        return escalated
 
     async def _run_single_attempt(
         self,

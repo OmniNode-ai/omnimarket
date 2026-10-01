@@ -435,8 +435,9 @@ class TestRealPostgresRoutingOverlayWritePath:
             async with _provisioned_runner() as (runner, admin_conn, _schema):
                 ref = f"cred_{BYOK_TENANT}_glm_{uuid4().hex[:12]}"
                 event = self._register(ref, provider="glm")
+                event["metadata"] = {"model": "glm-5.3-flash"}
                 if plan is not None:
-                    event["metadata"] = {"plan": plan}
+                    event["metadata"]["plan"] = plan
                 assert await runner.project_event(
                     TOPIC_REGISTERED,
                     event,
@@ -463,7 +464,7 @@ class TestRealPostgresRoutingOverlayWritePath:
                 assert row["provider"] == "glm"
                 assert path in row["endpoint_url"]
                 assert "/api/coding/" not in row["endpoint_url"]
-                assert row["model_name"] == "glm-4.5-flash"
+                assert row["model_name"] == event["metadata"]["model"]
                 assert row["secret_ref"] == ref
                 # The general-API row's declared budgets land in their own
                 # integer columns, typed by the same INSERT ... SELECT.

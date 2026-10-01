@@ -224,7 +224,10 @@ from omnimarket.routing.backend_placement import (
     load_bound_bifrost_placements,
     placement_digest,
 )
-from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
+from omnimarket.routing.byok_provider_backends import (
+    byok_backend_max_retries,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
@@ -745,6 +748,14 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
     """
     normalized = error_message.lower()
+    # OMN-20157: a typed provider refusal about the account or the model leads
+    # its message with the class value (``describe_provider_refusal``), and is
+    # matched before every generic marker below, since a billing or not-found
+    # sentence can contain "unavailable" or a status number.
+    if EnumDelegationFailureClass.PROVIDER_BILLING.value in normalized:
+        return EnumDelegationFailureClass.PROVIDER_BILLING
+    if EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND.value in normalized:
+        return EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND
     # OMN-20154: a status the provider actually answered outranks any word in
     # its body. The runtime bounds the body it carries and marks the cut with
     # "[truncated]", so a Gemini 429 read as CONTEXT_TOO_LARGE through the
@@ -2406,7 +2417,12 @@ class HandlerDelegationWorkflow:
                 and not workflow.routing_intent_replayed
             ):
                 workflow.routing_intent_replayed = True
-                return [ModelRoutingIntent(payload=workflow.request or request)]
+                routing_request = workflow.request or request
+                if not routing_request.tenant_id and workflow.tenant_id:
+                    routing_request = routing_request.model_copy(
+                        update={"tenant_id": workflow.tenant_id}
+                    )
+                return [ModelRoutingIntent(payload=routing_request)]
             return []
 
         effective_response_contract = (
@@ -2440,7 +2456,12 @@ class HandlerDelegationWorkflow:
         )
         self._workflows[cid] = workflow
 
-        return [ModelRoutingIntent(payload=request)]
+        routing_request = request
+        if not request.tenant_id and workflow.tenant_id:
+            routing_request = request.model_copy(
+                update={"tenant_id": workflow.tenant_id}
+            )
+        return [ModelRoutingIntent(payload=routing_request)]
 
     def handle_invocation_command(
         self,
@@ -3064,12 +3085,32 @@ class HandlerDelegationWorkflow:
 
             error_retryable = _should_escalate_inference_error(response.error_message)
 
+            # OMN-20157: a typed refusal about the account or the model (a 402,
+            # prepaid credits empty, a 404 model-not-found the effect could not
+            # re-resolve past). Re-asking the same backend cannot change it, so
+            # neither the customer-route re-issue nor a same-tier sibling runs.
+            # On a customer's own route there is no house fallback (INV-068), so
+            # it terminalises with the provider's message; on a house route it
+            # may still escalate to the next responder (INV-063).
+            typed_account_or_model_refusal = failure_class in (
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+            )
+            if typed_account_or_model_refusal:
+                customer_route = (
+                    resolve_byok_backend_by_id(
+                        workflow.routing_decision.selected_backend_ref
+                    )
+                    is not None
+                )
+                error_retryable = error_retryable and not customer_route
+
             # OMN-18265: a customer-credentialed route has no lawful successor
             # tier, so its recovery is a bounded re-issue to the same responder.
             # Checked BEFORE the sibling probe so the customer's own backend is
             # never recorded as transport-failed and excluded from the very
             # re-route that is meant to reach it.
-            if error_retryable:
+            if error_retryable and not typed_account_or_model_refusal:
                 customer_retry_intents = self._maybe_retry_customer_route(
                     workflow,
                     attempt_cost_usd,
@@ -3090,7 +3131,7 @@ class HandlerDelegationWorkflow:
             # fix a genuinely empty/malformed provider response either, so
             # this stays scoped to the transport-failure class the ticket
             # names.
-            if error_retryable:
+            if error_retryable and not typed_account_or_model_refusal:
                 sibling_retry_intents = self._maybe_retry_sibling_backend(
                     workflow,
                     failed_backend_ref=workflow.routing_decision.selected_backend_ref,

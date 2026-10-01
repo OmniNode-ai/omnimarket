@@ -154,6 +154,37 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_real_byok_model_list_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No unit test reads a real provider's model list (OMN-20157).
+
+    BYOK registration and the delegation effect ask the provider which models a
+    key can use. A test that does not pass its own ``get=`` would otherwise send
+    a fake key to a real provider over the network. The guard makes such a read
+    fail as a connection error (a loopback stub is still read), which discovery reports as ``inconclusive``
+    (the model is then resolved at call time), exactly as an unreachable
+    provider would. Tests that exercise discovery pass a fake ``get``.
+    """
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    from omnimarket.routing import byok_model_discovery
+
+    real_get = byok_model_discovery.get_models_json
+
+    def _loopback_only(*, url: str, **kwargs: Any) -> Any:
+        # A stub server on loopback (the local chain rigs) is still read.
+        if urlsplit(url).hostname in {"127.0.0.1", "localhost", "::1"}:
+            return real_get(url=url, **kwargs)
+        raise httpx.ConnectError(
+            "unit tests do not read real provider model lists",
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(byok_model_discovery, "get_models_json", _loopback_only)
+
+
+@pytest.fixture(autouse=True)
 def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bind DELEGATION_ROUTING_TIERS_PATH to the canonical packaged file,
     UNCONDITIONALLY (OMN-16435, tightening OMN-15628).

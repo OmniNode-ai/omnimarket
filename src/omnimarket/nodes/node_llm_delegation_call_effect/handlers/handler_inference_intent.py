@@ -36,13 +36,18 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceResponseData,
 )
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_ERROR_MESSAGE,
     finish_reason_from_choice,
     is_truncated_by_output_budget,
 )
-from omnimarket.inference.provider_response_error import provider_error_from_body
+from omnimarket.inference.provider_response_error import (
+    describe_provider_refusal,
+    failure_class_for_status,
+    provider_error_from_body,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -50,6 +55,15 @@ from omnimarket.nodes.contract_topics import (
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
     INFERENCE_TIMEOUT_LOG_TOKEN,
     load_inference_call_budget,
+)
+from omnimarket.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+)
+from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -153,6 +167,31 @@ class CredentialUnresolvedError(RuntimeError):
             "route unauthenticated and report the vendor for a condition the "
             "platform can refuse locally."
         )
+
+
+class ProviderRefusalError(RuntimeError):
+    """A typed provider refusal about the account or the model (OMN-20157).
+
+    Raised for a 402 or billing refusal (``PROVIDER_BILLING``) and a 404
+    model-not-found (``PROVIDER_MODEL_NOT_FOUND``). The message leads with the
+    class value, which the orchestrator's text classifier matches first, and
+    quotes the provider with credential shapes scrubbed.
+    """
+
+    def __init__(self, failure_class: EnumDelegationFailureClass, message: str) -> None:
+        self.failure_class = failure_class
+        marker = failure_class.value.upper()
+        super().__init__(
+            message if marker.lower() in message.lower() else f"{marker}: {message}"
+        )
+
+
+class ModelListUnavailableError(RuntimeError):
+    """The provider's model list could not be read to resolve a route's model.
+
+    OMN-20157. Worded with "unavailable" so the orchestrator reads the retryable
+    ``MODEL_UNAVAILABLE``: it is not evidence about the key or the account.
+    """
 
 
 class InferenceUsageError(RuntimeError):
@@ -489,6 +528,58 @@ def _provider_http_error_message(exc: httpx.HTTPStatusError) -> str:
     )
 
 
+def _customer_byok_row(intent: ModelInferenceIntent) -> ModelByokProviderBackend | None:
+    """The BYOK catalogue row ``intent`` is a customer route on, or ``None``."""
+    if not is_tenant_credential_ref(intent.api_key_ref):
+        return None
+    return resolve_byok_backend_by_endpoint(intent.base_url.strip())
+
+
+def _re_aim_intent(
+    intent: ModelInferenceIntent,
+    byok: ModelByokProviderBackend,
+    api_key: str,
+    *,
+    exclude: tuple[str, ...],
+) -> ModelInferenceIntent:
+    """``intent`` re-aimed at the best model the key's provider list offers.
+
+    OMN-20157. Raises :class:`ProviderRefusalError` when no model can be
+    resolved: the provider refused the key's billing, lists no other preferred
+    model, or could not be read. A key the provider rejects outright raises the
+    same class with ``PROVIDER_AUTH_FAILED``'s wording, which the orchestrator
+    already classifies as an auth failure.
+    """
+    discovery = discover_byok_model_sync(byok, api_key, exclude=exclude)
+    if discovery.model is not None:
+        logger.info(
+            "byok model resolved from the provider's list provider=%s plan=%s "
+            "model=%s (was %s) correlation_id=%s",
+            byok.provider,
+            byok.plan,
+            discovery.model,
+            intent.model,
+            intent.correlation_id,
+        )
+        return intent.model_copy(update={"model": discovery.model})
+    reason = describe_discovery_refusal(discovery)
+    if discovery.outcome == "billing":
+        raise ProviderRefusalError(
+            EnumDelegationFailureClass.PROVIDER_BILLING, reason or "provider_billing"
+        )
+    if discovery.outcome == "rejected":
+        # Worded so the orchestrator's text classifier reads an auth failure.
+        raise RuntimeError(reason or "provider_auth_failed: 401 unauthorized")
+    if discovery.outcome == "no_match" and reason is not None:
+        raise ProviderRefusalError(
+            EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND, reason
+        )
+    raise ModelListUnavailableError(
+        f"model list unavailable: could not read {byok.provider}'s model list at "
+        f"{byok.models_url} to resolve this route's model; no request was sent"
+    )
+
+
 def _resolve_effective_timeout(intent: ModelInferenceIntent) -> float:
     """Return the seconds this provider call may occupy, clamped to the ceiling.
 
@@ -636,7 +727,7 @@ class HandlerInferenceIntent:
                     api_key_ref=intent.api_key_ref,
                     tenant_id=getattr(intent, "tenant_id", None),
                 )
-            return self._call_llm(
+            return self._call_llm_on_resolved_model(
                 intent,
                 call_id,
                 api_key=api_key,
@@ -678,6 +769,50 @@ class HandlerInferenceIntent:
                 **_attempt_round_trip_fields(intent),
                 **_tenant_round_trip_fields(intent),
                 **_provenance_stamp_fields(intent, credential_source),
+            )
+
+    def _call_llm_on_resolved_model(
+        self,
+        intent: ModelInferenceIntent,
+        call_id: str,
+        *,
+        api_key: str | None,
+        credential_source: EnumCredentialSource | None,
+    ) -> ModelInferenceResponseData:
+        """Call the provider, resolving a customer route's model from its key.
+
+        OMN-20157. On a customer's BYOK route (a tenant-shaped reference on an
+        endpoint the BYOK catalogue declares) the model is the one the key
+        resolved from the provider's own model list at registration. The
+        unresolved marker is resolved here, before the call; a 404
+        model-not-found is re-resolved ONCE from the same list excluding the
+        failed model, and the call re-issued. Anything else, and every house
+        route, is the single call it always was.
+        """
+        byok = _customer_byok_row(intent)
+        if byok is None or not api_key:
+            return self._call_llm(
+                intent, call_id, api_key=api_key, credential_source=credential_source
+            )
+        if intent.model == BYOK_MODEL_UNRESOLVED:
+            intent = _re_aim_intent(intent, byok, api_key, exclude=())
+        try:
+            return self._call_llm(
+                intent, call_id, api_key=api_key, credential_source=credential_source
+            )
+        except ProviderRefusalError as refusal:
+            if (
+                refusal.failure_class
+                is not EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND
+            ):
+                raise
+            try:
+                retry = _re_aim_intent(intent, byok, api_key, exclude=(intent.model,))
+            except (ProviderRefusalError, ModelListUnavailableError):
+                # Nothing else to aim at: the provider's own 404 is the answer.
+                raise refusal from None
+            return self._call_llm(
+                retry, call_id, api_key=api_key, credential_source=credential_source
             )
 
     def _call_llm(
@@ -756,6 +891,22 @@ class HandlerInferenceIntent:
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
+                refusal = failure_class_for_status(
+                    exc.response.status_code, exc.response.text
+                )
+                if refusal in (
+                    EnumDelegationFailureClass.PROVIDER_BILLING,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                ):
+                    raise ProviderRefusalError(
+                        refusal,
+                        describe_provider_refusal(
+                            refusal,
+                            status_code=exc.response.status_code,
+                            provider_text=exc.response.text,
+                            model_id=intent.model,
+                        ),
+                    ) from exc
                 raise RuntimeError(_provider_http_error_message(exc)) from exc
             data: dict[str, Any] = response.json()
 

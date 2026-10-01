@@ -395,7 +395,10 @@ class TestHandlerLlmDelegationCall:
             result = handler(_make_request())
 
         assert result.success is False
-        assert result.failure_class == EnumDelegationFailureClass.MODEL_UNAVAILABLE
+        # OMN-20157: Google answers a bad key with 400 "API key not valid", and
+        # that is the key being refused, not the model being unavailable: it is
+        # the non-retryable PROVIDER_AUTH_FAILED, as a 401 is.
+        assert result.failure_class == EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
         assert "Please pass a valid API key" in result.error_message
 
     @pytest.mark.unit
