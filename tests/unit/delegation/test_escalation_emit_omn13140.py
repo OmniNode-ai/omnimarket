@@ -64,6 +64,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # Canonical escalation topic declared on the call-effect contract and now also on
 # the orchestrator contract publish_topics so the applier allowlist accepts it.
 _ESCALATION_TOPIC = "onex.evt.omnimarket.delegation-escalation-triggered.v1"

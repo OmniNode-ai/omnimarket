@@ -1,0 +1,25 @@
+name: projection_provider_quota
+version: "1.0.0"
+description: "Durable provider quota state per tenant, credential, provider and model, projected from quota observations."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, delegation, quota, reducer]
+ownership:
+  provider_quota_state:
+    ddl_owner: omnimarket.nodes.node_projection_provider_quota
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_provider_quota_state.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+pack: "data"
+display_name: "Projection: Provider Quota"
+node_role: "effect"

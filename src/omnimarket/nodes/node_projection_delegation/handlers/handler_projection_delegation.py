@@ -74,6 +74,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_tic
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
+from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
+    apply_terminal_precedence,
+    supersedes_handler_failure,
+)
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import (
@@ -2005,21 +2009,31 @@ def _preserve_terminal_failure(
     its own, and the attempt ladder that proved it is retained. A later
     terminal carrying its OWN typed cause still wins — this preserves
     evidence, it does not freeze the row.
+
+    OMN-19559: an evidenced success wins over an unevidenced handler-local
+    failure in either delivery order. A failed terminal also reconciles a
+    completed outcome and a usable/correct verdict with its typed cause.
     """
+    if supersedes_handler_failure(existing, row):
+        row["terminal_failure_cause"] = None
+        row["terminal_ok"] = True
+        row["operational_outcome"] = "completed"
+        row["content_verdict"] = (
+            "correct" if existing.get("content_verdict") == "correct" else "usable"
+        )
+        return
     existing_cause = existing.get("terminal_failure_cause")
-    if _is_blank(existing_cause):
-        return
-    if not _is_blank(row.get("terminal_failure_cause")):
-        return
-    row["terminal_failure_cause"] = existing_cause
-    row["terminal_ok"] = False
-    row["quality_gate_passed"] = False
-    incoming_history = row.get("attempt_history")
-    existing_history = existing.get("attempt_history")
-    if isinstance(existing_history, list) and len(existing_history) > len(
-        incoming_history if isinstance(incoming_history, list) else []
-    ):
-        row["attempt_history"] = existing_history
+    if not _is_blank(existing_cause) and _is_blank(row.get("terminal_failure_cause")):
+        row["terminal_failure_cause"] = existing_cause
+        row["terminal_ok"] = False
+        row["quality_gate_passed"] = False
+        incoming_history = row.get("attempt_history")
+        existing_history = existing.get("attempt_history")
+        if isinstance(existing_history, list) and len(existing_history) > len(
+            incoming_history if isinstance(incoming_history, list) else []
+        ):
+            row["attempt_history"] = existing_history
+    apply_terminal_precedence(existing, row)
 
 
 def _is_blank(value: object) -> bool:

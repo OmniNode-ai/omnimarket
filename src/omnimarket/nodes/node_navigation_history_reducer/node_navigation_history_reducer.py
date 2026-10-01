@@ -14,14 +14,14 @@ entry point following ONEX node conventions.
 
 from __future__ import annotations
 
-from omnimemory.nodes.base import BaseReducerNode, ContainerType
+from omnibase_core.container import ModelONEXContainer
 
 from omnimarket.nodes.node_navigation_history_reducer.handlers import (
     HandlerNavigationHistoryReducer,
 )
 
 
-class NodeNavigationHistoryReducer(BaseReducerNode):
+class NodeNavigationHistoryReducer:
     """ONEX Reducer node: persists completed navigation sessions.
 
     It receives completed ``NavigationSession`` records from the navigation
@@ -31,7 +31,8 @@ class NodeNavigationHistoryReducer(BaseReducerNode):
     Following ONEX patterns, this class is purely declarative:
     - No business logic here.
     - All I/O is in the handler.
-    - Container injection provided by ``BaseReducerNode``.
+    - The container is stored and exposed via the read-only
+      ``container`` property.
 
     Usage::
 
@@ -51,7 +52,7 @@ class NodeNavigationHistoryReducer(BaseReducerNode):
             node. Configured from container settings where available.
     """
 
-    def __init__(self, container: ContainerType) -> None:
+    def __init__(self, container: ModelONEXContainer) -> None:
         """Initialize the node and its handler.
 
         Args:
@@ -60,5 +61,10 @@ class NodeNavigationHistoryReducer(BaseReducerNode):
                 container-provided configuration support can be added as
                 the platform matures.
         """
-        super().__init__(container)
+        self._container = container
         self.handler = HandlerNavigationHistoryReducer()
+
+    @property
+    def container(self) -> ModelONEXContainer:
+        """ONEX container this node was constructed with."""
+        return self._container

@@ -82,11 +82,17 @@ from omnibase_infra.runtime.service_dispatch_result_applier import DispatchResul
 from omnibase_infra.topology import load_topology_profile
 from omnibase_spi.protocols.runtime import ProtocolDispatchEngine
 
+from tests.constants import MODEL_LOCAL_201_SERVED_ID
+
 # NOT tests/integration/: in this repo `integration` means a REAL Kafka bus
 # (tests/conftest.py's OMN-8726 guard rejects EventBusInmemory there, and it is
 # right to). This gate is deliberately broker-free, so it lives outside that
 # tree and is marked `unit` — it needs no service of any kind.
-pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.asyncio,
+    pytest.mark.usefixtures("stub_provider_quota_reader"),
+]
 
 # The platform quarantine sink. A chain that dies silently ends up here, which is
 # exactly how OMN-16767 hid behind green CI.
@@ -153,7 +159,10 @@ def _hermetic_routing_config(
         "schema_version: 'bifrost_delegation.v1'\n"
         "backends:\n"
         f"  - backend_id: {_LOCAL_TIER_BACKEND_ID}\n"
-        f"    endpoint_url: '{_UNREACHABLE_ENDPOINT_URL}'\n",
+        f"    endpoint_url: '{_UNREACHABLE_ENDPOINT_URL}'\n"
+        # The base contract carries no lab model id; a lane overlay declares the
+        # served id (OMN-17099).
+        f"    model_name: '{MODEL_LOCAL_201_SERVED_ID}'\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay))

@@ -187,28 +187,19 @@ handler_routing:
   handlers:
     # Semantic similarity search via Qdrant (sub-handler: HandlerQdrantMock)
     - operation: search
-      routing_key: "search"
       handler:
         name: "HandlerMemoryRetrieval"
         module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
-      priority: 0
-      output_events: []
     # Full-text search via PostgreSQL (sub-handler: HandlerDbMock)
     - operation: search_text
-      routing_key: "search_text"
       handler:
         name: "HandlerMemoryRetrieval"
         module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
-      priority: 0
-      output_events: []
     # Graph traversal via Neo4j/Memgraph (sub-handler: HandlerGraphMock)
     - operation: search_graph
-      routing_key: "search_graph"
       handler:
         name: "HandlerMemoryRetrieval"
         module: "omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval"
-      priority: 0
-      output_events: []
   default_handler: "HandlerMemoryRetrieval"
 
 # =============================================================================

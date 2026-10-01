@@ -63,6 +63,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _BIFROST_CONTRACT = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"

@@ -29,6 +29,7 @@ from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
 )
 
+from omnimarket.config.settings import Settings
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
@@ -76,6 +77,8 @@ from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -92,6 +95,38 @@ def _make_request(
         correlation_id=correlation_id or uuid4(),
         emitted_at=datetime.now(UTC),
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("request_tenant", "lane_tenant", "expected"),
+    [
+        (None, "dev-tenant", "dev-tenant"),
+        ("request-tenant", "dev-tenant", "request-tenant"),
+        (None, "", None),
+        ("", "dev-tenant", "dev-tenant"),
+    ],
+)
+def test_routing_intent_carries_the_pinned_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+    request_tenant: str | None,
+    lane_tenant: str,
+    expected: str | None,
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow.get_settings",
+        lambda: Settings(onex_tenant_id=lane_tenant),
+    )
+    request = _make_request().model_copy(update={"tenant_id": request_tenant})
+    handler = HandlerDelegationWorkflow(workflows={})
+    intent = handler.handle_delegation_request(request)[0]
+    assert intent.payload.tenant_id == expected
+    assert request.tenant_id == request_tenant
+    assert handler._workflows[request.correlation_id].request is request
+    if request_tenant or not lane_tenant:
+        assert intent.payload is request
+    replay = handler.handle_delegation_request(request)[0]
+    assert replay.payload.tenant_id == expected
 
 
 def _make_routing_decision(

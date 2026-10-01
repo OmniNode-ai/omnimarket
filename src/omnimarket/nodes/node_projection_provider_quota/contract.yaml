@@ -1,0 +1,66 @@
+---
+name: projection_provider_quota
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_provider_quota.models.model_provider_quota.ModelProviderQuotaProjectionRequest
+description: >
+  OMN-20154. Rule-7a projection of provider quota observations into durable
+  quota state, one row per (tenant_id, credential_ref, provider_id,
+  model_scope). model_scope '*' is the provider-wide row. Every call counts on
+  both the model row and the provider row (totals and a rolling window); a
+  limit hit records a block on the row its policy scope names; a successful
+  call started after a block clears it. Routing and the judge read this table,
+  never process memory.
+handler:
+  module: omnimarket.nodes.node_projection_provider_quota.handlers.handler_projection_provider_quota
+  class: HandlerProjectionProviderQuota
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed (OMN-19833): the writer calls the pure fold in
+    # process (rule 7a).
+    - operation: provider_quota_projection_writer
+      handler:
+        name: ProviderQuotaProjectionWriter
+        module: omnimarket.nodes.node_projection_provider_quota.handlers.handler_provider_quota_writer
+      handler_module: omnimarket.nodes.node_projection_provider_quota.handlers.handler_provider_quota_writer
+terminal_event: onex.evt.omnimarket.projection-provider-quota-applied.v1
+golden_path:
+  - "Receive a provider quota observation with producer-assigned observed_at"
+  - "Fold it into a model-row delta and a provider-row delta"
+  - "Upsert both under the event tenant, refusing an observation not newer than the row"
+  - "Return the written row identities for the runtime to publish"
+dod_evidence:
+  - test: tests/test_golden_chain_projection_provider_quota.py::test_a_call_counts_on_the_model_row_and_the_provider_row
+    description: "One observation derives exactly the model row and the provider-wide row"
+  - test: tests/test_golden_chain_projection_provider_quota.py::test_the_writer_declares_in_process_dispatch
+    description: "The runtime dispatches the effect writer"
+  - test: tests/test_omn20154_provider_quota_real_postgres.py::test_a_limit_hit_survives_as_a_durable_block
+    description: "A 429 becomes a durable block that a later reader sees"
+db_io:
+  db_tables:
+    # This entry is also the table's read surface: routing, the delegation
+    # orchestrator, the in-process delegate port and the judge read it through
+    # resolve_provider_quota_reader, which resolves this declaration (narrowed
+    # to read) through the lane's database topology overlay and secret store,
+    # never an env DSN.
+    - name: provider_quota_state
+      database_ref: application
+      schema: public
+      migration: "0000_create_provider_quota_state.sql"
+      access: read_write
+      role: provider_quota_state
+  dedupe_key: [tenant_id, credential_ref, provider_id, model_scope]
+  ordering_key: observed_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.provider-quota-observed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-provider-quota-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-provider-quota-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-provider-quota-applied.v1
+metadata:
+  transport_type: kafka

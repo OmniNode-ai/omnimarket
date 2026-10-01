@@ -96,8 +96,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 31,
-    "table": 100,
+    "sequence": 32,
+    "table": 101,
     "view": 10
   },
   "relations": [
@@ -1920,6 +1920,53 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_provider_quota",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_provider_quota/migrations/0000_create_provider_quota_state.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for provider_quota_state",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_provider_quota/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [
+        "provider_quota_state"
+      ],
+      "dependent_objects": [
+        "table:provider_quota_state"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_provider_quota",
+      "name": "provider_quota_state_projection_cursor_seq",
+      "owner_declaration": "node_projection_provider_quota",
+      "partitioning": [],
+      "producer": "node_projection_provider_quota",
+      "readers": [],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_provider_quota",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_receipt_gate",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -2945,6 +2992,7 @@
       ],
       "indexes": [
         "idx_claude_hook_events_emitted",
+        "idx_claude_hook_events_goal_id",
         "idx_claude_hook_events_parent_call",
         "idx_claude_hook_events_pre_tool_call",
         "idx_claude_hook_events_projection_cursor",
@@ -6602,6 +6650,67 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_provider_quota",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_provider_quota/migrations/0000_create_provider_quota_state.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_provider_quota/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:provider_quota_state_projection_cursor_seq"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [
+        "provider_quota_state_active_block_idx"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, credential_ref, provider_id, model_scope)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_provider_quota",
+      "name": "provider_quota_state",
+      "owner_declaration": "node_projection_provider_quota",
+      "partitioning": [],
+      "producer": "node_projection_provider_quota",
+      "readers": [
+        "node_delegate_skill_orchestrator",
+        "node_delegation_orchestrator",
+        "node_delegation_quality_gate_reducer",
+        "node_delegation_routing_reducer",
+        "node_llm_delegation_call_effect",
+        "node_projection_provider_quota",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_provider_quota",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_receipt_gate",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8553,8 +8662,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 91,
-    "source_declared_tables": 100
+    "source_created_tables": 92,
+    "source_declared_tables": 101
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8570,7 +8679,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 91 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 92 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

@@ -3,6 +3,7 @@
 """``onex secret`` — put your own provider key on your own machine (OMN-18695).
 
     onex secret set llm.openrouter.api_key      # value read from stdin
+    onex secret register-tenant-key openrouter --tenant dev   # stdin -> ref/event
     onex secret list
     onex secret delete llm.openrouter.api_key
 
@@ -30,16 +31,25 @@ HOW THIS COMMAND REACHES THE CLI
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from getpass import getpass
 
 import click
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
     register_local_byok_credential,
     revoke_local_byok_credential,
+)
+from omnimarket.projection.credential_publisher import (
+    CredentialPlanUndeterminedError,
+    CredentialStoreError,
+    ModelInferenceCredentialCreateRequest,
+    ProtocolCredentialEventBus,
+    register_inference_credential,
 )
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
@@ -249,6 +259,74 @@ def secret_group() -> None:  # stub-ok: a click group's body IS its subcommands
     permissions. They are NOT encrypted at rest: anyone who can read the file
     as its owner, or who is handed a copy of it, can read the key.
     """
+
+
+def _tenant_key_store() -> LocalByokCredentialStore:
+    """Use the SQLite credential store under this runtime's HOME."""
+    return LocalByokCredentialStore()
+
+
+def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
+    """Let the publisher construct and own this runtime's Settings-backed bus.
+
+    Tests may return an injected bus; production passes None so bootstrap and
+    producer lifecycle follow the same path as hosted credential intake.
+    """
+    return None
+
+
+@secret_group.command("register-tenant-key")
+@click.argument("provider")
+@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option("--name", default=None, help="Credential label; defaults to PROVIDER.")
+@click.option("--plan", default=None, help="Provider product; omit to detect the plan.")
+def register_tenant_key(
+    provider: str, tenant: str, name: str | None, plan: str | None
+) -> None:
+    """Register a tenant's provider key from stdin and publish its reference."""
+    if not tenant.strip():
+        raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    value = _read_value(f"llm.{provider}.api_key")
+    if not value:
+        raise click.ClickException("no value was read from stdin; nothing was stored.")
+    try:
+        request = ModelInferenceCredentialCreateRequest(
+            name=name if name is not None else provider,
+            provider=provider,
+            key_value=SecretStr(value),
+            plan=plan,
+        )
+        response = asyncio.run(
+            register_inference_credential(
+                request,
+                tenant_id=tenant,
+                secret_store=_tenant_key_store(),
+                event_bus=_tenant_key_event_bus(),
+            )
+        )
+    except ValidationError as exc:
+        # Pydantic input dumps can contain caller data. Surface only the
+        # catalogue/field refusal messages, with no request representation.
+        message = "; ".join(
+            error["msg"] for error in exc.errors(include_input=False, include_url=False)
+        )
+        raise click.ClickException(message) from exc
+    except (
+        CredentialStoreError,
+        CredentialPlanUndeterminedError,
+        ByokPlanNotPermittedError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        json.dumps(
+            {
+                "api_key_ref": response.api_key_ref,
+                "provider": response.provider,
+                "plan": response.plan,
+                "tenant": tenant,
+            }
+        )
+    )
 
 
 @secret_group.command("set")

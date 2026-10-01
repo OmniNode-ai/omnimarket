@@ -21,7 +21,7 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from tests.chains.chain_assert import assert_chain, chain_obligation
 from tests.chains.delegation import _builders as b
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 S = EnumDelegationState
 

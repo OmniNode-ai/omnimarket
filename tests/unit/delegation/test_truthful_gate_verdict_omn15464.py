@@ -40,6 +40,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     DelegationWorkflowState,
     HandlerDelegationWorkflow,
@@ -306,6 +307,15 @@ def _handler_ready_for_gate(correlation_id: UUID) -> HandlerDelegationWorkflow:
             total_tokens=15,
         )
     )
+    # OMN-20154: a metered call's quota observation rides beside the gate
+    # intent; this fixture's endpoint is Gemini, so exactly one is returned.
+    observations = [
+        e for e in gate_intents if isinstance(e, ModelProviderQuotaObserved)
+    ]
+    assert len(observations) == 1
+    gate_intents = [
+        e for e in gate_intents if not isinstance(e, ModelProviderQuotaObserved)
+    ]
     assert len(gate_intents) == 1
     return handler
 

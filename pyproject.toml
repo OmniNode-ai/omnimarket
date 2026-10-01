@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.270"
+version = "0.4.271"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -415,6 +415,7 @@ node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
 node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_delegation_eval = "omnimarket.nodes.node_projection_delegation_eval"
+node_projection_provider_quota = "omnimarket.nodes.node_projection_provider_quota"
 node_delegation_eval_orchestrator = "omnimarket.nodes.node_delegation_eval_orchestrator"
 node_delegation_eval_run_orchestrator = "omnimarket.nodes.node_delegation_eval_run_orchestrator"
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
@@ -459,6 +460,7 @@ node_pr_review_fsm_reducer = "omnimarket.nodes.node_pr_review_fsm_reducer"
 node_github_review_effect = "omnimarket.nodes.node_github_review_effect"
 node_deep_dive_report_effect = "omnimarket.nodes.node_deep_dive_report_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
+node_trajectory_evaluation_effect = "omnimarket.nodes.node_trajectory_evaluation_effect"
 node_judge_verdict_parse_compute = "omnimarket.nodes.node_judge_verdict_parse_compute"
 node_review_thread_reconciler = "omnimarket.nodes.node_review_thread_reconciler"
 node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
@@ -1127,23 +1129,7 @@ module = ["boto3", "boto3.*", "botocore", "botocore.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "omnimarket.nodes.node_navigation_history_reducer.node_navigation_history_reducer"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 module = ["radon", "radon.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-    "omnimarket.nodes.node_pr_lifecycle_inventory_compute.*",
-    "omnimarket.nodes.node_pr_lifecycle_triage_compute.*",
-    "omnimarket.nodes.node_pr_lifecycle_state_reducer.*",
-    "omnimarket.nodes.node_pr_lifecycle_merge_effect.*",
-    "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.*",
-    "omnimarket.nodes.node_pr_lifecycle_fix_effect.*",
-    "omnimarket.nodes.node_pr_delegated_fix_effect.*",
-]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

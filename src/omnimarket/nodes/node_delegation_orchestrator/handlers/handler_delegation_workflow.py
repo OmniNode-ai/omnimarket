@@ -112,6 +112,11 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
+from omnimarket.events.provider_quota import (
+    EnumProviderQuotaSource,
+    ModelProviderQuotaObserved,
+)
+from omnimarket.inference import provider_quota_state
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -120,6 +125,16 @@ from omnimarket.inference.protocol_config import (
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_FAILURE_MARKER,
     TRUNCATION_CHECK_NAME,
+)
+from omnimarket.inference.provider_quota_observation import (
+    build_quota_observation,
+    observe_failed_call,
+    parse_provider_error_message,
+)
+from omnimarket.inference.provider_quota_state import (
+    ProtocolProviderQuotaReader,
+    quota_domain_for_endpoint,
+    read_provider_quota_snapshot,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -190,6 +205,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
+    quota_blocked_backend_refs,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
     sibling_backend_available_in_tier,
@@ -740,6 +756,13 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
         return EnumDelegationFailureClass.PROVIDER_BILLING
     if EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND.value in normalized:
         return EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND
+    # OMN-20154: a status the provider actually answered outranks any word in
+    # its body. The runtime bounds the body it carries and marks the cut with
+    # "[truncated]", so a Gemini 429 read as CONTEXT_TOO_LARGE through the
+    # "truncat" match below (lab dev lane, 2026-09-30, correlation
+    # af9f024f-8aa9-4531-85f7-624d77b6d77e).
+    if "provider http 429" in normalized:
+        return EnumDelegationFailureClass.RATE_LIMITED
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -1974,6 +1997,16 @@ class _HoistedTierCost:
     completion_tokens: int
 
 
+@dataclass(frozen=True)
+class _AttemptProviderFacts:
+    """Provider facts of one attempt (OMN-20154)."""
+
+    provider_id: str | None
+    http_status: int | None
+    provider_code: str | None
+    failure_class: str | None
+
+
 @dataclass
 class DelegationWorkflowState:
     """Mutable workflow state for a single delegation correlation_id."""
@@ -2128,6 +2161,13 @@ class DelegationWorkflowState:
     # probes exclude the accumulated set. A renamed/reordered tier can therefore
     # never turn one exhausted quota/failure domain into apparent new capacity.
     transport_failed_backend_refs: tuple[str, ...] = ()
+    # OMN-20154: what the provider answered on the attempt in flight, stamped
+    # onto that attempt's escalation_history row when it is recorded.
+    current_attempt_provider: _AttemptProviderFacts | None = None
+    # OMN-20154: the quota observation of the latest live-route response, so
+    # the escalation decision taken in the same leg sees a refusal the
+    # projection has not folded yet.
+    current_attempt_observation: ModelProviderQuotaObserved | None = None
     # OMN-18265 (same-route retry on a customer-credentialed route). A
     # customer's chain of responders has exactly ONE member by construction: no
     # house credential may execute customer work (OMN-17082), so the platform
@@ -2181,7 +2221,13 @@ class HandlerDelegationWorkflow:
     def __init__(
         self,
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
+        *,
+        quota_reader: ProtocolProviderQuotaReader | None = None,
     ) -> None:
+        # OMN-20154: the escalation decision reads provider quota state from
+        # the durable projection (the orchestrator owns the routing-contract
+        # I/O). Resolved lazily so construction does no I/O.
+        self._quota_reader = quota_reader
         if workflows is not None:
             self._workflows = workflows
         else:
@@ -2272,6 +2318,15 @@ class HandlerDelegationWorkflow:
         workflow.state = target
         return transition
 
+    def _quota_blocked_refs(self, workflow: DelegationWorkflowState) -> frozenset[str]:
+        """Backends the workflow tenant's quota state blocks, this leg included."""
+        if self._quota_reader is None:
+            self._quota_reader = provider_quota_state.resolve_provider_quota_reader()
+        snapshot = read_provider_quota_snapshot(
+            self._quota_reader, tenant_id=_resolve_tenant_id(workflow)
+        ).with_observation(workflow.current_attempt_observation)
+        return quota_blocked_backend_refs(snapshot)
+
     def _decide_escalation(
         self,
         workflow: DelegationWorkflowState,
@@ -2310,11 +2365,14 @@ class HandlerDelegationWorkflow:
             and workflow.escalation_count < max_escalation_attempts
             and workflow.current_tier_name is not None
         ):
+            # OMN-20154: a backend whose provider quota key is blocked is
+            # skipped exactly like one that already failed in this workflow.
+            skip_refs = excluded_backend_refs | self._quota_blocked_refs(workflow)
             next_tier = next_eligible_tier(
                 workflow.current_tier_name,
                 excluded_tiers,
                 task_type=task_type,
-                excluded_backend_refs=excluded_backend_refs,
+                excluded_backend_refs=skip_refs,
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -2322,7 +2380,7 @@ class HandlerDelegationWorkflow:
                         workflow.current_tier_name,
                         excluded_tiers,
                         task_type=task_type,
-                        excluded_backend_refs=excluded_backend_refs,
+                        excluded_backend_refs=skip_refs,
                     )
                     if task_type is not None
                     else NO_HIGHER_TIER_REASON_TOKEN
@@ -2359,7 +2417,12 @@ class HandlerDelegationWorkflow:
                 and not workflow.routing_intent_replayed
             ):
                 workflow.routing_intent_replayed = True
-                return [ModelRoutingIntent(payload=workflow.request or request)]
+                routing_request = workflow.request or request
+                if not routing_request.tenant_id and workflow.tenant_id:
+                    routing_request = routing_request.model_copy(
+                        update={"tenant_id": workflow.tenant_id}
+                    )
+                return [ModelRoutingIntent(payload=routing_request)]
             return []
 
         effective_response_contract = (
@@ -2393,7 +2456,12 @@ class HandlerDelegationWorkflow:
         )
         self._workflows[cid] = workflow
 
-        return [ModelRoutingIntent(payload=request)]
+        routing_request = request
+        if not request.tenant_id and workflow.tenant_id:
+            routing_request = request.model_copy(
+                update={"tenant_id": workflow.tenant_id}
+            )
+        return [ModelRoutingIntent(payload=routing_request)]
 
     def handle_invocation_command(
         self,
@@ -2794,6 +2862,101 @@ class HandlerDelegationWorkflow:
         return self._emit_terminal(terminal_inputs)
 
     def handle_inference_response(
+        self,
+        response: ModelInferenceResponseData,
+    ) -> list[BaseModel]:
+        """Handle an LLM inference response and observe the provider call.
+
+        OMN-20154: every response from a metered provider on the live route is
+        one provider call, observed as a ``ModelProviderQuotaObserved`` event
+        returned beside the workflow's own events (the runtime publishes it on
+        the contract topic; the ``provider_quota_state`` projection folds it).
+        The provider facts are recorded first so the attempt row this response
+        produces carries them.
+        """
+        observation = self._observe_provider_call(response)
+        events = self._handle_inference_response(response)
+        if observation is None:
+            return events
+        return [*events, observation]
+
+    def _observe_provider_call(
+        self, response: ModelInferenceResponseData
+    ) -> ModelProviderQuotaObserved | None:
+        """Stamp the in-flight attempt's provider facts; build its observation.
+
+        Only a response from the LIVE route is a call this workflow made; a
+        stale one is left to the handler's own rejection. Never raises.
+        """
+        workflow = self._workflows.get(response.correlation_id)
+        if (
+            workflow is None
+            or workflow.state != EnumDelegationState.ROUTED
+            or workflow.routing_decision is None
+        ):
+            return None
+        live_route = workflow.routing_decision
+        if _stale_response_rejection(workflow, response, live_route) is not None:
+            return None
+        try:
+            endpoint = live_route.endpoint_url
+            now = datetime.now(UTC)
+            tenant = _resolve_tenant_id(workflow)
+            if response.error_message:
+                parsed = parse_provider_error_message(response.error_message)
+                observation, verdict = observe_failed_call(
+                    tenant_id=tenant,
+                    endpoint_url=endpoint,
+                    api_key_ref=live_route.api_key_ref,
+                    model_name=live_route.selected_model,
+                    error_message=response.error_message,
+                    observed_at=now,
+                    latency_ms=response.latency_ms,
+                    source=EnumProviderQuotaSource.RUNTIME_ORCHESTRATOR,
+                    correlation_id=workflow.correlation_id,
+                    http_status=parsed.http_status,
+                    body=parsed.body,
+                    headers=parsed.headers,
+                )
+                facts = _AttemptProviderFacts(
+                    provider_id=quota_domain_for_endpoint(endpoint),
+                    http_status=parsed.http_status,
+                    provider_code=verdict.provider_code if verdict else None,
+                    failure_class=_inference_error_failure_class(
+                        response.error_message
+                    ).value,
+                )
+            else:
+                observation = build_quota_observation(
+                    tenant_id=tenant,
+                    endpoint_url=endpoint,
+                    api_key_ref=live_route.api_key_ref,
+                    model_name=live_route.selected_model,
+                    succeeded=True,
+                    observed_at=now,
+                    latency_ms=response.latency_ms,
+                    source=EnumProviderQuotaSource.RUNTIME_ORCHESTRATOR,
+                    correlation_id=workflow.correlation_id,
+                    http_status=200,
+                )
+                facts = _AttemptProviderFacts(
+                    provider_id=quota_domain_for_endpoint(endpoint),
+                    http_status=200,
+                    provider_code=None,
+                    failure_class=None,
+                )
+        except Exception as exc:
+            _logger.warning(
+                "provider quota observation skipped: correlation_id=%s: %s",
+                response.correlation_id,
+                exc,
+            )
+            return None
+        workflow.current_attempt_provider = facts
+        workflow.current_attempt_observation = observation
+        return observation
+
+    def _handle_inference_response(
         self,
         response: ModelInferenceResponseData,
     ) -> list[BaseModel]:
@@ -3656,7 +3819,9 @@ class HandlerDelegationWorkflow:
             )
 
         excluded = frozenset(workflow.transport_failed_backend_refs)
-        sibling = sibling_backend_available_in_tier(tier, task_type, excluded)
+        sibling = sibling_backend_available_in_tier(
+            tier, task_type, excluded | self._quota_blocked_refs(workflow)
+        )
         if sibling is None:
             return None
 
@@ -3904,7 +4069,41 @@ class HandlerDelegationWorkflow:
         ``attempts: []`` and the only rungs ever named were the abandoned ones.
         """
         workflow.escalation_history.append(
-            HandlerDelegationWorkflow._with_backend_ref(workflow, attempt)
+            HandlerDelegationWorkflow._with_provider_facts(
+                workflow, HandlerDelegationWorkflow._with_backend_ref(workflow, attempt)
+            )
+        )
+
+    @staticmethod
+    def _with_provider_facts(
+        workflow: DelegationWorkflowState,
+        attempt: ModelDelegationEscalationAttempt,
+    ) -> ModelDelegationEscalationAttempt:
+        """Stamp provider, status, code and failure class onto the attempt (OMN-20154).
+
+        The facts are those of the response this attempt is being recorded
+        for. A rung that answered but was not accepted is a quality-gate
+        failure; the accepted rung carries no failure class. The facts are
+        consumed here so a later attempt cannot inherit them.
+        """
+        facts = workflow.current_attempt_provider
+        workflow.current_attempt_provider = None
+        if facts is None:
+            return attempt
+        failure_class = facts.failure_class
+        if (
+            failure_class is None
+            and attempt.acceptance_decision
+            is not EnumDelegationAcceptanceDecision.ACCEPT
+        ):
+            failure_class = EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
+        return attempt.model_copy(
+            update={
+                "provider_id": attempt.provider_id or facts.provider_id,
+                "http_status": attempt.http_status or facts.http_status,
+                "provider_code": attempt.provider_code or facts.provider_code,
+                "failure_class": attempt.failure_class or failure_class,
+            }
         )
 
     @staticmethod
@@ -4170,7 +4369,9 @@ class HandlerDelegationWorkflow:
             }
         )
         workflow.escalation_history.append(
-            self._with_backend_ref(workflow, priced_attempt)
+            self._with_provider_facts(
+                workflow, self._with_backend_ref(workflow, priced_attempt)
+            )
         )
         return measurement.cash_cost_usd
 

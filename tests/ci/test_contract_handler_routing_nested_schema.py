@@ -20,12 +20,8 @@ OMN-15004's audit found three flat-schema stragglers the OMN-14000 migration
 set additionally surfaced 7 more affected nodes, tracked in OMN-15007. 3 of
 those 7 are FIXED here: ``node_adr_canary_orchestrator``,
 ``node_adr_document_ingestion_effect``, and ``node_intent_query_effect`` (a
-straightforward flat-to-nested rename, or -- for ``node_intent_query_effect``'s
-4 additional entries -- adding the nested ``handler:`` mapping pointing at the
-single real router class already declared at the contract's root ``handler:``
-field, verified against the real handler source: it matches
-``request.operation`` internally and dispatches to the exact operations the
-bare ``handler_key`` entries named).
+typed ``ModelIntentQueryRequestedEvent`` route to the real handler, which
+dispatches distribution/session/recent requests from ``request.query_type``).
 
 The remaining 4 of the 7 (``node_intent_storage_effect``,
 ``node_memory_retrieval_effect``, ``node_code_embedding_effect``,
@@ -95,7 +91,7 @@ _EXPECTED_HANDLER_COUNTS = {
     # OMN-15007
     "node_adr_canary_orchestrator": 1,
     "node_adr_document_ingestion_effect": 1,
-    "node_intent_query_effect": 5,
+    "node_intent_query_effect": 1,
     # OMN-15027 A3 (OMN-15236) -- Group A, unblocked by the omninode-memory pin
     # bump to omnimemory dev 887dc679 (OMN-15226 def-B handle() on
     # HandlerIntentStorageAdapter + OMN-15227 repoint off the Mock handlers).
@@ -257,13 +253,9 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: do_thing
-      routing_key: "do_thing"
       handler:
         name: "HandlerFixture"
         module: "some.module"
-      handler_key: "HandlerFixture.do_thing"
-      priority: 0
-      output_events: []
   default_handler: null
 """
     )

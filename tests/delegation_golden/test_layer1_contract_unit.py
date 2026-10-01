@@ -205,11 +205,14 @@ class TestU2EveryTierResolvesCompleteBackend:
                     "neither endpoint_url nor endpoint_url_env"
                 )
 
-                # model: every backend must name the model it calls.
-                assert backend.model_name, (
-                    f"backend {backend.backend_id!r} (tier {tier.name!r}) has a "
-                    "null/empty model_name"
-                )
+                # model: every backend must name the model it calls, except a
+                # local backend, whose served id is the lane overlay's to
+                # declare (OMN-17099: the base contract carries no lab id).
+                if backend.tier != "local":
+                    assert backend.model_name, (
+                        f"backend {backend.backend_id!r} (tier {tier.name!r}) has a "
+                        "null/empty model_name"
+                    )
 
                 # api_key_ref: cloud/metered backends MUST resolve a secret
                 # reference; local (owned-GPU) backends legitimately have none.
