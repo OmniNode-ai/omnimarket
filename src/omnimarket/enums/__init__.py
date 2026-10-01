@@ -9,6 +9,12 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_delegation_disposition import (
+    DISPOSITION_REASONS,
+    EnumDelegationArtifactKind,
+    EnumDelegationDisposition,
+    EnumDelegationDispositionReason,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_dispatch_queue_phase import (
     IN_FLIGHT_PHASES,
@@ -39,6 +45,7 @@ from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 
 __all__ = [
+    "DISPOSITION_REASONS",
     "IN_FLIGHT_PHASES",
     "NON_RETRYABLE_CAUSES",
     "EnumBackendPlacementMode",
@@ -46,6 +53,9 @@ __all__ = [
     "EnumCostBasis",
     "EnumDelegationAcceptanceDecision",
     "EnumDelegationAcceptanceReason",
+    "EnumDelegationArtifactKind",
+    "EnumDelegationDisposition",
+    "EnumDelegationDispositionReason",
     "EnumDelegationFailureClass",
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",

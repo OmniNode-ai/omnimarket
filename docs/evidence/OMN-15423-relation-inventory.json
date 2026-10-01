@@ -1,6 +1,13 @@
 {
   "blocked_relations": [
     {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "delegation_disposition_usage",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
       "authoritative_sources": [
         "omnibase_infra/docker/migrations/forward/090_create_delegation_workflow_state.sql",
         "omnibase_infra/docker/migrations/forward/093_add_delegation_workflow_state_outbox_columns.sql"
@@ -97,8 +104,8 @@
     "extension": 1,
     "function": 15,
     "sequence": 31,
-    "table": 100,
-    "view": 10
+    "table": 102,
+    "view": 11
   },
   "relations": [
     {
@@ -3329,6 +3336,116 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:delegation_disposition_usage"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "delegation_disposition_usage",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0000_create_delegation_dispositions.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "delegation_dispositions_artifact_kind_check",
+        "delegation_dispositions_disposition_check",
+        "delegation_dispositions_edit_ratio_check"
+      ],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:delegation_disposition_usage"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [
+        "idx_delegation_dispositions_tenant_disposition",
+        "idx_delegation_dispositions_tenant_lane"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, delegation_correlation_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_disposition",
+      "name": "delegation_dispositions",
+      "owner_declaration": "node_projection_delegation_disposition",
+      "partitioning": [],
+      "producer": "node_projection_delegation_disposition",
+      "readers": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation_disposition",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_delegation_eval",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -3496,6 +3613,7 @@
     {
       "accessor_nodes": [
         "node_projection_delegation",
+        "node_projection_delegation_disposition",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -3507,13 +3625,15 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
       ],
       "current_schema": [
         "public"
       ],
       "dependencies": [],
       "dependent_objects": [
+        "view:delegation_disposition_usage",
         "view:projection_cost_savings_overview",
         "view:projection_delegation_model_routing",
         "view:projection_delegation_quality_gate",
@@ -3567,6 +3687,7 @@
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
+        "node_projection_delegation_disposition",
         "node_projection_dod_verdict",
         "node_projection_live_events",
         "node_projection_pattern_learning",
@@ -8109,6 +8230,51 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation_disposition"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0003_create_delegation_disposition_usage.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "owning node migration plus referenced table domains",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [
+        "delegation_disposition_usage",
+        "delegation_dispositions",
+        "delegation_events"
+      ],
+      "dependent_objects": [
+        "view:delegation_disposition_usage"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "keys": [],
+      "kind": "view",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_disposition",
+      "name": "delegation_disposition_usage",
+      "owner_declaration": "node_projection_delegation_disposition",
+      "partitioning": [],
+      "producer": "node_projection_delegation_disposition",
+      "readers": [],
+      "target_schema": "public",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
         "node_projection_capsule_store"
       ],
       "authoritative_sources": [
@@ -8553,8 +8719,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 91,
-    "source_declared_tables": 100
+    "source_created_tables": 92,
+    "source_declared_tables": 102
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8570,7 +8736,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 91 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 92 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
