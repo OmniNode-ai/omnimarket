@@ -1,0 +1,13 @@
+name: Planted shape gate
+on:
+  pull_request:
+jobs:
+  occ-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo preflight
+  canonical-inference-gate:
+    needs: occ-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo detector
