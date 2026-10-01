@@ -161,3 +161,11 @@ registry_only onex.evt.omnimarket.delegate-skill-failed.v1
 event_registry_only provider.quota.observed
 event_registry_only delegate_skill.completed
 event_registry_only delegate_skill.failed
+
+# --- OMN-20012: delegation dispositions ----------------------------------------
+# Emit-only BY DESIGN, like the OMN-20154 terminals above: the producers are the
+# delegation receipt tool and the `onex delegate` callers, publishing through
+# node_event_emit_effect, never a Claude Code hook, so there is no hook-side
+# registration to mirror. Shrinks if a hook ever constructs one; never grows.
+registry_only onex.evt.omnimarket.delegation-disposition-recorded.v1
+event_registry_only delegation.disposition_recorded

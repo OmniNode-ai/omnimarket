@@ -896,3 +896,15 @@ events:
         description: "An in-process delegation's failed terminal, for the platform projection"
     partition_key_field: correlation_id
     required_fields: [correlation_id, status, task_type]
+  # OMN-20012: what the calling lane did with a delegate's answer (used as is,
+  # edited, rejected, ignored). Content-free: digests and pointers only. The
+  # producers are the delegation receipt tool and the onex delegate callers;
+  # node_projection_delegation_disposition consumes it. Keyed on the
+  # delegation's correlation so one delegation's dispositions stay ordered.
+  delegation.disposition_recorded:
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegation-disposition-recorded.v1"
+        tier: telemetry
+        description: "A calling lane's disposition of one delegated answer, for the disposition projection"
+    partition_key_field: delegation_correlation_id
+    required_fields: [tenant_id, delegation_correlation_id, disposition, reason_code, caller_lane, artifact_kind, recorded_at, disposition_id]
