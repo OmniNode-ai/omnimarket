@@ -136,13 +136,16 @@ async def test_disposition_ordering_and_usage_query_on_real_postgres() -> None:
                 answer_sha256="a" * 64,
                 recorded_at=_T0 + timedelta(seconds=1),
             )
-            assert await write(newer) == 1
-            assert await write(newer) == 0
+            first_write = await write(newer)
+            repeat_write = await write(newer)
+            assert first_write == 1
+            assert repeat_write == 0
             older_data = newer.model_dump(exclude={"disposition_id"})
             older_data["recorded_at"] = _T0
-            assert (
-                await write(ModelDelegationDispositionRecorded.build(**older_data)) == 0
+            older_write = await write(
+                ModelDelegationDispositionRecorded.build(**older_data)
             )
+            assert older_write == 0
             row = await conn.fetchrow(
                 f"SELECT *, pg_typeof(tenant_id)::text AS tenant_type "
                 f"FROM {schema}.delegation_dispositions "
@@ -164,7 +167,8 @@ async def test_disposition_ordering_and_usage_query_on_real_postgres() -> None:
         low, high = sorted(tied, key=lambda event: event.disposition_id)
         await write(low)
         await write(high)
-        assert await write(low) == 0
+        low_rewrite = await write(low)
+        assert low_rewrite == 0
         stored_id = await conn.fetchval(
             f"SELECT disposition_id FROM {schema}.delegation_dispositions "
             "WHERE tenant_id = $1 AND delegation_correlation_id = $2",
@@ -175,14 +179,12 @@ async def test_disposition_ordering_and_usage_query_on_real_postgres() -> None:
 
         # A disposition without a delegation_events row is still stored, but
         # cannot inflate the usage query's delegation denominator.
-        assert (
-            await write(
-                ModelDelegationDispositionRecorded.build(
-                    **(base | {"delegation_correlation_id": uuid4()})
-                )
+        orphan_write = await write(
+            ModelDelegationDispositionRecorded.build(
+                **(base | {"delegation_correlation_id": uuid4()})
             )
-            == 1
         )
+        assert orphan_write == 1
         summaries = await conn.fetch(DISPOSITION_USAGE_QUERY, str(_TENANT))
         assert len(summaries) == 1
         summary = summaries[0]
