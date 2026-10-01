@@ -161,7 +161,7 @@ async def _provisioned_runner() -> AsyncIterator[
             server_settings={"search_path": f"{schema},public"},
         )
         adapter = AsyncpgAdapter(dsn=_base_dsn())
-        adapter._pool = pool  # type: ignore[attr-defined]
+        adapter._pool = pool
 
         runner = SavingsProjectionRunner(publish_fn=_noop_publish)
 
@@ -169,7 +169,7 @@ async def _provisioned_runner() -> AsyncIterator[
             return str(HOUSE_TENANT_UUID)
 
         runner._resolve_row_tenant = _house_tenant  # type: ignore[assignment]
-        runner._db = adapter  # type: ignore[assignment]
+        runner._db = adapter
         yield runner, admin_conn
     finally:
         if pool is not None:
