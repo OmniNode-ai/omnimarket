@@ -314,6 +314,12 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # a skip is anomalous and never a legitimate opt-out. Pinned by
     # tests/ci/test_skip_count_ratchet_omn18790.py.
     "Skip Count Ratchet (OMN-18776)",  # skip-count-ratchet
+    # OMN-20304: the canonical-file-shape ratchet (operator ruling 2026-10-01:
+    # no new scripts, plugins or exceptions). Registered on the same terms as
+    # "Event Chain Gate" above: a FAILURE already fails CI Summary through the
+    # default-deny sweep, and this row makes a skipped or absent conclusion fail
+    # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
+    "Canonical File Shape (OMN-20304)",  # canonical-file-shape
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
