@@ -11,6 +11,8 @@ from omnibase_core.models.delegation.wire import EnumQualityRuleEnforcement
 from omnimarket.delegation.reasoning_preamble import (
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
+    EnumReasoningBoundaryRule,
+    segment_reasoning_preamble,
     strip_leading_inline_reasoning,
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
@@ -85,6 +87,32 @@ def test_residual_tag_refuses_and_climbs(
     assert rule.enforcement is EnumQualityRuleEnforcement.BLOCKING
     assert not rule.passed
     assert tag in rule.detail
+
+
+def test_a_leading_paired_block_is_segmented_off_and_the_answer_passes() -> None:
+    answer = json.dumps({"answer": "42"})
+    content = "  <think>weighing options</think>\n\n" + answer
+    segmentation = segment_reasoning_preamble(content)
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.LEADING_PAIRED_BLOCK
+    assert segmentation.answer == answer
+    contract: dict[str, object] = {"type": "object", "required": ["answer"]}
+    result = delta(_input(content), response_contract=contract)
+    assert result.passed
+    assert result.reasoning_preamble_rule == "leading_paired_block"
+
+
+def test_a_paired_block_after_the_answer_starts_is_left_for_the_floor() -> None:
+    content = "The answer is 42. <think>second thoughts</think> Or 41."
+    segmentation = segment_reasoning_preamble(content)
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+    result = delta(_input(content))
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
+
+
+def test_a_leading_paired_block_with_nothing_behind_it_stays_unresolved() -> None:
+    segmentation = segment_reasoning_preamble("<think>only reasoning</think>\n")
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
 
 
 def test_residual_opening_tag_in_whole_answer_is_refused() -> None:

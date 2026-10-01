@@ -66,6 +66,13 @@ class EnumReasoningBoundaryRule(StrEnum):
     UNPAIRED_CLOSING_TAG = "unpaired_closing_tag"
     """A reasoning-trace terminator with no matching opener before it."""
 
+    LEADING_PAIRED_BLOCK = "leading_paired_block"
+    """A paired reasoning block that OPENS the response (OMN-18278).
+
+    The caller receives the text after it. A paired block anywhere else stays
+    in the answer, where the residual-tag floor refuses it.
+    """
+
     ANSWER_MARKER = "answer_marker"
     """A line equal to a contract-declared answer marker, after a lead-in."""
 
@@ -155,6 +162,21 @@ def _unpaired_closing_tag_offset(
         if best is None or end < best:
             best = end
     return best
+
+
+def _leading_paired_block_offset(
+    content: str, policy: ModelReasoningPreamblePolicy
+) -> int | None:
+    """Offset just past a paired trace block that opens the response, if any."""
+    stripped = content.lstrip()
+    lead = len(content) - len(stripped)
+    for closing in policy.closing_trace_tags:
+        opening = f"<{closing[2:]}"
+        if stripped.startswith(opening):
+            index = content.find(closing, lead + len(opening))
+            if index != -1:
+                return index + len(closing)
+    return None
 
 
 def _has_paired_trace_block(content: str, policy: ModelReasoningPreamblePolicy) -> bool:
@@ -254,6 +276,12 @@ def segment_reasoning_preamble(content: str) -> ModelReasoningSegmentation:
 
     offset = _unpaired_closing_tag_offset(content, policy)
     rule = EnumReasoningBoundaryRule.UNPAIRED_CLOSING_TAG
+    if offset is None:
+        # OMN-18278: a paired block that OPENS the response is the model's
+        # reasoning ahead of its answer. Left in place it reached the caller,
+        # and the residual-tag floor would now refuse an answer that is fine.
+        offset = _leading_paired_block_offset(content, policy)
+        rule = EnumReasoningBoundaryRule.LEADING_PAIRED_BLOCK
 
     # OMN-18967 AC3: remembered so an unresolved boundary can say WHY it is
     # unresolved. A lead-in with no boundary behind it is a different outcome
