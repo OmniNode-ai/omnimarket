@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger Append Effect (OMN-20275)
+#
+# WHO HOSTS THIS NODE. One process on the ledger host (`onex work-ledger serve`)
+# runs the append command locally. Shared runtimes must NEVER attach it: a
+# runtime container would race the ledger host for rows it cannot append.
+# The contract therefore declares runtime_dispatch and NO event_bus block;
+# runtime auto-wiring attaches only contracts declaring both handler_routing
+# and event_bus, just like node_lab_work_unit_effect.
+#
+# ADDRESSING. The serve process reads the command topic in ONE consumer group and
+# handles each command inside its subscription callback, so the group's position
+# passes a command only after its receipt is published. A lock beside the ledger
+# file admits one serve process per ledger. The handler dedups on the request's
+# req= cell, so a command redelivered after a crash is answered, never appended
+# twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append). RULING
+# and OPERATOR-CONSENT rows are refused until requests carry a verifiable
+# principal (OMN-20282). The ledger host and append argv are deployment facts
+# given on the serve command line; nothing here names a machine.
+name: "node_work_ledger_append_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Appends exact rows built on a requesting lab host to the rolling ledger on
+  the ledger host, deduplicating by request id and returning line numbers.
+input_model:
+  name: "ModelWorkLedgerAppendRequest"
+  module: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append"
+  description: "Request id, exact rows, ledger id, requesting lane, host and time."
+output_model:
+  name: "ModelWorkLedgerAppendReceipt"
+  module: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append"
+  description: "Status, command exit code, output tail, ledger lines, host and duration."
+handler:
+  module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
+  class: "HandlerWorkLedgerAppendEffect"
+  input_model: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append.ModelWorkLedgerAppendRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect:HandlerWorkLedgerAppendEffect"
+  handlers:
+    - operation: "append_work_ledger"
+      handler:
+        name: "HandlerWorkLedgerAppendEffect"
+        module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 180000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.work-ledger-append-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.work-ledger-append-completed.v1"
+    failure: "onex.evt.omnimarket.work-ledger-append-failed.v1"
+published_events:
+  - event_type: ModelWorkLedgerAppendReceipt
+    topic: onex.evt.omnimarket.work-ledger-append-completed.v1
+    description: "The receipt of an accepted, duplicate, refused or errored append."
+  - event_type: ModelWorkLedgerAppendCommandFailure
+    topic: onex.evt.omnimarket.work-ledger-append-failed.v1
+    description: "An unreadable command or handler crash."
+metadata:
+  transport_type: kafka
+  description: "Hosted by the ledger-host serve process, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-10-01"
+  tags: ["effect", "work-ledger", "OMN-20275"]
+  related_tickets: ["OMN-20275"]

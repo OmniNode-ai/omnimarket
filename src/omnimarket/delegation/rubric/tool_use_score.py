@@ -117,16 +117,20 @@ def read_crush_session(db: Path, session: str | None) -> tuple[str, list[CrushMe
             if row is None:
                 raise ValueError(f"{db} holds no session")
             session = str(row[0])
+        # The model column names the engine; a store from before it existed has none.
+        columns = {str(row[1]) for row in con.execute("pragma table_info(messages)")}
+        model_column = "model" if "model" in columns else "null"
         messages = [
             CrushMessage(
                 role=str(role),
                 parts_json=str(parts),
                 created_at=int(created),
                 finished_at=int(finished) if finished is not None else None,
+                model=str(model) if model else None,
             )
-            for role, parts, created, finished in con.execute(
-                "select role, parts, created_at, finished_at from messages "
-                "where session_id = ? order by created_at, rowid",
+            for role, parts, created, finished, model in con.execute(
+                f"select role, parts, created_at, finished_at, {model_column} "
+                "from messages where session_id = ? order by created_at, rowid",
                 (session,),
             )
         ]

@@ -608,6 +608,8 @@ def test_tool_use_budget_facts_always_present_in_order(turns, wall_time, outcome
         f"turns={turns}",
         "tool_calls=1",
         f"wall_time_ms={wall_time if wall_time is not None else 'absent'}",
+        "engine=absent",
+        "wall_time_limit_ms=900000",
     )
 
 
@@ -808,3 +810,148 @@ def test_tool_use_transcript_models_preserve_raw_arguments_and_manifest_absence(
     assert transcript(files=None).workspace_files is None
     assert transcript(files=()).workspace_files == ()
     assert transcript(turns=0, wall_time=0).turn_count == 0
+
+
+def engine_run(engine, wall_time):
+    return transcript(wall_time=wall_time).model_copy(update={"engine": engine})
+
+
+def with_engine_budget(item, limits):
+    return replace_params(item, "within_budget", {"max_wall_time_ms_by_engine": limits})
+
+
+@pytest.mark.parametrize(
+    ("engine", "wall_time", "outcome", "limit"),
+    [
+        ("SynSlow", 1_500_000, "PASS", 1_800_000),
+        ("SynSlow", 1_800_001, "FAIL", 1_800_000),
+        ("SynFast", 900_001, "FAIL", 600_000),
+        ("SynOther", 900_001, "FAIL", 900_000),
+        ("SynOther", 900_000, "PASS", 900_000),
+        (None, 900_001, "FAIL", 900_000),
+    ],
+)
+def test_tool_use_budget_wall_time_is_per_engine(engine, wall_time, outcome, limit):
+    item = with_engine_budget(
+        request(run=engine_run(engine, wall_time)),
+        {"SynSlow": 1_800_000, "SynFast": 600_000},
+    )
+    row = criterion("within_budget", item)
+    assert row.outcome == outcome
+    assert f"wall_time_limit_ms={limit}" in row.facts
+    assert f"engine={engine or 'absent'}" in row.facts
+
+
+def test_tool_use_budget_engine_keeps_turn_and_call_limits():
+    item = with_engine_budget(
+        request(run=engine_run("SynSlow", 1).model_copy(update={"turn_count": 41})),
+        {"SynSlow": 1_800_000},
+    )
+    assert criterion("within_budget", item).outcome == "FAIL"
+
+
+def test_tool_use_contract_wall_budget_per_engine():
+    row = next(
+        row
+        for row in load_delegation_class_rubrics().for_class("tool_use").criteria
+        if row.criterion_id == "within_budget"
+    )
+    assert isinstance(row.params, ModelWithinBudgetParams)
+    assert (row.params.max_turns, row.params.max_tool_calls) == (40, 80)
+    assert row.params.wall_time_limit_ms(None) == 900_000
+    assert row.params.wall_time_limit_ms("Qwen3.8-27B") == 1_800_000
+    assert row.params.wall_time_limit_ms("glm-5.3") == 600_000
+
+
+def traceable(answer, calls=(), files=None, prompt="Inspect the synthetic widget"):
+    run = transcript(calls=calls).model_copy(update={"workspace_files": files})
+    return criterion(
+        "task_answer_traceable", request(run=run, answer=answer, prompt=prompt)
+    )
+
+
+WIDGET_SOURCE = call(
+    output="class SynWidget:\n    sync_flag: bool = False\n\ndef build_widget(size, colour):\n    return SynWidget()\n"
+)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Callers use `build_widget(size, ...)`.",
+        "Callers use `build_widget(...)`.",
+        "Callers use `build_widget()`.",
+        "It sets `SynWidget.sync_flag`.",
+        "It wraps `try/except SynWidget`.",
+        'Said "Class SynWidget: sync_flag: bool," in the output.',
+        "Checked (e.g. the widget) in src/widget.py.",
+    ],
+)
+def test_tool_use_answer_traceable_shape_of_an_observed_fact_passes(answer):
+    run_calls = (WIDGET_SOURCE, call(call_id="call-read"))
+    assert traceable(answer, calls=run_calls).outcome == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("answer", "missing"),
+    [
+        ("Callers use `build_gadget(...)`.", "build_gadget(...)"),
+        ("Callers use `build_widget(size, weight)`.", "build_widget(size, weight)"),
+        ("It sets `SynWidget.async_flag`.", "SynWidget.async_flag"),
+        ("It wraps `try/except SynGadget`.", "try/except SynGadget"),
+        (
+            'The task said "widgets are rebuilt every hour" so I did.',
+            "widgets are rebuilt every hour",
+        ),
+    ],
+)
+def test_tool_use_answer_traceable_shape_without_the_fact_fails(answer, missing):
+    row = traceable(answer, calls=(WIDGET_SOURCE,))
+    assert (row.outcome, row.facts) == ("FAIL", (missing,))
+
+
+def test_tool_use_answer_traceable_member_parts_must_be_seen_together():
+    apart = (
+        call(output="class SynWidget:\n    pass\n"),
+        call(call_id="call-other", output="sync_flag = 1\n"),
+    )
+    row = traceable("It sets `SynWidget.sync_flag`.", calls=apart)
+    assert (row.outcome, row.facts) == ("FAIL", ("SynWidget.sync_flag",))
+
+
+@pytest.mark.parametrize(("line", "outcome"), [("12", "PASS"), ("13", "FAIL")])
+def test_tool_use_answer_traceable_citation_lines_checked_against_manifest(
+    line, outcome
+):
+    files = (ModelWorkspaceFile(path="src/widget.py", line_count=12),)
+    row = traceable(f"Edited `src/widget.py:{line}`.", calls=(call(),), files=files)
+    assert row.outcome == outcome
+
+
+def test_tool_use_answer_traceable_citation_of_unseen_file_fails():
+    row = traceable("Edited `src/gadget.py:4`.", calls=(call(),))
+    assert row.outcome == "FAIL"
+
+
+def test_tool_use_answer_traceable_refused_command_words_are_run_facts():
+    refused = call(
+        name="WidgetShell",
+        arguments='{"command": "synrun -m widgettest -q"}',
+        status="error",
+        output="This command requires approval",
+    )
+    assert traceable(
+        "`synrun -m widgettest` was refused.", calls=(refused,)
+    ).outcome == ("PASS")
+    row = traceable("`synrun -m gadgettest` was refused.", calls=(refused,))
+    assert row.outcome == "FAIL"
+
+
+def test_tool_use_answer_traceable_status_row_needs_a_printed_row():
+    diffstat = call(output=" src/widget.py | 20 ----\n")
+    row = traceable("git status showed `M src/widget.py`.", calls=(diffstat,))
+    assert (row.outcome, row.facts) == ("FAIL", ("M src/widget.py",))
+    status = call(output=" M src/widget.py\n")
+    assert traceable(
+        "git status showed `M src/widget.py`.", calls=(status,)
+    ).outcome == ("PASS")

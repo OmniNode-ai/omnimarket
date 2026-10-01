@@ -34,6 +34,7 @@ def score(
         "verdict": verdict.model_dump(mode="json"),
         "attempt_verdict": attempt_verdict_from(verdict).model_dump(mode="json"),
         "measured": {
+            "engine": transcript.engine,
             "turns": transcript.turn_count,
             "tool_calls": len(transcript.tool_calls),
             "wall_time_ms": transcript.wall_time_ms,

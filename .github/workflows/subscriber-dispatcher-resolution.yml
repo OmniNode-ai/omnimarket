@@ -80,7 +80,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
 
       # Fail-closed: the shim exits non-zero when no omnibase_infra source tree carrying
       # the validator resolves, so a broken checkout cannot silently no-op the gate.

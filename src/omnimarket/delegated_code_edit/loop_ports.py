@@ -509,6 +509,7 @@ def score_transcript(
         turn_count=int(str(transcript.get("turn_count", 0))),
         wall_time_ms=int(str(transcript.get("wall_time_ms", 0))),
         workspace_files=workspace,
+        engine=str(transcript.get("engine") or "") or None,
         execution_results=[
             ModelRubricExecutionResult(target=str(t), passed=bool(p))
             for t, p in (results_raw if isinstance(results_raw, list) else [])

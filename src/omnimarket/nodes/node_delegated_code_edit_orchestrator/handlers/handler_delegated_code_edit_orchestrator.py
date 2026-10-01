@@ -645,6 +645,9 @@ class HandlerDelegatedCodeEditOrchestrator:
                 for call in state.calls
             ],
             "turn_count": len(state.replies),
+            "engine": next(
+                (reply.model for reply in reversed(state.replies) if reply.model), ""
+            ),
             "wall_time_ms": int((time.monotonic() - started) * 1000),
             "workspace_files": [[path, lines] for path, lines in manifest],
             "execution_results": [
