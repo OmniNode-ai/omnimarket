@@ -75,6 +75,18 @@ repos:
         require_serial: true
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
+  # OMN-20295: direct-model-call gate, BLOCKING. A model call (HTTP to a model
+  # endpoint, provider or base_url; a model CLI exec such as crush, codex,
+  # claude -p or llama-cli; a model SDK import; or a caller of one) must sit in a
+  # sanctioned delegation node package named in omnibase_core's policy.yaml.
+  # Shrink-only baseline .onex_ratchets/direct_model_call_baseline.yaml; no
+  # suppression marker. Keep this rev equal to the pin in
+  # .github/workflows/direct-model-call.yml. Server-side backstop: OMN-20299.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: e5136c65f7943743eee7727fa6b92a1f0c0cf26c # pragma: allowlist secret
+    hooks:
+      - id: check-direct-model-call
+        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
   # URL Authority Gate (OMN-13298, child of OMN-12803).
   # OMN-20177: this pin carries the AST env-read matcher (*_DSN, os.getenv,
   # from-os imports, a key held in a constant); keep it equal to the pin in
