@@ -22,6 +22,9 @@ from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
 )
+from omnimarket.models.model_work_ledger_projection_inbound import (
+    ModelWorkLedgerProjectionInbound,
+)
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -30,9 +33,6 @@ from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
 )
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
     ModelEmitResult,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_projection import (
-    ModelWorkLedgerProjectionInbound,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     LedgerRowRefusalError,
@@ -89,12 +89,13 @@ class HandlerWorkLedgerEmit:
         emitter = (
             self._emitter if self._emitter is not None else HandlerEventEmitEffect()
         )
+        event_id = str(work_ledger_event_id(event.ledger_id, event.row_id))
         return emitter.handle(
             ModelEmitRequest(
                 event_type=event.row_type.event_type,
-                payload=event.model_dump(mode="json"),
+                payload={**event.model_dump(mode="json"), "event_id": event_id},
                 correlation_id=event.row_id,
-                event_id=str(work_ledger_event_id(event.ledger_id, event.row_id)),
+                event_id=event_id,
             )
         )
 

@@ -592,7 +592,7 @@ class HandlerEventEmitEffect:
             work_ledger_event_id,
             work_ledger_row_id,
         )
-        from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_projection import (
+        from omnimarket.models.model_work_ledger_projection_inbound import (
             ModelWorkLedgerProjectionInbound,
         )
         from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
