@@ -112,7 +112,11 @@ class TestThePredicateIsNotTheNaiveIntersection:
         self, rungs: list[dict[str, Any]]
     ) -> None:
         house = house_keyed_provider_slugs(rungs)
-        assert set(customer_provider_catalogue()) <= house
+        # OMN-17373: openai is customer-only (every row mirrors_house_rung: false),
+        # so no house rung can back it.
+        customer_only = {"openai"}
+        assert set(customer_provider_catalogue()) - customer_only <= house
+        assert not customer_only & house
 
 
 class TestRedOnAnInjectedHouseKeyedRow:
@@ -222,6 +226,29 @@ class TestFailsClosedRatherThanVacuously:
         assert any(f.finding_class == mod._UNBACKED for f in findings), format_findings(
             findings
         )
+
+    def test_a_customer_only_row_is_exempt_from_conjunct_3_only(
+        self, rows: list[dict[str, Any]], rungs: list[dict[str, Any]]
+    ) -> None:
+        """OMN-17373: openai has no house rung and is clean, but only while it
+        declares mirrors_house_rung: false; conjuncts 1 and 2 still bind it."""
+        assert find_house_keyed_catalogue_entries(rows, rungs) == ()
+
+        mirroring = copy.deepcopy(rows)
+        for row in mirroring:
+            if row["provider"] == "openai":
+                del row["mirrors_house_rung"]
+        findings = find_house_keyed_catalogue_entries(mirroring, rungs)
+        assert [f.finding_class for f in findings] == [mod._UNBACKED], format_findings(
+            findings
+        )
+
+        laundered = copy.deepcopy(rows)
+        for row in laundered:
+            if row["provider"] == "openai":
+                row["backend_id"] = "llm.openai.api_key"
+        findings = find_house_keyed_catalogue_entries(laundered, rungs)
+        assert any(f.finding_class == DECLARED_HOUSE_REF for f in findings)
 
     def test_the_slug_join_finds_a_rung_an_endpoint_join_would_miss(
         self, rungs: list[dict[str, Any]]

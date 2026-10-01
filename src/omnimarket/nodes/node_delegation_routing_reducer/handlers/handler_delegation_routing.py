@@ -126,6 +126,7 @@ from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     house_credential_refs,
+    is_customer_attributed,
     lab_backend_hosts,
     refuse_keyless_customer_on_cloud,
 )
@@ -3023,7 +3024,23 @@ def delta(
         excluded_backend_refs=excluded_backend_refs,
         quota_state=quota_state,
     )
-    if requested_backend_ref is not None:
+    if requested_backend_ref is None and (
+        surface is EnumDelegationSurface.CUSTOMER_LOCAL
+        and is_customer_attributed(request.tenant_id)
+    ):
+        # OMN-20203: the customer-local surface skips the cloud pre-ladder
+        # refusal because the customer's own overlay may bind a model of
+        # theirs. When the merged routing resolves none, say which declaration
+        # is missing, as the CLI does on the same machine (OMN-16200).
+        msg = (
+            f"No local model is declared and no provider key is registered for "
+            f"tenant '{(request.tenant_id or '').strip()}': no route resolves for "
+            f"task_type='{task_type}'. Bind your model in this runtime's lane "
+            "overlay (endpoint_url and served_model_id on a local rung), or "
+            "register your own provider key for this tenant, then retry "
+            f"(OMN-20203).\n{report.render()}"
+        )
+    elif requested_backend_ref is not None:
         msg = (
             f"Caller-pinned backend_id='{requested_backend_ref}' is not routable. "
             f"A pin must name a {ROUTING_TIERS_SURFACE} backend_id whose "

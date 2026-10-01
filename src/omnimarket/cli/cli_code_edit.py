@@ -131,6 +131,12 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     multiple=True,
     help="NAME=COMMAND, a declared check (repeatable, at least one).",
 )
+@click.option(
+    "--formatter",
+    default=None,
+    help="COMMAND of the formatter the format tool runs, split with shlex; the "
+    "file path is appended (e.g. 'uv run ruff format'). Omitted: no format tool.",
+)
 @click.option("--max-turns", type=click.IntRange(1, 40), default=20, show_default=True)
 @click.option(
     "--caller-lane",
@@ -190,6 +196,7 @@ def run_command(
     writable: tuple[str, ...],
     context_paths: tuple[str, ...],
     check_specs: tuple[str, ...],
+    formatter: str | None,
     max_turns: int,
     caller_lane: str | None,
     ticket: str | None,
@@ -225,6 +232,7 @@ def run_command(
                 writable_globs=writable,
                 context_paths=context_paths,
                 checks=tuple(parse_check(spec) for spec in check_specs),
+                formatter=tuple(shlex.split(formatter)) if formatter else (),
                 max_turns=max_turns,
                 caller_lane=caller_lane,
                 ticket=ticket,

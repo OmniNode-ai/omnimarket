@@ -443,6 +443,33 @@ def is_non_public_host(host: str) -> bool:
     )
 
 
+def routing_surface_for_runtime(
+    *, tenant_id: str | None, runtime_tenant_id: str | None
+) -> EnumDelegationSurface:
+    """The surface a bus routing consumer serves this request on (OMN-20203).
+
+    A runtime whose own lane tenant IS the request's customer tenant is that
+    customer's deployment: the laptop profile (``make tenant-local`` then
+    ``make up-local``) names the developer as the runtime's tenant, and the
+    backends its overlay binds are the developer's own hardware. That is the
+    CUSTOMER_LOCAL terminus, the same one the CLI applies on the same machine.
+    Declaring CLOUD there refused every delegation before routing, whatever
+    the overlay declared, because the pre-ladder refusal never reads it.
+
+    Every other request is CLOUD: a runtime with no lane tenant (the default
+    state of every lab and hosted lane), a request for a different tenant, and
+    house or untenanted work. The house-credential check applies on both
+    surfaces, so this never lets a platform credential execute customer work.
+    """
+    if not is_customer_attributed(tenant_id):
+        return EnumDelegationSurface.CLOUD
+    assert tenant_id is not None  # narrowed by is_customer_attributed
+    runtime = (runtime_tenant_id or "").strip()
+    if runtime and runtime == tenant_id.strip():
+        return EnumDelegationSurface.CUSTOMER_LOCAL
+    return EnumDelegationSurface.CLOUD
+
+
 def refuse_keyless_customer_on_cloud(
     *,
     tenant_id: str | None,
@@ -612,4 +639,5 @@ __all__: list[str] = [
     "is_non_public_host",
     "lab_backend_hosts",
     "refuse_keyless_customer_on_cloud",
+    "routing_surface_for_runtime",
 ]
