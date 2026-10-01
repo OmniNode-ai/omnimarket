@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any, cast
 
 import pytest
 
@@ -541,11 +542,9 @@ def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter()
 def test_format_is_offered_as_a_tool() -> None:
     from omnimarket.nodes.node_delegated_code_edit_orchestrator import TOOL_SCHEMAS
 
-    names = [t["function"]["name"] for t in TOOL_SCHEMAS]  # type: ignore[index]
+    schemas = cast("list[dict[str, dict[str, str]]]", list(TOOL_SCHEMAS))
+    names = [t["function"]["name"] for t in schemas]
     assert "format" in names
-    assert (
-        "format"
-        in RESPONSE_CONTRACT["properties"]["actions"]["items"]["properties"]["tool"][
-            "enum"
-        ]
-    )  # type: ignore[index]
+    contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
+    tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
+    assert "format" in tool_enum
