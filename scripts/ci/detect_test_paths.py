@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
@@ -141,6 +142,27 @@ def compute_selection(
         ):
             return _full_suite(EnumFullSuiteReason.TEST_INFRASTRUCTURE)
 
+    # OMN-20180: delegation coverage spans unit, golden and flat tests, so
+    # module-to-directory narrowing cannot safely represent these surfaces.
+    if any(
+        fnmatchcase(changed, pattern)
+        for changed in changed_files
+        for pattern in config.full_suite_path_globs
+    ):
+        return _full_suite(EnumFullSuiteReason.PROTECTED_SURFACE)
+
+    # Fail closed even in mixed diffs: an unmapped source must not disappear
+    # merely because another changed module contributed a test directory.
+    # A file directly under src/omnimarket/ has no mapped module either.
+    source_paths = [
+        path[len(SRC_PREFIX) :] for path in changed_files if path.startswith(SRC_PREFIX)
+    ]
+    if any(
+        "/" not in path or path.split("/", 1)[0] not in config.adjacency
+        for path in source_paths
+    ):
+        return _full_suite(EnumFullSuiteReason.UNMAPPED_MODULE)
+
     # OMN-15277: a changed test path directly under tests/ root (no
     # subdirectory) cannot be narrowed below tests/ itself. Checked after the
     # test-infrastructure loop so paths already declared there (e.g.
@@ -148,11 +170,7 @@ def compute_selection(
     if _requires_unnarrowable_full_suite(changed_files):
         return _full_suite(EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE)
 
-    changed_modules = {
-        path[len(SRC_PREFIX) :].split("/", 1)[0]
-        for path in changed_files
-        if path.startswith(SRC_PREFIX)
-    } & set(config.adjacency.keys())
+    changed_modules = {path.split("/", 1)[0] for path in source_paths}
     if changed_modules & set(config.shared_modules):
         return _full_suite(EnumFullSuiteReason.SHARED_MODULE)
 

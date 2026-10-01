@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,6 +28,10 @@ class ModelAdjacencyMap(BaseModel):
     shared_modules: list[str]
     thresholds: ModelThresholds
     test_infrastructure_paths: list[str]
+    full_suite_path_globs: list[Annotated[str, Field(strict=True)]] = Field(
+        default_factory=list, strict=True
+    )
+    """Repo-relative fnmatch patterns whose changes require the full suite."""
     adjacency: dict[str, ModelAdjacencyEntry]
     always_selected_paths: list[str] = Field(default_factory=list)
     """Test directories appended to EVERY narrowed selection.

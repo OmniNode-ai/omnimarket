@@ -42,6 +42,28 @@ test_infrastructure_paths:
   - pytest.ini
   - pyproject.toml
 
+# OMN-20180: repo-relative fnmatch globs for surfaces whose coverage spans
+# tests/unit/delegation/, tests/delegation_golden/ and flat tests/*.py.
+# Any matching change forces the full suite before module narrowing. Include
+# delegation projections and PR fixes, routing policy/house overlay nodes,
+# and LLM effects with an ADR or PR prefix as well as node_llm_*.
+# Test-directory changes already select their containing scope.
+full_suite_path_globs:
+  - src/omnimarket/delegation/**
+  - src/omnimarket/delegated_test_loop/**
+  - src/omnimarket/inference/**
+  - src/omnimarket/cost/**
+  - src/omnimarket/configs/**
+  - src/omnimarket/nodes/node_*delegat*/**
+  - src/omnimarket/nodes/node_*routing*/**
+  - src/omnimarket/nodes/node_model_router/**
+  - src/omnimarket/nodes/node_llm_*/**
+  - src/omnimarket/nodes/node_*_llm_effect/**
+  - src/omnimarket/nodes/node_ab_*/**
+  - src/omnimarket/nodes/node_judge_*/**
+  - src/omnimarket/nodes/node_*savings*/**
+  - src/omnimarket/nodes/node_*llm_cost*/**
+
 # Reverse dependency edges.
 # Key = changed src module; value = modules that import it.
 # Leaf modules with no dependents list empty reverse_deps.
