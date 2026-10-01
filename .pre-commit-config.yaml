@@ -108,6 +108,14 @@ repos:
   # .pre-commit-hooks.yaml export (core dev HEAD after #1430 squash-merges) — never a
   # moving ref like @dev (required gate; deterministic-truth doctrine). The token below
   # is a HOLD placeholder; this PR stays unopened until the real post-merge SHA is set.
+  #
+  # OMN-20304: the same block carries the canonical-file-shape ratchet (operator
+  # ruling 2026-10-01). It refuses a new code file outside the canonical
+  # contract/node/handler/models/protocols/tests/docs locations, new imperative
+  # lines in a SKILL.md, and any new baseline, allowlist or suppression entry.
+  # Shrink-only baseline at .onex_ratchets/canonical_file_shape_baseline.txt.
+  # The rev moved from 6363509770 to the OMN-20304 commit for both hooks; the
+  # lifecycle validator's source is identical at the two commits.
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: d17f5be8be88a8d35fc6a69e13cb8c1896c3025b # pragma: allowlist secret
     hooks:
@@ -121,6 +129,8 @@ repos:
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
+      - id: canonical-file-shape
+        require_serial: true
 
   # Transport-import + node-purity gates — first purity gate in omnimarket
   # (OMN-13283 / GAP-8a, under OMN-9048). Scoped to COMPUTE and REDUCER node code,

@@ -191,6 +191,8 @@ async def _rls_enforced_local_runner(
     writer_role = f"omn18147_writer_{suffix}"
     pool: asyncpg.Pool | None = None
     try:
+        # omnibase_infra forward 098 provisions this; migration 0051 asserts it.
+        await admin.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
         await admin.execute(_APP_DASHBOARD_ROLE_SQL)

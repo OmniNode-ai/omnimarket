@@ -480,3 +480,20 @@ def test_offset_must_be_a_positive_integer() -> None:
         '{"actions": [{"tool": "view", "path": "a.py", "offset": 0}]}'
     )
     assert "offset must be an integer" in reason
+
+
+def test_a_turn_whose_results_exceed_the_history_budget_is_cut_not_dropped() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+        build_turn_prompt,
+    )
+
+    request = _request()
+    huge = "TURN 2\n> view(path='src/m.py') -> ok\n" + "x" * 50_000 + "\n"
+    history = ["TURN 1\n> ls() -> ok\nsrc\n", huge]
+    head_only = build_turn_prompt(request, ["src/m.py"], (), [], 3, max_chars=1)
+    prompt = build_turn_prompt(
+        request, ["src/m.py"], (), history, 3, max_chars=len(head_only) + 5_000
+    )
+    assert "TURN 2\n> view(path='src/m.py') -> ok" in prompt
+    assert "more characters cut" in prompt
+    assert len(prompt) <= len(head_only) + 5_000 + 200

@@ -46,6 +46,17 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
+    # OMN-20276: migration-only control state. 0051 records the prior
+    # outcome and verdict of each delegation_events row it rewrote; its
+    # rollback reads them back and drops the table. No node reads or writes
+    # it at runtime, it carries no tenant_id, and it has no row-level
+    # security, so it is internal, like delegate_skill_command_claims.
+    - name: delegation_events_outcome_backfill_omn20276
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0051_delegation_events_failed_outcome_backfill.sql
+      access: read_write
+      role: projection_migration_backfill_audit
     # OMN-18987 / OMN-15359: the logical relation is TENANT, and the physical
     # relation stays in public until the schema bridge moves it. This manifest
     # is the authority the omnibase_infra application-domain gate reads -- a

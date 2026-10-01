@@ -524,10 +524,10 @@ class TestRealPostgresRoutingOverlayWritePath:
         secret_ref, and answering a customer on it is the forbidden outcome.
         """
         async with _provisioned_runner() as (runner, admin_conn, _schema):
-            ref = f"cred_{BYOK_TENANT}_openai_{uuid4().hex[:12]}"
+            ref = f"cred_{BYOK_TENANT}_cohere_{uuid4().hex[:12]}"
             assert await runner.project_event(
                 TOPIC_REGISTERED,
-                self._register(ref, provider="openai"),
+                self._register(ref, provider="cohere"),
                 MessageMeta(
                     partition=0, offset=0, fallback_id=ref, topic=TOPIC_REGISTERED
                 ),
