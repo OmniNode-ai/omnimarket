@@ -25,7 +25,10 @@ own copy of the predicate could stay green while the shipped validator was broke
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from omnimarket.validators.handler_dispatch_entrypoint import (
     DEFAULT_BASELINE,
@@ -135,3 +138,55 @@ def test_validator_cli_passes_on_current_tree() -> None:
     a validator that crashed or mis-parsed its own baseline cannot ship green.
     """
     assert main([str(DEFAULT_SCAN_ROOT), "--baseline", str(DEFAULT_BASELINE)]) == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("entrypoint", ["handle", "handle_async", None])
+def test_validator_cli_discriminates_synthetic_contract_handlers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    entrypoint: str | None,
+) -> None:
+    """The shipped gate accepts good handlers and rejects a planted missing handle."""
+    method = entrypoint or "dispatch"
+    # Unique names keep importlib's cache from masking the bad case.
+    module_name = f"synthetic_dispatch_entrypoint_handler_{method}"
+    (tmp_path / f"{module_name}.py").write_text(
+        f"class HandlerSynthetic:\n"
+        f"    def {method}(self, request: object) -> object:\n"
+        f"        return request\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    (tmp_path / "contract.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "synthetic_dispatch",
+                "handler_routing": {
+                    "handlers": [
+                        {
+                            "operation": f"operation_{index}",
+                            "handler": {
+                                "name": "HandlerSynthetic",
+                                "module": module_name,
+                            },
+                        }
+                        for index in range(MIN_EXPECTED_DECLARED_HANDLERS)
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = main([str(tmp_path), "--baseline", str(tmp_path / "absent_baseline.yaml")])
+
+    error = capsys.readouterr().err
+    if entrypoint is None:
+        assert result == 1
+        assert "NEITHER handle() nor handle_async()" in error
+        assert "synthetic_dispatch: HandlerSynthetic" in error
+    else:
+        assert result == 0
+        assert "0 new violations" in error
