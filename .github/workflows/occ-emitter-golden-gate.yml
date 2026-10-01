@@ -95,7 +95,7 @@ jobs:
       # unnoticed (CLAUDE.md OMN-14208: a real cross-boundary regression test,
       # not two independent unit suites).
       - name: Clone onex_change_control (consumer-gate parity)
-        run: git clone https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control && git -C ../onex_change_control checkout --detach v0.5.3
+        run: git clone https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control && git -C ../onex_change_control checkout --detach 6adc28168d023d027bf9c1172f262ac03c9d9055
 
       # OMN-15988: the deploy-gate falsifiability suite imports the REAL
       # omniclaude gate script (validate_pr_deploy_required.py) and drives the

@@ -113,7 +113,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           repository: OmniNode-ai/onex_change_control
-          ref: v0.5.3
+          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           path: onex_change_control
           sparse-checkout: src
           persist-credentials: false
