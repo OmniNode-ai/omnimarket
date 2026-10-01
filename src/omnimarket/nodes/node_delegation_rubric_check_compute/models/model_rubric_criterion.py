@@ -18,6 +18,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_code_par
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_declared_format_params import (
     ModelDeclaredFormatParams,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_edits_apply_params import (
+    ModelEditsApplyParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_id_coverage_params import (
     ModelIdCoverageParams,
 )
@@ -27,8 +30,17 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_ids_trac
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_named_symbols_params import (
     ModelNamedSymbolsParams,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_no_phantom_paths_params import (
+    ModelNoPhantomPathsParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_test_targets_params import (
     ModelTestTargetsParams,
+)
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_tool_calls_wellformed_params import (
+    ModelToolCallsWellformedParams,
+)
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_within_budget_params import (
+    ModelWithinBudgetParams,
 )
 
 
@@ -47,11 +59,21 @@ class ModelRubricCriterion(BaseModel):
         | ModelIdCoverageParams
         | ModelCodeParsesParams
         | ModelIdsTraceableParams
+        | ModelToolCallsWellformedParams
+        | ModelNoPhantomPathsParams
+        | ModelEditsApplyParams
+        | ModelWithinBudgetParams
     )
 
     @model_validator(mode="after")
     def validate_params(self) -> Self:
         schemas = {
+            "tool_calls_wellformed": ModelToolCallsWellformedParams,
+            "no_phantom_paths": ModelNoPhantomPathsParams,
+            "edits_apply": ModelEditsApplyParams,
+            "stated_check_passes": ModelTestTargetsParams,
+            "task_answer_traceable": ModelClaimsTraceableParams,
+            "within_budget": ModelWithinBudgetParams,
             "cited_lines_exist": ModelCitedLinesParams,
             "named_symbols_exist": ModelNamedSymbolsParams,
             "named_test_passes": ModelTestTargetsParams,

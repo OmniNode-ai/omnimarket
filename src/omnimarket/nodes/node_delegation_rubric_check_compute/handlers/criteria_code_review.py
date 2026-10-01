@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_common import (
+    CITED_LINES_PATTERN,
     compact,
     normalized,
     result,
@@ -104,7 +105,7 @@ def cited_lines_exist(
     assert isinstance(params, ModelCitedLinesParams)
     citations = tuple(
         re.finditer(
-            r"(?<![\w/])(?P<path>[A-Za-z_./][\w./-]*):(?P<start>\d+)(?:-(?P<end>\d+))?",
+            CITED_LINES_PATTERN,
             request.answer_text,
         )
     )
