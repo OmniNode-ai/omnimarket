@@ -908,3 +908,82 @@ events:
         description: "A calling lane's disposition of one delegated answer, for the disposition projection"
     partition_key_field: delegation_correlation_id
     required_fields: [tenant_id, delegation_correlation_id, disposition, reason_code, caller_lane, artifact_kind, recorded_at, disposition_id]
+
+  # OMN-20001: strict core event envelopes; v1 retains its legacy body.
+  work.ledger.typed.claim:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-claim.v2"
+        tier: duty_critical
+        description: "A core typed claim work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.status:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-status.v2"
+        tier: duty_critical
+        description: "A core typed status work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.terminal:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-terminal.v2"
+        tier: duty_critical
+        description: "A core typed terminal work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.hold:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-hold.v2"
+        tier: duty_critical
+        description: "A core typed hold work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.release:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-release.v2"
+        tier: duty_critical
+        description: "A core typed release work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.msg:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-msg.v2"
+        tier: duty_critical
+        description: "A core typed msg work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.ack:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-ack.v2"
+        tier: duty_critical
+        description: "A core typed ack work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.ruling:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-ruling.v2"
+        tier: duty_critical
+        description: "A core typed ruling work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.operator_consent:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-operator-consent.v2"
+        tier: duty_critical
+        description: "A core typed operator-consent work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.friction:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-friction.v2"
+        tier: duty_critical
+        description: "A core typed friction work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+  work.ledger.typed.correction:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-correction.v2"
+        tier: duty_critical
+        description: "A core typed correction work-ledger event"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]

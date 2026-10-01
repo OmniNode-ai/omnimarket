@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
+from omnibase_core.models.events.work.model_work_event_union import ModelWorkEvent
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.model_ledger_row_event import (
@@ -21,6 +24,8 @@ class ModelWorkLedgerEmitRequest(BaseModel):
         ..., min_length=1, description="The exact ledger row, as appended."
     )
     ledger_id: str = Field(default=DEFAULT_LEDGER_ID, min_length=1)
+    event: ModelWorkEvent | None = None
+    provenance_kind: Literal["markdown", "typed"] = "markdown"
     source: str = Field(
         default="onex-ledger",
         min_length=1,
