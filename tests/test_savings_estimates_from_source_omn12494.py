@@ -12,6 +12,7 @@ replay-deterministic; truthful-empty (no row) when there is no counterfactual.
 from __future__ import annotations
 
 from decimal import Decimal
+from functools import partial
 
 import pytest
 
@@ -19,6 +20,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillSavingsProjection,
     ModelTaskDelegatedSavingsSource,
 )
+from omnimarket.nodes.node_projection_savings.handlers import handler_projection_savings
 from omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings import (
     HandlerProjectionSavings,
 )
@@ -26,13 +28,21 @@ from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionSavings()
+HANDLER._delegate_skill_baseline_model = "claude-opus-4-6"
+handler_projection_savings.build_premium_counterfactual = partial(
+    build_premium_counterfactual, premium_model="claude-opus-4-6"
+)
 CORR = "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f81"
 
 
 def _source_payload(
     *, cost_usd: str = "0.003", with_cf: bool = True
 ) -> dict[str, object]:
-    cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+    cf = build_premium_counterfactual(
+        prompt_tokens=1000,
+        completion_tokens=500,
+        premium_model="claude-opus-4-6",
+    )
     assert cf is not None
     payload: dict[str, object] = {
         "_event_type": "onex.evt.omniclaude.task-delegated.v1",
@@ -120,7 +130,11 @@ class TestHandlerMaterializesFromSource:
 
     @staticmethod
     def _expected_cloud() -> Decimal:
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         return cf.counterfactual_cost_usd
 

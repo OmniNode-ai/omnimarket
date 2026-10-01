@@ -82,7 +82,7 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     estimate_baseline_cost_usd,
     estimate_frontier_costs_usd,
-    get_manifest_version_int,
+    resolve_baseline_model,
 )
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
@@ -406,12 +406,16 @@ def _estimate_claude_cost_savings(
     result: dict[str, object],
     *,
     actual_cost_usd: float,
-) -> float:
+    baseline_model: str,
+) -> float | None:
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
     counterfactual_cost_usd = estimate_baseline_cost_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        baseline_model=baseline_model,
     )
+    if counterfactual_cost_usd is None:
+        return None
     return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
@@ -779,20 +783,29 @@ def _response_from_result(
                 f"{criterion} ({observed})" if observed else criterion,
             )
     actual_cost_usd = _measured_cost_usd(result)
-    cost_savings_usd = (
-        max(
-            _as_float(
-                result.get("cost_savings_usd"),
-                default=_estimate_claude_cost_savings(
-                    result,
-                    actual_cost_usd=actual_cost_usd,
-                ),
-            ),
-            0.0,
-        )
-        if status_value == "completed" and quality_gate_passed
-        else 0.0
+    baseline = resolve_baseline_model(
+        overlay=result.get("overlay", {}),
+        store=result.get("store", {}),
+        session_model=str(
+            result.get("model_cloud_baseline") or result.get("baseline_model") or ""
+        ),
     )
+    if baseline.state == "BASELINE_UNRESOLVED":
+        cost_savings_usd: float | None = None
+    elif status_value == "completed" and quality_gate_passed:
+        estimate = _estimate_claude_cost_savings(
+            result,
+            actual_cost_usd=actual_cost_usd,
+            baseline_model=baseline.model,
+        )
+        reported = result.get("cost_savings_usd")
+        cost_savings_usd = (
+            estimate
+            if reported is None
+            else max(_as_float(reported, default=estimate or 0.0), 0.0)
+        )
+    else:
+        cost_savings_usd = 0.0
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -826,15 +839,10 @@ def _response_from_result(
         secret_ref=(str(result["secret_ref"]) if result.get("secret_ref") else None),
         provider=str(result.get("provider") or result.get("delegated_to") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
-        model_cloud_baseline=str(
-            result.get("model_cloud_baseline")
-            or result.get("baseline_model")
-            or DEFAULT_BASELINE_MODEL
-        ),
-        pricing_manifest_version=_as_int(
-            result.get("pricing_manifest_version"),
-            default=get_manifest_version_int(),
-        ),
+        model_cloud_baseline=baseline.model,
+        baseline_source=baseline.selection_case,
+        baseline_state=baseline.state,
+        pricing_manifest_version=baseline.pricing_manifest_version,
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,

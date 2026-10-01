@@ -24,7 +24,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
     ModelTaskDelegatedEvent,
 )
-from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
+from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionDelegation()
@@ -33,10 +33,14 @@ HANDLER = HandlerProjectionDelegation()
 @pytest.mark.unit
 class TestBuildPremiumCounterfactual:
     def test_pinned_from_manifest_with_provenance(self) -> None:
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         # Provenance fields are non-null and pinned to the manifest baseline.
-        assert cf.model == DEFAULT_BASELINE_MODEL
+        assert cf.model == "claude-opus-4-6"
         assert cf.price_in_per_1k == Decimal("0.015")
         assert cf.price_out_per_1k == Decimal("0.075")
         assert cf.as_of == "2026-02-01"
@@ -46,7 +50,11 @@ class TestBuildPremiumCounterfactual:
         assert cf.measured is False
 
     def test_cost_recomputable_from_pins(self) -> None:
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         recomputed = (
             cf.price_in_per_1k * Decimal(cf.tokens_in)
@@ -68,7 +76,11 @@ class TestBuildPremiumCounterfactual:
 class TestProjectionPersistsCounterfactual:
     def test_compat_project_persists_jsonb(self) -> None:
         db = InmemoryDatabaseAdapter()
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         event = ModelTaskDelegatedEvent(
             correlation_id="corr-cf-001",
@@ -87,7 +99,7 @@ class TestProjectionPersistsCounterfactual:
         assert stored is not None
         # Round-trips back to the typed model with full provenance.
         roundtrip = ModelPremiumCounterfactual.model_validate(stored)
-        assert roundtrip.model == DEFAULT_BASELINE_MODEL
+        assert roundtrip.model == "claude-opus-4-6"
         assert roundtrip.as_of == "2026-02-01"
         # Saving is auditable: counterfactual - actual == recorded saving.
         saving = roundtrip.counterfactual_cost_usd - Decimal(str(rows[0]["cost_usd"]))
@@ -95,7 +107,11 @@ class TestProjectionPersistsCounterfactual:
 
     def test_terminal_projection_carries_counterfactual(self) -> None:
         db = InmemoryDatabaseAdapter()
-        cf = build_premium_counterfactual(prompt_tokens=11, completion_tokens=22)
+        cf = build_premium_counterfactual(
+            prompt_tokens=11,
+            completion_tokens=22,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         terminal = ModelDelegateSkillTerminalProjection.from_payload(
             {
@@ -131,7 +147,7 @@ class TestProjectionPersistsCounterfactual:
         roundtrip = ModelPremiumCounterfactual.model_validate(stored)
         assert roundtrip.tokens_in == 11
         assert roundtrip.tokens_out == 22
-        assert roundtrip.model == DEFAULT_BASELINE_MODEL
+        assert roundtrip.model == "claude-opus-4-6"
 
     def test_migration_declares_jsonb_column(self) -> None:
         from pathlib import Path

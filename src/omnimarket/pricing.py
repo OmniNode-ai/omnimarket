@@ -13,6 +13,7 @@ import functools
 import logging
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 from omnibase_core.models.delegation.wire import (
     EnumTierCostType,
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 # handler currently emits on the durable event.
 ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tiers.yaml"
 
-DEFAULT_BASELINE_MODEL = "claude-opus-4-6"
+DEFAULT_BASELINE_MODEL = "claude-sonnet-5-5"
 DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
     "claude-opus-4-6",
     "claude-sonnet-4-20250514",
@@ -67,25 +68,73 @@ def get_manifest_version_int() -> int:
         return 0
 
 
+class BaselineModelSelection(BaseModel):
+    """Resolved baseline and the reason it was selected."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    selection_case: Literal["session_model", "overlay", "store", "fixed_default"]
+    state: Literal["RESOLVED", "BASELINE_UNRESOLVED"]
+    pricing_manifest_version: int
+
+
+def resolve_baseline_model(
+    *,
+    overlay: object,
+    store: object,
+    session_model: str | None = None,
+) -> BaselineModelSelection:
+    """Resolve configured pricing.baseline_model, then validate it in the manifest."""
+    model = (session_model or "").strip()
+    selection_case: Literal["session_model", "overlay", "store", "fixed_default"] = (
+        "session_model"
+    )
+    if not model:
+        for config, case in ((overlay, "overlay"), (store, "store")):
+            if isinstance(config, dict):
+                pricing_config = config.get("pricing")
+                if isinstance(pricing_config, dict):
+                    candidate = pricing_config.get("baseline_model")
+                    if isinstance(candidate, str) and candidate.strip():
+                        model = candidate.strip()
+                        selection_case = case
+                        break
+    if not model:
+        model = DEFAULT_BASELINE_MODEL
+        selection_case = "fixed_default"
+    state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = (
+        "RESOLVED"
+        if _load_table().get_entry(model) is not None
+        else "BASELINE_UNRESOLVED"
+    )
+    return BaselineModelSelection(
+        model=model,
+        selection_case=selection_case,
+        state=state,
+        pricing_manifest_version=get_manifest_version_int(),
+    )
+
+
 def estimate_baseline_cost_usd(
     *,
     prompt_tokens: int,
     completion_tokens: int,
     baseline_model: str = DEFAULT_BASELINE_MODEL,
-) -> float:
+) -> float | None:
     """Estimate the USD cost of running prompt+completion against the baseline model.
 
-    Uses the canonical pricing manifest. Returns 0.0 if the baseline model is
-    not in the manifest (e.g. in test environments with an empty table).
+    Uses the canonical pricing manifest. Returns None if the baseline model is
+    not in the manifest so callers cannot report fabricated savings.
     """
     table = _load_table()
     estimate = table.estimate_cost(baseline_model, prompt_tokens, completion_tokens)
     if estimate.estimated_cost_usd is None:
         logger.debug(
-            "Baseline model %r not in pricing manifest; cost_savings_usd will be 0.0",
+            "Baseline model %r not in pricing manifest; savings are unresolved",
             baseline_model,
         )
-        return 0.0
+        return None
     return float(estimate.estimated_cost_usd)
 
 

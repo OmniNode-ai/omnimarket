@@ -488,6 +488,7 @@ class TestDelegationHandler:
             "task_type": "test",
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "model_cloud_baseline": "claude-opus-4-6",
             "response": "projection proof",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
@@ -847,6 +848,7 @@ class TestSavingsHandler:
             "task_type": "document",
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "model_cloud_baseline": "claude-opus-4-6",
             "quality_gate_passed": True,
             "metrics": {
                 "input_tokens": 81,
