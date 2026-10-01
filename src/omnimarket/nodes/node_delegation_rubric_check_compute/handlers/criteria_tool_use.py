@@ -55,6 +55,25 @@ def _matches_type(value: object, expected: EnumToolParameterType) -> bool:
     return isinstance(value, types[expected])
 
 
+def _argument_strings(text: str) -> tuple[str, ...]:
+    """The decoded string values of a call's arguments, at any depth.
+
+    The raw JSON escapes quotes and newlines, so text a model wrote through an
+    accepted edit (``extra="forbid"``) never matches its own answer verbatim.
+    """
+    found: list[str] = []
+    pending: list[object] = [_arguments(text)]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, dict):
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return tuple(found)
+
+
 def _path_exists(path: str, files: set[str]) -> bool:
     """A file of the tree, or a directory holding one (a search tool's ``path``)."""
     if path in files or path in {"", "."}:
@@ -261,10 +280,14 @@ def task_answer_traceable(
                 if call.result is not None
             ),
             *(
-                call.arguments_json
+                text
                 for call in transcript.tool_calls
                 if call.result is not None
                 and call.result.status == EnumToolCallStatus.OK
+                for text in (
+                    call.arguments_json,
+                    *_argument_strings(call.arguments_json),
+                )
             ),
         )
     )
