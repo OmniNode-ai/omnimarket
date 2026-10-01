@@ -41,7 +41,7 @@ Related:
     - OMN-17372: cloud delegation on a customer's OpenRouter key (blocker b3)
     - OMN-17353: the catalogue equals the handler-backed set, both directions
     - OMN-15631: the ``delegation_routing_tenant_overlay`` table + resolver
-    - OMN-17373: ``openai`` is deliberately absent — it has no backend yet
+    - OMN-17373: ``openai`` is offered as a customer-only surface (no house rung)
     - OMN-17932: ``gemini``/``glm``/``vertex`` were declared not-offered; ``glm``
       was lifted 2026-09-06
     - OMN-20157: ``gemini`` and a second ``glm`` plan are offered, every row
