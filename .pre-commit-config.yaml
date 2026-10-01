@@ -116,6 +116,7 @@ repos:
       # baseline, no allowlist, no suppression comment. CI twin: the
       # shape-gate-independence job in .github/workflows/ci.yml (STRICT CI Summary gate).
       - id: check-shape-gate-independence
+        require_serial: true
       - id: no-noncanonical-lifecycle-classes
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
