@@ -27,6 +27,11 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
     _normalize_savings_estimate_payload,
     provenance_or_none,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_identity_fold import (
+    HandlerSavingsRunIdentityFold,
+    ModelSavingsRunIdentity,
+    ModelSavingsRunIdentityFoldRequest,
+)
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_registry_resolution import (
@@ -382,6 +387,30 @@ class HandlerProjectionSavings:
             if resolved_tenant is not None
             else sync_house_tenant_write_uuid(db, table=TABLE)
         )
+        # OMN-20303: one row per run. Both terminals of a run reach this with
+        # their own times; write under the identity the run's stored row has.
+        identity = HandlerSavingsRunIdentityFold().handle(
+            ModelSavingsRunIdentityFoldRequest(
+                incoming=ModelSavingsRunIdentity(
+                    event_timestamp=projection.event_timestamp,
+                    model_local=projection.model_local,
+                    model_cloud_baseline=projection.model_cloud_baseline,
+                ),
+                stored=tuple(
+                    ModelSavingsRunIdentity.model_validate(
+                        {
+                            "event_timestamp": stored["event_timestamp"],
+                            "model_local": stored["model_local"],
+                            "model_cloud_baseline": stored["model_cloud_baseline"],
+                        }
+                    )
+                    for stored in db.query(TABLE, {"session_id": row["session_id"]})
+                ),
+            )
+        )
+        row["event_timestamp"] = identity.event_timestamp.astimezone(UTC).isoformat()
+        row["model_local"] = identity.model_local
+        row["model_cloud_baseline"] = identity.model_cloud_baseline
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 

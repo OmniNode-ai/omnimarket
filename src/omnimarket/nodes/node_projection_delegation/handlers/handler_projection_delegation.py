@@ -68,6 +68,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
+    HandlerDelegationRunAttributionFold,
+    ModelDelegationRunAttributionFoldRequest,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
     HandlerDelegationTicketFold,
 )
@@ -1933,6 +1937,13 @@ def _preserve_existing_evidence(
     if not existing_rows:
         return
     existing = existing_rows[0]
+    # OMN-20303: a later terminal that states no counterfactual, session or
+    # actor keeps the run's stored ones, so a kept saving keeps its baseline.
+    row.update(
+        HandlerDelegationRunAttributionFold()
+        .handle(ModelDelegationRunAttributionFoldRequest(stored=existing, incoming=row))
+        .row_columns()
+    )
     for key in ("prompt_text", "response_text", "context_pack_hash"):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
