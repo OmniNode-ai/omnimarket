@@ -30,6 +30,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.config.settings import get_settings
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -188,12 +189,16 @@ def test_overlay_naming_a_bindable_model_delegates_and_is_not_refused() -> None:
 
 
 @pytest.mark.usefixtures("contract_without_overlay", "developer_runtime")
-def test_no_key_and_no_local_model_ends_in_the_typed_refusal() -> None:
-    with pytest.raises(CustomerKeyRefusedError) as raised:
+def test_no_key_and_no_local_model_ends_in_the_refusal_naming_the_defect() -> None:
+    # The customer-local surface never answers NO_PROVIDER_KEY_REGISTERED (the
+    # cloud rule, OMN-17940); it names the missing declaration, as the CLI's
+    # OMN-16200 refusal does on the same machine.
+    with pytest.raises(ProtocolConfigurationError) as raised:
         _route(_DEVELOPER_TENANT)
-    refusal = raised.value.refusal
-    assert refusal.reason is EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED
-    assert refusal.tenant_id == _DEVELOPER_TENANT
+    message = str(raised.value)
+    assert "No local model is declared and no provider key is registered" in message
+    assert _DEVELOPER_TENANT in message
+    assert "OMN-20203" in message
 
 
 @pytest.mark.usefixtures("developer_overlay", "hosted_runtime")
