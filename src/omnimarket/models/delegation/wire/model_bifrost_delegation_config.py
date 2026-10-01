@@ -211,6 +211,18 @@ class ModelDelegationBackendConfig(BaseModel):
             "budget nobody measured."
         ),
     )
+    inline_reasoning_terminator: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "OMN-18278, consumer first: the backend serves a reasoning model and "
+            "its server runs no reasoning parser, so response content may open "
+            "with the model's reasoning, ended by this terminator. None means not "
+            "declared. This release only accepts the key; the response adapter "
+            "that strips on it lands in the change after the release carrying "
+            "this consumer."
+        ),
+    )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Capabilities this backend supports.",
