@@ -192,6 +192,8 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
     schema = f"omn19514_{uuid4().hex[:12]}"
     try:
         await admin.execute(_ROLES_SQL)
+        # omnibase_infra forward 098 provisions this; migration 0051 asserts it.
+        await admin.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
