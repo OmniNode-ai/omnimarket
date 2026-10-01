@@ -142,3 +142,9 @@ SELECT
 FROM classified_sessions
 GROUP BY 1
 ORDER BY 1;
+
+-- CREATE OR REPLACE VIEW resets omitted view options, so the replacement above has
+-- dropped security_invoker (OMN-19808: the same reset after 089 and 090). Without it
+-- the view reads with its owner's rights and bypasses the tenant row-level security
+-- on savings_estimates and delegation_events. Set it back in the same migration.
+ALTER VIEW public.projection_delegation_savings_series SET (security_invoker = true);
