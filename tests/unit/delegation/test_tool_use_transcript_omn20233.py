@@ -510,3 +510,28 @@ def test_cli_refuses_a_missing_store(tmp_path: Path) -> None:
         )
         == 2
     )
+
+
+def test_terminal_colour_codes_are_stripped_from_tool_output() -> None:
+    rows = crush_rows("Pytest result: `4 passed in 0.10s`.")
+    rows[4] = _row(
+        "tool",
+        [
+            _result("c2", "edit", "Content replaced"),
+            _result(
+                "c3", "bash", "\x1b[32m\x1b[1m4 passed\x1b[0m\x1b[32m in 0.10s\x1b[0m"
+            ),
+        ],
+        1_790_000_020,
+    )
+    request = crush_request(
+        rows,
+        rubric=RUBRIC,
+        declared_tools=declared_tools_from_schemas(CRUSH_TOOLS),
+        workspace_root=ROOT,
+        workspace_files=MANIFEST,
+    )
+    assert request.transcript is not None
+    assert request.transcript.tool_calls[2].result is not None
+    assert request.transcript.tool_calls[2].result.output == "4 passed in 0.10s"
+    assert outcomes(request)["task_answer_traceable"] == "PASS"

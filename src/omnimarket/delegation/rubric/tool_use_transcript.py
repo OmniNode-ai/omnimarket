@@ -13,6 +13,9 @@ Caller normalisation the compute relies on (it compares paths as strings):
 path arguments and answer citations that sit under ``workspace_root`` are
 rewritten relative to it, so they meet the relative paths of the manifest.
 
+Tool outputs lose their terminal colour codes, which split a printed
+``5 passed in 0.55s`` so the answer quoting it could not be traced.
+
 Execution evidence for ``stated_check_passes`` is taken only from what the
 environment printed: the last shell call whose command names a test target,
 read for a pytest summary line. Answer prose is never read for it.
@@ -45,6 +48,7 @@ TOOL_USE_CLASS = "tool_use"
 SHELL_TOOLS = frozenset({"bash", "Bash", "shell", "exec_command"})
 _PASSED = re.compile(r"\b\d+ passed\b")
 _TEST_DIRECTORY = re.compile(r"(?<![\w/.-])tests(?:/[\w-]+)*/?(?![\w./-])")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 _FAILED = re.compile(r"\b\d+ (?:failed|errors?)\b|\bno tests ran\b")
 # Unix seconds before this bound; crush stores seconds although its schema says ms.
 _MS_EPOCH_FLOOR = 100_000_000_000
@@ -331,7 +335,7 @@ def crush_request(
                     status=EnumToolCallStatus.ERROR
                     if data.get("is_error") is True
                     else EnumToolCallStatus.OK,
-                    output=str(data.get("content") or ""),
+                    output=_ANSI.sub("", str(data.get("content") or "")),
                 )
     tool_calls = [
         ModelToolCall(
@@ -424,7 +428,7 @@ def claude_stream_request(
                     status=EnumToolCallStatus.ERROR
                     if block.get("is_error") is True
                     else EnumToolCallStatus.OK,
-                    output=_result_text(block.get("content")),
+                    output=_ANSI.sub("", _result_text(block.get("content"))),
                 )
         elif kind == "result":
             answer = str(event.get("result") or "")
