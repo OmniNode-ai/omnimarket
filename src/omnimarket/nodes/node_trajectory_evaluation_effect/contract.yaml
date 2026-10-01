@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Trajectory evaluation effect (OMN-20087)
+#
+# DEFAULT OFF. The lane setting ONEX_TRAJECTORY_EVALUATION_BACKEND is one of
+# off, in_memory, or <external>_metadata / <external>_full. Unset means off:
+# every command is refused backend_disabled before any outbound call. This
+# slice ships the evaluator protocol and the in-memory evaluator only; external
+# values are recognised by shape and refused backend_unavailable until an
+# adapter registers an evaluator for them.
+name: node_trajectory_evaluation_effect
+contract_name: node_trajectory_evaluation_effect
+node_name: node_trajectory_evaluation_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Validates a trajectory evaluation command, refuses work not attributed to a
+  public repository, paces itself, and submits to an evaluator behind a
+  node-local protocol. A submit reads status every status_poll.interval_seconds
+  for at most status_poll.max_wait_seconds and reports a terminal verdict when
+  it reaches one; a later poll command reads a pending receipt once. Each
+  command yields exactly one outcome on its own topic.
+
+handler:
+  module: omnimarket.nodes.node_trajectory_evaluation_effect.handlers.handler_trajectory_evaluation
+  class: HandlerTrajectoryEvaluation
+  input_model: omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation.ModelTrajectoryEvaluationSubmit
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.cmd.omnimarket.trajectory-evaluation-submit.v1
+      operation: trajectory_evaluation.submit
+      handler:
+        name: HandlerTrajectoryEvaluation
+        module: omnimarket.nodes.node_trajectory_evaluation_effect.handlers.handler_trajectory_evaluation
+      event_model:
+        name: ModelTrajectoryEvaluationSubmit
+        module: omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation
+      event_type: omnimarket.trajectory-evaluation-submit
+      message_category: command
+    - topic: onex.cmd.omnimarket.trajectory-evaluation-poll.v1
+      operation: trajectory_evaluation.poll
+      handler:
+        name: HandlerTrajectoryEvaluation
+        module: omnimarket.nodes.node_trajectory_evaluation_effect.handlers.handler_trajectory_evaluation
+      event_model:
+        name: ModelTrajectoryEvaluationPoll
+        module: omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation
+      event_type: omnimarket.trajectory-evaluation-poll
+      message_category: command
+
+input_model:
+  name: ModelTrajectoryEvaluationSubmit
+  module: omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation
+  description: One delegation trajectory to evaluate; loosely typed so a malformed command is refused visibly.
+
+output_model:
+  name: ModelTrajectoryEvaluationAccepted
+  module: omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation
+  description: One of Accepted, Refused, Failed or Status, routed by class through published_events.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 180000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.trajectory-evaluation-submit.v1
+    - onex.cmd.omnimarket.trajectory-evaluation-poll.v1
+  # The four outcome topics are declared under published_events below: the
+  # runtime publishes a returned model by class, so the handler holds no
+  # publish call and publish_topics would claim one it does not have.
+  dlq_topics:
+    - onex.dlq.omnimarket.trajectory-evaluation-submit.v1
+    - onex.dlq.omnimarket.trajectory-evaluation-poll.v1
+
+# The commands come from a hand publisher that publishes them directly, not
+# from a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.trajectory-evaluation-submit.v1
+    producer: "an operator hand publisher that publishes the command directly -- not a node contract"
+  - topic: onex.cmd.omnimarket.trajectory-evaluation-poll.v1
+    producer: "an operator hand publisher that publishes the command directly -- not a node contract"
+
+# Nothing in the graph subscribes to the outcomes yet: the hand publisher and
+# the readout that read them are separate nodes and tools (OMN-20087 ships the
+# effect only).
+externally_consumed_topics:
+  - onex.evt.omnimarket.trajectory-evaluation-accepted.v1
+  - onex.evt.omnimarket.trajectory-evaluation-refused.v1
+  - onex.evt.omnimarket.trajectory-evaluation-failed.v1
+  - onex.evt.omnimarket.trajectory-evaluation-status.v1
+
+# The public-repository guard and the evaluator adapter reach their services
+# over HTTP (httpx).
+metadata:
+  transport_type: http
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.trajectory-evaluation-submit.v1
+  terminal_events:
+    success: onex.evt.omnimarket.trajectory-evaluation-accepted.v1
+
+# Definition-B result routing is by class name with the Model prefix removed.
+published_events:
+  - event_type: TrajectoryEvaluationAccepted
+    topic: onex.evt.omnimarket.trajectory-evaluation-accepted.v1
+    description: "The evaluator accepted the submission; carries the receipt, the duplicate flag and the terminal verdict when the bounded poll reached one."
+  - event_type: TrajectoryEvaluationRefused
+    topic: onex.evt.omnimarket.trajectory-evaluation-refused.v1
+    description: "A policy decision, never retried."
+  - event_type: TrajectoryEvaluationFailed
+    topic: onex.evt.omnimarket.trajectory-evaluation-failed.v1
+    description: "Transport, timeout or rate limit; retryable."
+  - event_type: TrajectoryEvaluationStatus
+    topic: onex.evt.omnimarket.trajectory-evaluation-status.v1
+    description: "The result of one poll command."
+
+# Only work that belongs to a public repository may reach the evaluator: a
+# missing attribution, a private or absent repository, and any failure to
+# resolve visibility are refusals.
+work_unit_scoping:
+  require_public_repository: true
+  visibility_timeout_ms: 5000
+
+# Starting values. The bounds are per process and the daily reservation and the
+# credit stop are in memory, so a restart resets them.
+evaluation_pacing:
+  submits_per_minute: 30
+  status_reads_per_minute: 20
+  max_in_flight: 4
+  daily_reserved_credits: 5000
+  credits_per_full_text_command: 250
+  credits_per_metadata_command: 0
+
+status_poll:
+  interval_seconds: 10
+  max_wait_seconds: 120
+
+dod_evidence:
+  PYTEST:
+    description: "validation, refusal, guard, pacing, bounded poll, shape and topic routing tests"
+    command: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect tests/test_golden_chain_trajectory_evaluation_effect.py -q"
+    pass_criteria: >
+      an unset setting refuses every command with no outbound call; invalid
+      input, a non-public repository and an unavailable backend are refused
+      before the evaluator; pacing bounds hold on a fake clock; each outcome
+      class lands only on its own topic

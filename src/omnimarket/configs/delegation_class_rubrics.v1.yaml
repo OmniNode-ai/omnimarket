@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 #
 # delegation_class_rubrics.v1.yaml: per-task-class computable correctness
-# criteria for delegated answers.
+# criteria for delegated answers; tool_use reads a caller-supplied transcript.
+# The v1 budget limits are recorded-only starting values to be measured.
 #
 # Read by node_delegation_rubric_check_compute. Every threshold and trigger a
 # criterion uses lives here, never in the handler. Each criterion returns
@@ -87,7 +88,41 @@ x-code-criteria: &code_criteria
   params:
     ticket_id_pattern: *ticket_id_pattern
 
+x-tool-use-criteria: &tool_use_criteria
+- criterion_id: tool_calls_wellformed
+  description: Recorded tool calls use declared tools with valid typed JSON arguments.
+  params:
+    allow_extra_arguments: false
+- criterion_id: no_phantom_paths
+  description: Tool paths and answer citations refer to supplied or successfully created workspace files.
+  params:
+    path_argument_names: [path, file_path, notebook_path]
+    creating_tools: [Write, create_file]
+    line_tolerance: 0
+- criterion_id: edits_apply
+  description: Every recorded edit has a successful caller-supplied result.
+  params:
+    edit_tools: [Edit, MultiEdit, Write, apply_patch, str_replace_based_edit_tool]
+- criterion_id: stated_check_passes
+  description: Test targets named in the final answer have caller-supplied passing execution results.
+  params:
+    target_pattern: *test_target_pattern
+- criterion_id: task_answer_traceable
+  description: Extractable identifiers in the final answer occur in the request, a recorded tool output or the arguments of a call the environment accepted.
+  params:
+    ticket_id_pattern: *ticket_id_pattern
+    min_quote_words: 3
+    min_number_digits: 2
+    max_facts: 20
+- criterion_id: within_budget
+  description: Recorded turns, tool calls and wall time stay within the configured measurement budget.
+  params:
+    max_turns: 40
+    max_tool_calls: 80
+    max_wall_time_ms: 900000
+
 classes:
+  tool_use: *tool_use_criteria
   code_review: *review_criteria
   review: *review_criteria
   summarization:

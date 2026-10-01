@@ -83,7 +83,7 @@ from omnibase_infra.runtime.service_pattern_b_broker import (
     _terminal_error_message,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REDUCER_DIR = (

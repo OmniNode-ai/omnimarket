@@ -9,5 +9,11 @@ new callers. ``node_emit_daemon`` itself is deleted separately under R5
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
+from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
+    ModelEmitRequest,
+)
 
-__all__ = ["HandlerEventEmitEffect"]
+# ModelEmitRequest is the handler's input, so it is part of this node's public
+# surface: a caller outside the node builds one without reaching into the
+# node's models package (OMN-20154, the provider quota observation sink).
+__all__ = ["HandlerEventEmitEffect", "ModelEmitRequest"]

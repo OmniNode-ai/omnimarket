@@ -68,6 +68,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _TASK_TYPE = "code_generation"
 # Real metered GLM token counts mirroring the live evidence — these price to a
 # positive cash cost (~$0.0014) that, subtracted from a small final-tier saving,

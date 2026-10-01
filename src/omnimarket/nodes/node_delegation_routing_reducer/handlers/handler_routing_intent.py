@@ -20,6 +20,11 @@ from pathlib import Path
 
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
+from omnimarket.inference import provider_quota_state
+from omnimarket.inference.provider_quota_state import (
+    ProtocolProviderQuotaReader,
+    read_provider_quota_snapshot,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     EnumDelegationSurface,
@@ -92,6 +97,7 @@ class HandlerRoutingIntent:
         tenant_overlay_db: ProtocolTenantOverlayReader | None = None,
         dod_outcome_reader: ProtocolDodOutcomeReader | None = None,
         eval_line_reader: ProtocolEvalLineReader | None = None,
+        quota_reader: ProtocolProviderQuotaReader | None = None,
     ) -> None:
         # OMN-15631 v1(a): resolved lazily (once, at construction — not per
         # request) via resolve_tenant_overlay_db(), which is itself gated on
@@ -121,6 +127,15 @@ class HandlerRoutingIntent:
             eval_line_reader
             if eval_line_reader is not None
             else resolve_eval_line_reader()
+        )
+        # OMN-20154: provider quota state is read from the durable projection
+        # once per request, through the lane's topology overlay and secret store.
+        # Binding failures propagate at resolution; an unreadable table yields
+        # UNKNOWN and withholds every metered provider until it can be read.
+        self._quota_reader = (
+            quota_reader
+            if quota_reader is not None
+            else provider_quota_state.resolve_provider_quota_reader()
         )
 
     def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
@@ -166,6 +181,26 @@ class HandlerRoutingIntent:
                 dod_overlay.tenant_id,
                 dod_overlay.describe(),
             )
+        quota_snapshot = read_provider_quota_snapshot(
+            self._quota_reader, tenant_id=tenant_id
+        )
+        if not quota_snapshot.readable:
+            logger.warning(
+                "HandlerRoutingIntent quota state unknown, metered providers "
+                "withheld: correlation_id=%s reason=%s",
+                intent.payload.correlation_id,
+                quota_snapshot.unreadable_reason,
+            )
+        elif quota_snapshot.blocks:
+            logger.info(
+                "HandlerRoutingIntent quota blocks: correlation_id=%s %s",
+                intent.payload.correlation_id,
+                ", ".join(
+                    f"{b.provider_id}/{b.model_scope}/{b.credential_ref}"
+                    f"->{b.blocked_until.isoformat() if b.blocked_until else 'indefinite'}"
+                    for b in quota_snapshot.blocks
+                ),
+            )
         decision = routing_delta(
             intent.payload,
             min_tier_name=intent.min_tier_name,
@@ -179,6 +214,7 @@ class HandlerRoutingIntent:
             # var, which a lane could set wrong and silently downgrade every
             # customer's terminus to the permissive one.
             surface=EnumDelegationSurface.CLOUD,
+            quota_state=quota_snapshot,
         )
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",

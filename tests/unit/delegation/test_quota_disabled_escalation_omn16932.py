@@ -31,14 +31,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from omnimarket.events.provider_quota import EnumProviderQuotaSource
+from omnimarket.inference.provider_quota_observation import build_quota_observation
 from omnimarket.inference.provider_quota_policy import (
+    ModelQuotaVerdict,
     classify_quota_response,
     load_provider_quota_policy,
 )
 from omnimarket.inference.provider_quota_state import (
-    clear_provider_quota_state,
-    quota_domain_disabled,
-    record_quota_verdict,
+    ModelProviderQuotaBlock,
+    ModelProviderQuotaSnapshot,
+    quota_block_for_backend,
 )
 
 pytestmark = pytest.mark.unit
@@ -69,11 +72,54 @@ _GEMINI_429_BODY: dict[str, object] = {
 }
 
 
-@pytest.fixture(autouse=True)
-def _clean_quota_state() -> object:
-    clear_provider_quota_state()
-    yield
-    clear_provider_quota_state()
+_GEMINI_KEY_REF = "llm.gemini.api_key"
+_GEMINI_MODEL = "gemini-2.5-flash"
+
+
+def _state_after(
+    verdict: ModelQuotaVerdict,
+    *,
+    endpoint_url: str,
+    model_name: str = _GEMINI_MODEL,
+    api_key_ref: str | None = _GEMINI_KEY_REF,
+    now: datetime,
+) -> ModelProviderQuotaSnapshot:
+    """OMN-20154: the quota state a reader sees once the refusal is observed.
+
+    The verdict is turned into the observation event every call path emits,
+    and the snapshot derives its block from that event exactly as the
+    provider_quota_state projection does (the SQL half is proven against
+    Postgres in test_omn20154_provider_quota_real_postgres).
+    """
+    observation = build_quota_observation(
+        tenant_id=None,
+        endpoint_url=endpoint_url,
+        api_key_ref=api_key_ref,
+        model_name=model_name,
+        succeeded=False,
+        observed_at=now,
+        latency_ms=0,
+        source=EnumProviderQuotaSource.RUNTIME_ORCHESTRATOR,
+        http_status=429,
+        verdict=verdict,
+    )
+    return ModelProviderQuotaSnapshot.empty(as_of=now).with_observation(observation)
+
+
+def _block(
+    snapshot: ModelProviderQuotaSnapshot,
+    endpoint_url: str,
+    *,
+    at: datetime,
+    model_name: str = _GEMINI_MODEL,
+    api_key_ref: str | None = _GEMINI_KEY_REF,
+) -> ModelProviderQuotaBlock | None:
+    return quota_block_for_backend(
+        snapshot.model_copy(update={"as_of": at}),
+        endpoint_url=endpoint_url,
+        api_key_ref=api_key_ref,
+        model_name=model_name,
+    )
 
 
 class TestGeminiQuotaIsClassified:
@@ -141,9 +187,9 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
             now=now,
         )
         assert verdict is not None
-        record_quota_verdict(endpoint_url=_GEMINI_ENDPOINT, verdict=verdict)
+        state = _state_after(verdict, endpoint_url=_GEMINI_ENDPOINT, now=now)
 
-        assert quota_domain_disabled(_GEMINI_ENDPOINT, now=now) is not None
+        assert _block(state, _GEMINI_ENDPOINT, at=now) is not None
 
     def test_the_disable_lifts_on_its_own_at_the_stated_reset(self) -> None:
         """A cap is a cooldown, never a permanent ban — the rung comes back."""
@@ -155,10 +201,10 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
             now=now,
         )
         assert verdict is not None
-        record_quota_verdict(endpoint_url=_GEMINI_ENDPOINT, verdict=verdict)
+        state = _state_after(verdict, endpoint_url=_GEMINI_ENDPOINT, now=now)
 
         later = now + timedelta(seconds=60)
-        assert quota_domain_disabled(_GEMINI_ENDPOINT, now=later) is None
+        assert _block(state, _GEMINI_ENDPOINT, at=later) is None
 
     def test_the_judge_and_the_escalation_backend_share_one_quota_domain(self) -> None:
         """The whole point of keying by DOMAIN rather than backend_id.
@@ -181,13 +227,24 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
         )
         assert verdict is not None
         # Recorded from the JUDGE's endpoint (cloud-glm-judge).
-        record_quota_verdict(endpoint_url=_GEMINI_ENDPOINT, verdict=verdict)
+        state = _state_after(verdict, endpoint_url=_GEMINI_ENDPOINT, now=now)
 
-        # Observed from a DIFFERENT backend_id on the same provider host.
+        # Observed from a DIFFERENT backend_id on the same provider host, model
+        # and credential: the key is (credential, provider, model), never the
+        # backend id (OMN-20154).
         escalation_endpoint = (
             "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         )
-        assert quota_domain_disabled(escalation_endpoint, now=now) is not None
+        assert _block(state, escalation_endpoint, at=now) is not None
+        # A different Gemini MODEL has its own free-tier counter and stays up.
+        assert (
+            _block(state, escalation_endpoint, at=now, model_name="gemini-2.5-pro")
+            is None
+        )
+        # A different credential is a different counter too.
+        assert (
+            _block(state, escalation_endpoint, at=now, api_key_ref="tenant.key") is None
+        )
 
     def test_an_unrelated_provider_is_untouched(self) -> None:
         """A Gemini cap must never take the local rung or OpenRouter down."""
@@ -199,16 +256,13 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
             now=now,
         )
         assert verdict is not None
-        record_quota_verdict(endpoint_url=_GEMINI_ENDPOINT, verdict=verdict)
+        state = _state_after(verdict, endpoint_url=_GEMINI_ENDPOINT, now=now)
 
         assert (
-            quota_domain_disabled("http://local.test:8000/v1/chat/completions", now=now)
-            is None
+            _block(state, "http://local.test:8000/v1/chat/completions", at=now) is None
         )
         assert (
-            quota_domain_disabled(
-                "https://openrouter.ai/api/v1/chat/completions", now=now
-            )
+            _block(state, "https://openrouter.ai/api/v1/chat/completions", at=now)
             is None
         )
 
@@ -223,13 +277,18 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
         )
         assert verdict is not None
         assert verdict.retryable
-        record_quota_verdict(
+        state = _state_after(
+            verdict,
             endpoint_url="https://openrouter.ai/api/v1/chat/completions",
-            verdict=verdict,
+            model_name="qwen/qwen3-coder:free",
+            now=now,
         )
         assert (
-            quota_domain_disabled(
-                "https://openrouter.ai/api/v1/chat/completions", now=now
+            _block(
+                state,
+                "https://openrouter.ai/api/v1/chat/completions",
+                at=now,
+                model_name="qwen/qwen3-coder:free",
             )
             is None
         )
@@ -245,17 +304,24 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
         )
         assert verdict is not None
         assert verdict.disabled_until is None
-        record_quota_verdict(
+        state = _state_after(
+            verdict,
             endpoint_url="https://api.z.ai/api/paas/v4/chat/completions",
-            verdict=verdict,
+            model_name="glm-5.2",
+            api_key_ref="llm.glm.api_key",
+            now=now,
         )
         far_future = now + timedelta(days=30)
         assert (
-            quota_domain_disabled(
-                "https://api.z.ai/api/paas/v4/chat/completions", now=far_future
+            _block(
+                state,
+                "https://api.z.ai/api/paas/v4/chat/completions",
+                at=far_future,
+                model_name="glm-4.7-flash",
+                api_key_ref="llm.glm.api_key",
             )
             is not None
-        )
+        ), "a provider-scoped billing block bars every model behind the key"
 
 
 class TestPolicyDeclaresTheProvidersTheLaneActuallyCalls:

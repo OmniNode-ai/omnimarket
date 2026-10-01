@@ -146,38 +146,22 @@ handler_routing:
     patch: 0
   routing_strategy: operation_match
   handlers:
-    - routing_key: "dependency_path"
-      operation: "dependency_path"
-      handler_key: "HandlerArchitectureGraphQuery"
+    - operation: "dependency_path"
       handler:
         name: "HandlerArchitectureGraphQuery"
         module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
-      priority: 0
-      output_events: []
-    - routing_key: "blast_radius"
-      operation: "blast_radius"
-      handler_key: "HandlerArchitectureGraphQuery"
+    - operation: "blast_radius"
       handler:
         name: "HandlerArchitectureGraphQuery"
         module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
-      priority: 0
-      output_events: []
-    - routing_key: "cross_repo_imports"
-      operation: "cross_repo_imports"
-      handler_key: "HandlerArchitectureGraphQuery"
+    - operation: "cross_repo_imports"
       handler:
         name: "HandlerArchitectureGraphQuery"
         module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
-      priority: 0
-      output_events: []
-    - routing_key: "circular_deps"
-      operation: "circular_deps"
-      handler_key: "HandlerArchitectureGraphQuery"
+    - operation: "circular_deps"
       handler:
         name: "HandlerArchitectureGraphQuery"
         module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
-      priority: 0
-      output_events: []
   default_handler: null
 
 # =============================================================================

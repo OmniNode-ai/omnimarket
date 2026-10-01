@@ -35,7 +35,12 @@ the explicit-trigger property that replaced its per-merge one:
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
+import subprocess
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -245,6 +250,99 @@ def test_sync_main_cannot_fail_a_release_that_already_published(
     workflow: dict[str, Any],
 ) -> None:
     assert workflow["jobs"]["sync-main"]["continue-on-error"] is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param(WORKFLOW_PATH, id="release-cut"),
+        pytest.param(LEGACY_RELEASE_PATH, id="release"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("tag_sha", "accepted"),
+    [
+        pytest.param("3ad2ae56fa3c1d7a8ed5a140d577b495cf40813f", True, id="full-sha"),
+        pytest.param("a" * 39, False, id="39-characters"),
+        pytest.param("a" * 41, False, id="41-characters"),
+        pytest.param("3ad2ae5", False, id="short-sha"),
+        pytest.param("", False, id="empty"),
+        pytest.param("3AD2AE56FA3C1D7A8ED5A140D577B495CF40813F", False, id="uppercase"),
+        pytest.param("a" * 39 + "g", False, id="non-hex"),
+    ],
+)
+def test_sync_main_executes_sha_validation(
+    path: Path, tag_sha: str, accepted: bool, tmp_path: Path
+) -> None:
+    """Dry-run both sync scripts after run 36800603112 failed (OMN-20154)."""
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is not on PATH; cannot execute the real sync-main script")
+
+    parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    steps = parsed["jobs"]["sync-main"]["steps"]
+    step = next(s for s in steps if "git/refs/heads/main" in s.get("run", ""))
+    script = tmp_path / "sync-main.sh"
+    script.write_text(step["run"], encoding="utf-8")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    record = tmp_path / "curl-record"
+    curl = bin_dir / "curl"
+    curl.write_text(
+        f"#!{bash}\n"
+        + textwrap.dedent(
+            r"""
+            set -euo pipefail
+            printf 'CALL\0' >> "$CURL_RECORD"
+            printf '%s\0' "$@" >> "$CURL_RECORD"
+            while (( $# )); do
+              if [[ "$1" == "--data" ]]; then
+                cat "${2#@}" >> "$CURL_RECORD"
+                break
+              fi
+              shift
+            done
+            printf '\0' >> "$CURL_RECORD"
+            exit 0
+            """
+        ),
+        encoding="utf-8",
+    )
+    curl.chmod(0o755)
+    env = {
+        **os.environ,
+        "RELEASE_TAG": "v0.4.270",
+        "TAG_SHA": tag_sha,
+        "SYNC_MAIN_TOKEN": "dummy",
+        "GITHUB_API_URL": "http://api.invalid",
+        "GITHUB_REPOSITORY": "OmniNode-ai/omnimarket",
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        "CURL_RECORD": str(record),
+    }
+    result = subprocess.run(
+        [bash, "-e", str(script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    if not accepted:
+        assert result.returncode != 0, output
+        assert "::error::release SHA is not a full commit SHA" in output
+        assert not record.exists(), "curl must not run for an invalid SHA"
+        return
+
+    assert result.returncode == 0, output
+    fields = record.read_bytes().split(b"\0")
+    assert fields.count(b"CALL") == 1, "curl must be called exactly once"
+    argv = [field.decode("utf-8") for field in fields[1:-2]]
+    assert argv[argv.index("-X") + 1] == "PATCH"
+    assert "http://api.invalid/repos/OmniNode-ai/omnimarket/git/refs/heads/main" in argv
+    assert argv[argv.index("--data") + 1] == "@update-main-ref.json"
+    assert json.loads(fields[-2]) == {"sha": tag_sha, "force": False}
 
 
 def test_sync_main_requests_the_workflows_scope_only_when_it_is_needed(
