@@ -109,8 +109,14 @@ repos:
   # moving ref like @dev (required gate; deterministic-truth doctrine). The token below
   # is a HOLD placeholder; this PR stays unopened until the real post-merge SHA is set.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 63635097705d832e0ee9c4811093efb31349105c # pragma: allowlist secret
+    rev: d17f5be8be88a8d35fc6a69e13cb8c1896c3025b # pragma: allowlist secret
     hooks:
+      # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
+      # on the change-control preflight and never reads its result. BLOCKING, zero
+      # baseline, no allowlist, no suppression comment. CI twin: the
+      # shape-gate-independence job in .github/workflows/ci.yml (STRICT CI Summary gate).
+      - id: check-shape-gate-independence
+        require_serial: true
       - id: no-noncanonical-lifecycle-classes
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]

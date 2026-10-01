@@ -251,6 +251,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # v0.4.8 tag, through seven commits of src/ changes precisely because no
     # surface made it RED.
     "Release Identity Gate",
+    # OMN-20298: shape-gate detectors never wait on the preflight. Unconditional in
+    # ci.yml (no needs/if:), so a skipped/cancelled conclusion fails closed here.
+    "Shape-Gate Independence (OMN-20298)",
     # OMN-18868: the wire-compatibility gate — replays every changed wire
     # payload through the LAST RELEASED consumer's own model and refuses the
     # pull request on that model's own refusal. THIS LINE IS THE ENFORCEMENT,
