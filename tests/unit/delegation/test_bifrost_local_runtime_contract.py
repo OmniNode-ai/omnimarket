@@ -18,10 +18,6 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 )
 from omnimarket.routing.delegation_backend_resolution import resolve_delegation_backend
 
-from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    load_bifrost_delegation_config,
-)
-
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/configs/bifrost_delegation.yaml"
