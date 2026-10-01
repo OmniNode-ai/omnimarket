@@ -28,6 +28,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     ModelDelegatedCodeEditRequest,
 )
 
+#: Fewest characters of a turn worth showing cut; below it the turn is left out.
+_MIN_TURN_CHARS = 400
+
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 #: Required string arguments per tool.
@@ -37,6 +40,7 @@ REQUIRED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern",),
     EnumCodeEditTool.WRITE: ("file_path",),
     EnumCodeEditTool.EDIT: ("file_path", "old_string"),
+    EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: (),
 }
@@ -48,6 +52,7 @@ ALLOWED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern", "path"),
     EnumCodeEditTool.WRITE: ("file_path", "content"),
     EnumCodeEditTool.EDIT: ("file_path", "old_string", "new_string"),
+    EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: ("summary",),
 }
@@ -63,6 +68,8 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     EnumCodeEditTool.WRITE: "Create or replace one writable file with content.",
     EnumCodeEditTool.EDIT: "Replace old_string, which must occur exactly once, "
     "with new_string in one writable file.",
+    EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
+    "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
     EnumCodeEditTool.FINISH: "Declare the task done; every declared check then runs.",
 }
@@ -220,6 +227,10 @@ def build_turn_prompt(
     kept: list[str] = []
     for block in reversed(history):
         if budget - len(block) < 0:
+            # A turn whose results exceed what is left is shown cut, never
+            # dropped: its actions and outcomes are the model's only memory.
+            if budget > _MIN_TURN_CHARS:
+                kept.append(_cap(block, budget))
             kept.append("[earlier turns cut to fit]\n")
             break
         kept.append(block)
