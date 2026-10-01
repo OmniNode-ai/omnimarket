@@ -30,6 +30,10 @@ MAX_VIEW_BYTES = 60_000
 MAX_WRITE_BYTES = 200_000
 #: Bytes of tool output fed back per action.
 MAX_OBSERVATION_BYTES = 6_000
+#: Lines one view shows; a longer file is paged with ``offset``.
+VIEW_WINDOW_LINES = 250
+#: Bytes one view window may carry.
+MAX_VIEW_WINDOW_BYTES = 16_000
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 
@@ -148,6 +152,9 @@ class ModelCodeEditAction(BaseModel):
 
     tool: EnumCodeEditTool
     path: str = ""
+    offset: int = Field(
+        default=0, ge=0, description="view: first line to show (1-based)."
+    )
     file_path: str = ""
     pattern: str = ""
     content: str = ""
@@ -183,7 +190,7 @@ class ModelObservation(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     ok: bool
-    output: str = Field(default="", max_length=MAX_OBSERVATION_BYTES + 200)
+    output: str = Field(default="", max_length=MAX_VIEW_WINDOW_BYTES + 400)
 
 
 class ModelCheckResult(BaseModel):
@@ -223,7 +230,9 @@ __all__ = [
     "MAX_OBSERVATION_BYTES",
     "MAX_TURNS_CEILING",
     "MAX_VIEW_BYTES",
+    "MAX_VIEW_WINDOW_BYTES",
     "MAX_WRITE_BYTES",
+    "VIEW_WINDOW_LINES",
     "WRITING_TOOLS",
     "EnumCodeEditStatus",
     "EnumCodeEditTool",

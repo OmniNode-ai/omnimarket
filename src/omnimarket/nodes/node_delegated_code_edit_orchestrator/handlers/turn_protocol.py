@@ -43,7 +43,7 @@ REQUIRED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
 
 #: Arguments each tool accepts (the rest must be absent).
 ALLOWED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
-    EnumCodeEditTool.VIEW: ("path",),
+    EnumCodeEditTool.VIEW: ("path", "offset"),
     EnumCodeEditTool.LS: ("path",),
     EnumCodeEditTool.GREP: ("pattern", "path"),
     EnumCodeEditTool.WRITE: ("file_path", "content"),
@@ -52,8 +52,12 @@ ALLOWED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.FINISH: ("summary",),
 }
 
+#: Arguments that are integers; every other argument is a string.
+INTEGER_ARGUMENTS = frozenset({"offset"})
+
 _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
-    EnumCodeEditTool.VIEW: "Show one worktree file with line numbers.",
+    EnumCodeEditTool.VIEW: "Show one worktree file with line numbers, 250 lines "
+    "at a time; offset (an integer) is the first line to show.",
     EnumCodeEditTool.LS: "List one worktree directory (default: the root).",
     EnumCodeEditTool.GREP: "Search worktree files for a regular expression.",
     EnumCodeEditTool.WRITE: "Create or replace one writable file with content.",
@@ -72,7 +76,8 @@ TOOL_SCHEMAS: tuple[dict[str, object], ...] = tuple(
             "parameters": {
                 "type": "object",
                 "properties": {
-                    name: {"type": "string"} for name in ALLOWED_ARGUMENTS[tool]
+                    name: {"type": "integer" if name in INTEGER_ARGUMENTS else "string"}
+                    for name in ALLOWED_ARGUMENTS[tool]
                 },
                 "required": list(REQUIRED_ARGUMENTS[tool]),
             },
@@ -96,6 +101,7 @@ RESPONSE_CONTRACT: dict[str, object] = {
                 "properties": {
                     "tool": {"enum": [tool.value for tool in EnumCodeEditTool]},
                     "path": {"type": "string"},
+                    "offset": {"type": "integer", "minimum": 1},
                     "file_path": {"type": "string"},
                     "pattern": {"type": "string"},
                     "content": {"type": "string"},
@@ -156,6 +162,13 @@ def parse_turn_reply(text: str) -> tuple[tuple[ModelCodeEditAction, ...], str]:
             raw.get("content", ""), str
         ):
             return (), f"action {index} (write) content is not a string"
+        if "offset" in raw:
+            offset = raw["offset"]
+            if isinstance(offset, str) and offset.isdigit():
+                offset = int(offset)
+            if not isinstance(offset, int) or isinstance(offset, bool) or offset < 1:
+                return (), f"action {index} (view) offset must be an integer >= 1"
+            raw = {**raw, "offset": offset}
         try:
             actions.append(
                 ModelCodeEditAction.model_validate(
@@ -217,6 +230,7 @@ def build_turn_prompt(
 
 __all__ = [
     "ALLOWED_ARGUMENTS",
+    "INTEGER_ARGUMENTS",
     "REQUIRED_ARGUMENTS",
     "RESPONSE_CONTRACT",
     "TOOL_SCHEMAS",

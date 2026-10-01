@@ -403,3 +403,80 @@ def test_file_index_lists_files_near_the_task_first() -> None:
         "docs/x.md",
         "z.txt",
     ]
+
+
+def test_view_pages_a_long_file_and_says_how_to_see_the_rest() -> None:
+    body = "".join(f"line {n}\n" for n in range(1, 601))
+    ports = FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")),
+            _reply(2, _a("view", path="src/m.py", offset=251)),
+        ],
+        files={"src/m.py": body},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    # What the model saw: turn 2's prompt carries turn 1's view in full.
+    seen = ports.prompts[1]
+    assert "[src/m.py lines 1-250 of 600]" in seen
+    assert "  250| line 250\n[more: view src/m.py with offset=251]" in seen
+    assert "  251| line 251" not in seen
+    turns = ports.receipts[next(iter(ports.receipts))]["turns"]
+    second = turns[1]["actions"][0]["output"]  # type: ignore[index]
+    assert second.startswith("[src/m.py lines 251-500 of 600]")
+
+
+def test_edit_recovers_from_copied_line_number_prefixes() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="    2|     return 0",
+                    new_string="    2|     return a + b",
+                ),
+            )
+        ],
+        check_passes=[True],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == "def add(a, b):\n    return a + b\n"
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+
+
+def test_failed_edit_points_at_where_the_first_line_is() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="def add(a, b):\n    return 1",
+                    new_string="x",
+                ),
+            )
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    output = ports.receipts[next(iter(ports.receipts))]["turns"][0]["actions"][0][
+        "output"
+    ]  # type: ignore[index]
+    assert "occurs 0 times" in output
+    assert "line(s) 1" in output
+
+
+def test_offset_must_be_a_positive_integer() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator import parse_turn_reply
+
+    actions, reason = parse_turn_reply(
+        '{"actions": [{"tool": "view", "path": "a.py", "offset": "40"}]}'
+    )
+    assert reason == ""
+    assert actions[0].offset == 40
+    _, reason = parse_turn_reply(
+        '{"actions": [{"tool": "view", "path": "a.py", "offset": 0}]}'
+    )
+    assert "offset must be an integer" in reason

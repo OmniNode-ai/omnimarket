@@ -51,7 +51,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_OBSERVATION_BYTES,
     MAX_VIEW_BYTES,
+    MAX_VIEW_WINDOW_BYTES,
     MAX_WRITE_BYTES,
+    VIEW_WINDOW_LINES,
     EnumCodeEditStatus,
     EnumCodeEditTool,
     ModelCheckResult,
@@ -141,8 +143,43 @@ def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
     return text[:limit] + f"\n... [{len(text) - limit} more characters cut]"
 
 
-def _numbered(text: str) -> str:
-    return "\n".join(f"{n:>5}| {line}" for n, line in enumerate(text.splitlines(), 1))
+_LINE_PREFIX = re.compile(r"^ *\d+\| ?", re.M)
+
+
+def view_window(text: str, path: str, offset: int) -> str:
+    """One page of a file with line numbers, and how to see the rest."""
+    lines = text.splitlines()
+    total = len(lines)
+    start = max(offset, 1)
+    if total and start > total:
+        return f"{path} has {total} lines; offset {start} is past the end"
+    shown: list[str] = []
+    size = 0
+    end = start - 1
+    for number in range(start, min(total, start - 1 + VIEW_WINDOW_LINES) + 1):
+        row = f"{number:>5}| {lines[number - 1]}"
+        if size + len(row) + 1 > MAX_VIEW_WINDOW_BYTES:
+            break
+        shown.append(row)
+        size += len(row) + 1
+        end = number
+    head = f"[{path} lines {start}-{end} of {total}]"
+    tail = f"\n[more: view {path} with offset={end + 1}]" if end < total else ""
+    return head + "\n" + "\n".join(shown) + tail
+
+
+def _edit_hint(current: str, old: str) -> str:
+    """Where the first line of a missing old_string does occur, if anywhere."""
+    first = next((line.strip() for line in old.splitlines() if line.strip()), "")
+    if not first:
+        return ""
+    hits = [str(n) for n, line in enumerate(current.splitlines(), 1) if first in line]
+    if not hits:
+        return " Its first line occurs nowhere in the file; view the file again."
+    return (
+        f" Its first line occurs at line(s) {', '.join(hits[:5])}; view from there "
+        "and copy old_string exactly, without the line-number prefix."
+    )
 
 
 @dataclass
@@ -151,7 +188,7 @@ class _Call:
 
     call_id: str
     tool: str
-    arguments: dict[str, str]
+    arguments: dict[str, object]
     ok: bool
     output: str
 
@@ -421,7 +458,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 }
             )
             shown_args = ", ".join(
-                f"{k}={v[:80]!r}"
+                f"{k}={str(v)[:80]!r}"
                 for k, v in arguments.items()
                 if k not in ("content", "old_string", "new_string")
             )
@@ -476,7 +513,9 @@ class HandlerDelegatedCodeEditOrchestrator:
         try:
             if tool == EnumCodeEditTool.VIEW:
                 text = self._ports.read_file(request, path)
-                return ModelObservation(ok=True, output=_cap(_numbered(text)))
+                return ModelObservation(
+                    ok=True, output=view_window(text, path, action.offset)
+                )
             if tool == EnumCodeEditTool.LS:
                 return ModelObservation(
                     ok=True, output=_cap(self._ports.list_dir(request, path))
@@ -500,14 +539,21 @@ class HandlerDelegatedCodeEditOrchestrator:
                 return ModelObservation(ok=True, output=f"wrote {path} ({lines} lines)")
             # EDIT
             current = self._ports.read_file(request, path)
-            occurrences = current.count(action.old_string)
+            old_string, new_string = action.old_string, action.new_string
+            if current.count(old_string) == 0 and _LINE_PREFIX.search(old_string):
+                # A local model often copies the view's "  12| " prefixes; the
+                # file never carries them.
+                old_string = _LINE_PREFIX.sub("", old_string)
+                new_string = _LINE_PREFIX.sub("", new_string)
+            occurrences = current.count(old_string)
             if occurrences != 1:
+                hint = _edit_hint(current, old_string) if occurrences == 0 else ""
                 return ModelObservation(
                     ok=False,
                     output=f"edit failed: old_string occurs {occurrences} times in "
-                    f"{path}; it must occur exactly once. view the file and retry.",
+                    f"{path}; it must occur exactly once.{hint}",
                 )
-            updated = current.replace(action.old_string, action.new_string, 1)
+            updated = current.replace(old_string, new_string, 1)
             self._ports.write_file(request, path, updated)
             return ModelObservation(ok=True, output=f"edited {path}")
         except WorkspacePathError as exc:
@@ -616,5 +662,6 @@ __all__ = [
     "glob_regex",
     "normalise_path",
     "relevant_first",
+    "view_window",
     "writable",
 ]

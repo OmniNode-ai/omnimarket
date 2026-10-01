@@ -66,6 +66,7 @@ _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
 _OUTPUT_TAIL = 6_000
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 _VOLATILE = re.compile(r"\b\d+(?:\.\d+)?\s?(?:s|ms|sec|seconds)\b|0x[0-9a-fA-F]+")
 
 #: The first slice runs the delegate orchestrator in this process; only the
@@ -358,7 +359,7 @@ class DelegatedCodeEditPorts:
                 output_tail=str(exc)[:_OUTPUT_TAIL],
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
-        output = (done.stdout + done.stderr)[-_OUTPUT_TAIL:]
+        output = _ANSI.sub("", done.stdout + done.stderr)[-_OUTPUT_TAIL:]
         return ModelCheckResult(
             name=check.name,
             status="passed" if done.returncode == 0 else "failed",
