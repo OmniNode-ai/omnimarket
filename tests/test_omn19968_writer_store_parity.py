@@ -19,7 +19,7 @@ import os
 import re
 import sqlite3
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -27,12 +27,29 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
+    ModelCounterfactualBaseline,
+    ModelMeteringRecord,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
 )
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import (
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
+)
+from omnimarket.nodes.node_projection_metering_summary import (
+    HandlerProjectionMeteringSummary,
+    ModelMeteringSummaryFoldRequest,
+)
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
+    store_rows,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
+    HandlerProjectionUsageByModelDay,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
+    apply_usage_call,
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.protocol_database import ProtocolProjectionAttestedWrite
@@ -43,6 +60,7 @@ from tests.test_omn19514_ticket_id_projection_real_postgres import (
     _Postgres,
     _provisioned,
 )
+from tests.test_omn19978_usage_by_model_day import CALLS, _event
 
 pytestmark = pytest.mark.integration
 
@@ -67,6 +85,10 @@ def _norm_value(value: object) -> object:
         return value
     if isinstance(value, Decimal | float):
         return round(float(value), 6)
+    if isinstance(value, date) and not isinstance(value, datetime):
+        # Postgres DATE columns come back as ``date``; SQLite holds the ISO text, which
+        # the string branch below turns into midnight, so compare both as midnight.
+        return datetime(value.year, value.month, value.day).isoformat()
     if isinstance(value, datetime):
         return (
             value.replace(tzinfo=None).isoformat()
@@ -274,3 +296,149 @@ def test_both_stores_take_the_attested_insert_only_branch(tmp_path: Path) -> Non
         SqliteDatabaseAdapter(tmp_path / "attested.db"), ProtocolProjectionAttestedWrite
     )
     assert issubclass(PostgresSyncProjectionAdapter, ProtocolProjectionAttestedWrite)
+
+
+# --- Amendment 1: the other two store-neutral writers (usage by model/day, metering) ---
+#
+# Both writers reach the store through a function that takes a ``DatabaseAdapter``
+# (``apply_usage_call`` and ``store_rows``), so the SAME function runs once on the real
+# SQLite adapter and once on the real Postgres sync adapter. The async Postgres
+# runtime writers (asyncpg pool, advisory lock) are proven by their own real-Postgres
+# tests; this case proves the local path writes what the lab path writes.
+
+_NODES = _ROOT / "src/omnimarket/nodes"
+_USAGE_MIGRATION = (
+    _NODES
+    / "node_projection_usage_by_model_day/migrations/0000_create_usage_by_model_day.sql"
+)
+_METERING_MIGRATION = (
+    _NODES
+    / "node_projection_metering_summary/migrations/0000_create_metering_summary.sql"
+)
+# Store-generated or wall-clock columns beyond ``_GENERATED``: never compared.
+_ALSO_GENERATED = frozenset({"ingested_at", "projection_cursor"})
+_METERING_NOW = datetime(2026, 9, 28, 12, tzinfo=__import__("datetime").UTC)
+
+
+def _write_usage(adapter: Any) -> None:
+    fold = HandlerProjectionUsageByModelDay()
+    for call in CALLS:
+        apply_usage_call(fold.handle(_event(call)), adapter)
+
+
+def _metering_request() -> ModelMeteringSummaryFoldRequest:
+    delta = __import__("datetime").timedelta
+    return ModelMeteringSummaryFoldRequest(
+        tenant_id="local",
+        baseline_model="model-a",
+        baseline=ModelCounterfactualBaseline(
+            model="model-a",
+            price_in_per_1k=Decimal("1"),
+            price_out_per_1k=Decimal("2"),
+            as_of="2026-09-01",
+            pricing_manifest_version="1",
+            source="pricing_manifest",
+        ),
+        as_of=_METERING_NOW,
+        records=(
+            ModelMeteringRecord(
+                correlation_id="a",
+                occurred_at=_METERING_NOW - delta(days=1),
+                model="worker",
+                tokens_in=1000,
+                tokens_out=100,
+                spend_usd=Decimal("0.2"),
+            ),
+            ModelMeteringRecord(
+                correlation_id="b", occurred_at=_METERING_NOW - delta(hours=1)
+            ),
+            ModelMeteringRecord(
+                correlation_id="c",
+                occurred_at=_METERING_NOW - delta(hours=2),
+                tokens_in=50,
+            ),
+        ),
+    )
+
+
+def _write_metering(adapter: Any) -> None:
+    store_rows(
+        adapter, HandlerProjectionMeteringSummary().handle(_metering_request()).rows
+    )
+
+
+_STORE_CASES: dict[str, tuple[Path, Any, tuple[str, ...]]] = {
+    "usage_by_model_day": (
+        _USAGE_MIGRATION,
+        _write_usage,
+        ("usage_by_model_day_calls", "usage_by_model_day"),
+    ),
+    "metering_summary": (_METERING_MIGRATION, _write_metering, ("metering_summary",)),
+}
+
+
+def _normalize_store(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return _normalize(
+        [{k: v for k, v in r.items() if k not in _ALSO_GENERATED} for r in rows]
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", sorted(_STORE_CASES))
+async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
+    pg: _Postgres, tmp_path: Path, case: str
+) -> None:
+    migration, writer, tables = _STORE_CASES[case]
+    sqlite = _RecordingSqlite(tmp_path / f"{case}.sqlite")
+    writer(sqlite)
+    sqlite_rows = {t: _normalize_store(sqlite.query(t)) for t in tables}
+
+    async with _provisioned(pg) as (admin, schema):
+        # The migration names ``public.``; keep the proof inside the throwaway schema.
+        await admin.execute(
+            migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+        )
+        postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))
+        writer(postgres)
+        pg_rows = {t: _normalize_store(postgres.query(t)) for t in tables}
+
+    for table in tables:
+        assert sqlite_rows[table], f"SQLite path wrote no {table} rows"
+        assert pg_rows[table], f"Postgres path wrote no {table} rows"
+        assert len(sqlite_rows[table]) == len(pg_rows[table]), (
+            table,
+            len(sqlite_rows[table]),
+            len(pg_rows[table]),
+        )
+        common = set.intersection(
+            *(set(r) for r in sqlite_rows[table] + pg_rows[table])
+        )
+        assert common, f"no shared columns in {table}"
+
+        # Pair rows by the shared columns only, so the pairing never depends on
+        # a column that exists on one store alone.
+        def _by_common(
+            rows: list[dict[str, object]], cols: set[str] = common
+        ) -> list[dict[str, object]]:
+            projected = [{k: r[k] for k in sorted(cols)} for r in rows]
+            return sorted(
+                projected, key=lambda r: json.dumps(r, sort_keys=True, default=str)
+            )
+
+        diffs = [
+            (table, k, a[k], b[k])
+            for a, b in zip(
+                _by_common(sqlite_rows[table]),
+                _by_common(pg_rows[table]),
+                strict=True,
+            )
+            for k in sorted(common)
+            if a[k] != b[k]
+        ]
+        assert not diffs, repr(diffs)
+        assert set().union(*sqlite_rows[table]) <= (
+            set().union(*pg_rows[table]) | _GENERATED | _ALSO_GENERATED
+        )
+    offending = [s for s in sqlite.statements if _POSTGRES_ONLY_SQL.search(s)]
+    assert offending == []
