@@ -41,7 +41,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
     HandlerRoutingIntent,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _BIFROST_SUMMARIZATION = (
     "config_version: '2.0.0'\n"

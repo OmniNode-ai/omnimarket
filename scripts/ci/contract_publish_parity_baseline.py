@@ -48,7 +48,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_decompose_epic_orchestrator",
     "node_deep_dive_report_effect",
     "node_delegation_ab_runner",
-    "node_delegation_quality_gate_reducer",
     "node_delegation_routing_reducer",
     "node_demo_fanout_orchestrator",
     "node_dep_cascade_dedup_orchestrator",

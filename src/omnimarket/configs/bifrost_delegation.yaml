@@ -20,7 +20,7 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442, OMN-17099
 config_version: "2.7.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
@@ -33,44 +33,9 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
-    # Live readback (GET .201:8000's /v1/models, this ticket) confirms the
-    # SGLang-served id is "Qwen3.6-35B-A3B". A backend whose model_name does not
-    # match this endpoint's served id is now caught at dispatch by the
-    # fail-closed guard in HandlerLlmDelegationCall (transport.
-    # probe_served_models + the OMN-16419 mismatch check) instead of silently
-    # attributing to a model that isn't running.
-    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
-    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
-    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
-    # .201:8000's /v1/models now returns http=200 with served ids
-    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
-    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
-    # So this field has now flipped TWICE, and both times every static test in
-    # every repo stayed green while EVERY local delegation attempt was refused
-    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
-    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
-    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
-    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
-    # fails CI instead of silently billing. Re-probe before changing this value.
-    # OMN-18626 (2026-09-17): THIRD FLIP, and the prediction in the paragraph
-    # above was half right. The endpoint was rebuilt onto the NVFP4 27B at about
-    # 15:24Z and GET .201:8000/v1/models now returns exactly {"Qwen3.8-27B"},
-    # root /data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090, max_model_len
-    # 131072. The probe-fixture mechanism OMN-16999 built is the right one and it
-    # DID fail CI the moment the recorded readback was refreshed -- but it is a
-    # RECORD, and a record cannot notice that the thing it recorded has moved.
-    # What actually found this flip was a real delegation taking HTTP 404 "The
-    # model `Qwen3.6-35B-A3B` does not exist." on its local rung and climbing to
-    # a metered cheap_cloud rung (run 95df150b-21cc-4b0e-afc6-9e25fbeb3735).
-    # THIS LINE AND omnibase_infra's lab lane overlays MOVE TOGETHER OR NOT
-    # AT ALL: render_bifrost_delegation_contract._merge_lane_overlay refuses a
-    # base/overlay disagreement outright, so a half-applied change is a runtime
-    # that will not render its delegation contract at container start.
-    # OMN-18626 (2026-09-17): third flip, same endpoint, same commit as
-    # local-coder above -- see that backend's note for the readback, the
-    # delegation that found it, and why this line cannot move alone.
-    model_name: Qwen3.8-27B
+    # The lane overlay declares the local served model id; omnibase_infra renders it.
+    # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+    model_name: null
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
@@ -118,22 +83,9 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    # OMN-16419: was "Qwen3.6-35B-A3B" — same stale label as local-coder above
-    # (same .201:8000 SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
-    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
-    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
-    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
-    # .201:8000's /v1/models now returns http=200 with served ids
-    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
-    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
-    # So this field has now flipped TWICE, and both times every static test in
-    # every repo stayed green while EVERY local delegation attempt was refused
-    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
-    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
-    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
-    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
-    # fails CI instead of silently billing. Re-probe before changing this value.
-    model_name: Qwen3.8-27B
+    # The lane overlay declares the local served model id; omnibase_infra renders it.
+    # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+    model_name: null
     tier: local
     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
     # large deep-reasoning/research outputs are not killed at 60s.
@@ -193,7 +145,7 @@ backends:
     provider: local
     endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
-    model_name: text-embedding-qwen3
+    model_name: null
     tier: local
     timeout_ms: 30000
     # OMN-13161: embedding backend produces vectors, not chat completions — it never
@@ -479,19 +431,9 @@ backends:
     endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
-    # OMN-16833: was "ds-v4-flash" — that is the ROUTING CATALOG KEY
-    # (model_registry_v1.yaml `ds-v4-flash:` / routing_tiers.yaml `id:`), not the
-    # SERVED id.  `model_name` is the wire field POSTed as "model", and the
-    # registry entry for this same backend already declares
-    # `model_name: "deepseek-v4-flash"` — the bifrost contract had simply drifted
-    # from it.  Live readback 2026-08-28: GET .200:8101/v1/models lists exactly
-    # {"deepseek-v4-flash", "deepseek-v4-pro"}, so the old value was rejected by
-    # the OMN-16419 served-model guard in HandlerLlmDelegationCall
-    # (transport.probe_served_models) — the same silent-misattribution class that
-    # ticket closed for local-coder.  The catalog key stays `ds-v4-flash`
-    # everywhere (routing_tiers `id`, generated_llm_routing_constants,
-    # telemetry); only the wire name is corrected here.
-    model_name: deepseek-v4-flash
+    # OMN-16833 / OMN-17099: ds-v4-flash remains the routing key;
+    # the lane overlay supplies the served id checked at dispatch.
+    model_name: null
     tier: local
     # OMN-13170: DS-V4-Flash is a 284B MoE serving code_generation; full
     # module/test-suite generation at its throughput well exceeds 60s and was
@@ -921,6 +863,7 @@ provider_quota_policy:
         # cannot time is still a cap).
         - code: "1310"
           disposition: disable_until_reset
+          scope: provider
           reset_from: message_reset_timestamp
           fallback_cooldown_seconds: 3600
           alert: false
@@ -946,11 +889,24 @@ provider_quota_policy:
         # projection counts as a capacity refusal (quota_refusal_count) and
         # never as a quality miss. Declared rather than left to the default so a
         # receipt reads "declared retryable" instead of "unmapped code".
+        #
+        # OMN-20154: both are now COOLDOWNS rather than plain retries, scoped
+        # to the MODEL that answered: the key is skipped until the provider's
+        # Retry-After (else the stated delay, else 60s), the ladder still moves
+        # to the next rung at once (glm-5.3 after flash), and the refusal is
+        # RECORDED in provider_quota_state, so the next delegation does not
+        # walk into the same throttle. A retryable verdict recorded nothing.
+        # Model scope, not provider scope, because the flash -> glm-5.3 fall
+        # through measured by OMN-19432 answers on the other model.
         - code: "1302"
-          disposition: retryable
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
           alert: false
         - code: "1305"
-          disposition: retryable
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
           alert: false
         # Live-observed on the PAY-AS-YOU-GO surface (/api/paas/v4), verbatim:
         #   {"error":{"code":"1113","message":"Insufficient balance or no
@@ -965,6 +921,7 @@ provider_quota_policy:
         # misrouted request is pure waste and the misroute needs a human.
         - code: "1113"
           disposition: disable_until_billing
+          scope: provider
           alert: true
           # Surfaced on the alert so the on-call reads the cause, not the text.
           alert_hint: >-
@@ -972,6 +929,55 @@ provider_quota_policy:
             pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
             The Coding Plan path is /api/coding/paas/v4 (direct calls parked, OMN-20173).
             This is a routing defect, never a billing action.
+        # OMN-20154: the rest of z.ai's documented quota codes
+        # (https://docs.z.ai/api-reference/api-code, read 2026-09-30 and relayed
+        # by ledger MSG 2026-09-30T15:39:58Z-glm-quota-facts; not yet
+        # live-observed here). 1302, 1305 and 1308 are declared above
+        # (OMN-19432, with OMN-20154's cooldown).
+        # 1313: fair-usage throttle; back off hard.
+        - code: "1313"
+          disposition: cooldown
+          scope: provider
+          fallback_cooldown_seconds: 1800
+          alert: false
+        # 1316/1317: a plan window is spent; the reset instant is stated inline.
+        - code: "1316"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1317"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        # 1318-1321: monthly spend-cap periods; treated as a spent window.
+        - code: "1318"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1319"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1320"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1321"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
     # OMN-20154: z.ai's GENERAL API is a second product on the same host as the
     # Coding Plan rule above, metered separately and served under its own path.
     # No house backend addresses it (we offer no inference to customers, INV-068);
@@ -1007,9 +1013,17 @@ provider_quota_policy:
             z.ai's pricing page. This is never a funding action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
-      # The free tier is rate-limited with no SLA and no structured code; its
-      # 429s are ordinary throttling that clears on its own.
-      codes: []
+      # The free tier is rate-limited with no SLA. OMN-20154: its 429 carries
+      # the bare HTTP status as error.code and the limit is counted per free
+      # model, so a 429 cools down that one model and the other free models
+      # behind the same key stay routable. Recorded rather than retried: the
+      # 59 free calls in 24h on 2026-09-30 had nothing to learn from otherwise.
+      codes:
+        - code: "429"
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
+          alert: false
     # OMN-19432: cloud-typesafe-jev (above) is a newly added metered backend.
     # test_every_metered_backend_host_is_declared_in_the_quota_policy
     # (OMN-16932) fails closed on any backend host this policy does not
@@ -1051,8 +1065,18 @@ provider_quota_policy:
     - provider_id: google-gemini
       match_endpoint_host: "generativelanguage.googleapis.com"
       codes:
+        # OMN-20154: Google names the class in error.status. Matched before the
+        # bare "429" below, and scoped per model: the free-tier counter is per
+        # model ("limit: 20, model: gemini-2.5-flash").
+        - code: "RESOURCE_EXHAUSTED"
+          disposition: disable_until_reset
+          scope: model
+          reset_from: message_retry_delay
+          fallback_cooldown_seconds: 3600
+          alert: false
         - code: "429"
           disposition: disable_until_reset
+          scope: model
           reset_from: message_retry_delay
           # The free tier's request counter is a DAILY cap; when the provider
           # does not state a delay, an hour is a conservative re-probe interval

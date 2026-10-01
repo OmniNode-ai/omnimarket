@@ -56,6 +56,8 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # ---------------------------------------------------------------------------
 # Fixture paths
 # ---------------------------------------------------------------------------
@@ -77,7 +79,8 @@ _BIFROST_CONTRACT = (
     "    provider: local\n"
     # OMN-12815: COMPLETE endpoint URL incl. chat path, posted VERBATIM.
     '    endpoint_url: "http://test-coder:8000/v1/chat/completions"\n'
-    '    model_name: "qwen3-coder-30b"\n'
+    # OMN-17099: the lane declares the served id; the routing decision carries it.
+    f'    model_name: "{MODEL_LOCAL_201_SERVED_ID}"\n'
     "    tier: local\n"
     "    timeout_ms: 30000\n"
     "    capabilities: [research]\n"

@@ -64,6 +64,8 @@ from omnimarket.pricing import (
     recompute_actual_cost_and_savings,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 
 def _canonical_terminal(events: list[object]) -> ModelDelegationResult:
     """The SINGLE canonical terminal payload from one emission (OMN-13629)."""

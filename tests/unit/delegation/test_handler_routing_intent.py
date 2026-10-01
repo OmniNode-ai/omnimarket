@@ -26,7 +26,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
-from tests.constants import MODEL_LOCAL_201_SERVED_ID, MODEL_QWEN3_27B_MTP
+
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
 _BIFROST_CONTRACT = (
     "config_version: '2.0.0'\n"
@@ -117,8 +118,8 @@ class TestHandlerRoutingIntent:
         assert decision.correlation_id == intent.payload.correlation_id
         assert decision.task_type == "research"
         assert decision.selected_model in {
-            MODEL_LOCAL_201_SERVED_ID,
-            MODEL_QWEN3_27B_MTP,
+            "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
+            "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",
         }
 
     def test_returns_decision_for_runtime_autopublish(self) -> None:

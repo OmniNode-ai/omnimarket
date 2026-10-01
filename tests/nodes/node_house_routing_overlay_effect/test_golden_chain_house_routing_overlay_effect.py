@@ -55,6 +55,8 @@ from omnimarket.routing.tenant_overlay_resolver import (
     resolve_tenant_overlay,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _BIFROST_ONE_TIER = textwrap.dedent(
     """\
     config_version: "2.0.0"

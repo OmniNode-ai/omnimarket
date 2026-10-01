@@ -149,3 +149,15 @@ event_source_only dod.verify.completed
 # OMN-19999: emitted by the PR watcher, not a Claude lifecycle hook.
 registry_only onex.evt.omnimarket.pr-state-observed.v1
 event_registry_only pr.state.observed
+
+# --- OMN-20154: provider quota observations and the in-process terminal --------
+# Emit-only BY DESIGN, like pr.state.observed: the emitters are the in-process
+# `onex delegate` port and the quality-gate judge (node code delivering through
+# node_event_emit_effect), never a Claude Code hook, so there is no hook-side
+# registration to mirror. Shrinks if a hook ever constructs them; never grows.
+registry_only onex.evt.omnimarket.provider-quota-observed.v1
+registry_only onex.evt.omnimarket.delegate-skill-completed.v1
+registry_only onex.evt.omnimarket.delegate-skill-failed.v1
+event_registry_only provider.quota.observed
+event_registry_only delegate_skill.completed
+event_registry_only delegate_skill.failed

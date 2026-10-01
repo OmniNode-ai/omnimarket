@@ -96,7 +96,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _NODES = _REPO_ROOT / "src" / "omnimarket" / "nodes"
