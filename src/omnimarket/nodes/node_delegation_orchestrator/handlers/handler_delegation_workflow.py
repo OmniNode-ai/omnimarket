@@ -96,6 +96,7 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
@@ -808,13 +809,18 @@ def _a2a_operational_outcome(
     return EnumDelegationOperationalOutcome.INFERENCE_FAILED
 
 
-# OMN-18928 (K1). The two class-independent gate floors that fail a response
+# OMN-18928 (K1), OMN-18278. The class-independent gate floors that fail a response
 # because it holds no finished deliverable: the provider cut it off, or it is
-# a reasoning lead-in with no answer behind it. Both are content verdicts on
+# a reasoning lead-in with no answer behind it, or residual reasoning tags.
+# These are content verdicts on
 # text the provider did return, so they are quality rejections, not refusals
 # and not response-contract failures, whatever contract was in force.
 _CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
-    {TRUNCATION_CHECK_NAME, UNRESOLVED_PREAMBLE_CHECK_NAME}
+    {
+        TRUNCATION_CHECK_NAME,
+        UNRESOLVED_PREAMBLE_CHECK_NAME,
+        RESIDUAL_REASONING_TAG_CHECK_NAME,
+    }
 )
 
 # The verdict-category prefix the gate stamps on a refusal (OMN-13140).

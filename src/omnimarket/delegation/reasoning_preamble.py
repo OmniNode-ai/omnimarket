@@ -219,6 +219,23 @@ def _structural_offset(content: str, pattern: re.Pattern[str]) -> int | None:
     return match.start()
 
 
+def strip_leading_inline_reasoning(
+    content: str, terminator: str | None
+) -> tuple[str, int]:
+    """Remove only the leading block through the backend-declared terminator.
+
+    Any later tags remain verbatim for the deterministic floor to evaluate.
+    The count includes whitespace removed from the start of the answer.
+    """
+    if terminator is None:
+        return content, 0
+    index = content.find(terminator)
+    if index == -1:
+        return content, 0
+    answer = content[index + len(terminator) :].lstrip()
+    return answer, len(content) - len(answer)
+
+
 def segment_reasoning_preamble(content: str) -> ModelReasoningSegmentation:
     """Split ``content`` into a leaked reasoning preamble and the answer.
 
@@ -319,6 +336,13 @@ def _unresolved(content: str) -> ModelReasoningSegmentation:
 #: The gate check name recorded when no deliverable region resolved.
 UNRESOLVED_PREAMBLE_CHECK_NAME = "deliverable_region_resolved"
 
+#: A declared trace tag remains in the answer after leading segmentation.
+RESIDUAL_REASONING_TAG_CHECK_NAME = "no_residual_reasoning_tag"
+RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON = (
+    "WEAK_OUTPUT: the answer still contains a reasoning trace tag, so the model "
+    "did not finish separating its reasoning from the deliverable"
+)
+
 #: The gate failure reason a scratchpad-only response carries (OMN-18967 AC3).
 #:
 #: ``WEAK_OUTPUT`` rather than ``MALFORMED``, for the same reason the
@@ -375,10 +399,13 @@ def output_refusal_for_segmentation(
 
 
 __all__: list[str] = [
+    "RESIDUAL_REASONING_TAG_CHECK_NAME",
+    "RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON",
     "UNRESOLVED_PREAMBLE_CHECK_NAME",
     "UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON",
     "EnumReasoningBoundaryRule",
     "ModelReasoningSegmentation",
     "output_refusal_for_segmentation",
     "segment_reasoning_preamble",
+    "strip_leading_inline_reasoning",
 ]

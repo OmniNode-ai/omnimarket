@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -33,6 +33,11 @@ class ModelLlmDelegationCallResult(BaseModel):
 
     # Populated on success
     content: str | None = None
+    reasoning_stripped_chars: int = Field(
+        default=0,
+        ge=0,
+        description="Characters removed as leading inline reasoning by the adapter.",
+    )
     output_hash: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0

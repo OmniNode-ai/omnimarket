@@ -225,9 +225,8 @@ def test_declared_contract_rejects_empty_response() -> None:
 
 
 @pytest.mark.unit
-def test_declared_contract_strips_thinking_traces_before_parsing() -> None:
-    """A thinking-capable model's <think> preamble must not break JSON parsing,
-    mirroring the legacy-path behavior (_strip_thinking_traces)."""
+def test_declared_contract_cannot_bypass_residual_reasoning_floor() -> None:
+    """OMN-18278: a conforming JSON value cannot hide an unsegmented trace."""
     content = (
         "<think>considering the tactical options here</think>"
         + _GOOD_TACTICAL_RESPONSE_WITH_I_CANNOT_RATIONALE
@@ -237,7 +236,9 @@ def test_declared_contract_strips_thinking_traces_before_parsing() -> None:
         response_contract=_TACTICAL_SCHEMA,
     )
 
-    assert result.passed is True
+    assert result.passed is False
+    assert result.quality_score == 0.0
+    assert result.rule_evaluations[0].rule == "no_residual_reasoning_tag"
 
 
 @pytest.mark.unit

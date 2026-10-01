@@ -31,6 +31,11 @@ backends:
   # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
   - backend_id: local-coder
     provider: local
+    # OMN-18278: measured 2026-10-01 on the lab vLLM endpoint serving
+    # Qwen3.8-27B with no reasoning parser: reasoning arrives inline in
+    # message.content. A llama.cpp endpoint with a reasoning parser returns
+    # it in reasoning_content instead; its lane overlay sets this to null.
+    inline_reasoning_terminator: "</think>"
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # The lane overlay declares the local served model id; omnibase_infra renders it.
@@ -81,6 +86,11 @@ backends:
   # that no longer exists.
   - backend_id: local-heavy-reasoning
     provider: local
+    # OMN-18278: measured 2026-10-01 on the lab vLLM endpoint serving
+    # Qwen3.8-27B with no reasoning parser: reasoning arrives inline in
+    # message.content. A llama.cpp endpoint with a reasoning parser returns
+    # it in reasoning_content instead; its lane overlay sets this to null.
+    inline_reasoning_terminator: "</think>"
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # The lane overlay declares the local served model id; omnibase_infra renders it.

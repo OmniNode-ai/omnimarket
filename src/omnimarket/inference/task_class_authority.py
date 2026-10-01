@@ -184,6 +184,13 @@ class ModelReasoningPreamblePolicy(BaseModel):
             "preamble on its own, with no lead-in required."
         ),
     )
+    residual_trace_tags: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Trace tags whose presence in the segmented answer refuses it at "
+            "the deterministic floor (OMN-18278). Empty means none declared."
+        ),
+    )
     rationale: str = Field(
         min_length=1,
         description="Why this policy is shaped the way it is.",

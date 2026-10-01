@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.delegation.reasoning_preamble import RESIDUAL_REASONING_TAG_CHECK_NAME
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     _check_compiles_without_errors,
     _extract_fenced_code_blocks,
@@ -120,7 +121,7 @@ def test_check_compiles_without_errors_mixed_thinking_and_fence() -> None:
 
 
 @pytest.mark.unit
-def test_quality_gate_strips_thinking_traces_before_compile_check() -> None:
+def test_quality_gate_refuses_residual_thinking_traces_before_compile_check() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
         task_type="code_generation",
@@ -129,12 +130,14 @@ def test_quality_gate_strips_thinking_traces_before_compile_check() -> None:
         dod_heuristic=(),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert result.passed is False
+    assert result.quality_score == 0.0
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
     assert not any("compile" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
-def test_quality_gate_compile_check_with_thinking_and_fences() -> None:
+def test_quality_gate_refuses_residual_thinking_even_with_valid_fenced_code() -> None:
     """Full B9 failure case: <think>...</think>\n```python\n...\n```\nProse."""
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
@@ -144,12 +147,14 @@ def test_quality_gate_compile_check_with_thinking_and_fences() -> None:
         dod_heuristic=(),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert result.passed is False
+    assert result.quality_score == 0.0
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
     assert not any("compile" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
-def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
+def test_quality_gate_refuses_residual_thinking_traces_before_concise_check() -> None:
     # Thinking trace adds hundreds of words; clean answer is short
     verbose_thinking = "<think>\n" + ("word " * 300) + "\n</think>\n"
     short_answer = "The answer is 42."
@@ -162,8 +167,8 @@ def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
     )
     result = delta(gate_input)
     assert result.passed is False
-    assert result.quality_score == pytest.approx(1.0)
-    assert any("reject-only" in r for r in result.failure_reasons)
+    assert result.quality_score == 0.0
+    assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
 
 
 @pytest.mark.unit

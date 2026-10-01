@@ -2613,6 +2613,7 @@ class LocalDelegationDispatchPort:
             # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
             # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
             api_key_env=backend.api_key_env,
+            inline_reasoning_terminator=backend.inline_reasoning_terminator,
             # OMN-15482: the caller's response-format directive, forwarded as a
             # real wire parameter on the outbound chat-completions payload.
             # ``None`` omits the key entirely (pre-existing behavior).
@@ -2779,6 +2780,7 @@ class LocalDelegationDispatchPort:
             # prose. The gate vetoes on this signal; without it the gate has no
             # non-heuristic way to tell the two apart.
             finish_reason=result.finish_reason,
+            reasoning_stripped_chars=result.reasoning_stripped_chars,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -2790,7 +2792,8 @@ class LocalDelegationDispatchPort:
         # untouched.
         segmentation = segment_reasoning_preamble(result.content or "")
         if (
-            segmentation.boundary_rule
+            result.reasoning_stripped_chars == 0
+            and segmentation.boundary_rule
             is not EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
         ):
             logger.info(
@@ -2858,6 +2861,7 @@ class LocalDelegationDispatchPort:
         response_contract: dict[str, object] | None = None,
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
+        reasoning_stripped_chars: int = 0,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -2962,6 +2966,7 @@ class LocalDelegationDispatchPort:
             response_contract=effective_response_contract,
             grounding_source=prompt,
             finish_reason=finish_reason,
+            reasoning_stripped_chars=reasoning_stripped_chars,
         )
 
     def _project_evidence(

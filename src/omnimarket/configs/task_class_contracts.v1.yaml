@@ -527,6 +527,11 @@ reasoning_preamble:
     - "</think>"
     - "</thinking>"
     - "</reasoning>"
+  # OMN-18278 criteria 2 and 3: an answer still containing one of these after
+  # segmentation is refused at the deterministic floor, because whatever
+  # surrounds a stray tag is reasoning the model did not finish separating
+  # from the deliverable.
+  residual_trace_tags: ["<think>", "</think>"]
   rationale: >-
     Declared here, beside the quality rules that read the segmented answer, so
     the phrase list a response is judged against is a contract a customer can
