@@ -18,8 +18,9 @@ permissions:
 jobs:
   imperative-contract-guard:
     # self-gating-ok: central guard is intentionally shared across repos; caller PRs do not modify the referenced workflow.
-    uses: OmniNode-ai/onex_change_control/.github/workflows/imperative-contract-guard.yml@main
+    uses: OmniNode-ai/onex_change_control/.github/workflows/imperative-contract-guard.yml@86c7907b171241372573239339ee37308ba54a19 # v0.5.3
     with:
-      # OMN-13208: read allowlists from OCC dev (the live source of truth; main lags dev
-      # by ~2400 commits and promotes governance artifacts in bulk). Matches omnimemory.
-      onex-change-control-ref: dev
+      # read allowlists from the same OCC release tag the reusable is pinned to,
+      # never OCC's live branch, so an OCC merge cannot turn this repo red. Bump both
+      # together (see the sibling pin table in .github/CONTRIBUTING.md).
+      onex-change-control-ref: v0.5.3
