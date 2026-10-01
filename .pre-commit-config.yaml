@@ -70,11 +70,14 @@ repos:
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
   # URL Authority Gate (OMN-13298, child of OMN-12803).
+  # OMN-20177: this pin carries the AST env-read matcher (*_DSN, os.getenv,
+  # from-os imports, a key held in a constant); keep it equal to the pin in
+  # .github/workflows/url-authority-gate.yml.
   # Ratchet: NEW fingerprints fail; existing violations grandfathered in the
   # shared baseline at omnibase_core/src/omnibase_core/validation/baselines/url_authority_baseline.json.
   # Baseline is burn-down only. Suppress with: # url-authority-ok: <reason>
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: c93c98c92bd1a5b335d7aa504a8cf63dc029b3e7 # pragma: allowlist secret
+    rev: d720f33cf02aca1886d43811337d80aa1a47720e # pragma: allowlist secret
     hooks:
       - id: check-url-authority
         args: [--repo, omnimarket, --repo-root, .]
@@ -845,9 +848,9 @@ repos:
 
       # OMN-13781: contract-state-coverage gate. Diffs each touched node's
       # declared state set (contract.yaml) against states asserted by its
-      # tests. --check-changed HEAD scopes to locally staged/unstaged diffs
-      # so this stays fast; SYNC with state-coverage-gate.yml (which scopes
-      # to the PR/merge_group base ref instead).
+      # tests. --check-changed HEAD scopes strictness to local diffs;
+      # --check-stale audits the whole baseline. SYNC with state-coverage-gate.yml
+      # (which scopes strictness to the PR/merge_group base ref instead).
       # OMN-18043: every projection_api exposure must declare a cursor_column.
       # Without one api_server.py cannot populate next_cursor (it gates on
       # `cfg.cursor_column is not None`), so a truncated page reports
@@ -904,8 +907,8 @@ repos:
       - id: state-coverage-gate
         name: Contract-state-coverage gate
         language: system
-        entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict
-        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py)$
+        entry: uv run python scripts/validate_state_coverage.py --check-changed HEAD --strict --check-stale
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|src/omnimarket/nodes/node_.*/.*\.py|tests/.*\.py|scripts/validate_state_coverage\.py|scripts/validation/state_coverage_baseline\.txt)$
         pass_filenames: false
         stages: [pre-commit]
 

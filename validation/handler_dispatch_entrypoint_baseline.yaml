@@ -79,9 +79,6 @@ known_entrypointless:
   - contract: node_knowledge_query_federation_orchestrator
     handler: HandlerKnowledgeQueryFederation
     module: omnimarket.nodes.node_knowledge_query_federation_orchestrator.handlers.handler_knowledge_query_federation
-  - contract: node_model_router
-    handler: HandlerModelRouter
-    module: omnimarket.nodes.node_model_router.handlers.handler_model_router
   - contract: node_navigation_history_reducer
     handler: HandlerNavigationHistoryReducer
     module: omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer

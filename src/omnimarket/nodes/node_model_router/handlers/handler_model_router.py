@@ -200,6 +200,10 @@ class HandlerModelRouter:
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
+    async def handle_async(self, request: ModelRoutingRequest) -> ModelRoutingResult:
+        """Dispatch the contract request through the existing endpoint router."""
+        return await self.route_async(request)
+
     async def route_async(self, request: ModelRoutingRequest) -> ModelRoutingResult:
         """Route request to the best available model endpoint."""
         primary_key = self._resolve_primary_key()
