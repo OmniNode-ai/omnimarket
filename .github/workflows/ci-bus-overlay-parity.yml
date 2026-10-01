@@ -143,8 +143,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
+      # OMN-20261: no --all-extras. The `intelligence` extra resolves
+      # adaptive-classifier and with it torch and the CUDA wheels (~3 GB),
+      # which this check never imports; a cold hosted-runner pull of that set
+      # intermittently overran the job timeout. The base environment is all
+      # the gate needs (verified: the check and its pinning tests pass).
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
 
       - name: Validate this overlay against the publisher's live model
         shell: bash
