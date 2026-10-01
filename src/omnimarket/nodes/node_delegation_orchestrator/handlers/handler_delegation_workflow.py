@@ -105,6 +105,10 @@ from omnimarket.delegation.response_contract_instruction import (
     render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
+from omnimarket.delegation.rubric.attempt_verdict import (
+    record_attempt_rubric_verdict,
+    rubric_check_error_verdict,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -3501,6 +3505,19 @@ class HandlerDelegationWorkflow:
             cid,
         )
 
+        # OMN-20165: the accept or climb decision above is settled; the rubric
+        # verdict is recorded on this rung's attempt and read by no decision.
+        try:
+            rubric_verdict = record_attempt_rubric_verdict(
+                task_class=workflow.request.task_type,
+                request_text=workflow.request.prompt,
+                answer_text=workflow.inference_content or "",
+            )
+        except Exception as exc:
+            # A recording fault must never fail the delegation it describes.
+            _logger.warning("Rubric recording failed: %s", type(exc).__name__)
+            rubric_verdict = rubric_check_error_verdict(workflow.request.task_type)
+
         if quality_accepted:
             # OMN-16932: record the WINNING rung in escalation_history. Until now
             # only rejections were recorded, so an accepted terminal carried
@@ -3528,6 +3545,7 @@ class HandlerDelegationWorkflow:
                     # OMN-19436: what the gate was told about this response.
                     finish_reason=result.finish_reason,
                     reasoning_preamble_rule=result.reasoning_preamble_rule or None,
+                    rubric_verdict=rubric_verdict,
                 ),
             )
             # --- PASSED: complete as before ---
@@ -3597,6 +3615,7 @@ class HandlerDelegationWorkflow:
                 # OMN-19436: what the gate was told about this response.
                 finish_reason=result.finish_reason,
                 reasoning_preamble_rule=result.reasoning_preamble_rule or None,
+                rubric_verdict=rubric_verdict,
             ),
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
