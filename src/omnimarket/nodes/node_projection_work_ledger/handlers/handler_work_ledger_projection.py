@@ -82,6 +82,8 @@ _INSERT_ROW = f"""
     ON CONFLICT (row_id) DO NOTHING
 """
 
+_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
+
 _OPEN_ENTITY = f"""
     INSERT INTO {STATE_TABLE}
         (entity_key, kind, lane, ticket, repo, pr, scope_to, scope_surface, until_at,
@@ -279,21 +281,23 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             )
         now = datetime.now(UTC)
         row = result.row
-        await self._db.execute(
-            _INSERT_ROW,
-            row.row_id,
-            row.ledger_id,
-            row.row_ts,
-            row.row_type,
-            row.row_lane,
-            json.dumps(list(row.tickets)),
-            row.raw_row,
-            row.source,
-            now,
-        )
-        for op in result.ops:
-            sql, args = _op_args(op, now)
-            await self._db.execute(sql, *args)
+        async with self._db.pool.acquire() as conn, conn.transaction():
+            await conn.execute(_ADVISORY_LOCK, f"work-ledger:{request.ledger_id}")
+            await conn.execute(
+                _INSERT_ROW,
+                row.row_id,
+                row.ledger_id,
+                row.row_ts,
+                row.row_type,
+                row.row_lane,
+                json.dumps(list(row.tickets)),
+                row.raw_row,
+                row.source,
+                now,
+            )
+            for op in result.ops:
+                sql, args = _op_args(op, now)
+                await conn.execute(sql, *args)
         return 1 + len(result.ops)
 
     def _validated_rows(
@@ -346,10 +350,7 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             raise WorkLedgerFoldError("typed work-ledger topic/type mismatch")
         async with self._db.pool.acquire() as conn, conn.transaction():
             # All writers for this configured ledger see a serial canonical set.
-            await conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                f"work-ledger:{inbound.ledger_id}",
-            )
+            await conn.execute(_ADVISORY_LOCK, f"work-ledger:{inbound.ledger_id}")
             return await self._persist_typed(conn, inbound, row_type)
 
     async def _reconcile_rows(self, conn: asyncpg.Connection) -> None:
