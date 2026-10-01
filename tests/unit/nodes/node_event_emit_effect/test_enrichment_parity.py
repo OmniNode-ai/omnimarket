@@ -190,7 +190,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # fan-out targets (provider.quota.observed, delegate_skill.completed and
     # delegate_skill.failed): 80 -> 83. OMN-20012 adds
     # delegation.disposition_recorded and its one fan-out target: 83 -> 84.
-    assert len(event_types) == 84, (
+    # OMN-20001: eleven typed work-ledger v2 events, one fan-out each, keyed on ledger_id (84 -> 95, 87 -> 98)
+    assert len(event_types) == 95, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -226,7 +227,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 72 -> 83: OMN-19999's PR observation kind plus the eleven work.ledger.<type> events;
     # 83 -> 86: OMN-20154's three duty-critical fan-out targets.
     # 86 -> 87: OMN-20012's disposition event fans out to exactly one topic.
-    assert total_old == total_new == 87
+    # OMN-20001: eleven typed work-ledger v2 events, one fan-out each, keyed on ledger_id (84 -> 95, 87 -> 98)
+    assert total_old == total_new == 98
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -237,7 +239,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 87, f"only {enriched}/87 new-path messages were enriched"
+    # OMN-20001: eleven typed work-ledger v2 events, one fan-out each, keyed on ledger_id (84 -> 95, 87 -> 98)
+    assert enriched == 98, f"only {enriched}/98 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -253,7 +256,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # the registry-only shadow harness therefore adds no single-field key.
     # 83 -> 84: OMN-20012's delegation.disposition_recorded declares
     # partition_key_field delegation_correlation_id.
-    assert keyed == 84, f"only {keyed}/84 new-path messages carried a partition key"
+    # OMN-20001: eleven typed work-ledger v2 events, one fan-out each, keyed on ledger_id (84 -> 95, 87 -> 98)
+    assert keyed == 95, f"only {keyed}/95 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------
