@@ -7,8 +7,4 @@
 # from each scanned contract to the repo root (pyproject.toml); no env var.
 # node_ticketing_insights_compute was remediated ([compute] -> [main]) in this
 # same PR and is deliberately NOT baselined.
-allowlist:
-  - node_id: node_delegation_orchestrator
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: node_delegation_quality_gate_reducer
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
+allowlist: []
