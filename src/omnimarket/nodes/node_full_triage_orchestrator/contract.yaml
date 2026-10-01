@@ -2,6 +2,7 @@
 name: full_triage_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >

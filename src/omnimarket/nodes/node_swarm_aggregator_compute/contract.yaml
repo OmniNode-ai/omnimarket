@@ -7,6 +7,7 @@ node_name: node_swarm_aggregator_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 description: >
   Pure compute node for swarm result aggregation. Concatenates subtask outputs
   into a unified response. For synthesis mode, receives pre-fetched synthesis
@@ -44,7 +45,6 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: []
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}

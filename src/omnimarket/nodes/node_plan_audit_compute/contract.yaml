@@ -2,6 +2,7 @@
 name: node_plan_audit_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 node_not_implemented: false
 description: >

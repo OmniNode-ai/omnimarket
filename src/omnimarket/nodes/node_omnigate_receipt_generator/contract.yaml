@@ -2,6 +2,7 @@
 name: node_omnigate_receipt_generator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Generates canonical OmniGate receipts bound to diff hash, config hash, repository authority, and commit SHAs.

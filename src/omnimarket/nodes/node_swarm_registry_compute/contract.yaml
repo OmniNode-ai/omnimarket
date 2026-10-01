@@ -4,6 +4,7 @@
 name: node_swarm_registry_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Pure compute node for swarm endpoint selection. Matches subtasks to
@@ -38,7 +39,6 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 10000
-  runtime_profiles: []
 
 event_bus:
   subscribe_topics:

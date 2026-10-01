@@ -2,6 +2,7 @@
 name: merge_sweep_compute
 contract_version: {major: 2, minor: 0, patch: 0}
 node_type: compute
+runtime_profiles: [main]
 node_version: {major: 2, minor: 0, patch: 0}
 
 description: >

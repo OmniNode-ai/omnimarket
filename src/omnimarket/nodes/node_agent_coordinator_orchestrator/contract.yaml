@@ -13,6 +13,7 @@ node_version: {major: 0, minor: 2, patch: 0}
 description: "Orchestrator node for cross-agent memory coordination. Manages subscriptions and publishes
   notification events to Kafka for subscriber consumption."
 node_type: orchestrator
+runtime_profiles: [main]
 input_model: "ModelAgentCoordinatorRequest"
 output_model: "ModelAgentCoordinatorResponse"
 terminal_event: "onex.evt.omnimemory.coordination-completed.v1"
