@@ -10,10 +10,9 @@ from pydantic import ValidationError
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
+    load_ollama_config,
 )
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelOllamaConfig,
-)
+from omnimarket.models.delegation.model_ollama_config import ModelOllamaConfig
 
 
 def _tier(floor: int, model: str = "m:1b", download_gb: float = 1) -> dict[str, object]:
@@ -26,7 +25,7 @@ def _block(*tiers: dict[str, object]) -> dict[str, object]:
 
 @pytest.mark.unit
 def test_committed_contract_carries_the_ollama_block() -> None:
-    ollama = load_bifrost_delegation_config().ollama
+    ollama = load_ollama_config()
     assert ollama is not None
     assert ollama.port == 11434
     assert ollama.chat_path == "/v1/chat/completions"
@@ -73,3 +72,8 @@ def test_download_gb_must_be_positive(download_gb: float) -> None:
 def test_valid_block_validates() -> None:
     cfg = ModelOllamaConfig.model_validate(_block(_tier(16), _tier(0)))
     assert [t.min_memory_gb for t in cfg.models] == [16, 0]
+
+
+@pytest.mark.unit
+def test_wire_config_still_loads_with_the_ollama_block_present() -> None:
+    assert not hasattr(load_bifrost_delegation_config(), "ollama")
