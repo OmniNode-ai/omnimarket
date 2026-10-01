@@ -22,10 +22,12 @@
 --   tests/test_omn19559_backfill_migration_real_postgres.py fails if the
 --   mapping below and outcome_for_failure_cause disagree for any cause.
 --
---   Each rewritten row's prior outcome and verdict are kept in
---   delegation_events_outcome_backfill_omn20276, so the rollback
---   (omnibase_infra rollback_node_projection_delegation_0051.sql) restores
---   them exactly and drops that table.
+--   Each rewritten row's prior outcome and verdict are kept first in
+--   omninode_internal.delegation_events_outcome_backfill_omn20276, and the
+--   rewrite reads its new values from there, so the rollback (omnibase_infra
+--   rollback_node_projection_delegation_0051.sql) restores them exactly and
+--   drops that table. The table is internal control state for this migration
+--   pair, with no tenant_id and no row-level security.
 --
 -- RE-RUNNABLE
 --
@@ -34,16 +36,23 @@
 --   first prior values (ON CONFLICT DO NOTHING), so a re-run never overwrites
 --   what the rollback needs.
 --
+-- THE SCHEMA IS ASSERTED, NOT CREATED
+--
+--   omninode_internal is provisioned by omnibase_infra forward 098; a node
+--   migration does not create a shared namespace (see
+--   node_delegate_skill_orchestrator 0001). Without it the CREATE TABLE below
+--   fails, so no lane can record this file applied while its rows stay wrong.
+--
 -- ROW LEVEL SECURITY
 --
 --   delegation_events is FORCE ROW LEVEL SECURITY on the tenant lanes. Under
 --   FORCE the owner is filtered too, and with app.tenant_id unset every row is
---   invisible, so the UPDATE would match nothing and report success. The
---   same DO block lifts FORCE, rewrites, and restores it, as 0033 does; one
+--   invisible, so the rewrite would match nothing and report success. The
+--   DO block lifts FORCE, rewrites, and restores it, as 0033 does; one
 --   statement is one transaction, so no path commits with FORCE lifted.
 --   created_at and the row's other columns are not touched.
 
-CREATE TABLE IF NOT EXISTS delegation_events_outcome_backfill_omn20276 (
+CREATE TABLE IF NOT EXISTS omninode_internal.delegation_events_outcome_backfill_omn20276 (
     delegation_event_id UUID PRIMARY KEY,
     correlation_id TEXT NOT NULL,
     prior_operational_outcome TEXT,
@@ -53,12 +62,13 @@ CREATE TABLE IF NOT EXISTS delegation_events_outcome_backfill_omn20276 (
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE delegation_events_outcome_backfill_omn20276 IS
+COMMENT ON TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 IS
     'OMN-20276: prior outcome and verdict of each delegation_events row 0051 rewrote; read by its rollback, dropped by it.';
 
 DO $$
 DECLARE
     v_forced BOOLEAN;
+    v_pending BIGINT;
     v_rewritten BIGINT;
 BEGIN
     IF to_regclass('delegation_events') IS NULL THEN
@@ -87,53 +97,60 @@ BEGIN
         ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
     END IF;
 
-    WITH mapped AS (
-        SELECT
-            e.id,
-            e.correlation_id,
-            e.operational_outcome AS prior_outcome,
-            e.content_verdict AS prior_verdict,
-            CASE e.terminal_failure_cause
-                WHEN 'timeout' THEN 'timeout'
-                WHEN 'runtime_shutdown' THEN 'cancelled'
-                WHEN 'provider_quota_exhausted' THEN 'provider_quota'
-                WHEN 'quality_gate_refused' THEN 'quality_rejected'
-                ELSE 'inference_failed'
-            END AS new_outcome,
-            CASE
-                WHEN e.content_verdict IN ('usable', 'correct') THEN
-                    CASE e.terminal_failure_cause
-                        WHEN 'quality_gate_refused' THEN 'unusable'
-                        ELSE 'not_applicable'
-                    END
-                ELSE e.content_verdict
-            END AS new_verdict
-        FROM delegation_events AS e
-        WHERE e.terminal_ok IS FALSE
-          AND e.terminal_failure_cause IS NOT NULL
-          AND btrim(e.terminal_failure_cause) <> ''
-          AND e.operational_outcome = 'completed'
-        FOR UPDATE
-    ),
-    audited AS (
-        INSERT INTO delegation_events_outcome_backfill_omn20276 (
-            delegation_event_id, correlation_id,
-            prior_operational_outcome, prior_content_verdict,
-            new_operational_outcome, new_content_verdict
-        )
-        SELECT id, correlation_id, prior_outcome, prior_verdict, new_outcome, new_verdict
-        FROM mapped
-        ON CONFLICT (delegation_event_id) DO NOTHING
-    ),
-    rewritten AS (
-        UPDATE delegation_events AS e
-        SET operational_outcome = m.new_outcome,
-            content_verdict = m.new_verdict
-        FROM mapped AS m
-        WHERE e.id = m.id
-        RETURNING e.id
+    SELECT count(*) INTO v_pending
+    FROM delegation_events AS e
+    WHERE e.terminal_ok IS FALSE
+      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
+      AND e.operational_outcome = 'completed';
+
+    IF v_pending = 0 THEN
+        IF v_forced THEN
+            ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
+        END IF;
+        RAISE NOTICE 'OMN-20276: no contradictory delegation_events rows; nothing to rewrite';
+        RETURN;
+    END IF;
+
+    INSERT INTO omninode_internal.delegation_events_outcome_backfill_omn20276 (
+        delegation_event_id, correlation_id,
+        prior_operational_outcome, prior_content_verdict,
+        new_operational_outcome, new_content_verdict
     )
-    SELECT count(*) INTO v_rewritten FROM rewritten;
+    SELECT
+        e.id,
+        e.correlation_id,
+        e.operational_outcome,
+        e.content_verdict,
+        CASE e.terminal_failure_cause
+            WHEN 'timeout' THEN 'timeout'
+            WHEN 'runtime_shutdown' THEN 'cancelled'
+            WHEN 'provider_quota_exhausted' THEN 'provider_quota'
+            WHEN 'quality_gate_refused' THEN 'quality_rejected'
+            ELSE 'inference_failed'
+        END,
+        CASE
+            WHEN e.content_verdict IN ('usable', 'correct') THEN
+                CASE e.terminal_failure_cause
+                    WHEN 'quality_gate_refused' THEN 'unusable'
+                    ELSE 'not_applicable'
+                END
+            ELSE e.content_verdict
+        END
+    FROM delegation_events AS e
+    WHERE e.terminal_ok IS FALSE
+      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
+      AND e.operational_outcome = 'completed'
+    ON CONFLICT (delegation_event_id) DO NOTHING;
+
+    UPDATE delegation_events AS e
+    SET operational_outcome = a.new_operational_outcome,
+        content_verdict = a.new_content_verdict
+    FROM omninode_internal.delegation_events_outcome_backfill_omn20276 AS a
+    WHERE e.id = a.delegation_event_id
+      AND e.terminal_ok IS FALSE
+      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
+      AND e.operational_outcome = 'completed';
+    GET DIAGNOSTICS v_rewritten = ROW_COUNT;
 
     IF v_forced THEN
         ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;

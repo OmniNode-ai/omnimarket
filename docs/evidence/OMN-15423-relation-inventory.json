@@ -3710,7 +3710,7 @@
         "scripts/application-relation-ownership.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],

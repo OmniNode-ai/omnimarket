@@ -127,8 +127,20 @@ async def _seed(conn: asyncpg.Connection) -> None:
         await _insert(conn, f"ok-{i}", *row)
 
 
-async def _apply(conn: asyncpg.Connection, path: Path) -> None:
-    await conn.execute(path.read_text(encoding="utf-8"))
+def _in_schema(sql: str, schema: str) -> str:
+    """Retarget the audit table's schema at the disposable one.
+
+    omninode_internal is shared by every test on the server; the audit table
+    is created, read and dropped per test, so each test keeps its own copy.
+    Nothing else in the file changes.
+    """
+    retargeted = sql.replace(f"omninode_internal.{_AUDIT}", f"{schema}.{_AUDIT}")
+    assert retargeted != sql
+    return retargeted
+
+
+async def _apply(conn: asyncpg.Connection, path: Path, schema: str) -> None:
+    await conn.execute(_in_schema(path.read_text(encoding="utf-8"), schema))
 
 
 async def _snapshot(conn: asyncpg.Connection) -> list[tuple[object, ...]]:
@@ -146,11 +158,11 @@ async def _contradictory(conn: asyncpg.Connection) -> int:
 
 
 async def test_backfill_maps_each_cause_like_the_projection() -> None:
-    async with _migrated_schema() as (conn, _schema):
+    async with _migrated_schema() as (conn, schema):
         await _seed(conn)
         assert await _contradictory(conn) == len(_CAUSES) + 2
 
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
 
         assert await _contradictory(conn) == 0
         for cause in _CAUSES:
@@ -172,56 +184,61 @@ async def test_backfill_maps_each_cause_like_the_projection() -> None:
             "WHERE correlation_id = 'bad-null-verdict'"
         )
         assert tuple(null_verdict) == ("timeout", None)
-        for i, (ok, cause, outcome, verdict) in enumerate(_UNTOUCHED):
+        for i, expected in enumerate(_UNTOUCHED):
             row = await conn.fetchrow(
                 "SELECT terminal_ok, terminal_failure_cause, operational_outcome, "
                 "content_verdict FROM delegation_events WHERE correlation_id = $1",
                 f"ok-{i}",
             )
-            assert tuple(row) == (ok, cause, outcome, verdict), i
-        audited = await conn.fetchval(f"SELECT count(*) FROM {_AUDIT}")
+            assert tuple(row) == expected, i
+        audited = await conn.fetchval(f"SELECT count(*) FROM {schema}.{_AUDIT}")
         assert audited == len(_CAUSES) + 2
 
 
 async def test_backfill_is_idempotent() -> None:
-    async with _migrated_schema() as (conn, _schema):
+    async with _migrated_schema() as (conn, schema):
         await _seed(conn)
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
         once = await _snapshot(conn)
-        audit_once = await conn.fetch(f"SELECT * FROM {_AUDIT} ORDER BY 1")
+        audit_once = await conn.fetch(f"SELECT * FROM {schema}.{_AUDIT} ORDER BY 1")
 
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
 
         assert await _snapshot(conn) == once
-        assert await conn.fetch(f"SELECT * FROM {_AUDIT} ORDER BY 1") == audit_once
+        assert (
+            await conn.fetch(f"SELECT * FROM {schema}.{_AUDIT} ORDER BY 1")
+            == audit_once
+        )
 
 
 async def test_rollback_restores_prior_values_and_drops_the_audit() -> None:
-    async with _migrated_schema() as (conn, _schema):
+    async with _migrated_schema() as (conn, schema):
         await _seed(conn)
         before = await _snapshot(conn)
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
         assert await _snapshot(conn) != before
 
-        await _apply(conn, _ROLLBACK)
+        await _apply(conn, _ROLLBACK, schema)
 
         assert await _snapshot(conn) == before
-        assert await conn.fetchval("SELECT to_regclass($1)", _AUDIT) is None
+        assert (
+            await conn.fetchval("SELECT to_regclass($1)", f"{schema}.{_AUDIT}") is None
+        )
         # Forward again after the rollback: the same rewrite, so the pair cycles.
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
         assert await _contradictory(conn) == 0
 
 
 async def test_rollback_leaves_a_row_written_again_since_the_backfill() -> None:
-    async with _migrated_schema() as (conn, _schema):
+    async with _migrated_schema() as (conn, schema):
         await _seed(conn)
-        await _apply(conn, _BACKFILL)
+        await _apply(conn, _BACKFILL, schema)
         await conn.execute(
             "UPDATE delegation_events SET operational_outcome = 'provider_quota' "
             "WHERE correlation_id = 'bad-timeout'"
         )
 
-        await _apply(conn, _ROLLBACK)
+        await _apply(conn, _ROLLBACK, schema)
 
         rewritten = await conn.fetchval(
             "SELECT operational_outcome FROM delegation_events "
@@ -252,7 +269,7 @@ async def test_backfill_sees_rows_under_force_rls_as_the_owner() -> None:
             # Positive control: the owner is blind to every row under FORCE.
             assert await conn.fetchval("SELECT count(*) FROM delegation_events") == 0
 
-            await _apply(conn, _BACKFILL)
+            await _apply(conn, _BACKFILL, schema)
 
             await conn.execute("RESET ROLE")
             assert await _contradictory(conn) == 0
@@ -265,3 +282,25 @@ async def test_backfill_sees_rows_under_force_rls_as_the_owner() -> None:
             await conn.execute("RESET ROLE")
             await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
             await conn.execute(f"DROP ROLE IF EXISTS {owner}")
+
+
+async def test_without_the_internal_schema_the_file_fails_loudly() -> None:
+    """No lane may record 0051 applied while its rows stay contradictory."""
+    async with _migrated_schema() as (conn, _schema):
+        await _seed(conn)
+        missing = f"absent_{uuid4().hex[:8]}"
+        sql = _BACKFILL.read_text(encoding="utf-8").replace(
+            f"omninode_internal.{_AUDIT}", f"{missing}.{_AUDIT}"
+        )
+        with pytest.raises(asyncpg.exceptions.InvalidSchemaNameError):
+            await conn.execute(sql)
+        assert await _contradictory(conn) == len(_CAUSES) + 2
+
+
+async def test_nothing_to_rewrite_leaves_every_row_alone() -> None:
+    async with _migrated_schema() as (conn, schema):
+        await _insert(conn, "ok-only", True, None, "completed", "usable")
+        before = await _snapshot(conn)
+        await _apply(conn, _BACKFILL, schema)
+        assert await _snapshot(conn) == before
+        assert await conn.fetchval(f"SELECT count(*) FROM {schema}.{_AUDIT}") == 0

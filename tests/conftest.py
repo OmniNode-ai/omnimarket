@@ -834,6 +834,21 @@ BEGIN
 END$$;
 """
 
+# OMN-20276: the shared schema a real lane provisions before the node
+# migrations run (omnibase_infra forward 098). node_projection_delegation 0051
+# asserts it rather than creating it, as node_delegate_skill_orchestrator 0001
+# does, so a bare integration database needs it the way it needs the roles
+# above. Per database, unlike the roles; the exception handler absorbs two
+# xdist workers creating it at once.
+_SHARED_APPLICATION_SCHEMAS = """
+DO $$
+BEGIN
+    CREATE SCHEMA IF NOT EXISTS omninode_internal;
+EXCEPTION WHEN duplicate_schema OR unique_violation THEN
+    NULL;
+END$$;
+"""
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _provision_cross_node_migration_roles() -> None:
@@ -875,6 +890,7 @@ def _provision_cross_node_migration_roles() -> None:
         connection.autocommit = True
         with connection.cursor() as cursor:
             cursor.execute(_CROSS_NODE_MIGRATION_ROLES)
+            cursor.execute(_SHARED_APPLICATION_SCHEMAS)
     finally:
         connection.close()
 

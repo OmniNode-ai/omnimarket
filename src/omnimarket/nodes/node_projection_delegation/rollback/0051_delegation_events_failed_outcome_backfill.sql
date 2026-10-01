@@ -3,7 +3,8 @@
 --
 -- Restores each delegation_events row 0051 rewrote to the operational_outcome
 -- and content_verdict it held before, from the audit table 0051 wrote, then
--- drops that table, so the catalog is what it was before 0051.
+-- drops that table, so the catalog is what it was before 0051. The schema
+-- omninode_internal itself is not dropped: 0051 asserted it, never created it.
 --
 -- A row the projection has written again since 0051 (its outcome or verdict
 -- no longer equals what 0051 set) is left alone: the newer terminal is the
@@ -20,7 +21,7 @@ DECLARE
     v_forced BOOLEAN;
     v_restored BIGINT;
 BEGIN
-    IF to_regclass('delegation_events_outcome_backfill_omn20276') IS NULL THEN
+    IF to_regclass('omninode_internal.delegation_events_outcome_backfill_omn20276') IS NULL THEN
         RAISE NOTICE 'OMN-20276: no backfill audit table; nothing to restore';
         RETURN;
     END IF;
@@ -34,17 +35,14 @@ BEGIN
             ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
         END IF;
 
-        WITH restored AS (
-            UPDATE delegation_events AS e
-            SET operational_outcome = a.prior_operational_outcome,
-                content_verdict = a.prior_content_verdict
-            FROM delegation_events_outcome_backfill_omn20276 AS a
-            WHERE e.id = a.delegation_event_id
-              AND e.operational_outcome IS NOT DISTINCT FROM a.new_operational_outcome
-              AND e.content_verdict IS NOT DISTINCT FROM a.new_content_verdict
-            RETURNING e.id
-        )
-        SELECT count(*) INTO v_restored FROM restored;
+        UPDATE delegation_events AS e
+        SET operational_outcome = a.prior_operational_outcome,
+            content_verdict = a.prior_content_verdict
+        FROM omninode_internal.delegation_events_outcome_backfill_omn20276 AS a
+        WHERE e.id = a.delegation_event_id
+          AND e.operational_outcome IS NOT DISTINCT FROM a.new_operational_outcome
+          AND e.content_verdict IS NOT DISTINCT FROM a.new_content_verdict;
+        GET DIAGNOSTICS v_restored = ROW_COUNT;
 
         IF v_forced THEN
             ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
@@ -52,5 +50,5 @@ BEGIN
         RAISE NOTICE 'OMN-20276: restored % delegation_events rows', v_restored;
     END IF;
 
-    DROP TABLE delegation_events_outcome_backfill_omn20276;
+    DROP TABLE omninode_internal.delegation_events_outcome_backfill_omn20276;
 END$$;
