@@ -153,7 +153,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       - name: Run market skill smoke tests
         run: uv run pytest tests/test_market_skill_smokes.py -q

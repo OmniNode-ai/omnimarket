@@ -117,7 +117,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       - name: Install yamlfmt v0.21.0 (matches onex_change_control .yamlfmt pin)
         run: |
