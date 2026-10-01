@@ -394,6 +394,7 @@ def test_contract_loads():
         "summarization",
         "code_generation",
         "test",
+        "tool_use",
     }
     assert (
         contract.for_class("review").criteria

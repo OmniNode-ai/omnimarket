@@ -415,7 +415,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-19790 on top of OMN-19513 = 89.
     # +2 for OMN-19793 (the eval-run verdict and results tables) = 91.
     # OMN-20242 adds the disposition table; its usage view is counted as a view.
-    assert census["source_created_tables"] == 92
+    # +1 for OMN-20154 (provider_quota_state) = 92.
+    assert census["source_created_tables"] == 93
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -576,7 +577,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-19793 (the eval-run verdict and results tables) = 100.
     # +1 for OMN-20242: the disposition table is declared in db_io.db_tables.
     # Its usage query creates no relation. This census counts declarations.
-    assert census["source_declared_tables"] == 101
+    # +1 for OMN-20154 (provider_quota_state) = 101.
+    assert census["source_declared_tables"] == 102
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

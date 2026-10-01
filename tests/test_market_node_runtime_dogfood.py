@@ -348,7 +348,7 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     )
 
 
-def test_market_node_runtime_dogfood_proves_handler_key_repairs() -> None:
+def test_market_node_runtime_dogfood_proves_canonical_handler_repairs() -> None:
     report = build_report()
     routable = {item["node_name"]: item for item in report["routable"]}
 

@@ -162,6 +162,6 @@ class TestPolicyIsContractDeclared:
 
     def test_zai_codes_are_declared_not_hardcoded(self, policy) -> None:  # type: ignore[no-untyped-def]
         zai = next(p for p in policy.providers if p.provider_id == "zai")
-        # OMN-19432 adds the flash-first ladder's capacity codes: 1302 and 1305
-        # (retryable, nothing disabled) and 1308 (the 5-hour credit window).
-        assert {c.code for c in zai.codes} == {"1310", "1113", "1308", "1302", "1305"}
+        # OMN-19432 added 1302, 1305 and 1308; OMN-20154 made 1302 and 1305
+        # cooldowns and added 1313 and the 1316-1321 windows.
+        assert {"1310", "1113", "1308", "1302", "1305"} <= {c.code for c in zai.codes}

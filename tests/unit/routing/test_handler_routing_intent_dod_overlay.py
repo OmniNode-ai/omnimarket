@@ -34,6 +34,8 @@ from tests.unit.delegation.test_roi_overlay_routing_omn14001 import (
     _BIFROST_THREE_TIER,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 TENANT_ID = "820272f9-4aaf-5add-a2df-0af942852ab2"
 TASK_TYPE = "code_generation"
 

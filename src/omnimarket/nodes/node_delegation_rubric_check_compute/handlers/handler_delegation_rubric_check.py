@@ -21,6 +21,14 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_sum
     claims_traceable,
     id_coverage,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_tool_use import (
+    edits_apply,
+    no_phantom_paths,
+    stated_check_passes,
+    task_answer_traceable,
+    tool_calls_wellformed,
+    within_budget,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     EnumRubricOutcome,
     ModelRubricCheckRequest,
@@ -44,6 +52,12 @@ _CHECKS: dict[
     "code_parses": code_parses,
     "stated_test_passes": stated_test_passes,
     "ids_traceable": ids_traceable,
+    "tool_calls_wellformed": tool_calls_wellformed,
+    "no_phantom_paths": no_phantom_paths,
+    "edits_apply": edits_apply,
+    "stated_check_passes": stated_check_passes,
+    "task_answer_traceable": task_answer_traceable,
+    "within_budget": within_budget,
 }
 
 

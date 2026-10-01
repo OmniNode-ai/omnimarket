@@ -86,7 +86,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         default_factory=lambda: datetime.now(UTC),
         validation_alias=AliasChoices("emitted_at", "emittedAt", "timestamp"),
     )
-    session_id: UUID | None = Field(
+    # Projection keeps UUID objects; the wire response stores canonical strings.
+    session_id: UUID | None = Field(  # type: ignore[assignment]
         default=None,
         validation_alias=AliasChoices("session_id", "sessionId"),
     )

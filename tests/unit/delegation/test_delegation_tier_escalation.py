@@ -66,6 +66,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

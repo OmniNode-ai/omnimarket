@@ -63,6 +63,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _COMPLETED_TOPIC = "onex.evt.omnibase-infra.delegation-completed.v1"
 _FAILED_TOPIC = "onex.evt.omnibase-infra.delegation-failed.v1"
 

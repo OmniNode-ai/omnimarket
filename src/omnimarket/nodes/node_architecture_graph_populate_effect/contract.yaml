@@ -186,38 +186,22 @@ handler_routing:
     patch: 0
   routing_strategy: operation_match
   handlers:
-    - routing_key: "populate_from_contracts"
-      operation: "populate_from_contracts"
-      handler_key: "HandlerArchitectureGraphPopulate"
+    - operation: "populate_from_contracts"
       handler:
         name: "HandlerArchitectureGraphPopulate"
         module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
-      priority: 0
-      output_events: []
-    - routing_key: "populate_from_imports"
-      operation: "populate_from_imports"
-      handler_key: "HandlerArchitectureGraphPopulate"
+    - operation: "populate_from_imports"
       handler:
         name: "HandlerArchitectureGraphPopulate"
         module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
-      priority: 0
-      output_events: []
-    - routing_key: "populate_from_pyproject"
-      operation: "populate_from_pyproject"
-      handler_key: "HandlerArchitectureGraphPopulate"
+    - operation: "populate_from_pyproject"
       handler:
         name: "HandlerArchitectureGraphPopulate"
         module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
-      priority: 0
-      output_events: []
-    - routing_key: "populate_all"
-      operation: "populate_all"
-      handler_key: "HandlerArchitectureGraphPopulate"
+    - operation: "populate_all"
       handler:
         name: "HandlerArchitectureGraphPopulate"
         module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
-      priority: 0
-      output_events: []
   default_handler: null
 
 # =============================================================================

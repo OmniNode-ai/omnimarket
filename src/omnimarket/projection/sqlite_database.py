@@ -213,6 +213,11 @@ class SqliteDatabaseAdapter:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
 
+    @property
+    def db_path(self) -> Path:
+        """The local store file this adapter writes (the local profile's binding)."""
+        return self._db_path
+
     def _connect(self) -> sqlite3.Connection:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         # This IS the ProtocolProjectionDatabaseSync I/O boundary adapter (the SQLite

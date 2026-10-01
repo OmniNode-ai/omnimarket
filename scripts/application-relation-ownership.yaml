@@ -177,6 +177,14 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation_eval/migrations/0000_create_delegation_eval_items.sql
       access: read_write
       role: delegation_eval_labels
+    # OMN-20154: durable provider quota state, one row per (tenant, credential
+    # reference, provider, model scope); routing and the judge read it.
+    - name: provider_quota_state
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_provider_quota/migrations/0000_create_provider_quota_state.sql
+      access: read_write
+      role: provider_quota_state
     # OMN-19793 (EV.4): per-item recorded and replayed verdicts of an eval run,
     # and per-class false-pass and false-refusal results, keyed by eval run id.
     - name: delegation_eval_item_verdicts
@@ -1118,6 +1126,14 @@ database_objects:
     writers: []
   # OMN-19790: BIGSERIAL requires a separately declared sequence grant.
   - name: delegation_eval_items_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-20154: BIGSERIAL requires a separately declared sequence grant.
+  - name: provider_quota_state_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: public

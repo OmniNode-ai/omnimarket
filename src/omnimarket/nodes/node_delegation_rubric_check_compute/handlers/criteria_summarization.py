@@ -92,20 +92,25 @@ def _has_items(unit: str, params: ModelClaimsTraceableParams) -> bool:
     return bool(_missing(unit, "", params))
 
 
-def claims_traceable(
-    request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
-) -> ModelRubricCriterionResult:
-    params = criterion.params
-    assert isinstance(params, ModelClaimsTraceableParams)
+def answer_units(text: str) -> tuple[str, ...]:
+    """Split answer facts while excluding list markers from numerical claims."""
     # A list marker ("12." or "3)") numbers the answer's own items; it is not a claim.
-    units = tuple(
+    return tuple(
         unit.strip()
-        for line in request.answer_text.splitlines()
+        for line in text.splitlines()
         for unit in re.split(
             r"(?<=[.!?])\s+", re.sub(r"^\s*(?:\d+[.)]|[-*+])\s+", "", line)
         )
         if unit.strip()
     )
+
+
+def claims_traceable(
+    request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
+) -> ModelRubricCriterionResult:
+    params = criterion.params
+    assert isinstance(params, ModelClaimsTraceableParams)
+    units = answer_units(request.answer_text)
     failures: list[tuple[str, tuple[str, ...]]] = []
     extractable = False
     for unit in units:

@@ -338,6 +338,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # this capability and must not.
     # DelegationEvalProjectionWriter (OMN-19790) is the label-store writer,
     # dispatched once per consumed labelled-item event by runtime auto-wiring.
+    # ProviderQuotaProjectionWriter (OMN-20154) is the quota-state writer,
+    # dispatched once per consumed provider-quota observation.
     #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
@@ -353,6 +355,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
+        "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabContainerMemoryProjectionWriter",
