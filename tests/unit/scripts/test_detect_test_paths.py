@@ -139,7 +139,7 @@ def test_test_infrastructure_change_triggers_full_suite() -> None:
 
 def test_smart_selection_non_shared_module() -> None:
     sel = compute_selection(
-        changed_files=["src/omnimarket/cli/commands.py"],
+        changed_files=["src/omnimarket/intelligence/client.py"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
@@ -188,7 +188,7 @@ def test_cli_entrypoint_produces_json(tmp_path: Path) -> None:
 
 def test_matrix_length_matches_split_count() -> None:
     sel = compute_selection(
-        changed_files=["src/omnimarket/cli/commands.py"],
+        changed_files=["src/omnimarket/intelligence/client.py"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
@@ -335,7 +335,7 @@ def test_pure_src_diff_narrowing_unchanged_no_regression() -> None:
     the new escalation path.
     """
     sel = compute_selection(
-        changed_files=["src/omnimarket/cli/commands.py"],
+        changed_files=["src/omnimarket/intelligence/client.py"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
@@ -670,3 +670,56 @@ def test_protection_globs_reject_invalid_types(invalid: object) -> None:
     raw["full_suite_path_globs"] = invalid
     with pytest.raises(ValidationError):
         ModelAdjacencyMap.model_validate(raw)
+
+
+# --- OMN-20305: an empty selection must not become one unsplit tests/ job ---
+#
+# omnimarket#3175 (a workflow-only PR) selected nothing, fell back to
+# ["tests/"] and emitted is_full_suite=False with split_count=1, so the whole
+# suite ran serially as `Tests (Split 1/1)` for 63 minutes. The fallback is a
+# full-suite run and must use the same 20-shard matrix as every other one.
+
+
+def test_empty_selection_fallback_uses_full_suite_shard_matrix() -> None:
+    sel = compute_selection(
+        changed_files=[".github/workflows/some-other.yml"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.selected_paths == ["tests/"]
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.NO_NARROWABLE_SELECTION
+    assert sel.split_count == 20
+    assert sel.matrix == list(range(1, 21))
+
+
+def test_workflow_only_diff_cli_emits_twenty_splits(tmp_path: Path) -> None:
+    changed = tmp_path / "changed.txt"
+    changed.write_text(".github/workflows/ci.yml\n")
+    out = tmp_path / "out.json"
+    import contextlib
+    import io
+    import json
+
+    from scripts.ci.detect_test_paths import main
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = main(
+            [
+                "--changed-files-from",
+                str(changed),
+                "--ref-name",
+                "jonah/feature",
+                "--event-name",
+                "pull_request",
+            ]
+        )
+    out.write_text(buf.getvalue())
+    data = json.loads(out.read_text())
+    assert rc == 0
+    assert data["is_full_suite"] is True
+    assert data["split_count"] == 20
+    assert len(data["matrix"]) == 20
