@@ -36,7 +36,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 from omnimarket.delegation.rubric.contract_loader import (
     load_delegation_class_rubrics,
 )
-from omnimarket.delegation.rubric.tool_use_score import score as score_request
+from omnimarket.delegation.rubric.tool_use_record import score as score_request
 from omnimarket.delegation.rubric.tool_use_transcript import (
     TOOL_USE_CLASS,
     declared_tools_from_schemas,
