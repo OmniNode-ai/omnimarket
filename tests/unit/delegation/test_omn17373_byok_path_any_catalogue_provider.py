@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
@@ -142,7 +143,7 @@ def test_a_local_rung_is_never_replaced(local_store_at_tmp: Path) -> None:
 
 def test_the_no_key_refusal_names_the_missing_customer_key() -> None:
     """Defect 3: with no model and no key, the refusal says the key is missing."""
-    with pytest.raises(Exception) as excinfo:  # noqa: PT011 -- type pinned by OMN-16200's own test
+    with pytest.raises(ProtocolConfigurationError) as excinfo:
         refuse_undeclared_local_model(
             tenant_id=_TENANT,
             backend=_house_rung(),
