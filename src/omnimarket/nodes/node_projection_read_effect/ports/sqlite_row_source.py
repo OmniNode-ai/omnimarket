@@ -197,9 +197,9 @@ class SqliteTableRowSource:
                 "the local projection store named by the runtime binding does not exist",
             )
         try:
-            conn = sqlite3.connect(
+            conn = sqlite3.connect(  # no-contract-check: read-only projection boundary; local SQLite projection reader (OMN-20329)
                 f"{self._db_path.resolve().as_uri()}?mode=ro", uri=True
-            )  # no-contract-check: read-only projection boundary; local SQLite projection reader (OMN-20329)
+            )
         except sqlite3.Error as exc:
             raise ProjectionReadError(
                 "projection_database_unavailable",
