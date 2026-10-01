@@ -183,11 +183,13 @@ def execution_results_from_calls(
         command = arguments.get("command") if isinstance(arguments, dict) else None
         if not isinstance(command, str):
             continue
+        # Only a printed summary is evidence. A refused or crashed call that printed none
+        # (a permission prompt, a missing interpreter) ran no test and records nothing.
         output = call.result.output
-        if _FAILED.search(output) or call.result.status == EnumToolCallStatus.ERROR:
+        if _FAILED.search(output):
             passed = False
         elif _PASSED.search(output):
-            passed = True
+            passed = call.result.status == EnumToolCallStatus.OK
         else:
             continue
         for target in dict.fromkeys(re.findall(target_pattern, command)):

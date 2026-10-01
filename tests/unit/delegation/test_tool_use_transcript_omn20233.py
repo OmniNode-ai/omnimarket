@@ -331,6 +331,20 @@ def test_execution_results_read_the_printed_summary(
     ]
 
 
+def test_a_refused_shell_call_records_no_result() -> None:
+    call = ModelToolCall(
+        call_id="c",
+        tool_name="Bash",
+        arguments_json=json.dumps(
+            {"command": "uv run pytest tests/unit/test_mod.py -q"}
+        ),
+        result=ModelToolCallResult(
+            status=EnumToolCallStatus.ERROR, output="This command requires approval"
+        ),
+    )
+    assert execution_results_from_calls([call], r"tests/[\w./-]+\.py") == ()
+
+
 def test_execution_results_ignore_output_without_a_summary() -> None:
     call = ModelToolCall(
         call_id="c",
