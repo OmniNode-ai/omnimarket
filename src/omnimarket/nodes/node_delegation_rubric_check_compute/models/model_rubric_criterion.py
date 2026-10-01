@@ -33,6 +33,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_named_sy
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_no_phantom_paths_params import (
     ModelNoPhantomPathsParams,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_task_answer_traceable_params import (
+    ModelTaskAnswerTraceableParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_test_targets_params import (
     ModelTestTargetsParams,
 )
@@ -55,6 +58,7 @@ class ModelRubricCriterion(BaseModel):
         | ModelNamedSymbolsParams
         | ModelTestTargetsParams
         | ModelDeclaredFormatParams
+        | ModelTaskAnswerTraceableParams
         | ModelClaimsTraceableParams
         | ModelIdCoverageParams
         | ModelCodeParsesParams
@@ -72,7 +76,7 @@ class ModelRubricCriterion(BaseModel):
             "no_phantom_paths": ModelNoPhantomPathsParams,
             "edits_apply": ModelEditsApplyParams,
             "stated_check_passes": ModelTestTargetsParams,
-            "task_answer_traceable": ModelClaimsTraceableParams,
+            "task_answer_traceable": ModelTaskAnswerTraceableParams,
             "within_budget": ModelWithinBudgetParams,
             "cited_lines_exist": ModelCitedLinesParams,
             "named_symbols_exist": ModelNamedSymbolsParams,
