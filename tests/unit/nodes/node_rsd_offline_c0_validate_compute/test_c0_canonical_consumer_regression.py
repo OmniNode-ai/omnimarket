@@ -44,7 +44,7 @@ from omnimarket.nodes.node_rsd_offline_c0_validate_compute.models.model_rsd_offl
     ModelRsdOfflineC0Input,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _ROOT = Path(__file__).parents[4]
 _REGISTRY = (

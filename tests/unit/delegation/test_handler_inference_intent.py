@@ -46,6 +46,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 
 def _make_intent(**kwargs: object) -> ModelInferenceIntent:
     defaults: dict[str, object] = {

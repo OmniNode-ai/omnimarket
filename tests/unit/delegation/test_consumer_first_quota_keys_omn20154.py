@@ -1,13 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20154, consumer first: a released consumer must decode the next shape.
+"""OMN-20154: declared quota and attempt fields retain their wire values.
 
-The change after this one stamps ``provider_id``, ``http_status`` and
-``provider_code`` onto every delegation attempt and declares ``scope`` on each
-provider quota rule. Both models are ``extra="forbid"``, so a consumer released
-without these keys would dead-letter every terminal (OMN-18852) and refuse the
-policy. This release accepts exactly these keys, discards them, and still
-refuses any other unknown key.
+The consumer-first shims have been replaced by declared ``scope``,
+``provider_id``, ``http_status`` and ``provider_code`` fields. These values
+round-trip through the wire models; unrelated unknown keys remain forbidden.
 """
 
 from __future__ import annotations
@@ -16,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    EnumQuotaScope,
     ModelQuotaCodeRule,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
@@ -33,11 +31,20 @@ _ATTEMPT = {
 }
 
 
-def test_an_attempt_carrying_the_provider_facts_decodes() -> None:
-    record = ModelDelegateSkillAttemptRecord.model_validate(
-        _ATTEMPT | {"provider_id": "zai", "http_status": 429, "provider_code": "1302"}
-    )
+def test_declared_attempt_provider_facts_round_trip() -> None:
+    provider_facts = {"provider_id": "zai", "http_status": 429, "provider_code": "1302"}
+    assert provider_facts.keys() <= ModelDelegateSkillAttemptRecord.model_fields.keys()
+    record = ModelDelegateSkillAttemptRecord.model_validate(_ATTEMPT | provider_facts)
     assert record.failure_class == "rate_limited"
+    assert record.provider_id == "zai"
+    assert record.http_status == 429
+    assert record.provider_code == "1302"
+    payload = record.model_dump(mode="json")
+    assert {key: payload[key] for key in provider_facts} == provider_facts
+    assert (
+        ModelDelegateSkillAttemptRecord.model_validate_json(record.model_dump_json())
+        == record
+    )
 
 
 def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
@@ -45,11 +52,16 @@ def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
         ModelDelegateSkillAttemptRecord.model_validate(_ATTEMPT | {"surprise": 1})
 
 
-def test_a_quota_rule_carrying_scope_decodes() -> None:
+@pytest.mark.parametrize("scope", list(EnumQuotaScope))
+def test_declared_quota_scope_round_trips(scope: EnumQuotaScope) -> None:
+    assert "scope" in ModelQuotaCodeRule.model_fields
     rule = ModelQuotaCodeRule.model_validate(
-        {"code": "429", "disposition": "retryable", "scope": "model"}
+        {"code": "429", "disposition": "retryable", "scope": scope.value}
     )
     assert rule.code == "429"
+    assert rule.scope == scope
+    assert rule.model_dump(mode="json")["scope"] == scope.value
+    assert ModelQuotaCodeRule.model_validate_json(rule.model_dump_json()) == rule
 
 
 def test_a_quota_rule_with_any_other_unknown_key_is_still_refused() -> None:

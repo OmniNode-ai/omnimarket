@@ -56,6 +56,10 @@ event_bus:
     # FIRST publish topic (no top-level terminal_event is declared), so a
     # prepended failure terminal would silently become the success terminal.
     - "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
+    # OMN-20154: the judge's provider quota observation, delivered through
+    # node_event_emit_effect (spool, then bus) by the judge adapter, folded by
+    # node_projection_provider_quota. APPENDED for the same reason as above.
+    - "onex.evt.omnimarket.provider-quota-observed.v1"
 
 # OMN-17445 -- WHY THIS DECLARATION EXISTS.
 #
