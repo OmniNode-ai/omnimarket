@@ -145,7 +145,7 @@ def declared_judge_credential_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
     real_available = judge_mod.api_key_ref_available
 
     def _available(api_key_ref: str | None, **kwargs: Any) -> bool:
-        if api_key_ref == "llm.gemini.api_key":
+        if api_key_ref in {"llm.gemini.api_key", "llm.openrouter.api_key"}:
             return True
         return real_available(api_key_ref, **kwargs)
 

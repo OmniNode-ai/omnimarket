@@ -1120,17 +1120,12 @@ def _extract_effective_deliverable(
             EnumDelegationOutputRefusalReason.NO_SCHEMA_CONFORMING_JSON
         ),
     }[refusal_reason]
-    # OMN-19434: a response that is reasoning with no answer behind it has no
-    # marker to extract at, so it is refused and blanked here, and the gate used
-    # to grade the blank and report "empty response" about a response that was
-    # all reasoning. The gate judges the raw text instead, where its preamble
-    # floor names the real problem and can never accept it. The caller, the
-    # recorded workflow content and the terminal still receive the blank.
-    if (
-        segment_reasoning_preamble(response.content).boundary_rule
-        is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
-    ):
-        workflow.gate_content_override = response.content
+    # OMN-17427: retain the provider's actual output for the gate, including
+    # meaningful prose that omitted the required boundary. Grading a fabricated
+    # blank misreports that case as empty. Extraction still withholds the caller's
+    # output, and _gate_result_with_output_refusal enforces its deterministic
+    # refusal even if the raw prose satisfies the content checks.
+    workflow.gate_content_override = response.content
     return (
         response.model_copy(update={"content": ""}),
         ModelDelegationOutputRefusal(
@@ -1149,6 +1144,21 @@ def _gate_content(
     if workflow.gate_content_override is not None:
         return workflow.gate_content_override
     return response.content
+
+
+def _gate_result_with_output_refusal(
+    workflow: DelegationWorkflowState, result: ModelQualityGateResult
+) -> ModelQualityGateResult:
+    """Keep extraction's deterministic refusal in the verdict about raw text."""
+    from omnimarket.delegation.output_boundary_gate import (
+        gate_result_with_output_refusal,
+    )
+
+    return gate_result_with_output_refusal(
+        result,
+        workflow.output_refusal,
+        raw_content=workflow.gate_content_override or "",
+    )
 
 
 def _build_model_inference_intent(
@@ -3404,6 +3414,7 @@ class HandlerDelegationWorkflow:
         if workflow.state != EnumDelegationState.INFERENCE_COMPLETED:
             return []
 
+        result = _gate_result_with_output_refusal(workflow, result)
         self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
         if workflow.response_contract_evidence is not None:

@@ -52,6 +52,9 @@ class EnumRoutingExclusionReason(StrEnum):
     """The tier costs more per 1k tokens than the task class's declared ceiling."""
 
     # ---- candidate-level --------------------------------------------------
+    BACKEND_REQUIRES_EXPLICIT_PIN = "backend_requires_explicit_pin"
+    """The backend is declared for explicit caller-pin tests only."""
+
     TASK_TYPE_NOT_IN_USE_FOR = "task_type_not_in_use_for"
     """The model does not declare this task type in its ``use_for`` set."""
 

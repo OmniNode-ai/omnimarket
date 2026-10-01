@@ -1,0 +1,217 @@
+{
+  "command_templates": {
+    "gemini": "onex delegate <pin-test-prompt> --task-type summarization --backend-id cloud-gemini-flash --max-tokens 128 --timeout 30 --bus kafka --lane dev --locus deployed-lane",
+    "historical_prose": "onex delegate <exact historical prompt> --task-type document --backend-id local-heavy-reasoning --max-tokens 4096 --timeout 90 --bus inmemory --locus in-process",
+    "local": "onex delegate <prompt> --task-type <summarization|code_generation> --backend-id <local-heavy-reasoning|local-coder> --max-tokens 1024 --timeout 60 --bus inmemory --locus in-process",
+    "ordinary_unpinned_summary": "onex delegate <jobs prompt> --task-type summarization --max-tokens 1024 --timeout 60 --bus inmemory --locus in-process"
+  },
+  "environment_templates": {
+    "BIFROST_CONTRACT_PATH": "/tmp/codex-17427-bifrost.yaml",
+    "OMNIBASE_PATH": "$OMNI_HOME",
+    "PYTHONPATH": "$OMNI_HOME/omni_worktrees/codex-delegate-local-coder/omnimarket/src:$OMNI_HOME/omni_worktrees/codex-delegate-local-coder/omnibase_infra/src"
+  },
+  "historical_before": {
+    "lab_host": ".202",
+    "nonempty_response_chars": 2729,
+    "output_refusal": {
+      "contract_failure_reasons": [],
+      "output_shape": "markdown",
+      "reason": "ambiguous_unmarked_deliverable"
+    },
+    "preamble_chars": 2848,
+    "quality_gates_failed": [
+      "MALFORMED: empty response"
+    ],
+    "run_id": "68674af9-4687-4248-97ce-16d2a635d254",
+    "source_commit": "3f9bda3601e21a4a4558d50698e41b3973bf13ad",
+    "source_version": "0.4.273",
+    "task_type": "document"
+  },
+  "lab_host": ".201",
+  "model_probe": {
+    "health_http_status": 200,
+    "http_status": 200,
+    "path": "/v1/models",
+    "served_model_id": "Qwen3.8-27B",
+    "tiny_completion_http_status": 200
+  },
+  "private_topology": "Private LAN addresses omitted; host suffixes identify lab slots.",
+  "receipts": [
+    {
+      "backend_pin_honoured": null,
+      "bus": "inmemory",
+      "lane": null,
+      "locus": "in-process",
+      "receipt_id": "212a46da-9326-4886-81d9-96884c0dc4d5",
+      "requested_backend_id": "local-heavy-reasoning",
+      "run_id": "ecd76282-9490-496a-8f43-bc3cd6890e1f",
+      "scenario": "missing_local_binding",
+      "status": "failed"
+    },
+    {
+      "backend_id": "local-heavy-reasoning",
+      "backend_pin_honoured": true,
+      "bus": "inmemory",
+      "config_overrides": [
+        {
+          "config_key": "BIFROST_CONTRACT_PATH",
+          "resolved_path": "/tmp/codex-17427-bifrost.yaml",
+          "source": "contract_overlay_env"
+        }
+      ],
+      "endpoint_lab_host": ".201",
+      "endpoint_path": "/v1/chat/completions",
+      "lane": null,
+      "locus": "in-process",
+      "model": "Qwen3.8-27B",
+      "receipt_id": "ffd1d8a9-dbc8-41f3-ab81-ede3f783b4e5",
+      "requested_backend_id": "local-heavy-reasoning",
+      "response_contract_evidence": {
+        "channel": "messages[0].content",
+        "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+        "conveyed": true,
+        "output_shape": "markdown",
+        "validated": true
+      },
+      "run_id": "bf944dc9-ec26-4ffd-a5e4-bb48109512e9",
+      "scenario": "summary",
+      "status": "success"
+    },
+    {
+      "backend_id": "local-coder",
+      "backend_pin_honoured": true,
+      "bus": "inmemory",
+      "config_overrides": [
+        {
+          "config_key": "BIFROST_CONTRACT_PATH",
+          "resolved_path": "/tmp/codex-17427-bifrost.yaml",
+          "source": "contract_overlay_env"
+        }
+      ],
+      "endpoint_lab_host": ".201",
+      "endpoint_path": "/v1/chat/completions",
+      "lane": null,
+      "locus": "in-process",
+      "model": "Qwen3.8-27B",
+      "receipt_id": "665fd614-a54a-4722-ae27-9fe1208676e3",
+      "requested_backend_id": "local-coder",
+      "response_contract_evidence": {
+        "channel": "messages[0].content",
+        "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+        "conveyed": true,
+        "output_shape": "markdown",
+        "validated": true
+      },
+      "run_id": "8e730b5d-6df6-4ebb-8011-a3155d03c050",
+      "scenario": "code",
+      "status": "success"
+    },
+    {
+      "backend_id": "local-heavy-reasoning",
+      "backend_pin_honoured": true,
+      "bus": "inmemory",
+      "config_overrides": [
+        {
+          "config_key": "BIFROST_CONTRACT_PATH",
+          "resolved_path": "/tmp/codex-17427-bifrost.yaml",
+          "source": "contract_overlay_env"
+        }
+      ],
+      "endpoint_lab_host": ".201",
+      "endpoint_path": "/v1/chat/completions",
+      "lane": null,
+      "locus": "in-process",
+      "model": "Qwen3.8-27B",
+      "receipt_id": "3849fd05-aec6-4878-904f-71ca9fc71521",
+      "requested_backend_id": "local-heavy-reasoning",
+      "response_contract_evidence": {
+        "channel": "messages[0].content",
+        "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+        "conveyed": true,
+        "output_shape": "markdown",
+        "validated": true
+      },
+      "run_id": "6ddc4a2f-ef33-49f0-8072-63f92b43eda4",
+      "scenario": "historical_prose",
+      "status": "success"
+    },
+    {
+      "backend_id": "cloud-gemini-flash",
+      "backend_pin_honoured": true,
+      "bus": "kafka",
+      "config_overrides": [
+        {
+          "config_key": "BIFROST_CONTRACT_PATH",
+          "resolved_path": "/tmp/codex-17427-bifrost.yaml",
+          "source": "contract_overlay_env"
+        }
+      ],
+      "endpoint_lab_host": "public-provider",
+      "endpoint_path": "gemini",
+      "lane": "dev",
+      "locus": "deployed-lane",
+      "model": "gemini-2.5-flash-lite",
+      "receipt_id": "e1b95491-3970-4433-a6fb-78aa39cd6356",
+      "requested_backend_id": "cloud-gemini-flash",
+      "response_contract_evidence": {
+        "channel": "messages[0].content",
+        "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+        "conveyed": true,
+        "output_shape": "markdown",
+        "validated": true
+      },
+      "run_id": "73665be3-ac01-4f3f-a268-15d65834cde7",
+      "scenario": "gemini_pin_existing_deployed_lane",
+      "status": "success"
+    },
+    {
+      "backend_pin_honoured": null,
+      "bus": "inmemory",
+      "lane": null,
+      "locus": "in-process",
+      "receipt_id": "61b92771-4b01-40fb-bcd8-3716697e7b18",
+      "requested_backend_id": "local-coder",
+      "run_id": "0d81daa3-769d-4590-a894-e78a1584f5f1",
+      "scenario": "before_code_missing_binding",
+      "status": "failed"
+    },
+    {
+      "backend_id": "local-omnipc2-chat",
+      "backend_pin_honoured": null,
+      "bus": "inmemory",
+      "config_overrides": [
+        {
+          "config_key": "BIFROST_CONTRACT_PATH",
+          "resolved_path": "/tmp/codex-17427-bifrost.yaml",
+          "source": "contract_overlay_env"
+        }
+      ],
+      "endpoint_lab_host": ".202",
+      "endpoint_path": "/v1/chat/completions",
+      "lane": null,
+      "locus": "in-process",
+      "model": "Qwen3.8-27B",
+      "receipt_id": "8ada4469-9a60-4edc-ae36-bb14b5c34858",
+      "requested_backend_id": null,
+      "response_contract_evidence": {
+        "channel": "messages[0].content",
+        "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+        "conveyed": true,
+        "output_shape": "markdown",
+        "validated": true
+      },
+      "run_id": "f8a9f77b-b5f6-413b-8eef-5beb1cedc85c",
+      "scenario": "ordinary_unpinned_summary",
+      "status": "success"
+    }
+  ],
+  "source_provenance": {
+    "gemini_run": "patched CLI submitted pinned request to existing deployed-lane orchestrator; no deployed service was replaced",
+    "historical_failure_run": "68674af9-4687-4248-97ce-16d2a635d254",
+    "later_diagnostic_changes": "Both dispatch paths and exclusion-report diagnostics additionally covered by focused local regressions after the live model probes.",
+    "local_runs": "worktree omnimarket and omnibase_infra source, rendered bifrost contract with explicit served-model binding, in-process inference",
+    "market_base_commit_at_probe": "fd6a14192ebb36a139cd7caa82d7093374c00e43",
+    "requested_run_unavailable": "4561863a-5590-43e1-9e97-ad97835255df"
+  },
+  "ticket": "OMN-17427"
+}

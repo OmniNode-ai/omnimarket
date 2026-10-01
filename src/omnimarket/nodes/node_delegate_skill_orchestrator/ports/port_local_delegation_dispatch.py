@@ -2890,11 +2890,7 @@ class LocalDelegationDispatchPort:
             # about a response that was all reasoning. The gate judges the raw
             # text instead, where its preamble floor names the real problem and
             # can never accept it. The caller still receives the blank.
-            if (
-                segment_reasoning_preamble(raw_content).boundary_rule
-                is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
-            ):
-                gate_content = raw_content
+            gate_content = raw_content
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
@@ -2942,6 +2938,13 @@ class LocalDelegationDispatchPort:
             # non-heuristic way to tell the two apart.
             finish_reason=result.finish_reason,
             reasoning_stripped_chars=result.reasoning_stripped_chars,
+        )
+        from omnimarket.delegation.output_boundary_gate import (
+            gate_result_with_output_refusal,
+        )
+
+        gate_result = gate_result_with_output_refusal(
+            gate_result, output_refusal, raw_content=raw_content
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
