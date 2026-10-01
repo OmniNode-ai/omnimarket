@@ -62,6 +62,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_rubric_e
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_rubric_verdict import (
     ModelRubricVerdict,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_task_answer_traceable_params import (
+    ModelTaskAnswerTraceableParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_test_targets_params import (
     ModelTestTargetsParams,
 )
@@ -108,6 +111,7 @@ __all__ = [
     "ModelRubricCriterionResult",
     "ModelRubricExecutionResult",
     "ModelRubricVerdict",
+    "ModelTaskAnswerTraceableParams",
     "ModelTestTargetsParams",
     "ModelToolCall",
     "ModelToolCallResult",
