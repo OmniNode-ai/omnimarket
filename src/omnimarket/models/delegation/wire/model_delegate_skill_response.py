@@ -66,9 +66,7 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 # producer and are no longer listed among the forthcoming keys.
 #
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated"}
-)
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
