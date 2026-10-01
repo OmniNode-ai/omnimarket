@@ -36,6 +36,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+from tests.test_omn15909_real_postgres_projection_write_path_gate import (
+    _live_migration_files as _delegation_migration_files,
+)
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -54,6 +57,13 @@ DO $$
 BEGIN
   BEGIN
     CREATE ROLE app_dashboard WITH
+      NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+  EXCEPTION
+    WHEN duplicate_object OR unique_violation THEN
+      NULL;
+  END;
+  BEGIN
+    CREATE ROLE tenant_projection_writer WITH
       NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
   EXCEPTION
     WHEN duplicate_object OR unique_violation THEN
@@ -148,9 +158,18 @@ async def _provisioned_runner() -> AsyncIterator[
         await admin_conn.execute(f"CREATE SCHEMA {schema}")
         await admin_conn.execute(f"SET search_path TO {schema}, public")
         await admin_conn.execute(_APP_DASHBOARD_ROLE_SQL)
-        for migration_path in sorted(_MIGRATIONS_DIR.glob("*.sql")):
-            sql = migration_path.read_text(encoding="utf-8").replace(
-                "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
+        # The savings views and the run-identity read join `delegation_events`,
+        # which the delegation node owns: migrate it first, as production does.
+        for migration_path in (
+            *_delegation_migration_files(),
+            *sorted(_MIGRATIONS_DIR.glob("*.sql")),
+        ):
+            # Migrations name `public.` explicitly; the throwaway schema is
+            # first on the search_path, so strip it to land the tables there.
+            sql = (
+                migration_path.read_text(encoding="utf-8")
+                .replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+                .replace("public.", "")
             )
             await admin_conn.execute(sql)
 
