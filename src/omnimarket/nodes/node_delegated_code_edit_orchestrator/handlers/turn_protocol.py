@@ -40,6 +40,7 @@ REQUIRED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern",),
     EnumCodeEditTool.WRITE: ("file_path",),
     EnumCodeEditTool.EDIT: ("file_path", "old_string"),
+    EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: (),
 }
@@ -51,6 +52,7 @@ ALLOWED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern", "path"),
     EnumCodeEditTool.WRITE: ("file_path", "content"),
     EnumCodeEditTool.EDIT: ("file_path", "old_string", "new_string"),
+    EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: ("summary",),
 }
@@ -66,6 +68,8 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     EnumCodeEditTool.WRITE: "Create or replace one writable file with content.",
     EnumCodeEditTool.EDIT: "Replace old_string, which must occur exactly once, "
     "with new_string in one writable file.",
+    EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
+    "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
     EnumCodeEditTool.FINISH: "Declare the task done; every declared check then runs.",
 }
