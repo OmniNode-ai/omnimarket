@@ -252,19 +252,42 @@ async def test_rollback_leaves_a_row_written_again_since_the_backfill() -> None:
         assert restored == "completed"
 
 
-async def test_backfill_sees_rows_under_force_rls_as_the_owner() -> None:
-    """Under FORCE RLS the owner is filtered too; the backfill must still see rows."""
+async def test_under_force_rls_the_owner_rewrites_tenant_by_tenant() -> None:
+    """Under FORCE RLS the owner is filtered too. The backfill must still see the
+    rows of every tenant the registry mirror resolves, must leave a tenant it does
+    not resolve alone, and must never change the relation's row-level security."""
     async with _migrated_schema() as (conn, schema):
         await _seed(conn)
+        stranger = "79afa726-3852-464f-b7a4-d4b8b9c75ee7"
+        await conn.execute(
+            "INSERT INTO delegation_events (correlation_id, tenant_id, terminal_ok, "
+            "terminal_failure_cause, operational_outcome, content_verdict) "
+            "VALUES ('bad-unregistered', $1::uuid, false, 'timeout', 'completed', 'usable')",
+            stranger,
+        )
+        await conn.execute(
+            "CREATE TABLE tenant_registry_mirror (tenant_slug TEXT PRIMARY KEY, "
+            "tenant_uuid UUID NOT NULL, status TEXT NOT NULL)"
+        )
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror VALUES ('house', $1::uuid, 'active')",
+            _TENANT,
+        )
         owner = f"omn20276_owner_{uuid4().hex[:8]}"
         await conn.execute(f"CREATE ROLE {owner} NOLOGIN NOSUPERUSER NOBYPASSRLS")
         try:
             await conn.execute(f"GRANT USAGE, CREATE ON SCHEMA {schema} TO {owner}")
+            await conn.execute(f"GRANT SELECT ON tenant_registry_mirror TO {owner}")
             await conn.execute(f"ALTER TABLE delegation_events OWNER TO {owner}")
             await conn.execute(
                 "ALTER TABLE delegation_events ENABLE ROW LEVEL SECURITY"
             )
             await conn.execute("ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY")
+            policy_before = await conn.fetch(
+                "SELECT policyname, qual, with_check FROM pg_policies "
+                "WHERE schemaname = $1 AND tablename = 'delegation_events'",
+                schema,
+            )
             await conn.execute(f"SET ROLE {owner}")
             # Positive control: the owner is blind to every row under FORCE.
             assert await conn.fetchval("SELECT count(*) FROM delegation_events") == 0
@@ -272,18 +295,28 @@ async def test_backfill_sees_rows_under_force_rls_as_the_owner() -> None:
             await _apply(conn, _BACKFILL, schema)
 
             await conn.execute("RESET ROLE")
-            assert await _contradictory(conn) == 0
-            forced = await conn.fetchval(
-                "SELECT relforcerowsecurity FROM pg_class "
+            assert await _contradictory(conn) == 1
+            left = await conn.fetchval(
+                "SELECT operational_outcome FROM delegation_events "
+                "WHERE correlation_id = 'bad-unregistered'"
+            )
+            assert left == "completed"
+            flags = await conn.fetchrow(
+                "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
                 "WHERE oid = 'delegation_events'::regclass"
             )
-            assert forced is True
-            policies = await conn.fetchval(
-                "SELECT count(*) FROM pg_policies WHERE schemaname = $1 "
-                "AND tablename = 'delegation_events' AND policyname = 'tenant_isolation'",
+            assert tuple(flags) == (True, True)
+            policy_after = await conn.fetch(
+                "SELECT policyname, qual, with_check FROM pg_policies "
+                "WHERE schemaname = $1 AND tablename = 'delegation_events'",
                 schema,
             )
-            assert policies == 1
+            assert policy_after == policy_before
+
+            await conn.execute(f"SET ROLE {owner}")
+            await _apply(conn, _ROLLBACK, schema)
+            await conn.execute("RESET ROLE")
+            assert await _contradictory(conn) == len(_CAUSES) + 3
         finally:
             await conn.execute("RESET ROLE")
             await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")

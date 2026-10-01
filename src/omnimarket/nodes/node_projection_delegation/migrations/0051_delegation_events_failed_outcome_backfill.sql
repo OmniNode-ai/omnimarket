@@ -43,16 +43,20 @@
 --   node_delegate_skill_orchestrator 0001). Without it the CREATE TABLE below
 --   fails, so no lane can record this file applied while its rows stay wrong.
 --
--- ROW LEVEL SECURITY
+-- ROW LEVEL SECURITY, WITHOUT TOUCHING IT
 --
---   delegation_events is FORCE ROW LEVEL SECURITY on the tenant lanes. Under
---   FORCE the owner is filtered too, and with app.tenant_id unset every row is
---   invisible, so the rewrite would match nothing and report success. The
---   DO block lifts FORCE, rewrites, and restores it, as 0033 does; one
---   statement is one transaction, so no path commits with FORCE lifted.
---   Where FORCE is restored the tenant_isolation policy is restated with
---   0034's predicate unchanged, so the file never enforces without its
---   admitting rule. created_at and the row's other columns are not touched.
+--   delegation_events carries a tenant_isolation policy on the tenant lanes,
+--   and under FORCE the owner is filtered too: with app.tenant_id unset every
+--   row is invisible and a plain rewrite would match nothing and report
+--   success. This file never changes the relation's row-level security (a
+--   file that turns FORCE on is fenced, and lifting it is a window). A role
+--   that bypasses RLS (a superuser, as the compose runner is) or owns a
+--   non-FORCE relation sees every row and rewrites once. Any other role
+--   rewrites tenant by tenant, setting app.tenant_id transaction-locally for
+--   each tenant tenant_registry_mirror resolves, the identity source 0033
+--   uses. A row whose tenant the mirror does not hold stays as it is, and the
+--   NOTICE says the rewrite ran blind-safe. created_at and the row's other
+--   columns are not touched.
 
 CREATE TABLE IF NOT EXISTS omninode_internal.delegation_events_outcome_backfill_omn20276 (
     delegation_event_id UUID PRIMARY KEY,
@@ -69,8 +73,11 @@ COMMENT ON TABLE omninode_internal.delegation_events_outcome_backfill_omn20276 I
 
 DO $$
 DECLARE
-    v_forced BOOLEAN;
-    v_rewritten BIGINT;
+    v_blind BOOLEAN;
+    v_tenants UUID[];
+    v_tenant UUID;
+    v_rewritten BIGINT := 0;
+    v_step BIGINT;
 BEGIN
     IF to_regclass('delegation_events') IS NULL THEN
         RAISE NOTICE 'OMN-20276: delegation_events does not exist; nothing to rewrite';
@@ -90,68 +97,81 @@ BEGIN
         RETURN;
     END IF;
 
-    v_forced := (
-        SELECT relforcerowsecurity FROM pg_catalog.pg_class
-        WHERE oid = 'delegation_events'::regclass
-    );
-    IF v_forced THEN
-        ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
+    SELECT c.relrowsecurity
+       AND NOT (r.rolsuper OR r.rolbypassrls)
+       AND (c.relforcerowsecurity OR NOT pg_catalog.pg_has_role(current_user, c.relowner, 'MEMBER'))
+      INTO v_blind
+      FROM pg_catalog.pg_class AS c, pg_catalog.pg_roles AS r
+     WHERE c.oid = 'delegation_events'::regclass
+       AND r.rolname = current_user;
+
+    IF v_blind THEN
+        IF to_regclass('tenant_registry_mirror') IS NULL THEN
+            RAISE NOTICE 'OMN-20276: row-level security hides delegation_events from %, and '
+                'tenant_registry_mirror is absent; nothing rewritten', current_user;
+            RETURN;
+        END IF;
+        v_tenants := ARRAY(
+            SELECT DISTINCT m.tenant_uuid FROM tenant_registry_mirror AS m
+            WHERE m.tenant_uuid IS NOT NULL
+        );
+    ELSE
+        v_tenants := ARRAY[NULL::UUID];
     END IF;
 
-    INSERT INTO omninode_internal.delegation_events_outcome_backfill_omn20276 (
-        delegation_event_id, correlation_id,
-        prior_operational_outcome, prior_content_verdict,
-        new_operational_outcome, new_content_verdict
-    )
-    SELECT
-        e.id,
-        e.correlation_id,
-        e.operational_outcome,
-        e.content_verdict,
-        CASE e.terminal_failure_cause
-            WHEN 'timeout' THEN 'timeout'
-            WHEN 'runtime_shutdown' THEN 'cancelled'
-            WHEN 'provider_quota_exhausted' THEN 'provider_quota'
-            WHEN 'quality_gate_refused' THEN 'quality_rejected'
-            ELSE 'inference_failed'
-        END,
-        CASE
-            WHEN e.content_verdict IN ('usable', 'correct') THEN
-                CASE e.terminal_failure_cause
-                    WHEN 'quality_gate_refused' THEN 'unusable'
-                    ELSE 'not_applicable'
-                END
-            ELSE e.content_verdict
-        END
-    FROM delegation_events AS e
-    WHERE e.terminal_ok IS FALSE
-      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
-      AND e.operational_outcome = 'completed'
-    ON CONFLICT (delegation_event_id) DO NOTHING;
+    FOREACH v_tenant IN ARRAY v_tenants LOOP
+        IF v_tenant IS NOT NULL THEN
+            PERFORM pg_catalog.set_config('app.tenant_id', v_tenant::text, true);
+        END IF;
 
-    UPDATE delegation_events AS e
-    SET operational_outcome = a.new_operational_outcome,
-        content_verdict = a.new_content_verdict
-    FROM omninode_internal.delegation_events_outcome_backfill_omn20276 AS a
-    WHERE e.id = a.delegation_event_id
-      AND e.terminal_ok IS FALSE
-      AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
-      AND e.operational_outcome = 'completed';
-    GET DIAGNOSTICS v_rewritten = ROW_COUNT;
+        INSERT INTO omninode_internal.delegation_events_outcome_backfill_omn20276 (
+            delegation_event_id, correlation_id,
+            prior_operational_outcome, prior_content_verdict,
+            new_operational_outcome, new_content_verdict
+        )
+        SELECT
+            e.id,
+            e.correlation_id,
+            e.operational_outcome,
+            e.content_verdict,
+            CASE e.terminal_failure_cause
+                WHEN 'timeout' THEN 'timeout'
+                WHEN 'runtime_shutdown' THEN 'cancelled'
+                WHEN 'provider_quota_exhausted' THEN 'provider_quota'
+                WHEN 'quality_gate_refused' THEN 'quality_rejected'
+                ELSE 'inference_failed'
+            END,
+            CASE
+                WHEN e.content_verdict IN ('usable', 'correct') THEN
+                    CASE e.terminal_failure_cause
+                        WHEN 'quality_gate_refused' THEN 'unusable'
+                        ELSE 'not_applicable'
+                    END
+                ELSE e.content_verdict
+            END
+        FROM delegation_events AS e
+        WHERE e.terminal_ok IS FALSE
+          AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
+          AND e.operational_outcome = 'completed'
+        ON CONFLICT (delegation_event_id) DO NOTHING;
 
-    IF v_forced THEN
-        ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
-        -- Restated, not changed: the predicate is 0034's, byte for byte, so
-        -- this file alone leaves the relation enforcing with its admitting
-        -- rule (the OMN-17298 policy-presence rule), and the ratchet's grant
-        -- travels with it (OMN-14894).
-        DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
-        CREATE POLICY tenant_isolation ON delegation_events
-          FOR ALL
-          USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-          WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
-        GRANT SELECT ON delegation_events TO app_dashboard;
+        UPDATE delegation_events AS e
+        SET operational_outcome = a.new_operational_outcome,
+            content_verdict = a.new_content_verdict
+        FROM omninode_internal.delegation_events_outcome_backfill_omn20276 AS a
+        WHERE e.id = a.delegation_event_id
+          AND e.terminal_ok IS FALSE
+          AND btrim(coalesce(e.terminal_failure_cause, '')) <> ''
+          AND e.operational_outcome = 'completed';
+        GET DIAGNOSTICS v_step = ROW_COUNT;
+        v_rewritten := v_rewritten + v_step;
+    END LOOP;
+
+    IF v_blind THEN
+        RAISE NOTICE 'OMN-20276: rewrote % delegation_events rows tenant by tenant (% tenants in '
+            'tenant_registry_mirror); a row of a tenant the mirror does not hold is unchanged',
+            v_rewritten, cardinality(v_tenants);
+    ELSE
+        RAISE NOTICE 'OMN-20276: rewrote % delegation_events rows', v_rewritten;
     END IF;
-
-    RAISE NOTICE 'OMN-20276: rewrote % delegation_events rows', v_rewritten;
 END$$;
