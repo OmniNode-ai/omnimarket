@@ -1,6 +1,6 @@
 ---
 name: projection_work_ledger
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
@@ -67,6 +67,17 @@ event_bus:
     - onex.evt.omnimarket.work-ledger-operator-consent.v1
     - onex.evt.omnimarket.work-ledger-friction.v1
     - onex.evt.omnimarket.work-ledger-correction.v1
+    - onex.evt.omnimarket.work-ledger-claim.v2
+    - onex.evt.omnimarket.work-ledger-status.v2
+    - onex.evt.omnimarket.work-ledger-terminal.v2
+    - onex.evt.omnimarket.work-ledger-hold.v2
+    - onex.evt.omnimarket.work-ledger-release.v2
+    - onex.evt.omnimarket.work-ledger-msg.v2
+    - onex.evt.omnimarket.work-ledger-ack.v2
+    - onex.evt.omnimarket.work-ledger-ruling.v2
+    - onex.evt.omnimarket.work-ledger-operator-consent.v2
+    - onex.evt.omnimarket.work-ledger-friction.v2
+    - onex.evt.omnimarket.work-ledger-correction.v2
   publish_topics:
     - onex.evt.omnimarket.projection-work-ledger-applied.v1
   dlq_topics:
@@ -74,6 +85,9 @@ event_bus:
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-work-ledger-applied.v1
+
+work_ledger:
+  ledger_id: rolling-work-ledger
 
 db_io:
   db_tables:
@@ -92,7 +106,7 @@ db_io:
 
   # work_ledger_rows is keyed on the row's content hash (ON CONFLICT DO NOTHING);
   # work_ledger_state is keyed on the entity, each op guarded on (at, row_id).
-  idempotency_key: "row_id"
+  idempotency_key: "event_id"
 
 metadata:
   transport_type: kafka

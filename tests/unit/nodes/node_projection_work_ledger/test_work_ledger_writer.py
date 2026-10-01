@@ -15,6 +15,7 @@ from omnimarket.events.enum_ledger_row_type import (
     EnumLedgerRowType,
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
+    ALL_SUBSCRIBE_TOPICS,
     SUBSCRIBE_TOPICS,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
@@ -62,10 +63,13 @@ def test_the_writer_declares_in_process_dispatch() -> None:
 
 def test_the_writer_subscribes_to_the_eleven_row_topics_the_contract_declares() -> None:
     assert sorted(_writer(_FakeDb()).subscribe_topics) == sorted(
-        t.topic for t in EnumLedgerRowType
+        topic for t in EnumLedgerRowType for topic in (t.topic, t.typed_topic)
     )
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
-    assert sorted(contract["event_bus"]["subscribe_topics"]) == sorted(SUBSCRIBE_TOPICS)
+    assert sorted(contract["event_bus"]["subscribe_topics"]) == sorted(
+        ALL_SUBSCRIBE_TOPICS
+    )
+    assert len(SUBSCRIBE_TOPICS) == 11
 
 
 def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
