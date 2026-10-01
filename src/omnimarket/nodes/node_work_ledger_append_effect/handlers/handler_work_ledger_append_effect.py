@@ -3,6 +3,7 @@
 """Validate, deduplicate and append ledger rows; no bus code (OMN-20275)."""
 
 import re
+import socket
 import time
 from collections.abc import Callable
 from typing import Literal
@@ -40,16 +41,19 @@ _TYPE_REFUSAL = (
 class HandlerWorkLedgerAppendEffect:
     def __init__(
         self,
-        runner: ProtocolLedgerAppendRunner,
-        reader: ProtocolLedgerReader,
-        host_name: str,
+        runner: ProtocolLedgerAppendRunner | None = None,
+        reader: ProtocolLedgerReader | None = None,
+        host_name: str | None = None,
         *,
         retry_sleep_s: float = 0.1,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._runner = runner
         self._reader = reader
-        self._host = host_name
+        # The runtime boot resolver constructs a declared handler from injectable
+        # params alone; the serve command supplies the real runner and reader, and
+        # a bare construction refuses to append rather than guess a ledger.
+        self._host = host_name or socket.gethostname().split(".", 1)[0]
         self._retry_sleep_s = retry_sleep_s
         self._sleep = sleep
 
@@ -64,6 +68,16 @@ class HandlerWorkLedgerAppendEffect:
     @property
     def host_name(self) -> str:
         return self._host
+
+    def _require_runner(self) -> ProtocolLedgerAppendRunner:
+        if self._runner is None:
+            raise RuntimeError("work-ledger append handler has no append runner")
+        return self._runner
+
+    def _require_reader(self) -> ProtocolLedgerReader:
+        if self._reader is None:
+            raise RuntimeError("work-ledger append handler has no ledger reader")
+        return self._reader
 
     def handle(
         self, request: ModelWorkLedgerAppendRequest
@@ -109,7 +123,7 @@ class HandlerWorkLedgerAppendEffect:
         # complete only when all of them are on the ledger. A partial count is an
         # error a person must reconcile, never a silent duplicate (model review,
         # omnibase_internal tla/ledger_bus_append/REVIEW.md).
-        landed = _request_lines(self._reader.read_text(), cell)
+        landed = _request_lines(self._require_reader().read_text(), cell)
         if len(landed) == len(rows):
             return receipt(
                 EnumWorkLedgerAppendStatus.DUPLICATE, 0, "already appended", landed
@@ -123,12 +137,12 @@ class HandlerWorkLedgerAppendEffect:
                 landed,
             )
         for attempt in range(3):
-            result = self._runner.append(request.rows)
+            result = self._require_runner().append(request.rows)
             if result.exit_code != 75 or attempt == 2:
                 break
             self._sleep(self._retry_sleep_s)
         tail = result.stderr or result.stdout
-        landed = _request_lines(self._reader.read_text(), cell)
+        landed = _request_lines(self._require_reader().read_text(), cell)
         if result.exit_code == 0 or len(landed) == len(rows):
             # A non-zero exit after the rows landed (the stranded-clone signal, 78)
             # still appended them: the receipt says accepted and carries the text.
