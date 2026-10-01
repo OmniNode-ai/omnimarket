@@ -340,7 +340,7 @@ class TestInferenceAttemptIdentity:
         accepted = handler.handle_inference_response(
             _make_response(
                 cid,
-                content="def test_verify_registration():\n    assert True",
+                content="### ANSWER\ndef test_verify_registration():\n    assert True",
                 model_used=_CLOUD_MODEL,
                 inference_attempt_id=cloud_attempt_id,
                 route="cloud-gemini-flash",
@@ -381,7 +381,7 @@ class TestInferenceAttemptIdentity:
                 {
                     "finish_reason": "stop",
                     "message": {
-                        "content": "def test_verify_registration():\n    assert True"
+                        "content": "### ANSWER\ndef test_verify_registration():\n    assert True"
                     },
                 }
             ],
@@ -521,7 +521,7 @@ class TestInferenceAttemptIdentity:
         accepted = handler.handle_inference_response(
             _make_response(
                 cid,
-                content="def test_verify_registration():\n    assert True",
+                content="### ANSWER\ndef test_verify_registration():\n    assert True",
                 model_used=_CLOUD_MODEL,
                 inference_attempt_id=None,
             )

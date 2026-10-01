@@ -256,7 +256,7 @@ def _advance_workflow_to_gate(
     handler: HandlerDelegationWorkflow,
     correlation_id: UUID,
     *,
-    content: str = "the changelog summary",
+    content: str = "### ANSWER\nthe changelog summary",
 ) -> object:
     """Drive the real FSM from ROUTED to INFERENCE_COMPLETED.
 

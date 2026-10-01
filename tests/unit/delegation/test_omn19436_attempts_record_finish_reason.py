@@ -118,7 +118,7 @@ def _answered(handler: HandlerDelegationWorkflow, cid: UUID, tier: str) -> None:
     handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=cid,
-            content="def test_foo():\n    assert True",
+            content="### ANSWER\ndef test_foo():\n    assert True",
             model_used="qwen3-coder-30b",
             latency_ms=10,
         )
