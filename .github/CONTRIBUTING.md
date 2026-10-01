@@ -64,7 +64,7 @@ one repository cannot turn another repository's checks red.
 | `omnibase_core`, `omnibase_compat`, `omnibase_spi`, `omnimemory` | release tag `v<version>` of the `uv.lock` entry | each clone step reads the version from `uv.lock` |
 | `omnibase_infra` | release tag matching the `omnibase-infra` entry in `uv.lock` | literal `ref:` in each checkout step |
 | `omniclaude` | release tag `v0.27.0` | literal `ref:` in each checkout step; the 40-char sha of the tag plus a `# <tag>` comment in each `uses:` reference |
-| `omniintelligence` | commit sha of the release line that carries the hostile-review model roster | literal `ref:` in the contract-topic-graph checkout and `clone_with_retry` in the hostile-review workflow |
+| `omniintelligence` | commit sha of its `dev` tip when last bumped (no release carries the hostile-review model roster this repo requests) | literal `ref:` in the contract-topic-graph checkout and `clone_with_retry` in the hostile-review workflow |
 | `onex_change_control` | commit sha of its `dev` tip when last bumped (its governance allowlists and lint rules ship ahead of its tags) | literal `ref:` in each checkout and clone step; the sha in each `uses:` reference |
 | `omnibase_core` reusable workflow | commit sha of the `omnibase-core` lock version's tag | `uses:` in `docs-validate.yml` |
 
