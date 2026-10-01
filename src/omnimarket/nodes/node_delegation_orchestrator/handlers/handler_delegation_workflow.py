@@ -1125,7 +1125,8 @@ def _extract_effective_deliverable(
     # blank misreports that case as empty. Extraction still withholds the caller's
     # output, and _gate_result_with_output_refusal enforces its deterministic
     # refusal even if the raw prose satisfies the content checks.
-    workflow.gate_content_override = response.content
+    if response.content.strip():
+        workflow.gate_content_override = response.content
     return (
         response.model_copy(update={"content": ""}),
         ModelDelegationOutputRefusal(

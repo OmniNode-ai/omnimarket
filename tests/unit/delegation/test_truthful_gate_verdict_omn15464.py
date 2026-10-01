@@ -300,7 +300,7 @@ def _handler_ready_for_gate(correlation_id: UUID) -> HandlerDelegationWorkflow:
     gate_intents = handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=correlation_id,
-            content="HYBRID_GATEWAY_CANARY",
+            content="### ANSWER\nHYBRID_GATEWAY_CANARY",
             model_used="gemini-2.5-flash",
             prompt_tokens=10,
             completion_tokens=5,

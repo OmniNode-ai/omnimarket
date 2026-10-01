@@ -167,6 +167,8 @@ def _make_inference_response(
     total_tokens: int = 0,
     llm_call_id: str = "",
 ) -> ModelInferenceResponseData:
+    if content and not content.startswith("### ANSWER"):
+        content = f"### ANSWER\n{content}"
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
         content=content,
@@ -378,7 +380,7 @@ class TestHappyPath:
         # Step 3: Handle inference response -> emits quality gate intent
         response = _make_inference_response(
             correlation_id=cid,
-            content="def test_verify_registration():\n    assert True",
+            content="### ANSWER\ndef test_verify_registration():\n    assert True",
             model_used="qwen3-coder-30b",
             latency_ms=1200,
             prompt_tokens=100,
@@ -1231,7 +1233,7 @@ class TestInferenceErrorEscalation:
         handler.handle_inference_response(
             _make_inference_response(
                 correlation_id=cid,
-                content="def test_foo():\n    assert True",
+                content="### ANSWER\ndef test_foo():\n    assert True",
                 model_used="glm-4-flash",
             )
         )

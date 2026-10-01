@@ -87,7 +87,7 @@ def _make_routing_decision(correlation_id: UUID) -> ModelRoutingDecision:
 def _make_success_response(correlation_id: UUID) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
-        content="def test_verify_registration():\n    assert True",
+        content="### ANSWER\ndef test_verify_registration():\n    assert True",
         model_used="qwen3-coder-30b",
         llm_call_id="chatcmpl-omn13644",
         latency_ms=1200,

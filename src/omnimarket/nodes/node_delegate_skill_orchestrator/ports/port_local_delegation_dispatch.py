@@ -2889,8 +2889,11 @@ class LocalDelegationDispatchPort:
             # and the gate used to grade that blank and report "empty response"
             # about a response that was all reasoning. The gate judges the raw
             # text instead, where its preamble floor names the real problem and
-            # can never accept it. The caller still receives the blank.
-            gate_content = raw_content
+            # can never accept it. The caller still receives the blank. A
+            # blank response has nothing to judge beyond the blank itself, so
+            # the declared-extraction evidence keeps matching the gated text.
+            if raw_content.strip():
+                gate_content = raw_content
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
