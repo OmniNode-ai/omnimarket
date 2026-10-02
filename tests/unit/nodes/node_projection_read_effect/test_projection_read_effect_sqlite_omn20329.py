@@ -34,6 +34,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.read_source_resolution i
 )
 from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
     SqliteTableRowSource,
+    build_sqlite_window_query,
 )
 from omnimarket.projection.discovery import parse_order_by_clauses
 from omnimarket.projection.models import ProjectionTableConfig
@@ -119,6 +120,56 @@ def _bind(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, database_url: str) ->
 
 def _sqlite_url(path: Path) -> str:
     return f"sqlite:///{path}"
+
+
+def test_sqlite_window_selection_orders_the_inner_window() -> None:
+    cfg = _cfg(_DECISIONS)
+    order_spec = parse_order_by_clauses("cost_usd DESC", _COLUMNS)
+    walked = build_sqlite_window_query(
+        cfg, order_spec=order_spec, tenant_id=_TENANT, selection="walk"
+    )
+    ranked = build_sqlite_window_query(
+        cfg, order_spec=order_spec, tenant_id=_TENANT, selection="ranked"
+    )
+    assert 'ORDER BY "written_at" ASC LIMIT 2000) AS served_window' in walked.sql
+    assert (
+        'ORDER BY "cost_usd" DESC NULLS LAST LIMIT 2000) AS served_window' in ranked.sql
+    )
+    assert walked.sql.endswith('ORDER BY "cost_usd" DESC NULLS LAST')
+    assert ranked.sql.endswith('ORDER BY "cost_usd" DESC NULLS LAST')
+
+
+async def test_sqlite_walk_origin_starts_before_the_tenants_integer_cursor(
+    tmp_path: Path,
+) -> None:
+    db_path = _store(tmp_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("ALTER TABLE delegation_events ADD COLUMN event_sequence INTEGER")
+        conn.executemany(
+            "UPDATE delegation_events SET event_sequence = ? WHERE correlation_id = ?",
+            [
+                (offset + i, _correlation(tenant_index, i))
+                for tenant_index, offset in ((0, 10), (1, 1))
+                for i in range(3)
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    source = SqliteTableRowSource(db_path)
+    cfg = _cfg(_DECISIONS, cursor_column="event_sequence")
+    assert await source.walk_origin(cfg, tenant_id=_TENANT) == "9"
+    assert await source.walk_origin(cfg, tenant_id=_OTHER_TENANT) == "0"
+    assert await source.walk_origin(cfg, tenant_id=None) == "0"
+    assert await source.walk_origin(cfg, tenant_id="absent") is None
+    assert await source.walk_origin(_cfg(_DECISIONS), tenant_id=_TENANT) is None
+    assert (
+        await source.walk_origin(
+            _cfg(_DECISIONS, cursor_column=None), tenant_id=_TENANT
+        )
+        is None
+    )
 
 
 async def test_sqlite_binding_serves_the_tenants_rows(
