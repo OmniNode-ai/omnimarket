@@ -150,6 +150,7 @@ def discover_byok_model_sync(
     api_key: str | SecretStr,
     *,
     exclude: Iterable[str] = (),
+    exclude_families_of: Iterable[str] = (),
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Read ``backend.models_url`` with ``api_key`` and pick the preferred model.
@@ -195,7 +196,9 @@ def discover_byok_model_sync(
     ids = _model_ids(response)
     if not ids:
         return ModelByokModelDiscovery(**base, outcome="inconclusive", http_status=200)
-    model = select_byok_model(backend, ids, exclude=exclude)
+    model = select_byok_model(
+        backend, ids, exclude=exclude, exclude_families_of=exclude_families_of
+    )
     return ModelByokModelDiscovery(
         **base,
         outcome="resolved" if model is not None else "no_match",
@@ -210,11 +213,17 @@ async def discover_byok_model(
     api_key: str | SecretStr,
     *,
     exclude: Iterable[str] = (),
+    exclude_families_of: Iterable[str] = (),
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Async form of :func:`discover_byok_model_sync` (runs it in a thread)."""
     return await asyncio.to_thread(
-        discover_byok_model_sync, backend, api_key, exclude=tuple(exclude), get=get
+        discover_byok_model_sync,
+        backend,
+        api_key,
+        exclude=tuple(exclude),
+        exclude_families_of=tuple(exclude_families_of),
+        get=get,
     )
 
 
