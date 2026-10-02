@@ -318,6 +318,10 @@ async def test_the_veto_names_its_rule_on_the_deciding_attempt(
     assert any(
         reason.startswith("REFUSAL") for reason in deciding.error_message.split("; ")
     ), deciding
+    # The vetoing rule is named on the terminal's own reason, by name.
+    assert f"deciding_rules={_VETO_RULE}" in run.canonical.failure_reason, (
+        run.canonical.failure_reason
+    )
 
 
 async def test_the_truncation_carries_the_stop_reason_and_the_flag(
