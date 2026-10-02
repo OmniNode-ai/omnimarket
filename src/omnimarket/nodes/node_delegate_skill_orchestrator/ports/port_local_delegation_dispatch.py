@@ -1655,6 +1655,12 @@ class LocalDelegationDispatchPort:
                     ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
+                    "secret_source": (
+                        transport_result.secret_source.value
+                        if transport_result.secret_source is not None
+                        else None
+                    ),
+                    "secret_ref": transport_result.secret_ref,
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "escalation_count": escalation_count,
@@ -1887,10 +1893,10 @@ class LocalDelegationDispatchPort:
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
-                    # result, which observed the resolution; absent on the
-                    # budget and transport-failure terminals above because no
-                    # credential was resolved on those paths, and recording a
-                    # source there would be a claim rather than an observation.
+                    # result; absent on the budget terminal and on transport
+                    # failures before the credential resolved. Any terminal
+                    # whose attempt resolved it records the source, including
+                    # a failed one, because that is an observation.
                     "secret_source": (
                         result.secret_source.value
                         if result.secret_source is not None
@@ -2115,10 +2121,10 @@ class LocalDelegationDispatchPort:
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
-                    # result, which observed the resolution; absent on the
-                    # budget and transport-failure terminals above because no
-                    # credential was resolved on those paths, and recording a
-                    # source there would be a claim rather than an observation.
+                    # result; absent on the budget terminal and on transport
+                    # failures before the credential resolved. Any terminal
+                    # whose attempt resolved it records the source, including
+                    # a failed one, because that is an observation.
                     "secret_source": (
                         result.secret_source.value
                         if result.secret_source is not None
