@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Repo Evidence Gate caller (OMN-20070) verifies repo-owned DoD contracts through
+# omnibase_core's receipt-gate reusable with evidence-source: caller.
+#
+# Why pull_request_target: GitHub reads the workflow definition from the BASE
+# branch, so a pull request that edits this file or the reusable's pin does not
+# change which definition runs on it. The pull request's own code is only ever
+# checked out as data by the reusable, which refuses fork heads.
+#
+# dev and main are the integration branches. The activity types cover new heads,
+# reopened and ready PRs, and edits to the ticket citation or base branch.
+# Per-PR concurrency cancels superseded runs so the latest event gets a verdict.
+# Read-only contents and pull-requests permissions are all this caller needs;
+# checkout and verification belong to the reusable, with no caller secrets.
+# The full-SHA pin makes the reusable immutable; verifier-version pins the
+# released verifier used to read the caller's contracts.
+#
+# The job id is the context prefix: repo-evidence / dod-verify carries the
+# verdict, so do not add a job name. The reusable also reports a skipped
+# repo-evidence / verify job in this mode (the OCC path, switched off by the
+# input); only repo-evidence / dod-verify carries a verdict. This context is NOT
+# a required status check; a ruleset change is a separate step.
+
+name: Repo Evidence Gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+    branches: [dev, main, scratch/occ-s3-base]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  repo-evidence:
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@fa7e652ae51244e82e735fef26a9e17bc31e0836 # OMN-20070: immutable full-SHA pin of the omnibase_core commit that adds `evidence-source: caller`. It is the branch head of that change, not yet on dev: re-point it at the change's dev squash commit before this lands.
+    with:
+      evidence-source: caller
+      verifier-version: 0.4.280
