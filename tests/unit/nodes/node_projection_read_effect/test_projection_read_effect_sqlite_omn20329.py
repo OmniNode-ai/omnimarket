@@ -248,3 +248,60 @@ def test_other_schemes_are_still_refused(
 )
 def test_sqlite_path_follows_the_writer_convention(dsn: str, expected: Path) -> None:
     assert sqlite_path_from_dsn(dsn) == expected
+
+
+async def test_sqlite_source_serves_the_walk_and_ranked_selections(
+    tmp_path: Path,
+) -> None:
+    source = SqliteTableRowSource(_store(tmp_path))
+    cfg = _cfg(_UNSCOPED, tenant_column=None, limit=1)
+    order_spec = cfg.order_by_spec
+    newest = await source.rows(cfg, order_spec=order_spec, tenant_id=None)
+    walk = await source.rows(
+        cfg, order_spec=order_spec, tenant_id=None, selection="walk"
+    )
+    ranked = await source.rows(
+        cfg, order_spec=order_spec, tenant_id=None, selection="ranked"
+    )
+    assert {row["written_at"] for row in newest} == {
+        "2026-10-01T12:01:00+00:00",
+        "2026-10-01T12:02:00+00:00",
+    }
+    assert {row["written_at"] for row in walk} == {
+        "2026-10-01T12:00:00+00:00",
+        "2026-10-01T12:01:00+00:00",
+    }
+    assert {row["written_at"] for row in ranked} == {
+        row["written_at"] for row in newest
+    }
+
+
+async def test_sqlite_walk_origin_is_one_below_an_integer_cursor(
+    tmp_path: Path,
+) -> None:
+    db_path = _store(tmp_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE ledger (seq INTEGER, tenant_id TEXT)")
+        conn.executemany(
+            "INSERT INTO ledger VALUES (?, ?)",
+            [(7, _TENANT), (9, _TENANT), (3, _OTHER_TENANT)],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    source = SqliteTableRowSource(db_path)
+    ledger = _cfg(
+        _DECISIONS,
+        table="ledger",
+        columns=("seq", "tenant_id"),
+        order_by="seq DESC",
+        order_by_spec=parse_order_by_clauses("seq DESC", ("seq", "tenant_id")),
+        freshness_column=None,
+        cursor_column="seq",
+        key_columns=("seq",),
+    )
+    assert await source.walk_origin(ledger, tenant_id=_TENANT) == "6"
+    assert await source.walk_origin(ledger, tenant_id=_OTHER_TENANT) == "2"
+    text_cursor = _cfg(_UNSCOPED, tenant_column=None)
+    assert await source.walk_origin(text_cursor, tenant_id=None) is None
