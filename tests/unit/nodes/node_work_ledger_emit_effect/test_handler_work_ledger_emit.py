@@ -15,6 +15,7 @@ from omnimarket.events.enum_ledger_row_type import (
 )
 from omnimarket.events.model_ledger_row_event import (
     ModelLedgerRowEvent,
+    work_ledger_event_id,
 )
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
@@ -89,7 +90,9 @@ def test_payload_carries_the_exact_row(rows: dict[str, str]) -> None:
     assert isinstance(payload, dict)
     assert payload["raw_row"] == rows["CLAIM"]
     assert payload["ledger_id"] == "rolling-work-ledger"
-    assert recorder.requests[0].event_id == payload["row_id"]
+    assert recorder.requests[0].event_id == str(
+        work_ledger_event_id(str(payload["ledger_id"]), str(payload["row_id"]))
+    )
 
 
 def test_a_row_that_cannot_be_typed_spools_nothing() -> None:

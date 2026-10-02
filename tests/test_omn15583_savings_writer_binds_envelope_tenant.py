@@ -520,6 +520,8 @@ async def _rls_enforced_savings_runner(
         await admin.execute(f'CREATE DATABASE "{database}"')
         target = await asyncpg.connect(_dsn_for_db(database))
         await target.execute(_LANE_ROLES_SQL)
+        # omnibase_infra forward 098 provisions this; migration 0051 asserts it.
+        await target.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         for migrations_dir in _MIGRATION_DIRS:
             for migration_path in sorted(migrations_dir.glob("*.sql")):
                 if migration_path.name in exclude:

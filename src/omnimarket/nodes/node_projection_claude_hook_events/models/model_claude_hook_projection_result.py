@@ -48,6 +48,12 @@ class ModelClaudeHookEventRow(BaseModel):
     source_topic: str = Field(min_length=1)
     goal_id: UUID | None = None
     parent_goal_id: UUID | None = None
+    #: OMN-17427: who ran the event, on which machine, and how a Bash call
+    #: exited. Each is NULL when the event does not state it.
+    lane: str | None = Field(default=None, min_length=1)
+    model: str | None = Field(default=None, min_length=1)
+    host: str | None = Field(default=None, min_length=1)
+    exit_code: int | None = None
 
 
 class ModelClaudeAgentSpanUpdate(BaseModel):

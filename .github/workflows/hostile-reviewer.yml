@@ -109,6 +109,7 @@ jobs:
             local repo_name="$1"
             local target_dir="$2"
             local sha_var_name="$3"
+            local pin_tag="$4"
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
@@ -116,24 +117,23 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
-                && [ -n "${resolved_sha}" ] \
-                && timeout 20s bash -c 'git init "$1" \
+              if timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
-                && git -C "$1" checkout --detach "$3"' \
-                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                && git -C "$1" checkout --detach FETCH_HEAD' \
+                _ "${target_dir}" "${remote_url}" "${pin_tag}" \
+                && resolved_sha="$(git -C "${target_dir}" rev-parse HEAD)"; then
                 printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 51e1cb356453ad325d76aea57ab371cf975df3a4
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -143,6 +143,7 @@ jobs:
             local repo_name="$1"
             local target_dir="$2"
             local sha_var_name="$3"
+            local pin_tag="$4"
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
@@ -150,24 +151,23 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
-                && [ -n "${resolved_sha}" ] \
-                && timeout 20s bash -c 'git init "$1" \
+              if timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
-                && git -C "$1" checkout --detach "$3"' \
-                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                && git -C "$1" checkout --detach FETCH_HEAD' \
+                _ "${target_dir}" "${remote_url}" "${pin_tag}" \
+                && resolved_sha="$(git -C "${target_dir}" rev-parse HEAD)"; then
                 printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
             return 1
           }
 
-          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA
+          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
 
       - name: Clone omnibase_compat
@@ -177,6 +177,7 @@ jobs:
             local repo_name="$1"
             local target_dir="$2"
             local sha_var_name="$3"
+            local pin_tag="$4"
             local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
             local resolved_sha
 
@@ -184,24 +185,23 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
-                && [ -n "${resolved_sha}" ] \
-                && timeout 20s bash -c 'git init "$1" \
+              if timeout 20s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
-                && git -C "$1" checkout --detach "$3"' \
-                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                && git -C "$1" checkout --detach FETCH_HEAD' \
+                _ "${target_dir}" "${remote_url}" "${pin_tag}" \
+                && resolved_sha="$(git -C "${target_dir}" rev-parse HEAD)"; then
                 printf -v "${sha_var_name}" '%s' "${resolved_sha}"
                 return 0
               fi
-              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient fetch failure"
               sleep $((attempt * 5))
             done
             echo "::error::clone ${repo_name} failed after 4 attempts"
             return 1
           }
 
-          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA
+          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
 
       - name: Install uv

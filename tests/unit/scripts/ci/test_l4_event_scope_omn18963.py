@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The L4 layer is asserted only where it is the enforcement surface (OMN-18963).
 
-``ci.yml`` runs on ``push`` to main and hotfix branches as well as on
+``ci.yml`` runs on ``push`` to main, dev and hotfix branches as well as on
 ``pull_request`` and ``merge_group``. Layer 4 asserts check-run contexts minted
 by OTHER workflow files, strictly and with no accepted absence. Enumerated live
 on 2026-09-21, 32 of the 53 asserted contexts are owned by workflows declaring

@@ -196,9 +196,9 @@ jobs:
 
       - name: Clone sibling repos (workspace deps)
         run: |
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
-          git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

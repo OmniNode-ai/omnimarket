@@ -181,7 +181,15 @@ def _advance_to_gate_evaluated(
     handler.handle_delegation_request(request)
     decision = _make_routing_decision(cid, tier_name=tier_name)
     handler.handle_routing_decision(decision)
-    response = _make_inference_response(cid)
+    # OMN-17427: an unmarked response to a marker-required contract is refused
+    # and floors the gate; open the answer with the class's declared marker so
+    # the gate verdict under test is the one the test hands in.
+    contract = handler.workflows[cid].effective_deliverable_contract
+    assert contract is not None
+    content = "def test_foo():\n    pass"
+    if contract.markers:
+        content = f"{contract.markers[0]}\n{content}"
+    response = _make_inference_response(cid, content=content)
     handler.handle_inference_response(response)
     assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
 
@@ -1179,19 +1187,41 @@ class TestTestResearchTierPolicyVerified:
         routing._load_bifrost_endpoints.cache_clear()
 
     @pytest.mark.parametrize("task_type", ["test", "research"])
-    def test_claude_tier_reachable_when_configured(self, task_type: str) -> None:
-        # local -> cheap_cloud -> claude is the declared closed-set policy for
-        # both classes. With the repo-default contract the claude tier
-        # (cloud-sonnet) is routable once its secret resolves, so escalating off
-        # cheap_cloud must land on claude rather than returning None.
+    def test_claude_tier_not_reachable_by_ordinary_escalation(
+        self, task_type: str
+    ) -> None:
+        # OMN-17427: the claude ceiling and the cheap_cloud rungs are Gemini
+        # backends, which are explicit_pin_only. Even with the Gemini key
+        # registered (the fixture above), ordinary escalation off cheap_cloud
+        # must NOT climb onto them.
         assert (
             next_eligible_tier(
                 "cheap_cloud",
                 frozenset(),
                 task_type=task_type,
             )
-            == "claude"
+            is None
         )
+
+    def test_cloud_tier_reachable_when_configured(
+        self, register_local_secret: Callable[..., None]
+    ) -> None:
+        # OMN-17427: the reachable cloud rung is the non-Gemini OpenRouter
+        # cheap_frontier tier, declared in `test`'s closed tier_order. It is
+        # selectable once its credential resolves and not before.
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
+
+        before = next_eligible_tier("local", frozenset(), task_type="test")
+        register_local_secret("llm.openrouter.api_key", "test-openrouter-key")
+        routing._load_bifrost_endpoints.cache_clear()
+        try:
+            after = next_eligible_tier("local", frozenset(), task_type="test")
+        finally:
+            routing._load_bifrost_endpoints.cache_clear()
+        assert before != "cheap_frontier"
+        assert after == "cheap_frontier"
 
     @pytest.mark.parametrize("task_type", ["test", "research"])
     def test_claude_is_ceiling_no_higher_tier(self, task_type: str) -> None:

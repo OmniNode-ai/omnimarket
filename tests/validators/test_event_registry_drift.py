@@ -12,10 +12,14 @@ Coverage:
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.validators.event_registry_drift import (
     Baseline,
@@ -413,6 +417,7 @@ def _describe_omniclaude_checkout(omniclaude_root: Path) -> str:
             text=True,
             check=True,
             timeout=15,
+            env=scrub_git_location_env(os.environ),
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         head = "(not a resolvable git checkout)"

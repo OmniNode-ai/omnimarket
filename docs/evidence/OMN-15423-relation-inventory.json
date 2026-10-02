@@ -97,7 +97,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 32,
-    "table": 102,
+    "table": 103,
     "view": 10
   },
   "relations": [
@@ -3672,6 +3672,7 @@
         "node_delegate_skill_orchestrator",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_llm_delegation_call_effect",
         "node_metering_summary_compute",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
@@ -3692,6 +3693,56 @@
       "target_schema": "public",
       "writers": [
         "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0051_delegation_events_failed_outcome_backfill.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (delegation_event_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation",
+      "name": "delegation_events_outcome_backfill_omn20276",
+      "owner_declaration": "node_projection_delegation",
+      "partitioning": [],
+      "producer": "node_projection_delegation",
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -7182,6 +7233,7 @@
         "node_projection_pattern_learning",
         "node_projection_registration",
         "node_projection_routing_decision",
+        "node_projection_savings",
         "node_projection_session_outcome",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8142,6 +8194,7 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
+        "idx_work_ledger_rows_event_id",
         "idx_work_ledger_rows_ts"
       ],
       "internal_tenant_column_transform": {
@@ -8151,7 +8204,8 @@
         "status": "not_applicable_no_source_tenant_id"
       },
       "keys": [
-        "PRIMARY KEY (row_id)"
+        "PRIMARY KEY (row_id)",
+        "UNIQUE INDEX idx_work_ledger_rows_event_id"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
@@ -8160,7 +8214,9 @@
       "owner_declaration": "node_projection_work_ledger",
       "partitioning": [],
       "producer": "node_projection_work_ledger",
-      "readers": [],
+      "readers": [
+        "node_work_ledger_emit_effect"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_work_ledger",
@@ -8724,8 +8780,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 93,
-    "source_declared_tables": 102
+    "source_created_tables": 94,
+    "source_declared_tables": 103
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8741,7 +8797,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 93 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 94 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

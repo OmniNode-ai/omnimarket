@@ -364,6 +364,20 @@ def _isolate_unit_env(
 
 
 @pytest.fixture(autouse=True)
+def _strip_projection_database_bindings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-19513: no test inherits a real projection DSN from the caller's shell.
+
+    The work-ledger projection writer refuses a real DSN under a test runner
+    (``handler_work_ledger_write_guard``); this fixture also keeps the ambient
+    database URL and runtime-binding overlay out of every test, so a writer built
+    without an explicit DSN has none to dial. A test that needs a database sets its own
+    loopback DSN after this fixture's setup.
+    """
+    monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+    monkeypatch.delenv("OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """OMN-14225: run the suite at the production DEFAULT — paid escalation ON.
 
@@ -834,6 +848,21 @@ BEGIN
 END$$;
 """
 
+# OMN-20276: the shared schema a real lane provisions before the node
+# migrations run (omnibase_infra forward 098). node_projection_delegation 0051
+# asserts it rather than creating it, as node_delegate_skill_orchestrator 0001
+# does, so a bare integration database needs it the way it needs the roles
+# above. Per database, unlike the roles; the exception handler absorbs two
+# xdist workers creating it at once.
+_SHARED_APPLICATION_SCHEMAS = """
+DO $$
+BEGIN
+    CREATE SCHEMA IF NOT EXISTS omninode_internal;
+EXCEPTION WHEN duplicate_schema OR unique_violation THEN
+    NULL;
+END$$;
+"""
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _provision_cross_node_migration_roles() -> None:
@@ -875,6 +904,7 @@ def _provision_cross_node_migration_roles() -> None:
         connection.autocommit = True
         with connection.cursor() as cursor:
             cursor.execute(_CROSS_NODE_MIGRATION_ROLES)
+            cursor.execute(_SHARED_APPLICATION_SCHEMAS)
     finally:
         connection.close()
 

@@ -150,9 +150,10 @@ class TestU2EveryTierResolvesCompleteBackend:
         delegation_config = parse_delegation_config_yaml(
             _ROUTING_TIERS_CONFIG.read_text()
         )
-        bifrost = ModelBifrostDelegationConfig.model_validate(
-            yaml.safe_load(_BIFROST_CONFIG.read_text())
-        )
+        raw = yaml.safe_load(_BIFROST_CONFIG.read_text())
+        # The ollama block is read by load_ollama_config, not the wire model.
+        raw.pop("ollama", None)
+        bifrost = ModelBifrostDelegationConfig.model_validate(raw)
         backends_by_id = {b.backend_id: b for b in bifrost.backends}
         return delegation_config, backends_by_id
 

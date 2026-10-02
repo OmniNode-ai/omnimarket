@@ -18,6 +18,11 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_identity_fold import (
+    HandlerSavingsRunIdentityFold,
+    ModelSavingsRunIdentity,
+    ModelSavingsRunIdentityFoldRequest,
+)
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import (
@@ -656,31 +661,11 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             # No counterfactual or saving <= 0: truthful-empty, not an error.
             return True
 
-        await self._upsert_savings_estimate(
+        await self._upsert_run_savings(
+            projection,
             write_tenant=write_tenant,
-            event_timestamp=projection.event_timestamp,
-            session_id=str(projection.session_id),
-            model_local=projection.model_local,
-            model_cloud_baseline=projection.model_cloud_baseline,
-            local_cost_usd=projection.local_cost_usd,
-            cloud_cost_usd=projection.cloud_cost_usd,
-            savings_usd=projection.savings_usd,
-            repo_name=projection.repo_name,
-            machine_id=(
-                str(projection.machine_id)
-                if projection.machine_id is not None
-                else None
-            ),
             meta=meta,
             source_event_id=str(source.correlation_id),
-            task_type=projection.task_type or None,
-            prompt_tokens=projection.prompt_tokens,
-            completion_tokens=projection.completion_tokens,
-            # OMN-15533: the writer states provenance because only the writer
-            # knows how the number was produced. The read view no longer infers
-            # it from token presence.
-            savings_method=projection.savings_method,
-            usage_source=projection.usage_source,
         )
         logger.info(
             "Projected canonical delegation savings for %s (savings=$%s)",
@@ -708,12 +693,64 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         if projection is None:
             return True
 
+        await self._upsert_run_savings(
+            projection,
+            write_tenant=write_tenant,
+            meta=meta,
+            source_event_id=str(terminal.correlation_id),
+        )
+        logger.info(
+            "Projected delegate-skill savings for %s (savings=$%s)",
+            terminal.correlation_id,
+            projection.savings_usd,
+        )
+        return True
+
+    async def _upsert_run_savings(
+        self,
+        projection: ModelDelegateSkillSavingsProjection,
+        *,
+        write_tenant: str,
+        meta: MessageMeta,
+        source_event_id: str,
+    ) -> None:
+        """Upsert one delegation run's saving under the run's folded identity.
+
+        OMN-20303: both terminals of one run reach this, each with its own
+        time, so the row is written under the identity the run's stored row
+        already has (``HandlerSavingsRunIdentityFold``), never a second one.
+        Messages are applied one at a time, so the read and the upsert see the
+        same stored rows.
+        """
+        session_id = str(projection.session_id)
+        stored = await self.db_for(self._table_estimates, operation="read").execute(
+            f"""
+            SELECT event_timestamp, model_local, model_cloud_baseline
+            FROM {self._table_estimates}
+            WHERE session_id = $1
+            """,
+            session_id,
+            tenant=write_tenant,
+        )
+        identity = HandlerSavingsRunIdentityFold().handle(
+            ModelSavingsRunIdentityFoldRequest(
+                incoming=ModelSavingsRunIdentity(
+                    event_timestamp=projection.event_timestamp,
+                    model_local=projection.model_local,
+                    model_cloud_baseline=projection.model_cloud_baseline,
+                ),
+                stored=tuple(
+                    ModelSavingsRunIdentity.model_validate(dict(row))
+                    for row in stored or ()
+                ),
+            )
+        )
         await self._upsert_savings_estimate(
             write_tenant=write_tenant,
-            event_timestamp=projection.event_timestamp,
-            session_id=str(projection.session_id),
-            model_local=projection.model_local,
-            model_cloud_baseline=projection.model_cloud_baseline,
+            event_timestamp=identity.event_timestamp,
+            session_id=session_id,
+            model_local=identity.model_local,
+            model_cloud_baseline=identity.model_cloud_baseline,
             local_cost_usd=projection.local_cost_usd,
             cloud_cost_usd=projection.cloud_cost_usd,
             savings_usd=projection.savings_usd,
@@ -724,7 +761,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
                 else None
             ),
             meta=meta,
-            source_event_id=str(terminal.correlation_id),
+            source_event_id=source_event_id,
             task_type=projection.task_type or None,
             prompt_tokens=projection.prompt_tokens,
             completion_tokens=projection.completion_tokens,
@@ -734,12 +771,6 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             savings_method=projection.savings_method,
             usage_source=projection.usage_source,
         )
-        logger.info(
-            "Projected delegate-skill savings for %s (savings=$%s)",
-            terminal.correlation_id,
-            projection.savings_usd,
-        )
-        return True
 
     async def _resolve_row_tenant(self, data: dict[str, Any]) -> str:
         """The tenant this savings row is written under. Never ``None``, never

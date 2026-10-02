@@ -45,6 +45,9 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
 )
+from tests.unit.delegation.conftest import (
+    frontier_unconfigured_bifrost as frontier_unconfigured_bifrost,
+)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -284,9 +287,7 @@ def test_legacy_quality_gate_input_carries_request_response_contract() -> None:
 
 
 @pytest.mark.unit
-def test_unmarked_default_text_response_reaches_the_gate_as_empty_typed_evidence() -> (
-    None
-):
+def test_unmarked_default_text_response_preserves_raw_gate_evidence() -> None:
     handler = HandlerDelegationWorkflow(workflows={})
     correlation_id = uuid4()
     request = _request(correlation_id).model_copy(update={"response_contract": None})
@@ -299,9 +300,13 @@ def test_unmarked_default_text_response_reaches_the_gate_as_empty_typed_evidence
 
     assert len(events) == 1
     assert isinstance(events[0], ModelQualityGateIntent)
-    assert events[0].payload.llm_response_content == ""
+    assert (
+        events[0].payload.llm_response_content
+        == "raw response without the declared marker"
+    )
     workflow = handler._workflows[correlation_id]
     assert workflow.output_refusal is not None
+    assert workflow.inference_content == ""
     assert workflow.output_refusal.reason == "ambiguous_unmarked_deliverable"
 
 

@@ -57,6 +57,7 @@
     "error_details_ref",
     "error_ref",
     "event",
+    "exit_code",
     "expansion_type",
     "file_path_ref",
     "final",
@@ -134,6 +135,10 @@
         "source_topic",
         "goal_id",
         "parent_goal_id",
+        "lane",
+        "model",
+        "host",
+        "exit_code",
         "ingested_at"
       ],
       "name": "omninode_internal.claude_hook_events"
@@ -164,5 +169,5 @@
       ]
     }
   },
-  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370); goal_id and parent_goal_id keys and columns added for OMN-20031"
+  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370); goal_id and parent_goal_id keys and columns added for OMN-20031; exit_code key and lane, model, host, exit_code columns added for OMN-17427"
 }

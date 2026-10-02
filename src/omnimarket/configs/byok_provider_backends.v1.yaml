@@ -94,9 +94,10 @@
 #   - OMN-17372: cloud delegation on a customer's OpenRouter key (blocker b3)
 #   - OMN-15631: the delegation_routing_tenant_overlay table and its resolver
 #   - OMN-16944: tenant-shaped refs resolve tenant-scoped, never env-fallback
-#   - OMN-17373: OpenAI has no delegation backend, so `openai` is deliberately
-#     ABSENT below — declaring it here would mint a route to a backend that
-#     does not exist.
+#   - OMN-17373: `openai` was deliberately ABSENT while it had no delegation
+#     backend. It is offered below as a customer-only surface
+#     (`mirrors_house_rung: false`): the platform holds no OpenAI key and has no
+#     rung on it, and the chat handler already speaks its request shape.
 #   - OMN-17353: this file is EXACTLY the handler-backed set, both directions.
 #     Every house-keyed rung in bifrost_delegation.yaml (a backend carrying a
 #     `secret_ref: llm.<provider>.<field>`) must appear below either under
@@ -185,6 +186,14 @@ providers:
     # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
     models_url: "https://openrouter.ai/api/v1/models"
     model_preference:
+      # Google-hosted instruction-tuned family first. The nemotron-ultra slug
+      # below answered "Upstream error from Nvidia: Service temporarily
+      # overloaded" (provider code 503) in the 200 body on the C29 scheduled
+      # runs of 2026-09-30 16:55Z, 2026-10-01 04:57Z and 2026-10-01 16:55Z, so a
+      # key that lists both models failed the delegation on that one upstream.
+      # Listed live 2026-10-01: google/gemma-4-31b-it:free.
+      - pattern: 'google/gemma-(?P<generation>[0-9]+)-[0-9]+b(?:-a[0-9]+b)?-it:free'
+        tags: [free, general]
       - pattern: 'nvidia/nemotron-(?P<generation>[0-9]+(?:\.[0-9]+)?)-ultra-[a-z0-9-]+:free'
         tags: [free, cheapest, large_context]
       - pattern: 'qwen/qwen(?P<generation>[0-9]+(?:\.[0-9]+)?)-coder[a-z0-9.-]*:free'
@@ -422,6 +431,54 @@ providers:
             Google AI Studio rate limits (ai.google.dev/gemini-api/docs/rate-limits):
             per-model, per-project RPM/TPM/RPD by tier. Observed 20 requests per
             day on the platform's free-tier key, 2026-09-30.
+
+  # OMN-17373. A customer's own OpenAI key. The platform holds NO OpenAI key
+  # (bifrost_delegation.yaml: "this org has NO Anthropic key and NO OpenAI key"),
+  # so there is no house rung to mirror: `mirrors_house_rung: false`, and the
+  # parity gate asserts that no bifrost rung addresses this endpoint. The spend is
+  # the customer's own (INV-068, INV-098).
+  #
+  # Same OpenAI-style chat request, same handler, `Authorization: Bearer <key>`
+  # for the chat endpoint and the models endpoint alike.
+  #
+  # MODEL: the newest `gpt-4.N-nano` the key's own model list names, then the
+  # newest `gpt-4.N-mini`, then `gpt-4o-mini`. Dated snapshots, `-latest`,
+  # `-preview`, audio, realtime, image and search variants do not match (every
+  # pattern is a full match). The gpt-5 and o-series families are NOT preferred
+  # on purpose: on /v1/chat/completions they reject the `max_tokens` field the
+  # shared chat handler sends (OpenAI requires `max_completion_tokens` there), so
+  # preferring them would route a customer to a model that answers HTTP 400.
+  # Choosing them is a code change in the handler, not a catalogue edit.
+  - provider: openai
+    plan: api
+    mirrors_house_rung: false
+    backend_id: byok-openai
+    endpoint_url: "https://api.openai.com/v1/chat/completions"
+    models_url: "https://api.openai.com/v1/models"
+    model_preference:
+      - pattern: 'gpt-4\.(?P<generation>[0-9]+)-nano'
+        tags: [cheapest, nano]
+      - pattern: 'gpt-4\.(?P<generation>[0-9]+)-mini'
+        tags: [mini]
+      - pattern: 'gpt-4o-mini'
+        tags: [mini]
+    max_retries: 2
+    timeout_ms: 60000
+    max_tokens: 8192
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        # OpenAI meters per model and per organisation, in requests and tokens
+        # per minute, and the caps depend on the account's usage tier, so the
+        # cap is null rather than a number that is wrong for most accounts.
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            OpenAI rate limits (platform.openai.com/docs/guides/rate-limits):
+            per-model, per-organisation RPM/TPM/RPD by usage tier. Not a single
+            published number.
 
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either

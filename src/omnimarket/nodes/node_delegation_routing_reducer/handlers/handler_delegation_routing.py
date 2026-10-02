@@ -126,6 +126,7 @@ from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     house_credential_refs,
+    is_customer_attributed,
     lab_backend_hosts,
     refuse_keyless_customer_on_cloud,
 )
@@ -339,6 +340,7 @@ def _backend_routable(
     *,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     require_credential: bool = True,
+    explicit_pin: bool = False,
 ) -> bool:
     """Return whether a backend may be selected RIGHT NOW.
 
@@ -373,6 +375,8 @@ def _backend_routable(
     a credential problem. Leaving every other term inside the relaxed call is
     what keeps that true by construction rather than by review.
     """
+    if backend.explicit_pin_only and not explicit_pin:
+        return False
     if require_credential and not _backend_secret_available(backend):
         return False
     return _quota_block(backend, quota_state) is None
@@ -710,6 +714,7 @@ class BifrostBackendRef:
         "api_key_env",
         "api_key_ref",
         "endpoint_url",
+        "explicit_pin_only",
         "extra_headers",
         "max_tokens",
         "model_name",
@@ -727,8 +732,10 @@ class BifrostBackendRef:
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
         api_key_env: str | None = None,
+        explicit_pin_only: bool = False,
     ) -> None:
         self.endpoint_url = endpoint_url
+        self.explicit_pin_only = explicit_pin_only
         self.model_name = model_name
         self.timeout_ms = timeout_ms
         # OMN-13345: the contract-declared per-backend output-token ceiling,
@@ -844,6 +851,22 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     for backend in config.backends:
         url = (backend.endpoint_url or "").strip()
         model_name = (backend.model_name or "").strip()
+        if url and backend.provider == "local" and not model_name:
+            msg = (
+                f"local_model_binding_missing: backend {backend.backend_id!r} "
+                "has an endpoint_url but no model_name. This is an incomplete "
+                "lane binding, not an unavailable model server. Render the "
+                "lane bifrost contract with model_name equal to the served id "
+                "reported by that endpoint's /v1/models; keep the served-id "
+                "attribution check enabled."
+            )
+            raise ProtocolConfigurationError(
+                msg,
+                context=ModelInfraErrorContext(
+                    transport_type=EnumInfraTransportType.FILESYSTEM,
+                    operation="load_bifrost_endpoints",
+                ),
+            )
         if not (backend.backend_id and url and model_name):
             continue
         provider = (backend.provider or "").strip()
@@ -861,6 +884,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
+            explicit_pin_only=backend.explicit_pin_only,
             model_name=model_name,
             timeout_ms=backend.timeout_ms,
             # OMN-13345: carry the contract-declared per-backend output ceiling
@@ -2343,6 +2367,8 @@ def _candidate_exclusion_reason(
         # endpoint_url + model_name for. On a cloud-locale lane this is every
         # local rung, disabled by the overlay rather than missing.
         return (EnumRoutingExclusionReason.BACKEND_NOT_DECLARED_WITH_AN_ENDPOINT, None)
+    if backend.explicit_pin_only:
+        return (EnumRoutingExclusionReason.BACKEND_REQUIRES_EXPLICIT_PIN, backend)
     if not _backend_secret_available(backend):
         return (EnumRoutingExclusionReason.BACKEND_SECRET_REF_UNRESOLVED, backend)
     if _quota_block(backend, quota_state) is not None:
@@ -2837,7 +2863,9 @@ def delta(
                         and estimated_tokens <= model.max_context_tokens
                         and (pinned_backend := bifrost_backends.get(model.backend_ref))
                         is not None
-                        and _backend_routable(pinned_backend, quota_state=quota_state)
+                        and _backend_routable(
+                            pinned_backend, quota_state=quota_state, explicit_pin=True
+                        )
                     ),
                     None,
                 )
@@ -3023,7 +3051,23 @@ def delta(
         excluded_backend_refs=excluded_backend_refs,
         quota_state=quota_state,
     )
-    if requested_backend_ref is not None:
+    if requested_backend_ref is None and (
+        surface is EnumDelegationSurface.CUSTOMER_LOCAL
+        and is_customer_attributed(request.tenant_id)
+    ):
+        # OMN-20203: the customer-local surface skips the cloud pre-ladder
+        # refusal because the customer's own overlay may bind a model of
+        # theirs. When the merged routing resolves none, say which declaration
+        # is missing, as the CLI does on the same machine (OMN-16200).
+        msg = (
+            f"No local model is declared and no provider key is registered for "
+            f"tenant '{(request.tenant_id or '').strip()}': no route resolves for "
+            f"task_type='{task_type}'. Bind your model in this runtime's lane "
+            "overlay (endpoint_url and served_model_id on a local rung), or "
+            "register your own provider key for this tenant, then retry "
+            f"(OMN-20203).\n{report.render()}"
+        )
+    elif requested_backend_ref is not None:
         msg = (
             f"Caller-pinned backend_id='{requested_backend_ref}' is not routable. "
             f"A pin must name a {ROUTING_TIERS_SURFACE} backend_id whose "

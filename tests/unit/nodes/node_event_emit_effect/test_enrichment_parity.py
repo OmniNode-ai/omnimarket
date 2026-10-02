@@ -122,6 +122,48 @@ def _load_harness() -> Any:
     return module
 
 
+def _work_ledger_producer_payloads() -> dict[str, dict[str, Any]]:
+    """Producer-shaped payloads for every work.ledger.* event type.
+
+    The new node refuses a work-ledger payload whose row does not parse or whose
+    identity is not canonical (OMN-20001), so the parity proof drives these event
+    types with what the work-ledger producer really hands the emit node.
+    """
+    from omnibase_core.models.events.work.model_work_ledger_render import (
+        render_ledger_row,
+    )
+
+    from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit import (
+        HandlerWorkLedgerEmit,
+    )
+    from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
+        ModelWorkLedgerEmitRequest,
+    )
+    from tests.nodes.work_ledger_fixtures import records_for_all_ledger_row_types
+
+    payloads: dict[str, dict[str, Any]] = {}
+
+    class _Capture:
+        def handle(self, request: ModelEmitRequest) -> Any:
+            assert isinstance(request.payload, dict)
+            payloads[request.event_type] = dict(request.payload)
+            raise ValueError("captured")
+
+    producer = HandlerWorkLedgerEmit(emitter=_Capture())
+    records = records_for_all_ledger_row_types()
+    index = {record.event.event_id: record.event for record in records}
+    for record in records:
+        row = render_ledger_row(record.event, index)
+        producer.handle(ModelWorkLedgerEmitRequest(row=row))
+        producer.handle(
+            ModelWorkLedgerEmitRequest(
+                row=row, event=record.event, provenance_kind="typed"
+            )
+        )
+    assert len(payloads) == 22
+    return payloads
+
+
 def test_shadow_parity_is_byte_identical_for_every_event_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -142,10 +184,12 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     registry_raw = yaml.safe_load(harness.REGISTRY_PATH.read_text(encoding="utf-8"))
     events_raw = registry_raw["events"]
 
+    work_ledger_payloads = _work_ledger_producer_payloads()
     event_types = [
         (
             event_type,
-            harness.build_synthetic_payload(
+            work_ledger_payloads.get(event_type)
+            or harness.build_synthetic_payload(
                 event_type, event_def.get("required_fields", [])
             ),
         )
@@ -188,8 +232,11 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # OMN-19999 adds one PR observation kind and one fan-out target (69 -> 80 with
     # the eleven work.ledger.<type> events). OMN-20154 adds three kinds and three
     # fan-out targets (provider.quota.observed, delegate_skill.completed and
-    # delegate_skill.failed): 80 -> 83.
-    assert len(event_types) == 83, (
+    # delegate_skill.failed): 80 -> 83. OMN-20012 adds
+    # delegation.disposition_recorded and its one fan-out target: 83 -> 84.
+    # OMN-20001 adds the eleven work.ledger.typed.<type> v2 envelopes, held
+    # byte-identical across both paths by the same assertion: 84 -> 95.
+    assert len(event_types) == 95, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -224,7 +271,10 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 71 -> 82: the eleven work.ledger.<type> events each fan out to exactly one topic.
     # 72 -> 83: OMN-19999's PR observation kind plus the eleven work.ledger.<type> events;
     # 83 -> 86: OMN-20154's three duty-critical fan-out targets.
-    assert total_old == total_new == 86
+    # 86 -> 87: OMN-20012's disposition event fans out to exactly one topic.
+    # 87 -> 98: OMN-20001's eleven work.ledger.typed.<type> envelopes each fan
+    # out to exactly one topic.
+    assert total_old == total_new == 98
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -235,7 +285,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 86, f"only {enriched}/86 new-path messages were enriched"
+    assert enriched == 98, f"only {enriched}/98 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -249,7 +299,11 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 69 -> 80: the eleven work.ledger.<type> events declare partition_key_field ledger_id.
     # PR-state supplies its composite key explicitly at the producer boundary;
     # the registry-only shadow harness therefore adds no single-field key.
-    assert keyed == 83, f"only {keyed}/83 new-path messages carried a partition key"
+    # 83 -> 84: OMN-20012's delegation.disposition_recorded declares
+    # partition_key_field delegation_correlation_id.
+    # 84 -> 95: OMN-20001's eleven work.ledger.typed.<type> envelopes declare
+    # partition_key_field ledger_id.
+    assert keyed == 95, f"only {keyed}/95 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------

@@ -81,9 +81,32 @@ async def _connect_or_skip() -> asyncpg.Connection:
     raise AssertionError("unreachable")
 
 
+class _SingleConnectionAcquire:
+    def __init__(self, connection: asyncpg.Connection) -> None:
+        self._connection = connection
+
+    async def __aenter__(self) -> asyncpg.Connection:
+        return self._connection
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _SingleConnectionPool:
+    def __init__(self, connection: asyncpg.Connection) -> None:
+        self._connection = connection
+
+    def acquire(self) -> _SingleConnectionAcquire:
+        return _SingleConnectionAcquire(self._connection)
+
+
 class _ConnectionDb:
     def __init__(self, connection: asyncpg.Connection) -> None:
         self._connection = connection
+
+    @property
+    def pool(self) -> _SingleConnectionPool:
+        return _SingleConnectionPool(self._connection)
 
     async def execute(self, sql: str, *args: Any) -> None:
         await self._connection.execute(sql, *args)

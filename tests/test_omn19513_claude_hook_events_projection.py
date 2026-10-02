@@ -180,6 +180,10 @@ class _InMemoryHookTables:
             "source_topic",
             "goal_id",
             "parent_goal_id",
+            "lane",
+            "model",
+            "host",
+            "exit_code",
         )
         assert len(params) == len(columns)
         row = dict(zip(columns, params, strict=True))
@@ -846,3 +850,83 @@ def test_a_key_beside_the_goal_keys_is_still_refused_as_undeclared() -> None:
     with pytest.raises(ValidationError, match="does not declare"):
         _deliver(_writer(tables), event)
     assert tables.events == {}
+
+
+# --------------------------------------------------------------------------
+# OMN-17427: lane, model, host and exit code reach their columns
+# --------------------------------------------------------------------------
+
+
+def _event_fixture(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES / "events" / f"{name}.json").read_text("utf-8"))
+
+
+def _bash_post_tool_use(**stamps: Any) -> dict[str, Any]:
+    event = _event_fixture("PostToolUse")
+    event["payload"]["tool_name"] = "Bash"
+    event["payload"]["exit_code"] = 0
+    event.update(stamps)
+    return event
+
+
+def test_an_event_with_lane_model_host_and_exit_code_populates_all_four_columns() -> (
+    None
+):
+    event = _bash_post_tool_use(lane="hook-projection-fields", host="h201")
+    event["lineage"]["agent_id"] = "a0123456789abcdef"
+    event["lineage"]["is_subagent"] = True
+    event["lineage"]["agent_model"] = "claude-opus-5-5"
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    (stored,) = tables.events.values()
+    assert stored["lane"] == "hook-projection-fields"
+    assert stored["model"] == "claude-opus-5-5"
+    assert stored["host"] == "h201"
+    assert stored["exit_code"] == 0
+
+
+def test_a_failed_bash_call_stores_its_nonzero_exit_code() -> None:
+    event = _event_fixture("PostToolUseFailure")
+    event["payload"]["tool_name"] = "Bash"
+    event["payload"]["exit_code"] = 2
+    row = (
+        HandlerProjectionClaudeHookEvents()
+        .handle(ModelClaudeHookProjectionRequest.model_validate(event))
+        .event_row
+    )
+    assert row.exit_code == 2
+
+
+def test_the_main_threads_model_comes_from_session_start() -> None:
+    event = _event_fixture("SessionStart")
+    event["payload"]["model"] = "claude-opus-5-5"
+    row = (
+        HandlerProjectionClaudeHookEvents()
+        .handle(ModelClaudeHookProjectionRequest.model_validate(event))
+        .event_row
+    )
+    assert row.model == "claude-opus-5-5"
+
+
+def test_an_empty_lane_stamp_and_absent_fields_fold_to_null_columns() -> None:
+    event = _pre_tool_use()
+    event["lane"] = ""
+    row = (
+        HandlerProjectionClaudeHookEvents()
+        .handle(ModelClaudeHookProjectionRequest.model_validate(event))
+        .event_row
+    )
+    assert (row.lane, row.model, row.host, row.exit_code) == (None, None, None, None)
+
+
+def test_an_exit_code_that_is_not_an_integer_is_refused() -> None:
+    for bad in ("0", 1.5, True, {"code": 1}):
+        event = _bash_post_tool_use()
+        event["payload"]["exit_code"] = bad
+        with pytest.raises(ValidationError, match="exit_code"):
+            ModelClaudeHookEventWire.model_validate(event)
+
+
+def test_an_empty_host_is_refused() -> None:
+    with pytest.raises(ValidationError, match="host"):
+        ModelClaudeHookEventWire.model_validate(_bash_post_tool_use(host=""))

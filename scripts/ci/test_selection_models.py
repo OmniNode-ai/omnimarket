@@ -28,6 +28,11 @@ class EnumFullSuiteReason(StrEnum):
     # the directory-only shape the model documents. Escalate to the real
     # full suite instead of relying on either.
     CHANGED_TEST_UNNARROWABLE = "changed_test_unnarrowable"
+    # OMN-20305: the diff mapped to no test directory (a workflow-only PR, for
+    # one), so the selector's only safe answer is the whole tests/ tree. That is
+    # a full-suite run and takes the full-suite shard matrix; it must never be
+    # a single unsplit job.
+    NO_NARROWABLE_SELECTION = "no_narrowable_selection"
 
 
 TestPath = Annotated[

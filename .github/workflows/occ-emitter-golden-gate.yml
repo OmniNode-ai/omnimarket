@@ -79,13 +79,13 @@ jobs:
           fetch-depth: 0
 
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
 
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
 
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
 
       # OMN-15247: the consumer-gate parity tests import the REAL
       # onex_change_control gate scripts (lint_contract_check_values,
@@ -95,7 +95,7 @@ jobs:
       # unnoticed (CLAUDE.md OMN-14208: a real cross-boundary regression test,
       # not two independent unit suites).
       - name: Clone onex_change_control (consumer-gate parity)
-        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control
+        run: git clone https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control && git -C ../onex_change_control checkout --detach 6adc28168d023d027bf9c1172f262ac03c9d9055
 
       # OMN-15988: the deploy-gate falsifiability suite imports the REAL
       # omniclaude gate script (validate_pr_deploy_required.py) and drives the
@@ -106,7 +106,7 @@ jobs:
       # which is exactly the OMN-15988 defect (CLAUDE.md rule 5: a detector
       # that is not wired as a gate is advisory and gets ignored).
       - name: Clone omniclaude (deploy-gate ratchet parity)
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
+        run: git clone --depth=1 --branch v0.27.0 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4

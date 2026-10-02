@@ -75,23 +75,11 @@ version: "1.0"
 # model ids this id-match escape hatch resolves against).
 default_task_model_ref: "Qwen3.8-27B"
 task_model_overrides:
-  # OMN-13380/OMN-13599: Direct z.ai GLM-5.2 was the cloud fallback for code/test/
-  # refactor (preferred inside the cheap_cloud tier, backend cloud-glm,
-  # secret_ref llm.glm.api_key). The
-  # former openrouter-glm-flash override was repointed here: we hold a direct GLM
-  # key, so GLM routed direct to z.ai rather than through the OpenRouter
-  # aggregator (routing-cost principle — OpenRouter is for FREE models only).
-  #
-  # OMN-14625: repointed off GLM ("glm-5-turbo") to Gemini ("gemini-2.5-flash")
-  # — the z.ai GLM route is DEAD from the .201 runtime (resolve_api_key
-  # succeeds but every completion call 401s / loops FAILED-only). The model id
-  # "gemini-2.5-flash" matches the cheap_cloud tier model id in
-  # routing_tiers.yaml (backend cloud-gemini-pro, secret_ref
-  # llm.gemini.api_key). A dangling override here would strand routing (see
-  # test_code_generation_contract_model_ref_is_resolvable).
-  code_generation: "gemini-2.5-flash"
-  test: "gemini-2.5-flash"
-  refactor: "gemini-2.5-flash"
+  # OMN-17427 / RULING 2026-10-01T15:49:37Z: ordinary code tasks start on
+  # the local served model. Gemini remains declared for backend-id tests only.
+  code_generation: "Qwen3.8-27B"
+  test: "Qwen3.8-27B"
+  refactor: "Qwen3.8-27B"
   reasoning: "Qwen3.8-27B"
   complex_reasoning: "Qwen3.8-27B"
   planning: "Qwen3.8-27B"
