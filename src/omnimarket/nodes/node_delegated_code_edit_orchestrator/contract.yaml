@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegated Code Edit Orchestrator (OMN-20290)
+#
+# The node path for agentic code drafting. Each model turn is one onex delegate
+# run, so every model call is routed by the routing contract, gated against the
+# declared response contract, receipted and projected like any other
+# delegation. The loop is CLAIM -> [TURN -> APPLY -> (FINISH -> CHECKS)]* ->
+# DIFF -> SCORE -> RECEIPT. Writes are confined to the worktree and the declared
+# writable globs, checks run only by declared name, and there is no shell tool.
+#
+# FIRST SLICE: the children are reached through injected ports, bound by
+# `onex code-edit run` (omnimarket.delegated_code_edit.loop_ports) on the host
+# that holds the worktree. The node declares no event_bus block, so no shared
+# runtime attaches it; the delegate turns themselves go over the bus.
+name: "node_delegated_code_edit_orchestrator"
+lifecycle: experimental
+node_type: "ORCHESTRATOR_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Sequences one delegated code edit loop over one git worktree: at most
+  max_turns onex delegate turns, each returning typed actions (view, ls, grep,
+  write, edit, run_check, finish) that are applied confined to the worktree and
+  the declared writable globs; only declared checks run, and finish runs all of
+  them. Two identical failing check rounds over the same diff stop with
+  no_progress, two failed delegate runs in a row stop with delegate_failed, and
+  the turn cap ends budget_exhausted unless the checks pass. Writes
+  <state root>/runs/<correlation id>/loop_receipt.json with every delegate run
+  id, every action and observation, the diff, the check results and the
+  tool_use rubric verdict, refusing a second loop for the same correlation id,
+  and returns a compact result that carries no file content.
+input_model:
+  name: "ModelDelegatedCodeEditRequest"
+  module: "omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit"
+  description: "Task, absolute worktree root, writable globs, context paths, declared checks, turn cap, caller lane and ticket."
+output_model:
+  name: "ModelCodeEditResult"
+  module: "omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit"
+  description: "The compact result: status, turns, delegate run ids, changed paths, diff hash, check results, refusals, rubric outcome, tokens, wall time."
+handler:
+  module: "omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator"
+  class: "HandlerDelegatedCodeEditOrchestrator"
+  input_model: "omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit.ModelDelegatedCodeEditRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator:HandlerDelegatedCodeEditOrchestrator"
+  handlers:
+    - operation: "run_delegated_code_edit"
+      handler:
+        name: "HandlerDelegatedCodeEditOrchestrator"
+        module: "omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator"
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 7200000
+outputs:
+  status:
+    type: str
+    enum: [accepted, checks_failed, no_progress, budget_exhausted, delegate_failed, infra_error]
+  turns:
+    type: int
+  delegate_run_ids:
+    type: array
+  changed_paths:
+    type: array
+  checks:
+    type: array
+  rubric_outcome:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegated-code-edit-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegated-code-edit-completed.v1"
+    failure: "onex.evt.omnimarket.delegated-code-edit-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delegated code edit loop orchestrator (first slice: in-process on the worktree host, delegate turns over the bus)"
+  author: "OmniNode Team"
+  created: "2026-10-01"
+  tags:
+    - "orchestrator"
+    - "delegated-code-edit"
+    - "OMN-20290"
+  related_tickets:
+    - "OMN-20290"
+    - "OMN-20287"

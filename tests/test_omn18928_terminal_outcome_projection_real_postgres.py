@@ -116,7 +116,7 @@ def _completed_terminal() -> ModelDelegationResult:
     handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=cid,
-            content="def test_verify_registration():\n    assert True",
+            content="### ANSWER\ndef test_verify_registration():\n    assert True",
             model_used="qwen3-coder-30b",
             latency_ms=1200,
             prompt_tokens=100,

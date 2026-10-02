@@ -45,6 +45,12 @@ from omnimarket.nodes.node_projection_metering_summary import (
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     store_rows,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    CREDENTIALS_TABLE,
+    OVERLAY_TABLE,
+    apply_credential_registered,
+    apply_credential_revoked,
+)
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
     HandlerProjectionUsageByModelDay,
 )
@@ -53,8 +59,14 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.protocol_database import ProtocolProjectionAttestedWrite
+from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres  # noqa: F401
+from tests.test_omn16316_real_postgres_tenant_credentials_write_path import (
+    TOPIC_REGISTERED,
+    TOPIC_REVOKED,
+    _provisioned_runner,
+)
 from tests.test_omn19514_ticket_id_projection_real_postgres import (
     _NullPublisher,
     _Postgres,
@@ -470,3 +482,171 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
         )
     offending = [s for s in sqlite.statements if _POSTGRES_ONLY_SQL.search(s)]
     assert offending == []
+
+
+# --- Amendment 4: node_projection_tenant_credentials on both stores ---
+#
+# The deployed writer is the async runner (asyncpg, row-level-security tenant
+# binding). The local store-neutral path must produce the rows that runner
+# produces, so the Postgres leg below drives the REAL runner against a real
+# PostgreSQL schema built from the node's migrations and the overlay table's own
+# migrations, and the SQLite leg drives the store functions. Timestamps are wall
+# clock on both stores, so they are compared by presence, not value.
+
+_CRED_TENANT = "omn19968-byok-tenant"
+_CRED_TABLES = (CREDENTIALS_TABLE, OVERLAY_TABLE)
+_CRED_CLOCK_COLUMNS = frozenset({"created_at", "updated_at", "revoked_at"})
+
+
+def _registered(
+    ref: str, name: str = "parity", provider: str = "openrouter"
+) -> dict[str, Any]:
+    return {
+        "tenant_id": _CRED_TENANT,
+        "provider": provider,
+        "name": name,
+        "api_key_ref": ref,
+    }
+
+
+def _revoked(ref: str) -> dict[str, Any]:
+    return {"tenant_id": _CRED_TENANT, "api_key_ref": ref}
+
+
+# Each scenario is an ordered list of (kind, payload). kind is "registered" or "revoked".
+_CRED_SCENARIOS: dict[str, list[tuple[str, dict[str, Any]]]] = {
+    "register": [("registered", _registered("ref-a"))],
+    "register_twice_updates_in_place": [
+        ("registered", _registered("ref-a", name="first")),
+        ("registered", _registered("ref-a", name="second")),
+    ],
+    "register_then_revoke_blanks_the_route": [
+        ("registered", _registered("ref-a")),
+        ("revoked", _revoked("ref-a")),
+    ],
+    "revoke_before_register_keeps_the_tombstone_and_mints_no_route": [
+        ("revoked", _revoked("ref-a")),
+        ("registered", _registered("ref-a")),
+    ],
+    "undeclared_provider_is_catalogued_but_unrouted": [
+        ("registered", _registered("ref-x", provider="no-such-provider")),
+    ],
+    "re_register_with_a_new_ref_repoints_the_route": [
+        ("registered", _registered("ref-a")),
+        ("revoked", _revoked("ref-a")),
+        ("registered", _registered("ref-b")),
+    ],
+}
+
+
+def _normalize_cred(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    shaped = []
+    for row in rows:
+        out = {
+            k: v for k, v in row.items() if k != "id" and k not in _CRED_CLOCK_COLUMNS
+        }
+        for clock in _CRED_CLOCK_COLUMNS & set(row):
+            out[f"{clock}_set"] = row[clock] is not None
+        shaped.append({k: _norm_value(v) for k, v in sorted(out.items())})
+    return sorted(shaped, key=lambda r: json.dumps(r, sort_keys=True, default=str))
+
+
+def _apply_cred_scenario_sqlite(
+    steps: list[tuple[str, dict[str, Any]]], db: Any
+) -> None:
+    for kind, payload in steps:
+        if kind == "registered":
+            apply_credential_registered(dict(payload), db)
+        else:
+            apply_credential_revoked(dict(payload), db)
+
+
+@pytest.mark.parametrize("scenario", sorted(_CRED_SCENARIOS))
+def test_tenant_credentials_sqlite_path_has_no_postgres_only_sql(
+    tmp_path: Path, scenario: str
+) -> None:
+    """AC14: the SQLite path of this writer never sees ``$n``, ``::TYPE`` or ``NOW()``."""
+    sqlite = _RecordingSqlite(tmp_path / f"{scenario}.sqlite")
+    _apply_cred_scenario_sqlite(_CRED_SCENARIOS[scenario], sqlite)
+    writes = [
+        s
+        for s in sqlite.statements
+        if s.lstrip().upper().startswith(("INSERT", "UPDATE"))
+    ]
+    assert writes, "the SQLite path wrote nothing"
+    assert not [
+        s for s in writes if _POSTGRES_ONLY_SQL.search(s) or "NOW()" in s.upper()
+    ]
+
+
+def test_tenant_credentials_sqlite_tombstone_blocks_the_route(tmp_path: Path) -> None:
+    """AC13 on SQLite alone: a revoke that wins the race keeps the key revoked and unrouted."""
+    sqlite = SqliteDatabaseAdapter(tmp_path / "tombstone.sqlite")
+    _apply_cred_scenario_sqlite(
+        _CRED_SCENARIOS[
+            "revoke_before_register_keeps_the_tombstone_and_mints_no_route"
+        ],
+        sqlite,
+    )
+    [cred] = sqlite.query(CREDENTIALS_TABLE, {"api_key_ref": "ref-a"})
+    assert cred["revoked_at"] is not None
+    assert cred["name"] == "parity"
+    assert cred["provider"] == "openrouter"
+    assert sqlite.query(OVERLAY_TABLE, {"tenant_id": _CRED_TENANT}) == []
+
+
+def test_tenant_credentials_sqlite_revoke_blanks_only_its_own_route(
+    tmp_path: Path,
+) -> None:
+    sqlite = SqliteDatabaseAdapter(tmp_path / "blank.sqlite")
+    _apply_cred_scenario_sqlite(
+        _CRED_SCENARIOS["register_then_revoke_blanks_the_route"], sqlite
+    )
+    [route] = sqlite.query(OVERLAY_TABLE, {"tenant_id": _CRED_TENANT})
+    assert route["secret_ref"] is None
+    assert route["backend_id"] == "byok-openrouter"
+
+
+def test_tenant_credentials_sqlite_refuses_a_secret_shaped_field(
+    tmp_path: Path,
+) -> None:
+    sqlite = SqliteDatabaseAdapter(tmp_path / "leak.sqlite")
+    with pytest.raises(ValueError, match="secret-shaped"):
+        apply_credential_registered({**_registered("ref-a"), "api_key": "sk-x"}, sqlite)
+    assert sqlite.query(CREDENTIALS_TABLE) == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", sorted(_CRED_SCENARIOS))
+async def test_tenant_credentials_rows_equal_sqlite_and_the_real_postgres_runner(
+    tmp_path: Path, scenario: str
+) -> None:
+    """AC13: the SQLite store path writes what the deployed asyncpg runner writes."""
+    steps = _CRED_SCENARIOS[scenario]
+    sqlite = SqliteDatabaseAdapter(tmp_path / f"{scenario}.sqlite")
+    _apply_cred_scenario_sqlite(steps, sqlite)
+    sqlite_rows = {t: _normalize_cred(sqlite.query(t)) for t in _CRED_TABLES}
+
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        for offset, (kind, payload) in enumerate(steps):
+            topic = TOPIC_REGISTERED if kind == "registered" else TOPIC_REVOKED
+            ok = await runner.project_event(
+                topic,
+                dict(payload),
+                MessageMeta(
+                    partition=0,
+                    offset=offset,
+                    fallback_id=f"{scenario}-{offset}",
+                    topic=topic,
+                ),
+            )
+            assert ok is True
+        pg_rows = {
+            t: _normalize_cred(
+                [dict(r) for r in await admin_conn.fetch(f"SELECT * FROM {t}")]
+            )
+            for t in _CRED_TABLES
+        }
+
+    assert sqlite_rows == pg_rows

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-19198: the reviewer leg binds with only what the machine has.
 
-The shipped judge (``cloud-glm-judge``) is a metered provider behind a
+The shipped judge (``openrouter-nemotron-super``) is a metered provider behind a
 credential reference. On a customer machine that holds no such credential the
 reviewer leg used to resolve to that endpoint anyway: a customer with no key had
 a reviewer that could never authenticate, and C14 row 4 ("the reviewer leg is
@@ -88,13 +88,12 @@ def test_the_declared_judge_is_kept_where_its_credential_resolves(
     monkeypatch.setattr(
         judge_mod,
         "api_key_ref_available",
-        lambda ref, **_: ref == "llm.gemini.api_key",
+        lambda ref, **_: ref == "llm.openrouter.api_key",
     )
 
     backend = RoutingResolvedJudgeInferenceAdapter()._resolve_backend()
 
-    assert backend.backend_id == "cloud-glm-judge"
-    assert backend.secret_ref == "llm.gemini.api_key"
+    assert backend.backend_id == "openrouter-nemotron-super"
 
 
 def test_a_machine_with_neither_has_no_reviewer_bound(

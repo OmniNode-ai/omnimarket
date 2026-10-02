@@ -69,7 +69,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           repository: OmniNode-ai/onex_change_control
-          ref: main
+          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           path: .occ-checkout
           token: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
           persist-credentials: false
@@ -83,7 +83,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       - name: Build observation-source payload
         run: |

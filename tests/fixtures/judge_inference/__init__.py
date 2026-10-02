@@ -41,6 +41,10 @@ class RecordedJudgeReplayAdapter(ModelInferenceAdapter):
         self._raw_response = str(record["raw_response"])
         self.calls: list[dict[str, object]] = []
 
+    def resolved_model_id(self) -> str:
+        """Retain the actual recorded provider identity when defaults change."""
+        return self._expected_model_id
+
     async def infer(
         self,
         model_key: str,

@@ -27,7 +27,23 @@ STATUS, FRICTION and CORRECTION rows are logged and open no entity.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
+from uuid import UUID
+
+from omnibase_core.models.events.work.model_work_ledger_line import (
+    dump_work_ledger_line,
+)
+from omnibase_core.models.events.work.model_work_ledger_record import (
+    ModelWorkLedgerRecord,
+)
+from omnibase_core.models.nodes.work_ledger_state import (
+    ModelWorkLedgerFoldInput,
+    ModelWorkLedgerState,
+)
+from omnibase_core.nodes.node_work_ledger_state_compute.handler import (
+    NodeWorkLedgerStateCompute,
+)
 
 from omnimarket.events.enum_ledger_row_type import (
     EnumLedgerRowType as RowType,
@@ -55,6 +71,9 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_
     ModelWorkLedgerFoldResult,
     ModelWorkLedgerRowRecord,
     ModelWorkLedgerStateOp,
+)
+from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_projection import (
+    ModelWorkLedgerProjectionRow,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     LedgerRowRefusalError,
@@ -242,3 +261,37 @@ def apply_ops(
 
 
 __all__: list[str] = ["WorkLedgerFoldError", "apply_ops", "fold_row", "parse_stamp"]
+
+
+def rows_for_records(
+    records: Iterable[ModelWorkLedgerRecord],
+) -> tuple[ModelWorkLedgerProjectionRow, ...]:
+    """Canonicalize identities, refusing conflicting immutable records."""
+    by_id: dict[UUID, str] = {}
+    for record in records:
+        canonical = dump_work_ledger_line(record)
+        event_id = record.event.event_id
+        existing = by_id.get(event_id)
+        if existing is not None and existing != canonical:
+            raise WorkLedgerFoldError(
+                f"conflicting canonical content for event_id {event_id}"
+            )
+        by_id[event_id] = canonical
+    return tuple(
+        ModelWorkLedgerProjectionRow(event_id=event_id, record=canonical)
+        for event_id, canonical in sorted(by_id.items(), key=lambda item: str(item[0]))
+    )
+
+
+def fold_records(
+    records: Iterable[ModelWorkLedgerRecord], *, as_of: datetime | None = None
+) -> ModelWorkLedgerState:
+    """Fold typed records with the released core reducer, without reinterpretation."""
+    materialized = tuple(records)
+    rows_for_records(materialized)
+    return NodeWorkLedgerStateCompute().handle(
+        ModelWorkLedgerFoldInput(
+            lines=tuple(dump_work_ledger_line(record) for record in materialized),
+            as_of=as_of,
+        )
+    )

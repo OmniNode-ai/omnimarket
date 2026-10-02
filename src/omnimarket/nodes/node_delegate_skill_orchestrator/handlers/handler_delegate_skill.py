@@ -38,6 +38,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
@@ -85,7 +86,7 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     estimate_baseline_cost_usd,
     estimate_frontier_costs_usd,
-    get_manifest_version_int,
+    resolve_baseline_model,
 )
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
@@ -250,6 +251,24 @@ def _as_acceptance_decision(
     return None
 
 
+def _as_finish_reason(value: object) -> EnumProviderFinishReason | None:
+    """Coerce a serialized provider stop reason (OMN-19436).
+
+    ``None`` for a rung that recorded none, or recorded a value this build does
+    not know: a terminal must still render when an older row carries one.
+    """
+    if value is None:
+        return None
+    if isinstance(value, EnumProviderFinishReason):
+        return value
+    if isinstance(value, str):
+        try:
+            return EnumProviderFinishReason(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _as_acceptance_reason(
     value: object,
 ) -> EnumDelegationAcceptanceReason | None:
@@ -409,12 +428,16 @@ def _estimate_claude_cost_savings(
     result: dict[str, object],
     *,
     actual_cost_usd: float,
-) -> float:
+    baseline_model: str,
+) -> float | None:
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
     counterfactual_cost_usd = estimate_baseline_cost_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        baseline_model=baseline_model,
     )
+    if counterfactual_cost_usd is None:
+        return None
     return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
@@ -486,6 +509,11 @@ def _attempt_records(
     for raw in attempt_values:
         if not isinstance(raw, dict):
             continue
+        # OMN-19436: preserve an explicit bool; otherwise derive from the reason.
+        truncated_fields: dict[str, Any] = {}
+        raw_truncated = raw.get("truncated")
+        if isinstance(raw_truncated, bool):
+            truncated_fields["truncated"] = raw_truncated
         rubric_verdict = None
         raw_verdict = raw.get("rubric_verdict")
         if isinstance(raw_verdict, dict):
@@ -540,6 +568,8 @@ def _attempt_records(
                     # OMN-19436: the gate's own record of the seam, carried on
                     # the rung by the workflow. None when no gate judged it.
                     reasoning_preamble_rule=_preamble_rule(raw),
+                    finish_reason=_as_finish_reason(raw.get("finish_reason")),
+                    **truncated_fields,
                     **_provider_facts(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -576,6 +606,8 @@ def _attempt_records(
                 # typed terminal always read "no segmentation attempted".
                 acceptance_detail=str(raw.get("acceptance_detail") or ""),
                 reasoning_preamble_rule=_preamble_rule(raw),
+                finish_reason=_as_finish_reason(raw.get("finish_reason")),
+                **truncated_fields,
                 rubric_verdict=rubric_verdict,
                 reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
@@ -741,6 +773,19 @@ def _response_from_result(
         result.get("quality_gate_passed", result.get("quality_passed", False))
     )
     attempts = _attempt_records(result)
+    # OMN-19436: the accepted rung decides the terminal's stop reason, else the
+    # last recorded rung. A completed terminal whose history holds no accepted
+    # rung (history from before OMN-16932 lists rejected rungs only) names none,
+    # because the rung that answered was never recorded and a rejected rung's
+    # truncation must not be read as the answer's.
+    deciding_attempt = next(
+        (
+            attempt
+            for attempt in attempts
+            if attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+        ),
+        attempts[-1] if attempts and status_value != "completed" else None,
+    )
     # OMN-15469: classify the terminal failure cause from the ladder BEFORE the
     # response is built, so the composite verdict (delegate_skill_succeeded) can
     # see it. A quota refusal that reaches here unclassified is the exact case
@@ -791,22 +836,36 @@ def _response_from_result(
                 f"{criterion} ({observed})" if observed else criterion,
             )
     actual_cost_usd = _measured_cost_usd(result)
-    cost_savings_usd = (
-        max(
-            _as_float(
-                result.get("cost_savings_usd"),
-                default=_estimate_claude_cost_savings(
-                    result,
-                    actual_cost_usd=actual_cost_usd,
-                ),
-            ),
-            0.0,
-        )
-        if status_value == "completed" and quality_gate_passed
-        else 0.0
+    baseline = resolve_baseline_model(
+        overlay=result.get("overlay", {}),
+        store=result.get("store", {}),
+        session_model=str(
+            result.get("model_cloud_baseline") or result.get("baseline_model") or ""
+        ),
     )
+    if baseline.state == "BASELINE_UNRESOLVED":
+        cost_savings_usd: float | None = None
+    elif status_value == "completed" and quality_gate_passed:
+        estimate = _estimate_claude_cost_savings(
+            result,
+            actual_cost_usd=actual_cost_usd,
+            baseline_model=baseline.model,
+        )
+        reported = result.get("cost_savings_usd")
+        cost_savings_usd = (
+            estimate
+            if reported is None
+            else max(_as_float(reported, default=estimate or 0.0), 0.0)
+        )
+    else:
+        cost_savings_usd = 0.0
     return ModelDelegateSkillResponse(
         status=status_value,
+        finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
+        truncated=deciding_attempt.truncated if deciding_attempt else False,
+        reasoning_preamble_rule=(
+            deciding_attempt.reasoning_preamble_rule if deciding_attempt else None
+        ),
         correlation_id=request.correlation_id,
         task_type=request.task_type,
         # OMN-14485: carry the resolved tenant onto the response so the terminal
@@ -838,15 +897,10 @@ def _response_from_result(
         secret_ref=(str(result["secret_ref"]) if result.get("secret_ref") else None),
         provider=str(result.get("provider") or result.get("delegated_to") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
-        model_cloud_baseline=str(
-            result.get("model_cloud_baseline")
-            or result.get("baseline_model")
-            or DEFAULT_BASELINE_MODEL
-        ),
-        pricing_manifest_version=_as_int(
-            result.get("pricing_manifest_version"),
-            default=get_manifest_version_int(),
-        ),
+        model_cloud_baseline=baseline.model,
+        baseline_source=baseline.selection_case,
+        baseline_state=baseline.state,
+        pricing_manifest_version=baseline.pricing_manifest_version,
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,

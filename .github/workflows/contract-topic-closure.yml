@@ -112,7 +112,7 @@ jobs:
           repository: OmniNode-ai/omnibase_infra
           # dev, not main: main is release-synced, so a validator that has landed on the
           # integration branch would otherwise not be visible until the next release.
-          ref: dev
+          ref: v0.38.59
           path: omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -123,7 +123,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
 
       # Fail-closed: the shim exits non-zero when no omnibase_infra source tree carrying
       # the validator resolves, so a broken checkout cannot silently no-op the gate.
@@ -146,7 +146,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       # Fail-closed on its own scan: a zero-contract read exits 2 rather than
       # reporting a clean tree, so a broken checkout cannot no-op the gate.
       - name: Run routing-input-model-fit gate
@@ -168,7 +168,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       # Calls the runtime's OWN discover_runtime_local_ingress_routes, so this asks the
       # boot question rather than a re-derivation of it. Fail-closed: a collapsed alias
       # table or a zero-contract scan exits 2.
@@ -191,7 +191,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       - name: Run handler-event-type-source gate
         run: uv run python -m omnimarket.validators.handler_event_type_source
 
@@ -211,7 +211,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       - name: Run no-literal-event-type-in-tests gate
         run: uv run python -m omnimarket.validators.no_literal_event_type_in_tests
 
@@ -234,7 +234,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       - name: Run key-grain-declared gate
         run: uv run python -m omnimarket.validators.key_grain_declared
 
@@ -254,6 +254,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
       - name: Run no-baseline-refreeze gate
         run: uv run python -m omnimarket.validators.no_baseline_refreeze

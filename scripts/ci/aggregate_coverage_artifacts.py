@@ -14,9 +14,10 @@ CUT OVER (OMN-18556). This script is what the ``Coverage Sweep Gate`` job runs
 on the PR path, and that job is enforced through ``CI Summary``'s
 ``STRICT_GATE_JOBS``. It was proven first as a shadow: 100 full-scope runs at
 parity with zero divergence over the 72h window recorded on OMN-18556. The full
-second-pass census still runs nightly on ``dev``
-(``.github/workflows/nightly-full-suite.yml``) to carry what smart selection
-does not run on a PR. Rollback is the single revert of the OMN-18556 commit,
+suite still runs nightly on ``dev`` (``.github/workflows/nightly-full-suite.yml``)
+to carry what smart selection does not run on a PR; since OMN-20316 that night
+is sharded too and folded by this same aggregator. Rollback is the single
+revert of the OMN-18556 commit,
 which restores the second-pass sweep as the required census (merge-flow plan
 §2 WS2: "Restore the existing sweep as required if comparison diverges; do not
 waive coverage.").

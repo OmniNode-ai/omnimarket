@@ -46,7 +46,11 @@ db_io:
       database_ref: application
       schema: public
       migration: "075_add_savings_estimates_updated_at.sql"
-      access: write
+      # OMN-20303: both writers READ the run's stored identity before they
+      # write, so one delegation run keeps one row. `access: write` is refused
+      # fail-closed at the read seam (ProjectionTableOperation
+      # ._assert_read_declared); the declaration covers what the handler does.
+      access: read_write
       role: estimates
     # OMN-15583: READ-ONLY resolution of the producer-recorded tenant identity.
     # node_projection_tenant_registry owns and writes this relation; this node

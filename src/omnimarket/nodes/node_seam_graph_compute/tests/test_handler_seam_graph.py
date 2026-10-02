@@ -111,7 +111,9 @@ class TestCodeLevelExtraction:
             for obs in graph.code_observations
             if obs.kind == EnumSeamGraphObservationKind.REF_PIN
         }
-        assert "configs/service_endpoints.yaml#backends.cloud-gemini-pro" in values
+        assert (
+            "configs/service_endpoints.yaml#backends.cloud-gemini-2-5-flash" in values
+        )
 
 
 @pytest.mark.unit

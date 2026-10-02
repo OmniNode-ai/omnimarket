@@ -179,7 +179,10 @@ def compute_selection(
 
     selected = _resolve(changed_files, config, repo_root=root)
     if not selected:
-        selected = ["tests/"]
+        # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
+        # full-suite shard matrix; an is_full_suite=False selection of tests/
+        # became one serial Split 1/1 job (63 minutes on omnimarket#3175).
+        return _full_suite(EnumFullSuiteReason.NO_NARROWABLE_SELECTION)
     # OMN-15639: repo-wide gates are unioned in after narrowing. They assert
     # invariants over files the adjacency map cannot attribute to a single
     # module (all of src/**/contract.yaml, for instance), so a narrowed run

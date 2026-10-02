@@ -59,9 +59,51 @@ class _RecordingAdapter:
         self.received.append((topic, json.loads(json.dumps(payload)), key))
 
 
+class _FakeTransaction:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _FakeConnection:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    def transaction(self) -> _FakeTransaction:
+        return _FakeTransaction()
+
+    async def execute(self, sql: str, *args: Any) -> None:
+        if "pg_advisory_xact_lock" in sql:
+            self._db.locks.append(args)
+            return
+        await self._db.execute(sql, *args)
+
+
+class _FakeAcquire:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    async def __aenter__(self) -> _FakeConnection:
+        return _FakeConnection(self._db)
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _FakePool:
+    def __init__(self, db: _FakeDb) -> None:
+        self._db = db
+
+    def acquire(self) -> _FakeAcquire:
+        return _FakeAcquire(self._db)
+
+
 class _FakeDb:
     def __init__(self) -> None:
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
+        self.locks: list[tuple[Any, ...]] = []
 
     async def connect(self) -> None: ...
 
@@ -69,6 +111,10 @@ class _FakeDb:
 
     async def execute(self, sql: str, *args: Any) -> None:
         self.statements.append((sql, args))
+
+    @property
+    def pool(self) -> _FakePool:
+        return _FakePool(self)
 
 
 def test_row_to_bus_to_projection_sql(tmp_path: Path) -> None:

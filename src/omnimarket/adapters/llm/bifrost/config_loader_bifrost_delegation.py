@@ -46,6 +46,7 @@ from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
 )
+from omnimarket.models.delegation.model_ollama_config import ModelOllamaConfig
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
     ModelDelegationBackendConfig,
@@ -443,6 +444,26 @@ def load_bifrost_delegation_config(
     return _validate_bifrost_delegation_config(data, source=source)
 
 
+def load_ollama_config(
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
+) -> ModelOllamaConfig | None:
+    """The ``ollama`` block from the same resolved contract/overlay pair.
+
+    OMN-20326. ``None`` when the pair declares no block. Raises ``ValueError``
+    naming the source when the block is malformed.
+    """
+    data, source = _load_merged_bifrost_data(config_path, overlay_path)
+    block = data.get("ollama")
+    if block is None:
+        return None
+    try:
+        return ModelOllamaConfig.model_validate(block)
+    except ValidationError as exc:
+        msg = f"Bifrost ollama block is invalid in {source}: {exc}"
+        raise ValueError(msg) from exc
+
+
 def load_bifrost_backend_placements(
     config_path: Path | None = None,
     overlay_path: Path | None = None,
@@ -813,13 +834,16 @@ def load_bifrost_delegation_config_payload(
 
 
 def _without_placements(data: dict[str, Any]) -> dict[str, Any]:
-    """``data`` with each backend's ``placement`` lifted off (OMN-19215).
+    """``data`` with each backend's ``placement`` and the ``ollama`` block lifted off.
+
+    The ``ollama`` block (OMN-20326) is read by :func:`load_ollama_config`.
 
     A placement is routing configuration read by
     :func:`load_bifrost_backend_placements`, not a field of the wire model, so
     the backend entry the wire model validates keeps the shape every released
     consumer accepts.
     """
+    data = {key: value for key, value in data.items() if key != "ollama"}
     backends = data.get("backends")
     if not isinstance(backends, list):
         return data
@@ -965,6 +989,7 @@ __all__: list[str] = [
     "load_bifrost_backend_placements",
     "load_bifrost_delegation_config",
     "load_bifrost_delegation_config_payload",
+    "load_ollama_config",
     "reject_backends_off_a_declared_provider_surface",
     "validate_overlay_added_backends",
     "warn_overlay_shadowed_authoritative_fields",

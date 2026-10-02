@@ -115,12 +115,33 @@ x-tool-use-criteria: &tool_use_criteria
     min_quote_words: 3
     min_number_digits: 2
     max_facts: 20
+    # Shapes that carry no fact of their own (OMN-20233, measured on the first
+    # scored batch): a sentence's closing mark after a quote or a name, an
+    # abbreviation the file-name pattern reads as a file, an elision inside a
+    # code span, and the words of a command the run issued, refused or not.
+    # A traced path:line citation reads as its path; its lines are checked
+    # against the manifest where one maps the file.
+    trailing_punctuation: '.,;:!?'
+    ignore_tokens: [e.g, i.e, etc, vs, cf]
+    elision_markers: ['...', '…']
+    command_argument_names: [command, cmd]
+    citation_line_tolerance: 0
+    code_keywords: [try, except, finally, if, elif, else, for, while, with, async, await, import, from, return, yield, raise]
 - criterion_id: within_budget
-  description: Recorded turns, tool calls and wall time stay within the configured measurement budget.
+  description: Recorded turns, tool calls and wall time stay within the configured measurement budget; wall time is per engine.
   params:
     max_turns: 40
     max_tool_calls: 80
+    # An engine with no measured wall-time budget below.
     max_wall_time_ms: 900000
+    # Keyed by the model id the run recorded. Set from the first scored batch
+    # (OMN-20233): the lab model's p90 was about 970 s over 26 runs, five of
+    # them sharing one server (max 1374 s), so 1800 s gives it headroom. GLM-5.3
+    # ran 5 runs at max 230 s without running its own tests; 600 s leaves room
+    # for the test run its writable mode now allows (OMN-20273).
+    max_wall_time_ms_by_engine:
+      Qwen3.8-27B: 1800000
+      glm-5.3: 600000
 
 classes:
   tool_use: *tool_use_criteria

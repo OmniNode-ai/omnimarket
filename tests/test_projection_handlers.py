@@ -95,8 +95,9 @@ def _savings_write_calls(mock_db: AsyncMock) -> list[Any]:
     return [
         call
         for call in mock_db.execute.await_args_list
-        if "savings_estimates" in str(call.args[0])
-        and "snapshot_grain" not in str(call.args[0])
+        # OMN-20303: the run-identity SELECT that precedes each write is a
+        # read, not a write statement.
+        if "INSERT INTO savings_estimates" in str(call.args[0])
     ]
 
 
@@ -488,6 +489,7 @@ class TestDelegationHandler:
             "task_type": "test",
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "model_cloud_baseline": "claude-opus-4-6",
             "response": "projection proof",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
@@ -847,6 +849,7 @@ class TestSavingsHandler:
             "task_type": "document",
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "model_cloud_baseline": "claude-opus-4-6",
             "quality_gate_passed": True,
             "metrics": {
                 "input_tokens": 81,

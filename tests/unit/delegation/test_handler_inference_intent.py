@@ -251,7 +251,7 @@ class TestHandlerInferenceIntent:
         """OMN-13215/OMN-13351: the ceiling tier executes via the canonical HTTP path.
 
         A complete Gemini chat-completions URL (the default ceiling backend
-        ``cloud-gemini-pro``, repointed off the dead Anthropic ``cloud-sonnet`` in
+        ``cloud-gemini-2-5-flash``, repointed off the dead Anthropic ``cloud-sonnet`` in
         OMN-13351) is posted verbatim with the resolved api_key, identical to every
         lower tier.
         """
@@ -767,7 +767,14 @@ class TestHandlerInferenceIntent:
         assert isinstance(response, ModelInferenceResponseData)
         assert response.error_message == ""
         assert response.content == "def test_foo(): pass"
-        assert captured_headers == [{"Authorization": "Bearer sk-test-key"}]
+        # OMN-20299: the default intent targets localhost, a self-hosted server,
+        # so the run's correlation id rides beside the resolved key.
+        assert captured_headers == [
+            {
+                "Authorization": "Bearer sk-test-key",
+                "X-Onex-Correlation-Id": str(correlation_id),
+            }
+        ]
 
     def test_missing_api_key_ref_returns_error_response(
         self, monkeypatch: pytest.MonkeyPatch

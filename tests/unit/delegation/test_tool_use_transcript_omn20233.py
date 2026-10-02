@@ -498,7 +498,12 @@ def test_cli_scores_a_crush_store_and_writes_the_record(tmp_path: Path) -> None:
     assert record["run_ref"] == "crush:s1"
     assert record["verdict"]["outcome"] == "PASS"
     assert record["attempt_verdict"]["task_class"] == "tool_use"
-    assert record["measured"] == {"turns": 3, "tool_calls": 3, "wall_time_ms": 30_000}
+    assert record["measured"] == {
+        "engine": None,
+        "turns": 3,
+        "tool_calls": 3,
+        "wall_time_ms": 30_000,
+    }
 
 
 def test_cli_refuses_a_missing_store(tmp_path: Path) -> None:

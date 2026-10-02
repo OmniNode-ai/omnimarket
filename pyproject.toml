@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.272"
+version = "0.4.282"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -252,6 +252,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
+node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
@@ -320,11 +322,14 @@ node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_comp
 node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
 node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_loop_orchestrator"
+node_delegated_code_edit_orchestrator = "omnimarket.nodes.node_delegated_code_edit_orchestrator"
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
+# OMN-20275: ledger-host append effect, hosted by `onex work-ledger serve`.
+node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -753,10 +758,16 @@ local = "omnimarket.cli.cli_local:local_group"
 # same reason as "cloud" and "local": the CLI discovers this group over
 # installed distributions.
 test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
+# OMN-20290: `onex code-edit` -- run the delegated code edit loop over a git
+# worktree, each model turn one onex delegate run. Discovered over installed
+# distributions like the groups above.
+code-edit = "omnimarket.cli.cli_code_edit:code_edit_group"
 # OMN-20105: `onex lab-work` -- serve lab work units on a pool host, list the
 # pool's capacity advertisements, and place and send one heavy command over the
 # bus. Discovered over installed distributions like the groups above.
 lab-work = "omnimarket.lab_work.cli:lab_work_group"
+# OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
+work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market

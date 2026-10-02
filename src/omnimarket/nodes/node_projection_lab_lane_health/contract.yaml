@@ -149,23 +149,29 @@ projection_api:
   # public/omnidash_analytics — so this field is the read-model record, at the
   # granularity the field allows, and nothing resolves against it.
   schema: "omnidash_analytics"
+  # OMN-20327: the columns are the table's own. The decayed verdicts
+  # (census_status, health_status, receipt_status) are not among them -- the
+  # table stores each fact's observed_at and pre-decay verdict only, because a
+  # stored decayed verdict needs a timer to stay true and a timer that stops
+  # leaves a confident stale green (see the runner's module docstring). A
+  # reader derives the current verdict with enum_fact_status.decay from
+  # <fact>_original_status and <fact>_observed_at. The contract used to list
+  # them, which the table-backed read (OMN-20152) turned into a 503
+  # projection_column_missing on every request.
   columns:
     - "lane"
     - "lane_class"
     - "census_observed_at"
     - "census_original_status"
-    - "census_status"
     - "census_drift_count"
     - "census_drift_items"
     - "census_host"
     - "health_observed_at"
     - "health_original_status"
-    - "health_status"
     - "health_aggregate"
     - "health_dimensions"
     - "receipt_observed_at"
     - "receipt_original_status"
-    - "receipt_status"
     - "receipt_sha"
     - "receipt_result"
     - "receipt_failing_checks"

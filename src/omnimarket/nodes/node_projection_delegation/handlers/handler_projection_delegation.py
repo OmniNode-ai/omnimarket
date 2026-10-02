@@ -68,6 +68,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
+    HandlerDelegationRunAttributionFold,
+    ModelDelegationRunAttributionFoldRequest,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
     HandlerDelegationTicketFold,
 )
@@ -313,6 +317,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
         default=None
     )
+    # OMN-19448: canonical terminal trace_id, model_used and route respectively.
+    trace_id: str | None = Field(default=None)
+    routed_model: str | None = Field(default=None)
+    answering_backend: str | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -827,6 +835,7 @@ class HandlerProjectionDelegation:
             "override_within_bounds": event.override_within_bounds,
         }
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
+        _stamp_terminal_trace_and_routing(row, event)
         # OMN-14898: refuse the write before it is ever built out further when
         # isolation enforcement is on and no tenant was resolved (raises
         # TenantRequiredError -- no row, no fall-through to the column
@@ -1681,6 +1690,13 @@ def _canonical_result_to_task_delegated_payload(
         "content_verdict": payload.get("content_verdict"),
         # OMN-19448: the terminal's own cause; the converter used to drop it.
         "terminal_failure_cause": payload.get("terminal_failure_cause"),
+        # OMN-19448: copy the producer's trace and routing fields; UUID traces
+        # are stored as TEXT so the asyncpg writer binds a string safely.
+        "trace_id": (
+            str(payload["trace_id"]) if payload.get("trace_id") is not None else None
+        ),
+        "routed_model": payload.get("model_used") or None,
+        "answering_backend": payload.get("route") or None,
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1933,6 +1949,13 @@ def _preserve_existing_evidence(
     if not existing_rows:
         return
     existing = existing_rows[0]
+    # OMN-20303: a later terminal that states no counterfactual, session or
+    # actor keeps the run's stored ones, so a kept saving keeps its baseline.
+    row.update(
+        HandlerDelegationRunAttributionFold()
+        .handle(ModelDelegationRunAttributionFoldRequest(stored=existing, incoming=row))
+        .row_columns()
+    )
     for key in ("prompt_text", "response_text", "context_pack_hash"):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
@@ -1961,7 +1984,14 @@ def _preserve_existing_evidence(
     ):
         if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
             row[key] = existing[key]
-    for key in ("authority_source", "score_source"):
+    # OMN-19448: sparse later terminals keep the recorded trace and routing.
+    for key in (
+        "authority_source",
+        "score_source",
+        "trace_id",
+        "routed_model",
+        "answering_backend",
+    ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
@@ -1974,6 +2004,21 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
+
+
+def _stamp_terminal_trace_and_routing(
+    row: dict[str, object],
+    event: ModelProjectionTaskDelegatedEvent,
+) -> None:
+    """Name only non-blank terminal trace and routing columns (OMN-19448).
+
+    Omitting absent values keeps a later sparse terminal from overwriting
+    evidence an earlier terminal recorded with NULL.
+    """
+    for key in ("trace_id", "routed_model", "answering_backend"):
+        value = getattr(event, key)
+        if not _is_blank(value):
+            row[key] = value
 
 
 def _stamp_declared_failure_cause(

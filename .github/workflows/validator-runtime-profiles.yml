@@ -74,7 +74,11 @@ jobs:
 
           backoff=5
           elapsed=0
-          deadline=720
+          # The eligibility check bounds its own wait for the cited OCC companion at
+          # 1500 s, so this poller waits that long plus 180 s of scheduling slack.
+          # At 720 s it gave up on an eligibility run that was still waiting on its
+          # companion, failed, and skipped the test shards behind it.
+          deadline=1680
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -175,7 +179,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync
 
       - name: Validate runtime_profiles on omnimarket contracts
         run: |

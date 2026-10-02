@@ -322,7 +322,10 @@ class TestBusPathSegmentsTheResponse:
         )
         state = workflow._workflows[request_dto.correlation_id]
 
-        assert gate_intent.payload.llm_response_content == ""
+        # OMN-17427: the gate is shown the provider's real text so it grades
+        # what was said rather than a fabricated blank; the caller-facing
+        # content stays withheld and the refusal is a deterministic floor.
+        assert gate_intent.payload.llm_response_content == _CLEAN_RESPONSE_ANSWER
         assert state.inference_content == ""
         assert state.output_refusal is not None
 

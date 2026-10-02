@@ -41,6 +41,9 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
 )
@@ -106,7 +109,7 @@ def _make_routing_decision(correlation_id: UUID) -> ModelRoutingDecision:
 def _make_success_response(correlation_id: UUID) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
-        content="def test_verify_registration():\n    assert True",
+        content="### ANSWER\ndef test_verify_registration():\n    assert True",
         model_used=_MODEL,
         llm_call_id="chatcmpl-omn19710",
         latency_ms=1200,
@@ -194,6 +197,14 @@ async def test_real_golden_delegation_orchestrator_chain() -> None:
         correlation_id=correlation_id,
         bus_history_count=await recorder.bus_history_count(),
     )
+    completed = next(
+        event.payload
+        for event in recorder.events
+        if isinstance(event.payload, ModelDelegationCompleted)
+    )
+    assert isinstance(completed, ModelDelegationCompleted)
+    assert completed.content == "def test_verify_registration():\n    assert True"
+    assert "### ANSWER" not in completed.content
 
 
 @chain_obligation("error:routing_boundary_terminalized")

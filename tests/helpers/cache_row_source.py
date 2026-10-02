@@ -76,6 +76,7 @@ class CacheRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        selection: str = "newest",
     ) -> list[dict[str, Any]]:
         # ``since`` and ``correlation_id`` are applied by the route over the
         # whole set, as they were over the cache.
@@ -87,6 +88,24 @@ class CacheRowSource:
             tenant_id=tenant_id,
         )
         return rows
+
+    async def walk_origin(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> str | None:
+        if cfg.cursor_column is None:
+            return None
+        rows: list[dict[str, Any]] = self.cache.get_rows(
+            cfg.topic,
+            unbounded=True,
+            tenant_column=cfg.tenant_column,
+            tenant_id=tenant_id,
+        )
+        cursors = [
+            row[cfg.cursor_column]
+            for row in rows
+            if isinstance(row.get(cfg.cursor_column), int)
+        ]
+        return str(min(cursors) - 1) if cursors else None
 
     async def latest_event_at(
         self,

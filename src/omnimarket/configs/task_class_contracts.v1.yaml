@@ -22,6 +22,13 @@
 #   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
 #   order is used instead; that file is the source of truth for fallback order.
 #
+# escalation_policy.entry_share: OPTIONAL {tier: cheap_frontier, share: 0.25}.
+#   OMN-20163: a deterministic fraction (0.0..1.0) of correlation ids starts on
+#   this free tier, which must be named in tier_order and must not already be
+#   first. A miss retries tier_order's first tier before any metered tier.
+#   Initial entry draws are disabled while quota blocks every entry-tier backend.
+#   Absent key or share 0.0 preserves the declared order; no class opts in here.
+#
 # default_task_model_ref: model ID used when no per-task override is declared.
 #   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").
 #
@@ -75,23 +82,11 @@ version: "1.0"
 # model ids this id-match escape hatch resolves against).
 default_task_model_ref: "Qwen3.8-27B"
 task_model_overrides:
-  # OMN-13380/OMN-13599: Direct z.ai GLM-5.2 was the cloud fallback for code/test/
-  # refactor (preferred inside the cheap_cloud tier, backend cloud-glm,
-  # secret_ref llm.glm.api_key). The
-  # former openrouter-glm-flash override was repointed here: we hold a direct GLM
-  # key, so GLM routed direct to z.ai rather than through the OpenRouter
-  # aggregator (routing-cost principle — OpenRouter is for FREE models only).
-  #
-  # OMN-14625: repointed off GLM ("glm-5-turbo") to Gemini ("gemini-2.5-flash")
-  # — the z.ai GLM route is DEAD from the .201 runtime (resolve_api_key
-  # succeeds but every completion call 401s / loops FAILED-only). The model id
-  # "gemini-2.5-flash" matches the cheap_cloud tier model id in
-  # routing_tiers.yaml (backend cloud-gemini-pro, secret_ref
-  # llm.gemini.api_key). A dangling override here would strand routing (see
-  # test_code_generation_contract_model_ref_is_resolvable).
-  code_generation: "gemini-2.5-flash"
-  test: "gemini-2.5-flash"
-  refactor: "gemini-2.5-flash"
+  # OMN-17427 / RULING 2026-10-01T15:49:37Z: ordinary code tasks start on
+  # the local served model. Gemini remains declared for backend-id tests only.
+  code_generation: "Qwen3.8-27B"
+  test: "Qwen3.8-27B"
+  refactor: "Qwen3.8-27B"
   reasoning: "Qwen3.8-27B"
   complex_reasoning: "Qwen3.8-27B"
   planning: "Qwen3.8-27B"
@@ -984,7 +979,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1102,7 +1097,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1133,7 +1128,7 @@ task_classes:
       - reasoning
     # OMN-13215: research declares ``claude`` as its escalation ceiling tier, which
     # is the HTTP frontier ceiling backend. OMN-13351 repointed that backend off the
-    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-pro
+    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-2-5-flash
     # (gemini-2.5-flash, served on the AI Studio free-tier key → ceiling tier cost
     # 0.0). This 0.015 cap stays as a generous ceiling-cap headroom (the 0.0 ceiling
     # tier is well under it); the prior $0.002 ceiling contradicted the tier_order —
@@ -1865,7 +1860,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1999,9 +1994,9 @@ task_classes:
       terminology: controlled_reproducible_auditable
     # OMN-16811: ``local`` prepended. This class's tier_order was ``[claude]``
     # alone — the ONLY admitted task class whose entire ladder was a single
-    # credentialed cloud backend (``cloud-gemini-pro``). A read-only probe run
+    # credentialed cloud backend (``cloud-gemini-2-5-flash``). A read-only probe run
     # inside the dev-lane runtime container resolved escalation to exactly
-    # ``[('claude', 'cloud-gemini-pro')]`` while all eleven terminating classes
+    # ``[('claude', 'cloud-gemini-2-5-flash')]`` while all eleven terminating classes
     # kept a free local rung, which is why a quota-exhausted / unreachable
     # Gemini stranded this class specifically. Cheapest-first doctrine: the
     # zero-cost owned-GPU tier is tried first and the metered ceiling stays the

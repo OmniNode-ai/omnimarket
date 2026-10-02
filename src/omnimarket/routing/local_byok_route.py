@@ -60,12 +60,16 @@ import re
 from pathlib import Path
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    customer_provider_catalogue,
+    resolve_byok_backend_by_id,
     resolve_byok_provider_backend,
 )
 from omnimarket.routing.delegation_backend_resolution import (
@@ -134,9 +138,35 @@ def substitute_local_byok_route(
         # secret boundary on a customer machine.
         return backend
 
+    return (
+        _registered_byok_route(
+            byok,
+            replaced=backend,
+            tier=backend.tier,
+            db_path=db_path,
+        )
+        or backend
+    )
+
+
+def _registered_byok_route(
+    byok: ModelByokProviderBackend,
+    *,
+    replaced: ModelResolvedDelegationBackend | None,
+    tier: str,
+    db_path: Path | None,
+) -> ModelResolvedDelegationBackend | None:
+    """Build the route for ``byok`` on the customer's registered key, if there is one.
+
+    ``None`` when the customer has registered no key for the provider: no route
+    is minted, and no house credential answers in its place. ``replaced`` is the
+    house rung this route stands in for, or ``None`` when the customer pinned the
+    catalogue backend or the provider has no house rung at all.
+    """
+    slug = byok.provider
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
     if customer_ref is None:
-        return backend
+        return None
 
     # OMN-20157: the model is the one the customer's KEY resolved from the
     # provider's own model list at registration, not an id pinned in the
@@ -157,29 +187,35 @@ def substitute_local_byok_route(
     # ``byok.provider`` and ``byok.backend_id`` are read out of
     # ``byok_provider_backends.v1.yaml`` and carry the same information.
     logger.info(
-        "LocalByokRoute: substituting a house rung for provider=%s with the "
-        "locally registered BYOK route %s",
+        "LocalByokRoute: routing provider=%s on the locally registered BYOK route %s",
         byok.provider,
         byok.backend_id,
     )
+    max_tokens = byok.max_tokens or (replaced.max_tokens if replaced else None)
+    timeout_ms = byok.timeout_ms or (replaced.timeout_ms if replaced else None)
+    if max_tokens is None or timeout_ms is None:
+        # A route with no house rung to inherit a budget from must declare its
+        # own in the catalogue; there is no platform default to fall back to.
+        raise RuntimeError(
+            f"BYOK backend {byok.backend_id!r} declares no max_tokens/timeout_ms "
+            "and no house rung supplies one; declare both in "
+            "byok_provider_backends.v1.yaml."
+        )
     return ModelResolvedDelegationBackend(
         backend_id=byok.backend_id,
         model_id=model_id,
         endpoint_ref=byok.endpoint_url,
-        tier=backend.tier,
+        tier=tier,
         # The catalogue's budgets are the customer's, not the house rung's.
-        # Both are declared on every catalogue row; the ``or`` arms are the
-        # documented "fall back to the platform default" semantics the overlay
-        # row already has for its own nullable columns.
-        max_tokens=byok.max_tokens or backend.max_tokens,
-        timeout_ms=byok.timeout_ms or backend.timeout_ms,
-        extra_headers=dict(backend.extra_headers),
+        max_tokens=max_tokens,
+        timeout_ms=timeout_ms,
+        extra_headers=dict(replaced.extra_headers) if replaced else {},
         # The whole point: the customer's minted reference, never the house one.
         secret_ref=customer_ref,
         # OMN-19765: name WHICH backend this substitution replaced, so a
         # caller who pinned that backend's id (e.g. ``cloud-glm``) can be told
         # their pin was honoured by this BYOK rung rather than escalated off.
-        substituted_from_backend_id=backend.backend_id,
+        substituted_from_backend_id=replaced.backend_id if replaced else None,
         # OMN-16944 belt and braces. ``resolve_api_key_async`` drops this
         # unconditionally for a tenant-shaped ref, so the guarantee does not
         # rest on this line -- but declaring no env fallback means there is
@@ -193,8 +229,101 @@ def substitute_local_byok_route(
     )
 
 
+class ByokKeyNotRegisteredError(RuntimeError):
+    """The customer named a BYOK backend and has registered no key for it (OMN-17373).
+
+    Names the provider and the one command that fixes it. Never a fallback: a
+    customer's work is never answered on a house or lab model.
+    """
+
+
+def resolve_pinned_byok_route(
+    backend_id: str,
+    *,
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """Resolve a customer's ``--backend-id byok-<provider>`` pin from the catalogue.
+
+    OMN-17373 defect 1. The bifrost config declares only platform rungs, so a
+    catalogue backend id never resolved there. Returns ``None`` when
+    ``backend_id`` is not a catalogue backend (the caller resolves it as a
+    platform rung, exactly as before).
+
+    Raises:
+        ByokKeyNotRegisteredError: ``backend_id`` is a catalogue backend and the
+            customer has registered no key, or one registered under a different
+            plan of the provider, for it.
+    """
+    row = resolve_byok_backend_by_id(backend_id)
+    if row is None or not row.customer_routable:
+        return None
+    plan = resolve_local_byok_credential_plan(row.provider, db_path=db_path)
+    registered = resolve_byok_provider_backend(row.provider, plan=plan)
+    route = (
+        _registered_byok_route(row, replaced=None, tier=_BYOK_TIER, db_path=db_path)
+        if registered is not None and registered.backend_id == row.backend_id
+        else None
+    )
+    if route is None:
+        raise ByokKeyNotRegisteredError(_missing_key_message(row.provider, backend_id))
+    return route
+
+
+def substitute_any_registered_byok_route(
+    backend: ModelResolvedDelegationBackend,
+    *,
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend:
+    """Route a customer's work on a key for ANY catalogue provider (OMN-17373 defect 2).
+
+    :func:`substitute_local_byok_route` only fires for a provider the platform
+    holds a rung on. A provider declared ``mirrors_house_rung: false`` has none,
+    so its customer's key could never route. This is the unpinned counterpart:
+    when ``backend`` still carries a HOUSE ``secret_ref`` after that
+    substitution (a platform credential the customer does not hold), the first
+    provider in the catalogue the customer has a key for answers instead.
+
+    A keyless local rung, and a rung already carrying a customer's own
+    reference, are returned unchanged. With no registered key the rung is
+    returned unchanged too and the caller's refusal names the missing key.
+    """
+    if house_provider_slug(backend.secret_ref) is None:
+        return backend
+    registered = set(registered_local_byok_providers(db_path=db_path))
+    for provider in customer_provider_catalogue():
+        if provider not in registered:
+            continue
+        plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+        byok = resolve_byok_provider_backend(provider, plan=plan)
+        if byok is None:
+            continue
+        route = _registered_byok_route(
+            byok, replaced=backend, tier=backend.tier, db_path=db_path
+        )
+        if route is not None:
+            return route
+    return backend
+
+
+#: The ladder tier a pinned BYOK route reports. A customer's provider model is
+#: a metered cloud model, which is what the ``cheap_cloud`` tier prices.
+_BYOK_TIER = "cheap_cloud"
+
+
+def _missing_key_message(provider: str, backend_id: str) -> str:
+    return (
+        f"Backend {backend_id!r} runs on your own {provider} key and this machine "
+        f"has no key registered for {provider}. Register one with "
+        f"`onex secret set llm.{provider}.api_key`, then retry. Nothing else will "
+        "answer for it: a customer's work never runs on a platform credential."
+    )
+
+
 __all__: list[str] = [
     "HOUSE_SECRET_REF_PATTERN",
+    "ByokKeyNotRegisteredError",
     "house_provider_slug",
+    "resolve_pinned_byok_route",
+    "substitute_any_registered_byok_route",
     "substitute_local_byok_route",
 ]

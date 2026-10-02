@@ -20,6 +20,7 @@ schema so concurrent runs never collide. Signal: ``INTEGRATION_POSTGRES``.
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,9 +40,16 @@ from omnimarket.nodes.node_projection_work_ledger.handlers import (
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
     WorkLedgerProjectionWriter,
 )
+from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard import (
+    LedgerTestWriteRefusedError,
+)
 from omnimarket.projection.runner import MessageMeta
 
 pytestmark = pytest.mark.integration
+
+# A non-loopback host like the .201 runtime's DSN (host postgres). The test double
+# never connects through it; the guard only reads it.
+REAL_HOST_DSN = "postgresql://role_runtime@postgres:5432/omninode"
 
 MIGRATION = (
     Path(__file__).resolve().parents[1]
@@ -81,9 +89,33 @@ async def _connect_or_skip() -> asyncpg.Connection:
     raise AssertionError("unreachable")
 
 
-class _ConnectionDb:
+class _SingleConnectionAcquire:
     def __init__(self, connection: asyncpg.Connection) -> None:
         self._connection = connection
+
+    async def __aenter__(self) -> asyncpg.Connection:
+        return self._connection
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+class _SingleConnectionPool:
+    def __init__(self, connection: asyncpg.Connection) -> None:
+        self._connection = connection
+
+    def acquire(self) -> _SingleConnectionAcquire:
+        return _SingleConnectionAcquire(self._connection)
+
+
+class _ConnectionDb:
+    def __init__(self, connection: asyncpg.Connection, dsn: str = "") -> None:
+        self._connection = connection
+        self.dsn = dsn
+
+    @property
+    def pool(self) -> _SingleConnectionPool:
+        return _SingleConnectionPool(self._connection)
 
     async def execute(self, sql: str, *args: Any) -> None:
         await self._connection.execute(sql, *args)
@@ -94,9 +126,9 @@ class _ConnectionDb:
 
 
 @asynccontextmanager
-async def _migrated() -> AsyncIterator[
-    tuple[WorkLedgerProjectionWriter, asyncpg.Connection, str]
-]:
+async def _migrated(
+    dsn: str = "",
+) -> AsyncIterator[tuple[WorkLedgerProjectionWriter, asyncpg.Connection, str]]:
     connection = await _connect_or_skip()
     schema = f"omn19513_{uuid4().hex[:12]}"
     names = ("_INSERT_ROW", "_OPEN_ENTITY", "_CLOSE_ENTITY")
@@ -107,7 +139,7 @@ async def _migrated() -> AsyncIterator[
             MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
         )
         writer = WorkLedgerProjectionWriter()
-        writer._db = _ConnectionDb(connection)  # type: ignore[assignment]
+        writer._db = _ConnectionDb(connection, dsn)  # type: ignore[assignment]
         for name, sql in originals.items():
             setattr(
                 writer_module, name, sql.replace("omninode_internal.", f"{schema}.")
@@ -194,3 +226,36 @@ async def test_is_open_is_generated_and_cannot_be_written() -> None:
             await connection.execute(
                 f"UPDATE {schema}.work_ledger_state SET is_open = false"
             )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_runtime_shape_writes_with_pytest_imported_and_no_test_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-17427: the runtime imports pytest but sets no test env; its write must land, not stop the process."""
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("ONEX_TEST_CONTEXT", raising=False)
+    assert "pytest" in sys.modules
+    async with _migrated(REAL_HOST_DSN) as (writer, connection, schema):
+        await _project(writer, EnumLedgerRowType.CLAIM, CLAIM)
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.work_ledger_rows"
+        )
+        assert count == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_test_context_write_to_a_real_host_is_refused_without_system_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-19513 still holds: under a test signal a real-host DSN writes nothing, and the refusal is an ordinary error."""
+    monkeypatch.setenv("ONEX_TEST_CONTEXT", "1")
+    async with _migrated(REAL_HOST_DSN) as (writer, connection, schema):
+        with pytest.raises(LedgerTestWriteRefusedError):
+            await _project(writer, EnumLedgerRowType.CLAIM, CLAIM)
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.work_ledger_rows"
+        )
+        assert count == 0

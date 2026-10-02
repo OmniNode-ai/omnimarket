@@ -108,13 +108,35 @@ repos:
   # .pre-commit-hooks.yaml export (core dev HEAD after #1430 squash-merges) — never a
   # moving ref like @dev (required gate; deterministic-truth doctrine). The token below
   # is a HOLD placeholder; this PR stays unopened until the real post-merge SHA is set.
+  #
+  # OMN-20304: the same block carries the canonical-file-shape ratchet (operator
+  # ruling 2026-10-01). It refuses a new code file outside the canonical
+  # contract/node/handler/models/protocols/tests/docs locations, new imperative
+  # lines in a SKILL.md, and any new baseline, allowlist or suppression entry.
+  # Shrink-only baseline at .onex_ratchets/canonical_file_shape_baseline.txt.
+  # The rev moved from 6363509770 to the OMN-20304 commit for both hooks; the
+  # lifecycle validator's source is identical at the two commits.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 63635097705d832e0ee9c4811093efb31349105c # pragma: allowlist secret
+    rev: 7f20b97895f01996c5858dde385ba8991c06e708 # pragma: allowlist secret
     hooks:
+      # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
+      # on the change-control preflight and never reads its result. BLOCKING, zero
+      # baseline, no allowlist, no suppression comment. CI twin: the
+      # shape-gate-independence job in .github/workflows/ci.yml (STRICT CI Summary gate).
+      - id: check-shape-gate-independence
+        require_serial: true
       - id: no-noncanonical-lifecycle-classes
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
+      - id: canonical-file-shape
+        require_serial: true
+      # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
+      # sanctioned delegation node package named in omnibase_core's policy.yaml.
+      # Shrink-only baseline, declared here so the shape ratchet accepts it.
+      - id: check-direct-model-call
+        require_serial: true
+        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
 
   # Transport-import + node-purity gates — first purity gate in omnimarket
   # (OMN-13283 / GAP-8a, under OMN-9048). Scoped to COMPUTE and REDUCER node code,

@@ -18,6 +18,10 @@ This half lands everything that needs no new wire key:
   emits them. That is the consumer-first half the wire-compatibility gate
   requires: a released consumer must decode the new shape before the producer
   that emits it merges. The keys are declared, and emitted, by the second half.
+
+The second half (the section at the foot of this file) declares the three keys on
+the delegate-skill attempt record and terminal, copies them from the rungs the
+orchestrator recorded, and refuses an accepted terminal that says it was truncated.
 """
 
 from __future__ import annotations
@@ -118,7 +122,7 @@ def _answered(handler: HandlerDelegationWorkflow, cid: UUID, tier: str) -> None:
     handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=cid,
-            content="def test_foo():\n    assert True",
+            content="### ANSWER\ndef test_foo():\n    assert True",
             model_used="qwen3-coder-30b",
             latency_ms=10,
         )
@@ -298,16 +302,17 @@ def _attempt(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
-def test_the_attempt_record_accepts_the_forthcoming_keys() -> None:
-    """RED: a released consumer refused both keys with extra_forbidden."""
+def test_the_attempt_record_declares_the_keys_it_used_to_accept() -> None:
+    """The consumer-first decoder is gone once the fields are declared."""
     record = ModelDelegateSkillAttemptRecord.model_validate(
         _attempt(finish_reason="length", truncated=True)
     )
-    assert "finish_reason" not in record.model_dump()
+    assert record.finish_reason is EnumProviderFinishReason.LENGTH
+    assert record.truncated is True
 
 
-def test_the_terminal_accepts_the_forthcoming_keys() -> None:
-    """RED: the same, one level up, including the terminal's own preamble rule."""
+def test_the_terminal_declares_the_keys_it_used_to_accept() -> None:
+    """The same, one level up, including the terminal's own preamble rule."""
     model = ModelDelegateSkillResponse.model_validate(
         {
             "correlation_id": str(uuid4()),
@@ -321,11 +326,13 @@ def test_the_terminal_accepts_the_forthcoming_keys() -> None:
             "attempts": [_attempt(finish_reason="length", truncated=True)],
         }
     )
-    assert "truncated" not in model.model_dump()
+    assert model.finish_reason is EnumProviderFinishReason.LENGTH
+    assert model.truncated is True
+    assert model.reasoning_preamble_rule == "answer_marker"
 
 
 def test_an_unknown_key_is_still_refused() -> None:
-    """Control: accepting three named keys is not relaxing ``extra=forbid``."""
+    """Control: declaring three named keys is not relaxing ``extra=forbid``."""
     with pytest.raises(ValidationError):
         ModelDelegateSkillAttemptRecord.model_validate(_attempt(finish_reasons="stop"))
     with pytest.raises(ValidationError):
@@ -430,3 +437,233 @@ def test_a_rung_no_gate_judged_keeps_no_preamble_rule() -> None:
     )
 
     assert terminal.attempts[0].reasoning_preamble_rule is None
+
+
+# ---------------------------------------------------------------------------
+# Second half: the caller-visible delegate-skill response carries the facts.
+# ---------------------------------------------------------------------------
+
+
+def _truncated_terminal_from_the_orchestrator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Drive the orchestrator to a FAILED terminal whose only rung was truncated.
+
+    The effect's refusal of a ``finish_reason=length`` response is the fake
+    transport here: the same text the bus effect returns, with no further rung
+    to climb to, so the workflow emits the terminal it would put on the bus.
+    """
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_routing(cid, "claude"))
+    monkeypatch.setattr(handler, "_maybe_retry_sibling_backend", lambda *_a, **_k: None)
+    monkeypatch.setattr(handler, "_decide_escalation", _no_further_rung)
+
+    events = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=cid,
+            content="",
+            model_used="qwen3-coder-30b",
+            latency_ms=10,
+            error_message=TRUNCATED_RESPONSE_ERROR_MESSAGE,
+        )
+    )
+    terminals = [
+        event
+        for event in events
+        if getattr(event, "escalation_history", None) is not None
+    ]
+    assert len(terminals) == 1
+    # The runtime dispatch port stamps the terminal's status beside the payload.
+    return {**terminals[0].model_dump(mode="json"), "status": "failed"}
+
+
+def test_a_truncated_run_shows_the_three_fields_on_each_attempt_and_the_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC1: what the orchestrator recorded is what the caller decodes."""
+    orchestrator_terminal = _truncated_terminal_from_the_orchestrator(monkeypatch)
+    # The record on the orchestrator's own terminal, before the skill sees it.
+    assert orchestrator_terminal["escalation_history"][-1]["finish_reason"] == "length"
+
+    terminal = _run(orchestrator_terminal)
+    # The caller reads the wire, not the in-memory object.
+    decoded = ModelDelegateSkillFailed.model_validate_json(terminal.model_dump_json())
+
+    assert decoded.attempts
+    for attempt in decoded.attempts:
+        assert attempt.finish_reason is EnumProviderFinishReason.LENGTH
+        assert attempt.truncated is True
+        assert attempt.reasoning_preamble_rule is None
+    assert decoded.finish_reason is EnumProviderFinishReason.LENGTH
+    assert decoded.truncated is True
+    assert decoded.reasoning_preamble_rule is None
+    wire = decoded.model_dump(mode="json")
+    assert wire["finish_reason"] == "length"
+    assert wire["truncated"] is True
+    assert "reasoning_preamble_rule" in wire
+    assert wire["attempts"][0]["finish_reason"] == "length"
+
+
+def test_the_deciding_rung_names_the_terminal_stop_reason_and_preamble_rule() -> None:
+    """The terminal reads the rung that answered, not an earlier abandoned one."""
+    terminal = _run(
+        {
+            "status": "completed",
+            "content": "the answer",
+            "quality_gate_passed": True,
+            "quality_score": 0.9,
+            "escalation_history": [
+                _rung(
+                    finish_reason="length",
+                    failure_reasons=[TRUNCATED_RESPONSE_ERROR_MESSAGE],
+                ),
+                _rung(
+                    tier_name="claude",
+                    acceptance_decision="accept",
+                    acceptance_reason="quality_bar_met",
+                    quality_score=0.9,
+                    finish_reason="stop",
+                    reasoning_preamble_rule="answer_marker",
+                ),
+            ],
+        }
+    )
+
+    assert [attempt.truncated for attempt in terminal.attempts] == [True, False]
+    assert terminal.finish_reason is EnumProviderFinishReason.STOP
+    assert terminal.truncated is False
+    assert terminal.reasoning_preamble_rule == "answer_marker"
+
+
+def test_a_terminal_from_before_these_fields_decodes_with_none() -> None:
+    """Control: an old terminal lacks all three, and none is invented for it."""
+    terminal = _run(
+        {
+            "status": "failed",
+            "failure_reason": "503",
+            "escalation_history": [_rung(failure_reasons=["503 Service Unavailable"])],
+        }
+    )
+
+    assert terminal.attempts[0].finish_reason is None
+    assert terminal.attempts[0].truncated is False
+    assert terminal.finish_reason is None
+    assert terminal.truncated is False
+    assert terminal.reasoning_preamble_rule is None
+
+
+def test_the_local_ladder_records_the_stop_reason_on_the_rung() -> None:
+    """The bus-less port's own rung dict carries the facts too."""
+    terminal = _run(
+        {
+            "status": "failed",
+            "error_message": "every rung refused",
+            "attempts": [
+                {
+                    "tier": "local",
+                    "backend_id": "b",
+                    "model_id": "m",
+                    "quality_gate_passed": False,
+                    "quality_score": 0.0,
+                    "acceptance_decision": "climb",
+                    "acceptance_reason": "acceptance_criteria_failed",
+                    "finish_reason": "length",
+                    "truncated": True,
+                }
+            ],
+        }
+    )
+
+    assert terminal.attempts[0].finish_reason is EnumProviderFinishReason.LENGTH
+    assert terminal.attempts[0].truncated is True
+    assert terminal.truncated is True
+
+
+def test_a_completed_terminal_with_no_recorded_accepted_rung_names_no_stop_reason() -> (
+    None
+):
+    """A rejected rung's truncation is not the stop reason of the answer."""
+    terminal = _run(
+        {
+            "status": "completed",
+            "content": "the answer",
+            "quality_gate_passed": True,
+            "quality_score": 0.9,
+            "escalation_history": [
+                {
+                    key: value
+                    for key, value in _rung(
+                        finish_reason="length",
+                        failure_reasons=[TRUNCATED_RESPONSE_ERROR_MESSAGE],
+                    ).items()
+                    if not key.startswith("acceptance_")
+                }
+            ],
+        }
+    )
+
+    assert terminal.attempts[0].truncated is True
+    assert terminal.finish_reason is None
+    assert terminal.truncated is False
+
+
+# AC2: a length-truncated response is refused, and no accepted run is truncated.
+
+
+def test_a_truncated_response_is_refused_and_recorded_on_its_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orchestrator_terminal = _truncated_terminal_from_the_orchestrator(monkeypatch)
+
+    terminal = _run(orchestrator_terminal)
+
+    assert isinstance(terminal, ModelDelegateSkillFailed)
+    assert terminal.quality_gate_passed is False
+    refused = terminal.attempts[-1]
+    assert refused.quality_gate_passed is False
+    assert refused.acceptance_decision is not EnumDelegationAcceptanceDecision.ACCEPT
+    assert (
+        refused.acceptance_reason is EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
+    )
+    assert refused.truncated is True
+
+
+def test_no_accepted_terminal_can_carry_truncated_true() -> None:
+    """A truncated response is never the accepted answer; the wire refuses the claim."""
+    base: dict[str, Any] = {
+        "correlation_id": str(uuid4()),
+        "task_type": "document",
+        "quality_gate_passed": True,
+        "quality_score": 1.0,
+        "finish_reason": "length",
+        "truncated": True,
+    }
+    with pytest.raises(ValidationError) as excinfo:
+        ModelDelegateSkillResponse.model_validate({**base, "status": "completed"})
+    assert "truncated" in str(excinfo.value)
+    # Control: the same facts on a refused terminal are the record of the refusal.
+    refused = ModelDelegateSkillResponse.model_validate(
+        {**base, "status": "failed", "quality_gate_passed": False}
+    )
+    assert refused.truncated is True
+
+
+def test_a_truncated_flag_that_contradicts_the_stop_reason_is_refused_on_the_wire() -> (
+    None
+):
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillAttemptRecord.model_validate(
+            _attempt(finish_reason="stop", truncated=True)
+        )
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillResponse.model_validate(
+            {
+                "correlation_id": str(uuid4()),
+                "status": "failed",
+                "task_type": "document",
+                "finish_reason": "stop",
+                "truncated": True,
+            }
+        )

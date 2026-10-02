@@ -19,9 +19,11 @@
 # constructing a path.
 #
 # See routing_tiers.yaml for tier escalation ladder.
+# OMN-17427 / RULING 2026-10-01T15:49:37Z: Gemini is declared for explicitly
+# pinned tests only. Ordinary routes use local and existing non-Gemini cloud rungs.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442, OMN-17099
-config_version: "2.7.0"
+config_version: "2.8.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -177,11 +179,12 @@ backends:
   # `no_routable_backend_for_task` on every escalation. A config-wired but
   # secret-dead ceiling is functionally absent, so both Anthropic backends are
   # removed from the active ladder rather than left as zombie entries. The new
-  # ceiling is `cloud-gemini-pro` below (secret_ref `llm.gemini.api_key`, which
+  # ceiling is `cloud-gemini-2-5-flash` below (secret_ref `llm.gemini.api_key`, which
   # DOES resolve IN-CLUSTER — see the OMN-16530 correction on the line below
   # before trusting this off an unconfigured off-box machine).
-  - backend_id: cloud-gemini-pro
+  - backend_id: cloud-gemini-2-5-flash
     provider: gemini
+    explicit_pin_only: true
     # OMN-13351: resolvable Gemini frontier ceiling backend. Replaces the dead
     # Anthropic `cloud-sonnet` ceiling. COMPLETE endpoint URL incl. the full chat
     # path, posted VERBATIM (OMN-12815) — the AI Studio OpenAI-compatibility
@@ -303,18 +306,18 @@ backends:
       - code_generation
       - reasoning
       - research
-  - backend_id: cloud-glm-judge
+  - backend_id: cloud-gemini-judge
     provider: gemini
+    explicit_pin_only: true
     # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
     # cheap_cloud escalation model. This backend is pinned by backend_id from
     # the judge adapter (RoutingResolvedJudgeInferenceAdapter,
     # _DEFAULT_JUDGE_BACKEND_ID) and is referenced by NO routing rule / tier, so
     # it is never selected on the delegation escalation ladder — only the judge
     # rides it. To move the judge model, repoint this backend — the escalation
-    # tiers are unaffected, and vice versa. The backend_id (``cloud-glm-judge``)
-    # is kept as-is (it is a stable pin string, not a provider claim) even
-    # though it no longer points at z.ai/GLM — same pattern as the ``claude``
-    # ceiling tier name.
+    # tiers are unaffected, and vice versa. The backend_id was renamed to
+    # cloud-gemini-judge under OMN-19455 (formerly cloud-glm-judge) because
+    # it no longer points at z.ai/GLM; the id now names the Gemini judge it serves.
     #
     # OMN-14625: repointed off z.ai GLM-5.2 to Gemini. The z.ai GLM route is
     # DEAD from the .201 runtime: resolve_api_key succeeds but every completion
@@ -336,6 +339,7 @@ backends:
       - judge_adequacy
   - backend_id: cloud-gemini-flash
     provider: gemini
+    explicit_pin_only: true
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
     # OMN-12890: model_name repointed from gemini-2.0-flash (AI Studio free-tier
@@ -396,12 +400,13 @@ backends:
   # /run/secrets/vertex_access_token, which is a character device 1,3 (/dev/null),
   # and onex-dev pins BIFROST_VERTEX_GEMINI_ENDPOINT_URL to "" pending the ADC
   # mount. The declaration stays because Vertex is a SEPARATE quota domain from
-  # the AI Studio key that cloud-gemini-pro / cloud-gemini-flash / cloud-glm-judge
+  # the AI Studio key that cloud-gemini-2-5-flash / cloud-gemini-flash / cloud-gemini-judge
   # all share, so it remains the cheapest available answer to that coupling once
   # the ADC token is mounted. Mount the token and give this a concrete
   # endpoint_url BEFORE restoring the tier reference, not after.
   - backend_id: cloud-vertex-gemini
     provider: vertex
+    explicit_pin_only: true
     endpoint_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
     endpoint_url: null
     model_name: "gemini-2.5-flash-lite"
@@ -523,7 +528,7 @@ backends:
   # https://openrouter.ai/api/v1/models (http=200, 430 models, 18 of them
   # `:free`) the slug is ABSENT from the catalog entirely. Positive control on
   # the same response: `nvidia/nemotron-3-ultra-550b-a55b:free`, pinned by
-  # `openrouter-qwen3-coder-480b` below, IS present — so the zero is a real
+  # `openrouter-nemotron-ultra` below, IS present — so the zero is a real
   # absence, not an unparsed or empty catalog.
   #
   # Retired rather than repointed to a live free slug, for two reasons that
@@ -553,11 +558,10 @@ backends:
   # OpenRouter cheap-frontier-direct — free frontier-class model (OMN-12492;
   # slug repointed OMN-15638).
   #
-  # OMN-15638: backend_id is a STABLE SEAM KEY, deliberately NOT renamed with the
-  # slug. routing_tiers.yaml, generated_llm_routing_constants.py, the model
-  # registry, and ~20 tests bind this literal; it names the RUNG (cheap frontier
-  # direct), not the vendor model. Renaming it is a separate, wider change.
-  - backend_id: openrouter-qwen3-coder-480b
+  # OMN-15638 repointed the slug. Under OMN-19455, the backend_id was renamed
+  # (formerly openrouter-qwen3-coder-480b) because it named a model the backend
+  # does not serve; the id now names what it serves (nvidia nemotron-3-ultra).
+  - backend_id: openrouter-nemotron-ultra
     provider: openrouter
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
@@ -627,6 +631,7 @@ backends:
     timeout_ms: 300000
     max_tokens: 65536
     capabilities:
+      - judge_adequacy
       - code_generation
       - reasoning
       - research
@@ -662,7 +667,7 @@ backends:
   # System One schema (not OpenAI-compatible). It is therefore NOT a rung: no
   # routing rule and no routing_tiers.yaml ladder entry references it, so the
   # text-generation chain of responders can never select it (the same
-  # pinned-by-id pattern as cloud-glm-judge above). The only caller is
+  # pinned-by-id pattern as cloud-gemini-judge above). The only caller is
   # node_typed_decision_effect, whose contract pins this backend_id and which
   # refuses any work unit that does not belong to a public repository before
   # this endpoint is called (the typed-decision evaluation plan,
@@ -703,7 +708,7 @@ backends:
   # or override that backend's endpoint_url / model_name / secret_ref in the
   # overlay. No subprocess, no env var, no code change.
   #
-  # OMN-13351: the ceiling backend is `cloud-gemini-pro` (secret_ref
+  # OMN-13351: the ceiling backend is `cloud-gemini-2-5-flash` (secret_ref
   # llm.gemini.api_key, model gemini-2.5-flash) — NOT the former `cloud-sonnet`,
   # which was deleted because llm.anthropic.api_key resolves to None in every lane.
 # Routing rules — evaluated in ascending priority order.
@@ -719,7 +724,7 @@ backends:
 routing_rules:
   # ── code_generation ──────────────────────────────────────────────────────
   # Route code generation to local coder first (zero API cost),
-  # fall back to the resolvable Gemini ceiling (cloud-gemini-pro) for reliability.
+  # then try the existing non-Gemini free cloud rungs for reliability.
   - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
     priority: 10
     task_class: code_generation
@@ -733,7 +738,9 @@ routing_rules:
     latency_sla_ms: 30000
     backend_ids:
       - local-coder
-      - cloud-gemini-pro
+      - openrouter-nemotron-ultra
+      - openrouter-nemotron-super
+      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -756,16 +763,16 @@ routing_rules:
     latency_sla_ms: 60000
     backend_ids:
       - local-coder
-      - cloud-gemini-pro
+      - openrouter-nemotron-ultra
+      - openrouter-nemotron-super
+      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0004-4000-8000-000000000004"
   # ── documentation ────────────────────────────────────────────────────────
-  # Documentation tasks: local coder is capable; the resolvable Gemini ceiling
-  # (cloud-gemini-pro) is the cloud fallback. The former cheaper Anthropic haiku
-  # fallback was deleted (OMN-13351 — llm.anthropic.api_key resolves to None).
+  # Documentation tasks start locally, then try the existing free cloud rungs.
   - rule_id: "d4e5f6a7-0002-4000-8000-000000000002"
     priority: 20
     task_class: documentation
@@ -779,7 +786,9 @@ routing_rules:
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
       - local-coder
-      - cloud-gemini-pro
+      - openrouter-nemotron-ultra
+      - openrouter-nemotron-super
+      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
@@ -787,8 +796,7 @@ routing_rules:
     shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
   # ── research ─────────────────────────────────────────────────────────────
   # Research tasks require deep reasoning; route to the heavy-reasoning local
-  # slot first, then reasoner as secondary, then the resolvable Gemini ceiling
-  # (cloud-gemini-pro) as fallback.
+  # slot first, then the existing non-Gemini free cloud rungs.
   - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
     priority: 30
     task_class: research
@@ -803,10 +811,12 @@ routing_rules:
     # note on the backends block above. This rule referencing it was the sole
     # reason OMN-16419 could not delete the backend definition. `research`
     # keeps two live local rungs via routing_tiers.yaml
-    # (local-heavy-reasoning, local-ds-v4-flash) plus the Gemini ceiling here.
+    # (local-heavy-reasoning, local-ds-v4-flash) plus the free cloud rungs here.
     backend_ids:
       - local-heavy-reasoning
-      - cloud-gemini-pro
+      - openrouter-nemotron-ultra
+      - openrouter-nemotron-super
+      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -816,9 +826,11 @@ routing_rules:
 # Attempts backends in order.
 default_backends:
   - local-coder
-  # OMN-13351: ceiling fallback is the resolvable Gemini backend, not the dead
-  # Anthropic cloud-sonnet (llm.anthropic.api_key resolves to None in every lane).
-  - cloud-gemini-pro
+  # OMN-17427: local backends precede the existing non-Gemini cloud rungs.
+  - local-heavy-reasoning
+  - openrouter-nemotron-ultra
+  - openrouter-nemotron-super
+  - openrouter-north-mini-code
 # Provider quota policy (OMN-16891) — how to read a 429 from each provider.
 #
 # A 429 is not one failure class. Retrying the same tier on a quota-exhaustion
@@ -1165,3 +1177,18 @@ shadow_mode:
   log_sample_rate: 1.0
   comparison_logging_enabled: true
   max_shadow_latency_ms: 5.0
+# Ollama on a developer Mac: the port, the chat path and the default model per
+# memory size. The HOST is deliberately not declared here -- the onboarding
+# script chooses host.docker.internal from inside Docker and localhost otherwise.
+# The first entry whose min_memory_gb <= the Mac's memory wins; entries are
+# ordered by min_memory_gb strictly descending and the last one is 0.
+ollama:
+  port: 11434
+  chat_path: /v1/chat/completions
+  models:
+    - min_memory_gb: 16
+      model: qwen2.5-coder:7b
+      download_gb: 5
+    - min_memory_gb: 0
+      model: qwen2.5-coder:1.5b
+      download_gb: 1

@@ -6,7 +6,9 @@ The caller supplies every fact here; the compute reads nothing else. Paths in
 ``workspace_files`` and in tool-call arguments must share one root (the caller
 normalises them), since the compute compares them as strings. ``workspace_files``
 None means no manifest was supplied, which is a different fact from an empty
-tree, and leaves path checks undetermined.
+tree, and leaves path checks undetermined. ``engine`` is the model id the run
+recorded (crush's message ``model``, Claude Code's ``init`` model); the budget
+criterion reads its wall-time limit by it.
 """
 
 from typing import Self
@@ -32,6 +34,7 @@ class ModelToolUseTranscript(BaseModel):
     turn_count: int = Field(ge=0)
     wall_time_ms: int | None = Field(default=None, ge=0)
     workspace_files: tuple[ModelWorkspaceFile, ...] | None = None
+    engine: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def unique_names(self) -> Self:

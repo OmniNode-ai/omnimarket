@@ -167,6 +167,8 @@ def _make_inference_response(
     total_tokens: int = 0,
     llm_call_id: str = "",
 ) -> ModelInferenceResponseData:
+    if content and not content.startswith("### ANSWER"):
+        content = f"### ANSWER\n{content}"
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
         content=content,
@@ -378,7 +380,7 @@ class TestHappyPath:
         # Step 3: Handle inference response -> emits quality gate intent
         response = _make_inference_response(
             correlation_id=cid,
-            content="def test_verify_registration():\n    assert True",
+            content="### ANSWER\ndef test_verify_registration():\n    assert True",
             model_used="qwen3-coder-30b",
             latency_ms=1200,
             prompt_tokens=100,
@@ -1231,7 +1233,7 @@ class TestInferenceErrorEscalation:
         handler.handle_inference_response(
             _make_inference_response(
                 correlation_id=cid,
-                content="def test_foo():\n    assert True",
+                content="### ANSWER\ndef test_foo():\n    assert True",
                 model_used="glm-4-flash",
             )
         )
@@ -1298,12 +1300,12 @@ class TestInferenceErrorEscalation:
         (local -> cheap_cloud -> claude) and the third attempt hits the escalation
         ceiling.
 
-        OMN-13215/OMN-13351: the ceiling tier is the canonical HTTP cloud-gemini-pro
+        OMN-13215/OMN-13351: the ceiling tier is the canonical HTTP cloud-gemini-2-5-flash
         backend (no shelled CLI; repointed off the dead Anthropic cloud-sonnet —
         llm.anthropic.api_key resolves to None in every lane). Routability requires
         its secret_ref (llm.gemini.api_key) to resolve, so the env-mapped secret is
         set. The synthetic ceiling backend_id MUST match the claude-tier backend_id
-        in the real routing_tiers.yaml (cloud-gemini-pro), which is not overridden
+        in the real routing_tiers.yaml (cloud-gemini-2-5-flash), which is not overridden
         here.
         """
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
@@ -1315,12 +1317,12 @@ class TestInferenceErrorEscalation:
         # All three declared `test` tiers (local, cheap_cloud, claude) must be
         # routable so two real escalations (local -> cheap_cloud -> claude) occur
         # before the ceiling is reached. Reuse the shared frontier-unconfigured
-        # bifrost shape, then add the HTTP cloud-gemini-pro ceiling backend (complete
+        # bifrost shape, then add the HTTP cloud-gemini-2-5-flash ceiling backend (complete
         # verbatim URL + secret_ref) referenced by the claude tier in
         # routing_tiers.yaml.
         routing_rules_marker = "routing_rules:\n"
         ceiling_backend = (
-            "  - backend_id: cloud-gemini-pro\n"
+            "  - backend_id: cloud-gemini-2-5-flash\n"
             "    provider: gemini\n"
             '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
             "    model_name: gemini-2.5-flash\n"
@@ -1332,10 +1334,10 @@ class TestInferenceErrorEscalation:
         assert routing_rules_marker in BIFROST_FRONTIER_UNCONFIGURED, (
             "expected shared fixture to contain routing_rules marker"
         )
-        # Remove the empty-endpoint cloud-gemini-pro stub from the shared fixture so
+        # Remove the empty-endpoint cloud-gemini-2-5-flash stub from the shared fixture so
         # the complete-URL ceiling backend is the single ceiling definition.
         base_contract = BIFROST_FRONTIER_UNCONFIGURED.replace(
-            "      - backend_id: cloud-gemini-pro\n"
+            "      - backend_id: cloud-gemini-2-5-flash\n"
             '        endpoint_url: ""\n'
             "        model_name: gemini-2.5-flash\n"
             "        tier: frontier_api\n"

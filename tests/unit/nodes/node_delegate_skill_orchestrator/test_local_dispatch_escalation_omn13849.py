@@ -63,7 +63,7 @@ _LADDER: tuple[str, ...] = ("local", "cheap_cloud", "claude")
 _TIER_BACKEND_ID: dict[str, str] = {
     "local": "local-coder",
     "cheap_cloud": "cloud-glm",
-    "claude": "cloud-gemini-pro",
+    "claude": "cloud-gemini-2-5-flash",
 }
 _BACKEND_TIER: dict[str, str] = {v: k for k, v in _TIER_BACKEND_ID.items()}
 _TIER_MODEL: dict[str, str] = {
@@ -118,6 +118,7 @@ def _install_ladder(
         task_type=None,
         roi_overlay=None,
         excluded_backend_refs=frozenset(),
+        correlation_id=None,
     ):
         try:
             idx = _LADDER.index(current)

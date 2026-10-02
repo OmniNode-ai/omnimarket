@@ -196,9 +196,9 @@ jobs:
 
       - name: Clone sibling repos (workspace deps)
         run: |
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
-          git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -209,7 +209,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        run: uv sync --locked
 
       # OMN-18349: the placement check comes FIRST and costs a second. The
       # failure it catches is the one that consumed 60 nightly runs, and it was

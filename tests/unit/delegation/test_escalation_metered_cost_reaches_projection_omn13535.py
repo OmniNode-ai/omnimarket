@@ -25,6 +25,7 @@ assert the terminal events + the projection row carry the metered ``cost_usd>0``
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import partial
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
@@ -128,7 +129,7 @@ def _make_inference_response(
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
-        content="def solution():\n    return 42",
+        content="### ANSWER\ndef solution():\n    return 42",
         model_used=model_used,
         llm_call_id="chatcmpl-omn13535",
         latency_ms=88_998,
@@ -306,7 +307,9 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         # non-negative and strictly less than the counterfactual when cost > 0.
         source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
             canonical.model_dump(mode="json"),
-            counterfactual_builder=build_premium_counterfactual,
+            counterfactual_builder=partial(
+                build_premium_counterfactual, premium_model="claude-opus-4-6"
+            ),
         )
         assert source.premium_counterfactual is not None
         counterfactual = float(source.premium_counterfactual.counterfactual_cost_usd)

@@ -172,9 +172,9 @@ _BIFROST_CONTRACT_CODE = (
 
 # OMN-13599: code_generation routes local -> cheap_cloud -> claude.
 # OMN-14625: cheap_cloud's code_generation primary was repointed off z.ai GLM
-# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-pro). The
+# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-2-5-flash). The
 # real-bus chain routes a code_generation request, so its self-contained
-# bifrost contract must carry the cloud-gemini-pro backend (the cheap_cloud
+# bifrost contract must carry the cloud-gemini-2-5-flash backend (the cheap_cloud
 # code-gen primary) with a COMPLETE verbatim endpoint_url and NO secret_ref —
 # so routing resolves deterministically to gemini-2.5-flash without a host
 # overlay and without the LLM_GEMINI_API_KEY the delegation conftest
@@ -185,7 +185,7 @@ _BIFROST_CONTRACT_CODE_GLM = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-gemini-pro\n"
+    "  - backend_id: cloud-gemini-2-5-flash\n"
     "    provider: gemini\n"
     '    endpoint_url: "https://example.test/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
@@ -197,11 +197,11 @@ _BIFROST_CONTRACT_CODE_GLM = (
     "  # now resolves through the same BIFROST_CONTRACT_PATH binding this fixture\n"
     "  # sets. Before that it escaped the binding and read the packaged contract\n"
     "  # instead -- the seam divergence OMN-18676 closed.\n"
-    "  - backend_id: cloud-glm-judge\n"
-    "    provider: gemini\n"
-    '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
-    '    model_name: "gemini-2.5-flash"\n'
-    "    secret_ref: llm.gemini.api_key\n"
+    "  - backend_id: openrouter-nemotron-super\n"
+    "    provider: openrouter\n"
+    '    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"\n'
+    '    model_name: "nvidia/nemotron-3-super-120b-a12b:free"\n'
+    "    secret_ref: llm.openrouter.api_key\n"
     "    tier: judge\n"
     "    timeout_ms: 300000\n"
     "    max_tokens: 65536\n"
@@ -214,14 +214,14 @@ _BIFROST_CONTRACT_CODE_GLM = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-gemini-pro]\n"
+    "    backend_ids: [cloud-gemini-2-5-flash]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"\n'
     "default_backends:\n"
-    "  - cloud-gemini-pro\n"
+    "  - cloud-gemini-2-5-flash\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -337,8 +337,8 @@ class TestJudgeResolvesConcreteModelNotTier:
 
         OMN-14625: the escalation backend (``cloud-glm``) is UNCHANGED by this
         ticket — cheap_cloud/claude were repointed to a different backend
-        (``cloud-gemini-pro``), leaving ``cloud-glm`` itself defined-but-unused
-        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-glm-judge`` backend was
+        (``cloud-gemini-2-5-flash``), leaving ``cloud-glm`` itself defined-but-unused
+        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-gemini-judge`` backend was
         separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) on a
         "z.ai route is DEAD from the .201 runtime" finding that OMN-6790 later
         disproved (the route serves 200s on the Coding Plan endpoint; the judge
@@ -353,7 +353,7 @@ class TestJudgeResolvesConcreteModelNotTier:
         escalation_model = resolve_delegation_backend(
             "code_generation", backend_id="cloud-gemini-flash"
         ).model_id
-        assert judge_model == "gemini-2.5-flash"
+        assert judge_model == "nvidia/nemotron-3-super-120b-a12b:free"
         # The exact GLM id is incidental to this test, and pinning it here has
         # now invalidated this test twice on unrelated repoints (OMN-16891
         # glm-5-turbo -> glm-5.3, OMN-6790 glm-5.3 -> glm-5.3-flash). What is

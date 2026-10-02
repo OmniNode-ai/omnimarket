@@ -343,10 +343,23 @@ class TestTheEnvelopeTenantBecomesTheRowTenant:
         assert row["tenant_id"] == BETA_TENANT_UUID
         assert row["tenant_id"] != BETA_TENANT_SLUG
 
-    def test_payload_tenant_on_the_canonical_delegation_terminal(self) -> None:
+    def test_payload_tenant_on_the_canonical_delegation_terminal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         db = _mock_db(registry_uuid=BETA_TENANT_UUID)
         runner = SavingsProjectionRunner()
+        runner._delegate_skill_baseline_model = "claude-opus-4-6"
         runner._db = db  # type: ignore[assignment]
+        from functools import partial
+
+        from omnimarket.nodes.node_projection_savings.handlers import handler_savings
+        from omnimarket.pricing import build_premium_counterfactual
+
+        monkeypatch.setattr(
+            handler_savings,
+            "build_premium_counterfactual",
+            partial(build_premium_counterfactual, premium_model="claude-opus-4-6"),
+        )
         ok = asyncio.run(
             runner.project_event(
                 DELEGATION_COMPLETED_TOPIC,
@@ -520,6 +533,8 @@ async def _rls_enforced_savings_runner(
         await admin.execute(f'CREATE DATABASE "{database}"')
         target = await asyncpg.connect(_dsn_for_db(database))
         await target.execute(_LANE_ROLES_SQL)
+        # omnibase_infra forward 098 provisions this; migration 0051 asserts it.
+        await target.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         for migrations_dir in _MIGRATION_DIRS:
             for migration_path in sorted(migrations_dir.glob("*.sql")):
                 if migration_path.name in exclude:

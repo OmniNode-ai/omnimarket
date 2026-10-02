@@ -69,7 +69,7 @@ jobs:
           repository: OmniNode-ai/omnibase_infra
           # dev, not main: main is release-synced, so a validator that has landed on the
           # integration branch would otherwise not be visible here until the next release.
-          ref: dev
+          ref: v0.38.59
           path: omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -80,7 +80,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Sync omnimarket environment
-        run: uv sync --all-extras
+        run: uv sync
 
       # Fail-closed: the shim exits non-zero when no omnibase_infra source tree carrying
       # the validator resolves, so a broken checkout cannot silently no-op the gate.

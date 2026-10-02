@@ -11,18 +11,18 @@ OMN-13215: the shelled ``cli_agents`` backends were removed from this fixture
 along with the tier itself; the ceiling is the HTTP-backed ``claude`` tier.
 
 OMN-13351: the claude-tier ceiling backend was repointed from the dead Anthropic
-``cloud-sonnet`` to ``cloud-gemini-pro`` (empty endpoint_url here → ceiling
+``cloud-sonnet`` to ``cloud-gemini-2-5-flash`` (empty endpoint_url here → ceiling
 unroutable in tests that specifically need that shape).
 
 OMN-13667: the ceiling was repointed again to GLM-5.2 z.ai direct (cloud-glm)
-+ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carried NON-EMPTY
++ fallback openrouter-nemotron-ultra. BOTH ceiling backends carried NON-EMPTY
 endpoints in this fixture because ``cloud-glm`` was also the primary model for the
 ``cheap_cloud`` tier (test/research tasks) — making it empty would have silently
 broken cheap_cloud routability.
 
 OMN-14625: cheap_cloud and the claude ceiling are repointed off z.ai GLM
-(``cloud-glm``, DEAD from the .201 runtime) to Gemini (``cloud-gemini-pro``).
-This fixture is swapped to match: ``cloud-gemini-pro`` now carries the
+(``cloud-glm``, DEAD from the .201 runtime) to Gemini (``cloud-gemini-2-5-flash``).
+This fixture is swapped to match: ``cloud-gemini-2-5-flash`` now carries the
 NON-EMPTY endpoint (it is the primary model for both cheap_cloud and the
 claude ceiling), and ``cloud-glm`` is kept (empty) for contract completeness
 only — it is no longer referenced by any routing tier. Tests that still need
@@ -129,7 +129,7 @@ def _isolate_bifrost_file_overlay(
 def declared_judge_credential_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stand this machine up as one whose declared judge credential resolves.
 
-    OMN-19198: the judge adapter keeps the declared judge (``cloud-glm-judge``)
+    OMN-19198: the judge adapter keeps the declared judge (``cloud-gemini-judge``)
     only where its credential resolves -- the lab through its configured store,
     or a customer who stored that provider's key -- and otherwise reviews on the
     machine's own local model. The ``_isolate_cloud_secret_env`` fixture above
@@ -145,7 +145,7 @@ def declared_judge_credential_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
     real_available = judge_mod.api_key_ref_available
 
     def _available(api_key_ref: str | None, **kwargs: Any) -> bool:
-        if api_key_ref == "llm.gemini.api_key":
+        if api_key_ref in {"llm.gemini.api_key", "llm.openrouter.api_key"}:
             return True
         return real_available(api_key_ref, **kwargs)
 
@@ -153,7 +153,7 @@ def declared_judge_credential_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# OMN-14625: the claude ceiling and cheap_cloud tier now use cloud-gemini-pro
+# OMN-14625: the claude ceiling and cheap_cloud tier now use cloud-gemini-2-5-flash
 # (Gemini) as their primary/only model. cloud-glm carries an empty
 # endpoint_url here for contract completeness only; it is no longer
 # referenced by any routing tier (see OMN-14625 in routing_tiers.yaml).
@@ -218,14 +218,14 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         tier: cheap_cloud
         timeout_ms: 30000
         capabilities: [documentation]
-      - backend_id: openrouter-qwen3-coder-480b
+      - backend_id: openrouter-nemotron-ultra
         provider: openrouter
         endpoint_url: "https://cloud.test/openrouter/v1/chat/completions"
         model_name: qwen3-coder-480b
         tier: cheap_frontier
         timeout_ms: 30000
         capabilities: [code_generation]
-      - backend_id: cloud-gemini-pro
+      - backend_id: cloud-gemini-2-5-flash
         provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
@@ -278,7 +278,7 @@ def frontier_unconfigured_bifrost(
     tests (the deployed stability-test regression shape from OMN-12939).
 
     Local, cheap_cloud, and cheap_frontier backends carry resolvable endpoints.
-    OMN-14625: cloud-gemini-pro (the current cheap_cloud + claude ceiling
+    OMN-14625: cloud-gemini-2-5-flash (the current cheap_cloud + claude ceiling
     backend) has a NON-EMPTY endpoint_url, and cloud-glm (no longer referenced
     by any routing tier) has an empty one. Tests that specifically require the
     ceiling to be unroutable must use a task class whose tier_order ends at

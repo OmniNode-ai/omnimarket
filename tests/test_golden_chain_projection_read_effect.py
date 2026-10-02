@@ -69,6 +69,9 @@ class _Source:
         self.tenants.append(tenant_id)
         return [{"correlation_id": "c-1", "tenant_id": tenant_id, "written_at": None}]
 
+    async def walk_origin(self, cfg: Any, **_: Any) -> None:
+        return None
+
     async def latest_event_at(self, cfg: Any, **_: Any) -> None:
         return None
 

@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class ModelDelegationShadowConfig(BaseModel):
@@ -124,6 +124,11 @@ class ModelDelegationBackendConfig(BaseModel):
     """Backend definition for the Bifrost delegation gateway."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    explicit_pin_only: StrictBool = Field(
+        default=False,
+        description="Exclude from ordinary routing; execute only when explicitly pinned by backend id.",
+    )
 
     backend_id: str = Field(
         ..., min_length=1, description="Stable human-readable slug."
