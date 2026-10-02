@@ -71,8 +71,12 @@ _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncat
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
 )
+# OMN-19437 AC4, the consumer-first half: ``command_id`` is the id of the
+# delivering command message the OMN-18887 claim keys on, which the terminal will
+# carry so a served replay and a second command sharing a correlation can be told
+# apart. The second half declares it and the handler stamps it.
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+    {"finish_reason", "truncated", "reasoning_preamble_rule", "command_id"}
 )
 
 
