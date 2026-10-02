@@ -60,6 +60,10 @@ _RATE_LIMIT_TOKENS: frozenset[str] = frozenset({"rate", "throttl", "quota"})
 _AUTH_TOKENS: frozenset[str] = frozenset({"auth", "unauthorized", "forbidden", "key"})
 
 
+#: How every 200-delivered provider error message opens (see ``as_error_message``).
+IN_BODY_ERROR_MESSAGE_PREFIX = "Provider returned an error in a 200 response"
+
+
 class ModelProviderResponseError(BaseModel):
     """The three facts a 200-delivered provider error carries.
 
@@ -89,7 +93,7 @@ class ModelProviderResponseError(BaseModel):
         if self.error_type:
             detail.append(f"error_type={self.error_type}")
         suffix = f" ({', '.join(detail)})" if detail else ""
-        return f"Provider returned an error in a 200 response: {self.message}{suffix}"
+        return f"{IN_BODY_ERROR_MESSAGE_PREFIX}: {self.message}{suffix}"
 
     @property
     def failure_class(self) -> EnumDelegationFailureClass:
