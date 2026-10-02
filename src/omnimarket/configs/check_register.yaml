@@ -22,6 +22,10 @@
 # 2b (the "Gates and Ranges" review adopted 2026-09-23). Every other check gains
 # an entry as the chronic-red register reads it; this file is the class field
 # that register carries.
+# Delegation-acceptance entries are required by `omnimarket.ranges.register`: every
+# quality gate check is registered as a gate, and each acceptance class carries
+# a declared false-pass range with its full acceptance line and method.
+#
 schema_version: check_register.v1
 checks:
   - check_id: compose_dev.migrations_applied
@@ -101,3 +105,525 @@ checks:
       power-analysed number of prompts; an incomplete answer counts as a
       failure. No margin is chosen here, and nothing gates on a comparison until
       one is declared from the response-quality baseline
+
+  - check_id: delegation.acceptance.gate.accurate
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `accurate` check (handler_quality_gate); per-check calibration
+      is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.cites_sources
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `cites_sources` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.cites_specific_lines
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `cites_specific_lines` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.claims_grounded
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `claims_grounded` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.code_artifact_present
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `code_artifact_present` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.compiles_without_errors
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `compiles_without_errors` check (handler_quality_gate);
+      per-check calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.concise
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `concise` check (handler_quality_gate); per-check calibration is
+      unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.covers_args_returns_raises
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `covers_args_returns_raises` check (handler_quality_gate);
+      per-check calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.covers_dependencies
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `covers_dependencies` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.covers_edge_cases
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `covers_edge_cases` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.covers_error_paths
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `covers_error_paths` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.docstring_present
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `docstring_present` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.exactly_two_sentences
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `exactly_two_sentences` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.explains_tradeoffs
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `explains_tradeoffs` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.final_artifact_only
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `final_artifact_only` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.follows_codebase_conventions
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `follows_codebase_conventions` check (handler_quality_gate);
+      per-check calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.follows_google_style
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `follows_google_style` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.identifiers_grounded
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `identifiers_grounded` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.methodical_analysis
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `methodical_analysis` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.names_resolve
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `names_resolve` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.no_obvious_regressions
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `no_obvious_regressions` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.no_refusal
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `no_refusal` check (handler_quality_gate); per-check calibration
+      is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.numbers_grounded
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `numbers_grounded` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.output_parses
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `output_parses` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.passes_existing_tests
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `passes_existing_tests` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.plain_text_only
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `plain_text_only` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.response_non_empty
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `response_non_empty` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.semantic_adequacy
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `semantic_adequacy` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.short_form_adequacy
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `short_form_adequacy` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.signature_preserved
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `signature_preserved` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.step_by_step_explanation
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `step_by_step_explanation` check (handler_quality_gate);
+      per-check calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.structured_output
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `structured_output` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.task_completed
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `task_completed` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.uses_pytest_mark_unit
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `uses_pytest_mark_unit` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.false_pass.code_generation
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the code_generation acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 40 false passes in 111 accepted items (36%, Wilson 95% 28% to 45%); second rater: 46 in
+      114. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.code_generation
+      case_set: >-
+        accepted delegation gate decisions of class code_generation, house tenant, dev lane,
+        labelled adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.document
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the document acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 43 false passes in 115 accepted items (37%, Wilson 95% 29% to 47%); second rater: 52 in
+      114. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.document
+      case_set: >-
+        accepted delegation gate decisions of class document, house tenant, dev lane, labelled
+        adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.planning
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the planning acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 68 false passes in 114 accepted items (60%, Wilson 95% 50% to 68%); second rater: 76 in
+      111. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.planning
+      case_set: >-
+        accepted delegation gate decisions of class planning, house tenant, dev lane, labelled
+        adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.reasoning
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the reasoning acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 64 false passes in 112 accepted items (57%, Wilson 95% 48% to 66%); second rater: 82 in
+      113. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.reasoning
+      case_set: >-
+        accepted delegation gate decisions of class reasoning, house tenant, dev lane, labelled
+        adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.research
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the research acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 45 false passes in 113 accepted items (40%, Wilson 95% 31% to 49%); second rater: 46 in
+      112. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.research
+      case_set: >-
+        accepted delegation gate decisions of class research, house tenant, dev lane, labelled
+        adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.summarization
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the summarization acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 32 false passes in 115 accepted items (28%, Wilson 95% 20% to 37%); second rater: 42 in
+      114. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.summarization
+      case_set: >-
+        accepted delegation gate decisions of class summarization, house tenant, dev lane, labelled
+        adequate or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_pass.test
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the test acceptance eval
+    source: >-
+      false-pass line of the delegation evals plan, section 2.1: among accepted answers, the share
+      labelled adequate has a lower bound of at least 0.90. Measured, recorded verdict arm, first
+      rater: 13 false passes in 115 accepted items (11%, Wilson 95% 7% to 18%); second rater: 13 in
+      115. Line verdict MISSED. Report: reports/2026-09-30-delegation-gate-false-pass-first-run.md
+      (eval runs 02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2, 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e). An
+      item the replay cannot decide counts against the line.
+    acceptance_line:
+      check_id: delegation.acceptance.false_pass.test
+      case_set: >-
+        accepted delegation gate decisions of class test, house tenant, dev lane, labelled adequate
+        or inadequate
+      floor: 0.90
+      window: trailing 30 days
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
