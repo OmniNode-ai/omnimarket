@@ -8,5 +8,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
     HandlerDelegateSkill,
     ProtocolDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper import (
+    HandlerDelegationReaper,
+)
 
-__all__ = ["HandlerDelegateSkill", "ProtocolDelegationDispatchPort"]
+__all__ = [
+    "HandlerDelegateSkill",
+    "HandlerDelegationReaper",
+    "ProtocolDelegationDispatchPort",
+]

@@ -15,7 +15,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
 
@@ -74,6 +74,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    ModelDelegationReapContext,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
+    terminal_from_record,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
+    load_delegation_reaper_config,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ProtocolDelegationIdempotencyPort,
@@ -1054,11 +1063,7 @@ class HandlerDelegateSkill:
         # identity would have its evidence row stamped with it (the port
         # resolves the same identity) while its RECEIPT carried None, which is
         # the split AC "receipts carry the minted identity" exists to refuse.
-        resolved_tenant_id = (
-            request.tenant_id
-            or get_settings().onex_tenant_id
-            or local_tenant_identity_or_none()
-        )
+        resolved_tenant_id = _request_tenant_id(request)
         # OMN-18852: PICKUP is here, and the budget below is measured from
         # here -- not from the record's publish time. That was already true
         # before this change (``asyncio.wait_for`` starts when ``handle`` is
@@ -1276,60 +1281,10 @@ class HandlerDelegateSkill:
             )
         )
 
-    @staticmethod
-    def _terminal_from_record(
-        record: dict[str, object],
-    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed | None:
-        """Rebuild a previously served terminal, or return None if it cannot be.
-
-        None here means "fall through and dispatch". That is the safe
-        direction: re-running costs money once more, whereas handing back a
-        terminal we could not faithfully rebuild would answer the caller with
-        something we made up.
-        """
-        cls_name = record.get("cls")
-        data = record.get("data")
-        if not isinstance(data, dict):
-            return None
-        for candidate in (ModelDelegateSkillCompleted, ModelDelegateSkillFailed):
-            if cls_name != candidate.__name__:
-                continue
-            try:
-                return candidate.model_validate(data)
-            except Exception:  # a stored row we cannot parse is not a terminal
-                return None
-        return None
-
     async def handle(
         self, request: ModelDelegateSkillRequest
-    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
-        """Claim this correlation, then dispatch it at most once (OMN-18887).
-
-        The consume path auto-commits and never calls ``commit()``, so delivery
-        is at-least-once by contract, and since OMN-18852 four records run in
-        flight at once. Without a claim, a rebalance, a crash or a rewind
-        re-runs the delegation end to end: a fresh inference, a second provider
-        call, a second billing row, and nothing failing to show for it.
-
-        Three properties, in the order they matter:
-
-        * the claim runs BEFORE dispatch, so the provider is never called twice
-          for one correlation;
-        * a lost claim still ANSWERS -- it returns the terminal the first run
-          recorded, never ``None``. A ``None`` result publishes no terminal at
-          all, which would convert a double-bill into the missing-envelope
-          defect OMN-15504 exists to prevent;
-        * the claim is durable, so the redelivery cause that matters most, a
-          crash, is covered. In-process memoisation would not be.
-
-        Residual, stated rather than implied: a redelivery arriving while the
-        first attempt is still IN FLIGHT loses the claim but finds no recorded
-        terminal yet, and falls through to dispatch. That is the conservative
-        direction -- it costs one more inference rather than answering with a
-        terminal that does not exist -- and closing it needs the first run to
-        publish an in-flight marker the second can wait on, which is a
-        different change from this one.
-        """
+    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed | None:
+        """Claim a command, serve its held terminal, or keep a late result as evidence."""
         port = self._idempotency_port
         if port is None:
             return await self._dispatch_and_build_terminal(request)
@@ -1349,26 +1304,67 @@ class HandlerDelegateSkill:
             return await self._dispatch_and_build_terminal(request)
         delivery_id = delivery.envelope_id
 
-        # No tenant is resolved for the claim, deliberately. The claim row is
-        # an omninode_internal relation, which receives no tenant stamping and
-        # no row-level security, so a tenant column there would be a posture
-        # the schema cannot enforce. The claim keys on the delivering record,
-        # which is tenant-agnostic anyway.
+        context = _request_reap_context(request)
         outcome = port.claim(
             delivery_id=delivery_id,
             correlation_id=request.correlation_id,
+            reap_context=context,
         )
         if not outcome.won and outcome.served_terminal is not None:
-            replayed = self._terminal_from_record(outcome.served_terminal)
+            replayed = terminal_from_record(outcome.served_terminal)
             if replayed is not None:
                 return replayed
 
         terminal = await self._dispatch_and_build_terminal(request)
-        port.record_terminal(
+        terminal_outcome = port.record_terminal(
             delivery_id=delivery_id,
             terminal={
                 "cls": type(terminal).__name__,
                 "data": terminal.model_dump(mode="json"),
             },
         )
+        if not terminal_outcome.won:
+            # The reaper (or another worker) already holds this command's one
+            # terminal and this result was kept as attempt evidence. Returning
+            # None makes the wiring publish nothing, so the wire carries no
+            # second terminal for the command.
+            return None
         return terminal
+
+
+def _request_tenant_id(request: ModelDelegateSkillRequest) -> str | None:
+    return (
+        request.tenant_id
+        or get_settings().onex_tenant_id
+        or local_tenant_identity_or_none()
+    )
+
+
+def _request_reap_context(
+    request: ModelDelegateSkillRequest,
+) -> ModelDelegationReapContext | None:
+    try:
+        budget = resolve_task_class_execution_budget(request.task_type)
+    except ValueError:
+        return None
+    requested = request.requested_timeout_seconds
+    ceiling = budget.task_class_timeout_ceiling_seconds
+    execution_seconds = (
+        ceiling if requested is None or requested > ceiling else requested
+    )
+    config = load_delegation_reaper_config()
+    return ModelDelegationReapContext(
+        correlation_id=request.correlation_id,
+        task_type=request.task_type,
+        tenant_id=_request_tenant_id(request),
+        ticket_id=_request_ticket_id(request),
+        caller_lane=_request_caller_lane(request),
+        session_id=_request_session_id(request),
+        provenance=request.provenance,
+        deadline_at=datetime.now(UTC)
+        + timedelta(
+            seconds=execution_seconds
+            + budget.terminal_delivery_margin_seconds
+            + config.grace_seconds
+        ),
+    )
