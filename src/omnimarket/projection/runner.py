@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import signal
+import sys
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     # (error_classification imports asyncpg's exception hierarchy at module
     # scope for the same reason).
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+    from omnimarket.projection.error_classification import ProjectionSchemaError
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,8 @@ DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
 RETRY_MAX_DELAY = 30.0
 MAX_RETRY_ATTEMPTS = 10
+SCHEMA_FAULT_MAX_ATTEMPTS = 3
+SCHEMA_FAULT_RETRY_DELAY = 5.0
 
 
 class ProjectionConsumerExhaustedError(RuntimeError):
@@ -111,6 +115,7 @@ class _ProjectionHealthServer(http.server.ThreadingHTTPServer):
     """
 
     is_ready: Callable[[], bool]
+    not_ready_reason: Callable[[], str]
 
 
 class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -118,9 +123,8 @@ class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
 
     Two paths only, stdlib-only (no new dependency): ``/healthz`` always
     answers 200 once the process is up; ``/ready`` answers 200 only once the
-    Kafka consumer loop has actually started (mirrors the semantics
-    ``check-readiness-probe-paths.py`` documents for every other runtime
-    Deployment -- "'/ready' gates on Kafka subscription readiness").
+    Kafka consumer loop has actually started and no schema fault is open.
+    Schema diagnostics explain which forward migration the lane DB needs.
     """
 
     server: _ProjectionHealthServer
@@ -131,7 +135,13 @@ class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
             return
         if self.path == "/ready":
             ready = self.server.is_ready()
-            self._respond(200 if ready else 503, b"ready" if ready else b"not-ready")
+            reason = "" if ready else self.server.not_ready_reason()
+            body = (
+                b"ready"
+                if ready
+                else (f"not-ready: {reason}".encode() if reason else b"not-ready")
+            )
+            self._respond(200 if ready else 503, body)
             return
         self._respond(404, b"not-found")
 
@@ -450,6 +460,9 @@ class BaseProjectionRunner(ABC):
         self._db_by_binding: dict[str, AsyncpgAdapter] = {}
         self._stats = ProjectionStats()
         self._running = False
+        self._schema_faults: dict[
+            tuple[str, int], tuple[int, ProjectionSchemaError]
+        ] = {}
         # OMN-15868: shutdown intent is tracked separately from the
         # readiness signal. `_running` starts `False` on every fresh
         # instance (it means "not yet connected", not "shutdown
@@ -482,7 +495,10 @@ class BaseProjectionRunner(ABC):
         server = _ProjectionHealthServer(
             ("0.0.0.0", port), _ProjectionHealthRequestHandler
         )
-        server.is_ready = lambda: self._running is True
+        server.is_ready = lambda: self._running is True and not self._schema_faults
+        server.not_ready_reason = lambda: "; ".join(
+            str(error) for _, error in list(self._schema_faults.values())
+        )
         thread = threading.Thread(
             target=server.serve_forever,
             name="projection-runner-health",
@@ -874,6 +890,8 @@ class BaseProjectionRunner(ABC):
             build_aiokafka_auth_kwargs_from_env,
         )
 
+        from omnimarket.projection.error_classification import ProjectionSchemaError
+
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda: asyncio.ensure_future(self.shutdown()))
@@ -890,6 +908,7 @@ class BaseProjectionRunner(ABC):
                 "ModelProjectionRuntimeBinding or a projection runtime binding overlay"
             )
         attempts = 0
+        schema_attempts = 0
 
         while attempts < MAX_RETRY_ATTEMPTS and not self._shutdown_requested:
             try:
@@ -941,6 +960,29 @@ class BaseProjectionRunner(ABC):
                     # is a LIFETIME one: ten transient broker blips spread over
                     # a month end the process just as surely as ten in a row.
                     attempts = 0
+                    if not self._schema_faults:
+                        schema_attempts = 0
+
+            except ProjectionSchemaError as err:
+                schema_attempts += 1
+                logger.error(
+                    "Schema fault attempt %d/%d: %s",
+                    schema_attempts,
+                    SCHEMA_FAULT_MAX_ATTEMPTS,
+                    err,
+                )
+                if self._consumer:
+                    with contextlib.suppress(Exception):
+                        await self._consumer.stop()
+                    self._consumer = None
+                if schema_attempts >= SCHEMA_FAULT_MAX_ATTEMPTS:
+                    self._stop_health_server()
+                    await self._stop_producer()
+                    await self._close_standalone_databases()
+                    if self._shutdown_requested:
+                        return
+                    raise
+                await asyncio.sleep(SCHEMA_FAULT_RETRY_DELAY)
 
             except Exception as err:
                 attempts += 1
@@ -998,17 +1040,16 @@ class BaseProjectionRunner(ABC):
         (empty value / un-unwrappable envelope) that carries no row to persist.
 
         Error classification (OMN-13634 / WS-F Phase 2): a projection error is
-        classified via :func:`classify_projection_error` so POISON and
-        RECOVERABLE failures get the right policy — the same policy the infra
-        ``handler_wiring`` path applies:
+        classified via :func:`classify_projection_error` so POISON, SCHEMA and
+        RECOVERABLE failures get the right offset policy:
 
-        * RECOVERABLE (e.g. an ``UndefinedColumn`` from a not-yet-applied
-          migration, an ``OperationalError``, a dropped connection) is counted,
+        * SCHEMA (an undefined column or table) records a fault, fails readiness,
+          and raises ``ProjectionSchemaError`` without committing. The outer
+          loop retries within a separate bounded budget, then exits non-zero
+          with the missing identifier and installed migration names.
+        * RECOVERABLE (an ``OperationalError`` or dropped connection) is counted,
           logged, and **re-raised** so the offset is NOT committed. The outer run
-          loop restarts the consumer and the uncommitted message is re-read on
-          the next poll — the failure surfaces loudly and the data is never
-          committed-and-dropped while the group reports Stable. A migration gap
-          lands here, never quarantined as malformed.
+          loop restarts the consumer and re-reads the uncommitted message.
         * POISON (a malformed payload ``ValidationError`` / ``PoisonEventError``
           that will never project no matter how often it is retried) is routed to
           the contract-declared poison DLQ. The offset is committed only after
@@ -1018,7 +1059,7 @@ class BaseProjectionRunner(ABC):
         Most handlers catch their own ``ValidationError`` inside ``project_event``
         and route to the DLQ before returning (the OMN-13548 path); this method
         is the safety net for a POISON error that escapes a handler and the
-        re-read/no-commit guarantee for every RECOVERABLE error.
+        re-read/no-commit guarantee for every SCHEMA or RECOVERABLE error.
         """
         # CANONICAL. ``deterministic_correlation_id`` below seeds from this,
         # so a physical name here would give the same event a different
@@ -1057,6 +1098,7 @@ class BaseProjectionRunner(ABC):
             from omnimarket.projection.error_classification import (
                 ProjectionErrorClass,
                 classify_projection_error,
+                schema_error_from,
             )
 
             self._stats.errors_count += 1
@@ -1065,6 +1107,20 @@ class BaseProjectionRunner(ABC):
             )
             ts["errors"] += 1
             error_class = classify_projection_error(err)
+            if error_class is ProjectionErrorClass.SCHEMA:
+                migrations_dir: Path | None = None
+                module = sys.modules.get(type(self).__module__)
+                module_file = getattr(module, "__file__", None)
+                if module_file is not None:
+                    for parent in Path(module_file).resolve().parents:
+                        candidate = parent / "migrations"
+                        if parent.name.startswith("node_") and candidate.is_dir():
+                            migrations_dir = candidate
+                            break
+                error = schema_error_from(err, migrations_dir)
+                self._schema_faults[(topic, msg.partition)] = (msg.offset, error)
+                logger.error("%s", error)
+                raise error from err
             if error_class is ProjectionErrorClass.POISON:
                 # The payload is bad and will never project. Route it to the
                 # poison DLQ (durably recoverable by correlation_id). Do not
@@ -1086,7 +1142,7 @@ class BaseProjectionRunner(ABC):
                 )
                 await self._commit_message(msg)
                 return
-            # RECOVERABLE: a missing column / server error / dropped connection.
+            # RECOVERABLE: a server error / dropped connection.
             # Do NOT advance the offset; re-raise so the run loop tears the
             # consumer down with the offset uncommitted; the message is re-read,
             # never dropped, until the infra catches up.
@@ -1176,6 +1232,10 @@ class BaseProjectionRunner(ABC):
                     TopicPartition(msg.topic, msg.partition): msg.offset + 1,
                 }
             )
+            key = (strip_topic_namespace(msg.topic), msg.partition)
+            fault = self._schema_faults.get(key)
+            if fault is not None and fault[0] <= msg.offset:
+                del self._schema_faults[key]
         except Exception as err:
             logger.warning(
                 "Failed to commit offset for %s:%d@%d: %s",
