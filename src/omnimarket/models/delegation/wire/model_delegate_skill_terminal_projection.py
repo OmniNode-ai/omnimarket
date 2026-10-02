@@ -299,7 +299,10 @@ class ModelDelegationEventProjectionRow(BaseModel):
             quality_gates_failed=tuple(event.quality_gates_failed),
             quality_gate_detail=quality_detail,
             cost_usd=Decimal(str(metrics.cost_usd)),
-            cost_savings_usd=Decimal(str(metrics.cost_savings_usd)),
+            # The legacy delegation_events projection has a NOT NULL savings
+            # column. Keep that compatibility projection numeric; the typed
+            # receipt and savings_estimates row preserve unresolved as null.
+            cost_savings_usd=Decimal(str(metrics.cost_savings_usd or 0.0)),
             latency_ms=metrics.latency_ms,
             repo_name=event.repo_name,
             prompt_text=event.prompt_text,
@@ -337,6 +340,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
     session_id: UUID
     model_local: str
     model_cloud_baseline: str
+    baseline_source: str = "fixed_default"
+    pricing_manifest_version: int = Field(default=0, ge=0)
     local_cost_usd: Decimal
     cloud_cost_usd: Decimal
     savings_usd: Decimal
@@ -443,6 +448,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
         *,
         baseline_model: str,
     ) -> ModelDelegateSkillSavingsProjection | None:
+        if event.metrics.cost_savings_usd is None or event.baseline_state != "RESOLVED":
+            return None
         savings_usd = Decimal(str(event.metrics.cost_savings_usd))
         if savings_usd <= 0:
             return None
@@ -455,6 +462,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             session_id=event.correlation_id,
             model_local=model_local,
             model_cloud_baseline=event.model_cloud_baseline or baseline_model,
+            baseline_source=event.baseline_source,
+            pricing_manifest_version=event.pricing_manifest_version,
             local_cost_usd=local_cost_usd,
             cloud_cost_usd=local_cost_usd + savings_usd,
             savings_usd=savings_usd,

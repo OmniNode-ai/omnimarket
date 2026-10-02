@@ -54,6 +54,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -96,17 +97,40 @@ def _latest_aggregate_migration() -> Path:
     Resolved rather than hardcoded: the assertion is about the view as it
     stands, so a later migration that redefines it must be the one read.
     """
+    aggregate_view = re.compile(
+        r"\bCREATE\s+OR\s+REPLACE\s+VIEW\s+"
+        r"public\.projection_delegation_savings\s+AS\b",
+        re.IGNORECASE,
+    )
     candidates = [
         path
         for path in sorted(_MIGRATIONS.glob("*.sql"))
-        if "CREATE OR REPLACE VIEW public.projection_delegation_savings"
-        in path.read_text("utf-8")
+        if aggregate_view.search(path.read_text("utf-8"))
     ]
     assert candidates, (
         "no migration defines projection_delegation_savings; the view this "
         "ticket bounds has moved or been renamed"
     )
     return candidates[-1]
+
+
+def test_latest_aggregate_migration_ignores_series_only_migrations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A series view name shares the aggregate prefix but is a different view."""
+    aggregate = tmp_path / "090_aggregate.sql"
+    aggregate.write_text(
+        "CREATE OR REPLACE VIEW public.projection_delegation_savings AS SELECT 1;",
+        encoding="utf-8",
+    )
+    series = tmp_path / "092_series.sql"
+    series.write_text(
+        "CREATE OR REPLACE VIEW public.projection_delegation_savings_series AS SELECT 1;",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "_MIGRATIONS", tmp_path)
+
+    assert _latest_aggregate_migration() == aggregate
 
 
 def _limited_sessions_cte(sql: str) -> str:

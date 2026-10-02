@@ -291,7 +291,7 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     tokens_to_compliance: int = Field(default=0, ge=0)
     compliance_attempts: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
-    cost_savings_usd: float = Field(default=0.0, ge=0.0)
+    cost_savings_usd: float | None = Field(default=None, ge=0.0)
     frontier_costs_usd: dict[str, float] = Field(default_factory=dict)
     premium_counterfactual: ModelPremiumCounterfactual | None = Field(
         default=None,
@@ -362,6 +362,12 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
+    baseline_source: Literal["session_model", "overlay", "store", "fixed_default"] = (
+        Field(default="fixed_default")
+    )
+    baseline_state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = Field(
+        default="RESOLVED"
+    )
     pricing_manifest_version: int = Field(default=0, ge=0)
     prompt_text: str = Field(default="")
     response: str = Field(default="")
