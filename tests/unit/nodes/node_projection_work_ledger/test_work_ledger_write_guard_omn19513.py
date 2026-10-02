@@ -22,9 +22,9 @@ from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_p
     WorkLedgerProjectionWriter,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard import (
-    EXIT_TEST_WRITE_REFUSED,
     GUARD_NAME,
     HandlerWorkLedgerWriteGuard,
+    LedgerTestWriteRefusedError,
 )
 
 pytestmark = pytest.mark.unit
@@ -106,14 +106,11 @@ def _writer(dsn: str) -> tuple[WorkLedgerProjectionWriter, _Db]:
     return writer, db
 
 
-def test_a_fixture_write_to_the_real_dsn_exits_79_and_writes_nothing(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_a_fixture_write_to_the_real_dsn_is_refused_and_writes_nothing() -> None:
     writer, db = _writer(REAL_DSN)
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(LedgerTestWriteRefusedError) as refused:
         writer.handle(_event())
-    assert refused.value.code == EXIT_TEST_WRITE_REFUSED == 79
-    assert GUARD_NAME in capsys.readouterr().err
+    assert GUARD_NAME in str(refused.value)
     assert db.calls == []  # not connected, not executed: bytes unchanged
 
 
@@ -126,9 +123,8 @@ def test_project_event_to_the_real_dsn_is_refused_before_any_statement() -> None
     meta = MessageMeta(
         partition=0, offset=1, fallback_id="x", topic=SUBSCRIBE_TOPICS[0]
     )
-    with pytest.raises(SystemExit) as refused:
+    with pytest.raises(LedgerTestWriteRefusedError):
         asyncio.run(writer.project_event(SUBSCRIBE_TOPICS[0], _event(), meta))
-    assert refused.value.code == 79
     assert db.calls == []
 
 
@@ -160,7 +156,25 @@ def test_the_test_context_value_cannot_remove_the_signal(
     monkeypatch.setenv("ONEX_TEST_CONTEXT", "")
     assert (
         HandlerWorkLedgerWriteGuard.refusal(REAL_DSN) is not None
-    )  # pytest is imported
+    )  # PYTEST_CURRENT_TEST is set
+
+
+def test_an_imported_runner_module_alone_is_not_a_test_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runtime imports pytest transitively; that alone must not refuse its writes (OMN-17427)."""
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("ONEX_TEST_CONTEXT", raising=False)
+    assert "pytest" in sys.modules
+    assert HandlerWorkLedgerWriteGuard.test_context() is None
+    assert HandlerWorkLedgerWriteGuard.refusal(REAL_DSN) is None
+
+
+def test_a_refusal_never_raises_system_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refusal in a host process fails one dispatch; it never stops the process (OMN-17427)."""
+    monkeypatch.setenv("ONEX_TEST_CONTEXT", "1")
+    with pytest.raises(LedgerTestWriteRefusedError):
+        HandlerWorkLedgerWriteGuard.check_dsn(REAL_DSN)
 
 
 def test_the_suite_conftest_strips_the_ambient_database_url() -> None:

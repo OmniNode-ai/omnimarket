@@ -9,15 +9,20 @@ Isolation by test setup is a convention a test can forget; this guard sits in th
 
 THE RULE. A write is refused when BOTH hold:
 
-1. The process runs under a test runner: ``PYTEST_CURRENT_TEST`` is set, ``pytest`` or
-   ``unittest`` is imported, or ``ONEX_TEST_CONTEXT`` is set to any non-empty value. The
-   environment signals are inherited by a subprocess. No value of ``ONEX_TEST_CONTEXT``
-   removes a signal.
+1. The process runs under a test runner: ``PYTEST_CURRENT_TEST`` is set (pytest sets it
+   for every test's setup, call and teardown, and a subprocess inherits it), or
+   ``ONEX_TEST_CONTEXT`` is set to any non-empty value. No value of ``ONEX_TEST_CONTEXT``
+   removes a signal. A module merely being imported is not a signal: the long-lived
+   runtime imports pytest transitively, and treating that as a test refused every
+   production write and, through SystemExit, restarted the runtime every few minutes
+   (OMN-17427).
 2. The DSN the writer would connect with is real: its host is not loopback and not a local
    socket.
 
 The writer calls :meth:`HandlerWorkLedgerWriteGuard.check_dsn` before it connects and before
-it executes a statement. A test writes through a loopback DSN or an injected fake database.
+it executes a statement. A refusal raises ``LedgerTestWriteRefusedError``, an ordinary
+handler error, never ``SystemExit``, so a refusal can fail a test or one dispatch but cannot
+stop a host process. A test writes through a loopback DSN or an injected fake database.
 There is no bypass flag and no allowlist. The command form,
 ``python -m omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard --dsn <dsn>``,
 exits 0 when the write may proceed and 79 with the refusal on stderr when it may not.
@@ -35,7 +40,10 @@ GUARD_NAME = "ledger-test-write-guard"
 TEST_CONTEXT_ENV = "ONEX_TEST_CONTEXT"
 EXIT_TEST_WRITE_REFUSED = 79
 _LOOPBACK_HOSTS = frozenset({"", "localhost", "127.0.0.1", "::1"})
-_RUNNER_MODULES = ("pytest", "unittest")
+
+
+class LedgerTestWriteRefusedError(Exception):
+    """A test process tried to write the real work_ledger_rows DSN."""
 
 
 class HandlerWorkLedgerWriteGuard:
@@ -48,9 +56,6 @@ class HandlerWorkLedgerWriteGuard:
             return "PYTEST_CURRENT_TEST is set"
         if os.environ.get(TEST_CONTEXT_ENV, "").strip():
             return f"{TEST_CONTEXT_ENV} is set"
-        for name in _RUNNER_MODULES:
-            if name in sys.modules:
-                return f"{name} is imported"
         return None
 
     @staticmethod
@@ -83,11 +88,10 @@ class HandlerWorkLedgerWriteGuard:
 
     @classmethod
     def check_dsn(cls, dsn: str) -> None:
-        """Raise SystemExit(79) naming the guard when a test process holds a real DSN."""
+        """Raise LedgerTestWriteRefusedError when a test process holds a real DSN."""
         message = cls.refusal(dsn)
         if message is not None:
-            sys.stderr.write(message + "\n")
-            raise SystemExit(EXIT_TEST_WRITE_REFUSED)
+            raise LedgerTestWriteRefusedError(message)
 
 
 def main(argv: list[str] | None = None) -> int:

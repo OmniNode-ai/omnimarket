@@ -138,6 +138,19 @@ def test_there_is_no_bypass_flag(
         assert HandlerWorkLedgerEmitGuard.refusal() is not None
 
 
+def test_an_imported_runner_module_alone_is_not_a_test_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runtime imports pytest transitively; that alone must not refuse its writes (OMN-17427)."""
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("ONEX_TEST_CONTEXT", raising=False)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "redpanda.lab.internal:9092")
+    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
+    assert "pytest" in sys.modules
+    assert HandlerWorkLedgerEmitGuard.test_context() is None
+    assert HandlerWorkLedgerEmitGuard.refusal() is None
+
+
 def test_the_command_form_exits_79_for_a_test_run_against_a_real_bus() -> None:
     env = {
         **os.environ,
