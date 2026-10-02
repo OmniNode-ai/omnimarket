@@ -159,16 +159,19 @@ class HandlerQualityGateIntent:
             response_contract is None
             and gate_input.task_type in _JUDGE_COMBINABLE_TASK_TYPES
         ):
-            # ModelQualityGateInput (canonical core DTO) does not carry the
-            # original task prompt; the declared acceptance_criteria + task_type
-            # are the task requirements the judge scores the candidate against.
+            # ModelQualityGateInput carries the delegated prompt as grounding_source;
+            # fall back to the task-type template when it is absent.
             judge_verdict = await self._judge.score(
                 correlation_id=gate_input.correlation_id,
                 task_type=gate_input.task_type,
                 prompt=(
-                    "Judge whether the candidate adequately fulfills a "
-                    f"{gate_input.task_type} task that satisfies the declared "
-                    "acceptance criteria."
+                    gate_input.grounding_source
+                    if gate_input.grounding_source is not None
+                    else (
+                        "Judge whether the candidate adequately fulfills a "
+                        f"{gate_input.task_type} task that satisfies the declared "
+                        "acceptance criteria."
+                    )
                 ),
                 candidate_output=gate_input.llm_response_content,
                 acceptance_criteria=gate_input.acceptance_criteria,

@@ -471,3 +471,90 @@ class TestANonConcreteLaneIsRefused:
             and isinstance(value.value, ast.Name)
         ]
         assert "mode" not in formatted
+
+
+class TestAC4PublishedSummaryHeadline:
+    """AC4 (OMN-19440): the headline duplicate figure is the single-command count.
+
+    The terminal record does not carry the command id yet (OMN-19437), so a
+    correlation id whose command was published twice can show two terminals
+    with nothing duplicated. Until it does, the published summary headlines
+    the count that cannot be explained that way; the per-correlation count
+    stays beside it as a labelled secondary.
+    """
+
+    def _reader(self, join: types.ModuleType) -> object:
+        command_topic, terminal_topics = _declared_topics()
+        t0 = NOW_MS - 20 * HOUR_MS
+        data = {
+            command_topic: [
+                (t0, _command("h-ok", t0)),
+                (t0 + 1, _command("h-dropped", t0)),
+                (t0 + 2, _command("h-double", t0)),
+                (t0 + 3, _command("h-retried", t0)),
+                (t0 + 4, _command("h-retried", t0)),
+            ],
+            terminal_topics[0]: [
+                (t0 + 10, _terminal("h-ok")),
+                (t0 + 11, _terminal("h-double")),
+                (t0 + 12, _terminal("h-double")),
+            ],
+            terminal_topics[1]: [
+                (t0 + 13, _terminal("h-retried")),
+                (t0 + 14, _terminal("h-retried")),
+            ],
+        }
+
+        async def reader(topic: str, from_ms: int, to_ms: int) -> object:
+            return join.TopicRead(
+                topic=topic,
+                records=[
+                    join.Record(ts, join.extract_correlation_id(value))
+                    for ts, value in data[topic]
+                    if from_ms <= ts <= to_ms
+                ],
+            )
+
+        return reader
+
+    def test_headline_is_the_single_command_figure(
+        self,
+        join: types.ModuleType,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        out = tmp_path / "result.json"
+        code = join.run(
+            reader=self._reader(join),
+            contract_path=CONTRACT_PATH,
+            now_ms=NOW_MS,
+            window_hours=24,
+            lane="dev",
+            out_path=out,
+        )
+        assert code == 0
+        summary = capsys.readouterr().out
+        headline = next(
+            line for line in summary.splitlines() if "duplicate terminals" in line
+        )
+        assert headline == (
+            "- duplicate terminals (single command): 1 "
+            "[correlation ids with more than one terminal: 2]"
+        )
+
+    def test_payload_keeps_both_labelled_figures(
+        self, join: types.ModuleType, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "result.json"
+        code = join.run(
+            reader=self._reader(join),
+            contract_path=CONTRACT_PATH,
+            now_ms=NOW_MS,
+            window_hours=24,
+            lane="dev",
+            out_path=out,
+        )
+        assert code == 0
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        assert payload["duplicate_terminals"]["count"] == 2
+        assert payload["duplicate_terminals"]["with_single_command"] == 1

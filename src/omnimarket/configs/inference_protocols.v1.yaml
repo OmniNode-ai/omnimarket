@@ -118,7 +118,7 @@ profiles:
   # OMN-13335: Gemini ceiling thinking-suppression for the code escalation path.
   #
   # The code_generation escalation ceiling routes to gemini-2.5-flash
-  # (routing_tiers.yaml `claude` slot -> bifrost backend cloud-gemini-pro). That
+  # (routing_tiers.yaml `claude` slot -> bifrost backend cloud-gemini-2-5-flash). That
   # model is a THINKING model: on the AI Studio OpenAI-compatibility endpoint its
   # reasoning ("thinking") tokens are drawn from the SAME completion-token budget
   # as the visible answer (the provider-reported usage.total_tokens exceeds

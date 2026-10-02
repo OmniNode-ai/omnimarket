@@ -8,6 +8,8 @@ shadow-comparison harness and the response-quality baseline) compose these;
 the CLI is ``python -m omnimarket.ranges``.
 """
 
+from __future__ import annotations
+
 from omnimarket.ranges.bootstrap import (
     BOOTSTRAP_RESAMPLES,
     bootstrap_pass_rate_bounds,
@@ -30,6 +32,11 @@ from omnimarket.ranges.power import (
 )
 from omnimarket.ranges.register import (
     DEFAULT_CHECK_REGISTER_PATH,
+    FALSE_PASS_ID_PREFIX,
+    GATE_ID_PREFIX,
+    REQUIRED_FALSE_PASS_CLASSES,
+    REQUIRED_GATE_CHECKS,
+    required_check_ids,
     validate_check_register,
 )
 from omnimarket.ranges.scores import (
@@ -40,6 +47,10 @@ from omnimarket.ranges.scores import (
 __all__ = [
     "BOOTSTRAP_RESAMPLES",
     "DEFAULT_CHECK_REGISTER_PATH",
+    "FALSE_PASS_ID_PREFIX",
+    "GATE_ID_PREFIX",
+    "REQUIRED_FALSE_PASS_CLASSES",
+    "REQUIRED_GATE_CHECKS",
     "binomial_upper_tail",
     "bootstrap_pass_rate_bounds",
     "compare_paired_outcomes",
@@ -52,6 +63,7 @@ __all__ = [
     "normal_approximation_comparison_size",
     "normal_approximation_sample_size",
     "range_run_from_score_rows",
+    "required_check_ids",
     "required_comparison_size",
     "required_sample_size",
     "sample_outcome_from_score",

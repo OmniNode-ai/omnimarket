@@ -574,7 +574,7 @@ def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
     """Return the routing-authority tier name for ``backend`` (OMN-15803).
 
     ``ModelResolvedDelegationBackend.tier`` is populated from the bifrost
-    contract's own descriptive ``tier:`` field (e.g. ``cloud-gemini-pro``
+    contract's own descriptive ``tier:`` field (e.g. ``cloud-gemini-2-5-flash``
     declares ``tier: frontier_api`` in ``bifrost_delegation.yaml``) — a
     DIFFERENT vocabulary than the routing_tiers.yaml ``tier_order`` names
     (``local``/``cheap_cloud``/``claude``) the task-class contract declares.
@@ -1746,11 +1746,39 @@ class LocalDelegationDispatchPort:
                 # A recording fault must never fail the delegation it describes.
                 logger.warning("Rubric recording failed: %s", type(exc).__name__)
                 rubric_verdict = rubric_check_error_verdict(task_type)
+            # OMN-19205: a customer call that was throttled (or whose upstream
+            # was down) on its first model and answered on a second one, both
+            # on this one backend. The first call is a rejected routing attempt
+            # of its own, and the attempt below names the model that answered.
+            for earlier in result.earlier_model_attempts:
+                attempts.append(
+                    {
+                        "tier": attempt_tier,
+                        "backend_id": backend.backend_id,
+                        "model_id": earlier.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
+                        "quality_gate_passed": False,
+                        "quality_score": None,
+                        "cost_usd": 0.0,
+                        "failure_class": earlier.failure_class.value,
+                        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                        "http_status": earlier.http_status,
+                        "error_message": earlier.error_message,
+                        "acceptance_decision": (
+                            EnumDelegationAcceptanceDecision.CLIMB.value
+                        ),
+                        "acceptance_reason": (
+                            EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value
+                        ),
+                    }
+                )
             attempts.append(
                 {
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
-                    "model_id": backend.model_id,
+                    "model_id": result.served_model_id or backend.model_id,
                     "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
@@ -1767,6 +1795,9 @@ class LocalDelegationDispatchPort:
                     "acceptance_decision": acceptance_decision.value,
                     "acceptance_reason": acceptance_reason.value,
                     "acceptance_detail": acceptance_detail,
+                    # OMN-19436: retain why generation stopped on this rung.
+                    "finish_reason": result.finish_reason.value,
+                    "truncated": is_truncated_by_output_budget(result.finish_reason),
                     # OMN-18379: what was removed from in front of the answer
                     # before any check ran, and which declared rule found the
                     # seam. Retained so a refusal can be audited against
@@ -2283,7 +2314,7 @@ class LocalDelegationDispatchPort:
         ``resolve_delegation_backend(task_type)``. The untargeted call selected the
         first bifrost-file-order backend whose ``endpoint_url`` was populated and
         whose capabilities matched the task, which for ``code_generation`` was the
-        abandoned off-ladder ``cloud-gemini-pro`` (OMN-13667). That VIOLATED both
+        abandoned off-ladder ``cloud-gemini-2-5-flash`` (OMN-13667). That VIOLATED both
         binding guardrails (cheapest-first + closed-set tier_order) and, because
         ``tier_for_backend`` cannot classify an off-ladder backend,
         ``next_eligible_tier`` returned None immediately — stranding the OMN-13849
@@ -2299,7 +2330,12 @@ class LocalDelegationDispatchPort:
         """
         if backend_id is not None:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
-        first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
+        first_tier = first_eligible_tier(
+            task_type,
+            roi_overlay=roi_overlay,
+            correlation_id=spread_key,
+            quota_state=quota_state,
+        )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
                 first_tier, task_type, spread_key=spread_key
@@ -2369,12 +2405,12 @@ class LocalDelegationDispatchPort:
         dispatch.
 
         Measured consequence, 2026-09-15, three consecutive runs of a 194-word
-        prose prompt in task class ``research``: ``cloud-gemini-pro`` returned a
+        prose prompt in task class ``research``: ``cloud-gemini-2-5-flash`` returned a
         free-tier-quota 429 (``failure_class=rate_limited``, retryable), the
         port excluded ``cheap_cloud`` whole, ``next_eligible_tier`` found no
         higher tier offering a non-excluded backend, and the delegation
         terminated FAILED — while ``sibling_backend_available_in_tier(
-        "cheap_cloud", "research", frozenset({"cloud-gemini-pro"}))`` reported
+        "cheap_cloud", "research", frozenset({"cloud-gemini-2-5-flash"}))`` reported
         ``cloud-glm``, an untried, separately-funded, eligible sibling.
 
         Eligibility is decided by the routing authority, never here:
@@ -2474,7 +2510,7 @@ class LocalDelegationDispatchPort:
         excluded_backend_refs=...)`` parameter, which this local bus-less path
         previously never threaded). Two DIFFERENT routing tiers can declare the
         SAME concrete bifrost backend for a task type (e.g. ``cheap_cloud`` and
-        ``claude`` both resolve ``research`` to ``cloud-gemini-pro`` in the live
+        ``claude`` both resolve ``research`` to ``cloud-gemini-2-5-flash`` in the live
         contract) — without this, escalating "up" a tier that only offers an
         already-failed backend re-dispatches the IDENTICAL backend+model, a
         functional no-op. ``next_eligible_tier`` skips any tier whose only
@@ -2503,6 +2539,7 @@ class LocalDelegationDispatchPort:
             task_type=task_type,
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
+            correlation_id=spread_key,
         )
         if next_tier is None:
             return None
@@ -3104,11 +3141,7 @@ class LocalDelegationDispatchPort:
             judge_verdict = await self._judge.score(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                prompt=(
-                    "Judge whether the candidate adequately fulfills a "
-                    f"{task_type} task that satisfies the declared "
-                    "acceptance criteria."
-                ),
+                prompt=prompt,
                 candidate_output=content,
                 acceptance_criteria=acceptance_criteria,
             )

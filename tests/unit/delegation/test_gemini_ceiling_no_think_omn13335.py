@@ -9,7 +9,7 @@ the 0.85 quality bar. The live failure (CID ffa90b77) was NOT a weak ceiling
 model and NOT a miscalibrated bar — it was TRUNCATION:
 
   * the ceiling routes to ``gemini-2.5-flash`` (routing_tiers ``claude`` slot ->
-    bifrost backend ``cloud-gemini-pro``), a THINKING model whose reasoning
+    bifrost backend ``cloud-gemini-2-5-flash``), a THINKING model whose reasoning
     tokens are drawn from the SAME completion budget as the visible answer on
     the AI Studio OpenAI-compatibility endpoint;
   * with thinking ON, the budget is spent on hidden reasoning and the visible
@@ -30,7 +30,7 @@ cannot silently re-introduce the truncation regression.
 
 Related:
     - OMN-13335: escalation up-tier discriminator (this guard)
-    - OMN-13351: ceiling repointed to cloud-gemini-pro (gemini-2.5-flash)
+    - OMN-13351: ceiling repointed to cloud-gemini-2-5-flash (gemini-2.5-flash)
     - OMN-13345: backend max_tokens threaded onto the routing decision
     - OMN-12813: local-qwen thinking-off precedent in inference_protocols.v1
 """
@@ -65,7 +65,7 @@ def test_gemini_ceiling_resolves_reasoning_effort_none_for_code() -> None:
         prompt="Implement is_palindrome(s: str) -> bool.",
         model=_CEILING_MODEL,
         task_type=_CODE_TASK_TYPE,
-        backend_id="cloud-gemini-pro",
+        backend_id="cloud-gemini-2-5-flash",
     )
     assert request_options.get("reasoning_effort") == "none", (
         "gemini-2.5-flash code_generation must resolve reasoning_effort=none so "
@@ -119,7 +119,7 @@ def test_gemini_thinking_off_not_applied_to_non_code_task() -> None:
         prompt="Explain the time complexity of mergesort.",
         model=_CEILING_MODEL,
         task_type="research",
-        backend_id="cloud-gemini-pro",
+        backend_id="cloud-gemini-2-5-flash",
     )
     assert "reasoning_effort" not in request_options, (
         "the code-scoped Gemini thinking-off profile must not apply to research; "
@@ -147,7 +147,7 @@ def test_gemini_ceiling_injects_final_artifact_only_directive() -> None:
         prompt="Implement is_palindrome(s: str) -> bool.",
         model=_CEILING_MODEL,
         task_type=_CODE_TASK_TYPE,
-        backend_id="cloud-gemini-pro",
+        backend_id="cloud-gemini-2-5-flash",
     )
     appended = next_system_prompt[len(base_system_prompt) :].lower()
     assert "final code artifact only" in appended, (
@@ -175,7 +175,7 @@ def test_final_artifact_only_directive_not_applied_to_non_code_task() -> None:
         prompt="Explain the time complexity of mergesort.",
         model=_CEILING_MODEL,
         task_type="research",
-        backend_id="cloud-gemini-pro",
+        backend_id="cloud-gemini-2-5-flash",
     )
     assert "final code artifact only" not in next_system_prompt.lower(), (
         "the final-artifact-only directive must not be injected for prose tasks; "

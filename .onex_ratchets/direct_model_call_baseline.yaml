@@ -1,0 +1,317 @@
+---
+# Baseline for check-direct-model-call (OMN-20295).
+# A model call must sit inside a sanctioned delegation
+# node package (omnibase_core nodes/node_direct_model_call_check_compute/policy.yaml).
+#
+# RULE: entries only leave. A site not listed here fails. An entry that no
+# longer matches a site fails until it is removed. An entry past its expiry no
+# longer covers its site. CI and the pre-commit hook refuse a change whose copy
+# of this file carries an entry, a later expiry or another ticket that its
+# base did not. Crush sites name OMN-20290 for their removal.
+#
+# Regenerate only to SHRINK it:
+#   python -m omnibase_core.nodes.node_direct_model_call_check_compute.runtime_direct_model_call \
+#     --repo <repo> --baseline <this file> --write-baseline
+
+schema_version: 1
+entries:
+  - path: benchmarks/delegation_false_pass_growth/grade.sh
+    kind: cli_exec
+    symbol: <script>
+    target: claude
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: benchmarks/delegation_false_pass_growth/rate_third.py
+    kind: http
+    symbol: one
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: experiments/adk_eval/track_a_adk/app/agent.py
+    kind: sdk_import
+    symbol: <module>
+    target: google.genai
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: experiments/adk_eval/track_a_adk/app/run_agent.py
+    kind: sdk_import
+    symbol: <module>
+    target: google.genai
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: experiments/adk_eval/track_a_adk/tests/integration/test_agent.py
+    kind: sdk_import
+    symbol: <module>
+    target: google.genai
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: scripts/ci/record_delegation_ladder_fixtures.py
+    kind: http
+    symbol: _complete
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/cli/cli_ab_compare_suite.py
+    kind: http
+    symbol: _call_registry_model_direct
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/rung_eval/runner.py
+    kind: http
+    symbol: OpenAIChatTransport.complete
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/swe_discriminator/arm_runner.py
+    kind: call_via
+    symbol: run_arm
+    target: src/omnimarket/delegation/swe_discriminator/model_client.py::chat
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/swe_discriminator/arm_runner.py
+    kind: call_via
+    symbol: run_arm
+    target: src/omnimarket/delegation/swe_discriminator/model_client.py::chat
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/swe_discriminator/arm_runner.py
+    kind: call_via
+    symbol: run_arm
+    target: src/omnimarket/delegation/swe_discriminator/model_client.py::chat
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/swe_discriminator/model_client.py
+    kind: http
+    symbol: chat
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/delegation/swe_discriminator/run_smoke.py
+    kind: call_via
+    symbol: _run_phase
+    target: src/omnimarket/delegation/swe_discriminator/arm_runner.py::run_arm
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/inference/adapter_inference_bridge.py
+    kind: http
+    symbol: AdapterInferenceBridge._call_http_model
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py
+    kind: sdk_import
+    symbol: HandlerAbInferenceEffect._call_anthropic
+    target: anthropic
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_antipattern_index_effect/handlers/handler_antipattern_index_effect.py
+    kind: http
+    symbol: _get_embedding
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_antipattern_match_effect/handlers/handler_antipattern_match_effect.py
+    kind: http
+    symbol: _get_embedding
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+    kind: http
+    symbol: LiveBuildDispatchHandler._call_llm
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+    kind: http
+    symbol: LiveBuildDispatchHandler._generate_implementation
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+    kind: http
+    symbol: LiveBuildDispatchHandler._generate_implementation
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+    kind: http
+    symbol: LiveBuildDispatchHandler._generate_implementation
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+    kind: http
+    symbol: LiveTicketClassifyHandler._classify_one
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_code_embedding_effect/handlers/handler_code_embedding_effect.py
+    kind: http
+    symbol: _get_embedding
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_code_embedding_effect/tests/test_handler_code_embedding_effect.py
+    kind: http
+    symbol: test_integration_real_embedding_probe
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_code_enrichment_effect/handlers/handler_code_enrichment_effect.py
+    kind: http
+    symbol: _call_llm
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_code_enrichment_effect/tests/test_handler_code_enrichment_effect.py
+    kind: http
+    symbol: test_integration_real_llm_probe
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_delegation_ab_runner/handlers/handler_delegation_ab_runner.py
+    kind: http
+    symbol: _default_llm_call
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_demo_fanout_orchestrator/handlers/handler_fanout.py
+    kind: cli_exec
+    symbol: HandlerDemoFanoutOrchestrator._run_claude_cli
+    target: claude
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_demo_fanout_orchestrator/handlers/handler_fanout.py
+    kind: http
+    symbol: HandlerDemoFanoutOrchestrator._run_openai_compatible
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_environment_health_scanner/handlers/handler_environment_health_scanner.py
+    kind: call_via
+    symbol: NodeEnvironmentHealthScanner.handle
+    target: src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_model_endpoints.py::probe_model_endpoints
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_model_endpoints.py
+    kind: http
+    symbol: probe_model_endpoints
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_local_supervisor/handlers/handler_local_supervisor.py
+    kind: http
+    symbol: _default_invoker
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py
+    kind: cli_exec
+    symbol: _execute_dispatch_items
+    target: claude
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/test_golden_chain_environment_health_scanner.py
+    kind: call_via
+    symbol: test_probe_model_endpoints_mock_success
+    target: src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_model_endpoints.py::probe_model_endpoints
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/test_golden_chain_environment_health_scanner.py
+    kind: call_via
+    symbol: test_probe_model_endpoints_no_specs
+    target: src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_model_endpoints.py::probe_model_endpoints
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/test_golden_chain_environment_health_scanner.py
+    kind: call_via
+    symbol: test_probe_model_endpoints_unreachable
+    target: src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_model_endpoints.py::probe_model_endpoints
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/test_omn19454_install_canary.py
+    kind: http
+    symbol: test_stub_round_trip
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/test_omn19454_install_canary.py
+    kind: http
+    symbol: test_stub_round_trip
+    target: http
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/delegation/test_delegation_graded_ladder_benchmark.py
+    kind: call_via
+    symbol: test_live_recorder_captures_at_least_one_rung
+    target: scripts/ci/record_delegation_ladder_fixtures.py::main
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/delegation/test_swe_discriminator_classify.py
+    kind: call_via
+    symbol: test_chat_handles_non_mapping_choice_without_raising
+    target: src/omnimarket/delegation/swe_discriminator/model_client.py::chat
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_bogus_skill_subprocess_failure
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_claude_not_in_path_returns_failure
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_dry_run_skips_subprocess
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_empty_skill_returns_failure
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_file_not_found_halt_on_failure_false_continues
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_file_not_found_halt_on_failure_true_halts
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_non_skill_mode_is_skipped
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_success_path
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_timeout_returns_failure
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
+  - path: tests/unit/nodes/node_overnight/test_dispatch_items_executor.py
+    kind: call_via
+    symbol: test_execute_dispatch_items_uses_phase_spec_timeout
+    target: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py::_execute_dispatch_items
+    ticket: OMN-20295
+    expires: '2026-12-31'
