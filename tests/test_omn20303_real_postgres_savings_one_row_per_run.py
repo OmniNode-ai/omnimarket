@@ -105,15 +105,8 @@ async def _connect_or_skip() -> asyncpg.Connection:
         pytest.skip(f"no reachable Postgres for OMN-20303 test: {exc}")
 
 
-# A model the pinned pricing manifest prices; the default baseline can be absent
-# from it, which makes the counterfactual None at collection time.
-_PRICED_PREMIUM_MODEL = "claude-opus-4-6"
-
-
 def _cf_cost() -> float:
-    cf = build_premium_counterfactual(
-        prompt_tokens=319, completion_tokens=154, premium_model=_PRICED_PREMIUM_MODEL
-    )
+    cf = build_premium_counterfactual(prompt_tokens=319, completion_tokens=154)
     assert cf is not None
     return float(cf.counterfactual_cost_usd)
 
