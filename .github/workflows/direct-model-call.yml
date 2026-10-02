@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 env:
-  CORE_PIN: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@e5136c65f7943743eee7727fa6b92a1f0c0cf26c"
+  CORE_PIN: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@1a03583ee733daa85f2cf11fc84e1967a951623d"
   GATE: omnibase_core.nodes.node_direct_model_call_check_compute.runtime_direct_model_call
 
 jobs:

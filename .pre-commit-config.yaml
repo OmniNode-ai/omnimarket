@@ -83,7 +83,7 @@ repos:
   # suppression marker. Keep this rev equal to the pin in
   # .github/workflows/direct-model-call.yml. Server-side backstop: OMN-20299.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: e5136c65f7943743eee7727fa6b92a1f0c0cf26c # pragma: allowlist secret
+    rev: 1a03583ee733daa85f2cf11fc84e1967a951623d # pragma: allowlist secret
     hooks:
       - id: check-direct-model-call
         args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
