@@ -2395,6 +2395,7 @@ class HandlerDelegationWorkflow:
                 excluded_tiers,
                 task_type=task_type,
                 excluded_backend_refs=skip_refs,
+                correlation_id=workflow.correlation_id,
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -2403,6 +2404,7 @@ class HandlerDelegationWorkflow:
                         excluded_tiers,
                         task_type=task_type,
                         excluded_backend_refs=skip_refs,
+                        correlation_id=workflow.correlation_id,
                     )
                     if task_type is not None
                     else NO_HIGHER_TIER_REASON_TOKEN
