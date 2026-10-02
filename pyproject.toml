@@ -120,6 +120,9 @@ dependencies = [
     # goal DoD item receipt primitives and shared evaluation reducer.
     # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
     # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
+    # OMN-19750: onex local init also needs core>=0.47.24 (core#1786, the
+    # runtime lane declaration types) and omnibase_infra>=0.38.60 (infra#4180,
+    # the shipped runtime.lane example); both floors above already satisfy it.
     "omnibase-core>=0.47.28,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
@@ -851,6 +854,15 @@ omnimarket = "omnimarket.nodes"
 # an ancestor of the 0.17.1 tag commit (1b1092e6), so the override's own
 # removal criterion (target released) is met. Do not reintroduce this override
 # without updating the version pin above in the same edit.
+
+# OMN-19750: omnibase-core's temporary git-rev override to omnibase_core#1786's
+# squash (be874b620) is REMOVED. omnibase-core 0.47.24 is published on PyPI
+# (OMN-18595) and contains that squash as an ancestor; the floors raised above
+# resolve the released wheel.
+# OMN-19750: omnibase-infra's temporary git-rev override to omnibase_infra#4180's
+# head (00f224e0a) is REMOVED. omnibase_infra 0.38.60 is published on PyPI and
+# carries that squash as an ancestor, and the floors raised above resolve the
+# released wheel, so the draft's last temporary source is gone.
 
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
