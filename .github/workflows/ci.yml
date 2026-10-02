@@ -1604,6 +1604,97 @@ jobs:
             --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@7f20b97895f01996c5858dde385ba8991c06e708' \
             python -m omnibase_core.handlers.handler_shape_gate_independence
 
+  # OMN-20287: direct-model-call gate, BLOCKING. Model calls must live in
+  # sanctioned delegation nodes; the baseline can only shrink. Unconditional
+  # (no needs/if:), with planted refusal and acceptance controls on every run.
+  # STRICT CI Summary gate (scripts/ci/ci_summary_gate.py STRICT_GATE_JOBS).
+  # SYNC with pre-commit hook `check-direct-model-call`: same module and same
+  # omnibase_core commit as that hook.
+  direct-model-call-gate:
+    name: Direct Model Call Gate (OMN-20287)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DIRECT_MODEL_CALL_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@7f20b97895f01996c5858dde385ba8991c06e708"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Positive control
+        run: |
+          set -euo pipefail
+          gate() {
+            uv run --no-project --with "$DIRECT_MODEL_CALL_CORE" \
+              python -m omnibase_core.nodes.node_direct_model_call_check_effect.runtime_direct_model_call \
+              --repo omnimarket --baseline .onex_ratchets/direct_model_call_baseline.yaml "$@"
+          }
+          planted=""
+          cleanup() {
+            if [ -n "$planted" ]; then
+              git rm -q --cached "$planted"
+              rm "$planted"
+              planted=""
+            fi
+          }
+          trap cleanup EXIT
+          for fixture in s5a.py.txt s5c.py.txt s5g.py.txt s6.py.txt; do
+            name="${fixture%.py.txt}"
+            planted="src/omnimarket/zz_canary_${name}.py"
+            cp "tests/fixtures/direct_model_call/$fixture" "$planted"
+            git add "$planted"
+            if out="$(gate 2>&1)"; then
+              echo "POSITIVE CONTROL FAILED: planted $name was accepted"
+              exit 1
+            fi
+            # Refused for the gate's own finding, not for a crash or a fetch failure.
+            if ! printf '%s\n' "$out" | grep -Eq '^[1-9][0-9]* new direct model call site'; then
+              echo "POSITIVE CONTROL FAILED: planted $name was refused for another reason"
+              printf '%s\n' "$out"
+              exit 1
+            fi
+            echo "positive control: planted $name refused"
+            cleanup
+          done
+          planted="src/omnimarket/zz_canary_clean.py"
+          cp tests/fixtures/direct_model_call/clean.py.txt "$planted"
+          git add "$planted"
+          gate
+          cleanup
+          planted="src/omnimarket/nodes/node_llm_delegation_call_effect/zz_canary_sanctioned.py"
+          cp tests/fixtures/direct_model_call/s5a.py.txt "$planted"
+          git add "$planted"
+          gate
+          cleanup
+      - name: Refuse a new direct model call and baseline growth
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          gate() {
+            uv run --no-project --with "$DIRECT_MODEL_CALL_CORE" \
+              python -m omnibase_core.nodes.node_direct_model_call_check_effect.runtime_direct_model_call \
+              --repo omnimarket --baseline .onex_ratchets/direct_model_call_baseline.yaml "$@"
+          }
+          base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git merge-base "$base" HEAD)"
+            gate --base "$base"
+          else
+            echo "no base revision on this event; checking the tree against the baseline only"
+            gate
+          fi
+
   # OMN-16344: release-identity gate — the mechanism that keeps dev's
   # project.version permanently ahead of the last published tag, matching
   # omnibase_core (OMN-13411) and omnibase_infra (OMN-13412). omnimarket had no

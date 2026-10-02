@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass, field
@@ -245,6 +246,9 @@ from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PATH_ENV_KEY,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
+
+# A request id or byte count containing 429 was misread as a rate limit.
+_HTTP_429_TOKEN_PATTERN = re.compile(r"(?<![\w.-])429(?![\w-]|\.\d)")
 
 # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
 # the ceiling (claude) — now executes through the canonical HTTP inference path, so
@@ -785,7 +789,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
         return EnumDelegationFailureClass.CONTEXT_TOO_LARGE
     if "timed out" in normalized or "timeout" in normalized:
         return EnumDelegationFailureClass.TIMEOUT
-    if "rate limit" in normalized or "429" in normalized:
+    if "rate limit" in normalized or _HTTP_429_TOKEN_PATTERN.search(normalized):
         return EnumDelegationFailureClass.RATE_LIMITED
     if "401" in normalized or "unauthorized" in normalized or "auth" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
