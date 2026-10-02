@@ -1795,6 +1795,9 @@ class LocalDelegationDispatchPort:
                     "acceptance_decision": acceptance_decision.value,
                     "acceptance_reason": acceptance_reason.value,
                     "acceptance_detail": acceptance_detail,
+                    # OMN-19436: retain why generation stopped on this rung.
+                    "finish_reason": result.finish_reason.value,
+                    "truncated": is_truncated_by_output_budget(result.finish_reason),
                     # OMN-18379: what was removed from in front of the answer
                     # before any check ran, and which declared rule found the
                     # seam. Retained so a refusal can be audited against

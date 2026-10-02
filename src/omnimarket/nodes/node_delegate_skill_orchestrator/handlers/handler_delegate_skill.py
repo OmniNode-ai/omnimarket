@@ -38,6 +38,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
@@ -245,6 +246,24 @@ def _as_acceptance_decision(
     if isinstance(value, str):
         try:
             return EnumDelegationAcceptanceDecision(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _as_finish_reason(value: object) -> EnumProviderFinishReason | None:
+    """Coerce a serialized provider stop reason (OMN-19436).
+
+    ``None`` for a rung that recorded none, or recorded a value this build does
+    not know: a terminal must still render when an older row carries one.
+    """
+    if value is None:
+        return None
+    if isinstance(value, EnumProviderFinishReason):
+        return value
+    if isinstance(value, str):
+        try:
+            return EnumProviderFinishReason(value)
         except ValueError:
             return None
     return None
@@ -486,6 +505,11 @@ def _attempt_records(
     for raw in attempt_values:
         if not isinstance(raw, dict):
             continue
+        # OMN-19436: preserve an explicit bool; otherwise derive from the reason.
+        truncated_fields: dict[str, Any] = {}
+        raw_truncated = raw.get("truncated")
+        if isinstance(raw_truncated, bool):
+            truncated_fields["truncated"] = raw_truncated
         rubric_verdict = None
         raw_verdict = raw.get("rubric_verdict")
         if isinstance(raw_verdict, dict):
@@ -540,6 +564,8 @@ def _attempt_records(
                     # OMN-19436: the gate's own record of the seam, carried on
                     # the rung by the workflow. None when no gate judged it.
                     reasoning_preamble_rule=_preamble_rule(raw),
+                    finish_reason=_as_finish_reason(raw.get("finish_reason")),
+                    **truncated_fields,
                     **_provider_facts(raw),
                     rubric_verdict=rubric_verdict,
                 )
@@ -576,6 +602,8 @@ def _attempt_records(
                 # typed terminal always read "no segmentation attempted".
                 acceptance_detail=str(raw.get("acceptance_detail") or ""),
                 reasoning_preamble_rule=_preamble_rule(raw),
+                finish_reason=_as_finish_reason(raw.get("finish_reason")),
+                **truncated_fields,
                 rubric_verdict=rubric_verdict,
                 reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
@@ -741,6 +769,19 @@ def _response_from_result(
         result.get("quality_gate_passed", result.get("quality_passed", False))
     )
     attempts = _attempt_records(result)
+    # OMN-19436: the accepted rung decides the terminal's stop reason, else the
+    # last recorded rung. A completed terminal whose history holds no accepted
+    # rung (history from before OMN-16932 lists rejected rungs only) names none,
+    # because the rung that answered was never recorded and a rejected rung's
+    # truncation must not be read as the answer's.
+    deciding_attempt = next(
+        (
+            attempt
+            for attempt in attempts
+            if attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+        ),
+        attempts[-1] if attempts and status_value != "completed" else None,
+    )
     # OMN-15469: classify the terminal failure cause from the ladder BEFORE the
     # response is built, so the composite verdict (delegate_skill_succeeded) can
     # see it. A quota refusal that reaches here unclassified is the exact case
@@ -807,6 +848,11 @@ def _response_from_result(
     )
     return ModelDelegateSkillResponse(
         status=status_value,
+        finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
+        truncated=deciding_attempt.truncated if deciding_attempt else False,
+        reasoning_preamble_rule=(
+            deciding_attempt.reasoning_preamble_rule if deciding_attempt else None
+        ),
         correlation_id=request.correlation_id,
         task_type=request.task_type,
         # OMN-14485: carry the resolved tenant onto the response so the terminal
