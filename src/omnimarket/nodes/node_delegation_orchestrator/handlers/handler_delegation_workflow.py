@@ -1386,6 +1386,7 @@ def _evaluate_compliance(
                     acceptance_criteria=workflow.request.acceptance_criteria,
                     deliverable_evidence=workflow.deliverable_evidence,
                     response_contract=workflow.effective_response_contract,
+                    grounding_source=workflow.request.prompt,
                 )
             )
         ]
@@ -3335,6 +3336,7 @@ class HandlerDelegationWorkflow:
                         acceptance_criteria=workflow.request.acceptance_criteria,
                         deliverable_evidence=workflow.deliverable_evidence,
                         response_contract=workflow.effective_response_contract,
+                        grounding_source=workflow.request.prompt,
                     )
                 )
             ]
