@@ -604,8 +604,15 @@ selection_fallback:
     well-formed prose answer can meet whatever its shape, and it arms the prose
     checks including identifiers_grounded.
 
+# OMN-18341: complexity_contract is the trusted routing feature declaration.
+# It describes the artifact and verification obligations of the task CLASS;
+# output_contract.output_shape remains the response transport boundary (markdown
+# may carry prose, code or a patch). Missing complexity declarations refuse the
+# trusted routing path. The benchmark's scorer maps are never consulted here.
+
 task_classes:
   code_generation:
+    complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -825,6 +832,7 @@ task_classes:
   # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
+    complexity_contract: {output_kind: patch, verification: patch_and_test, execution_required: true}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -891,6 +899,7 @@ task_classes:
         - cheap_cloud
         - claude
   documentation:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -992,6 +1001,7 @@ task_classes:
   # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1104,6 +1114,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   research:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1178,6 +1189,7 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1347,6 +1359,7 @@ task_classes:
         - cheap_cloud
         - claude
   validator_generation:
+    complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1411,6 +1424,7 @@ task_classes:
         - cheap_cloud
         - claude
   reasoning:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1483,6 +1497,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   complex_reasoning:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1539,6 +1554,7 @@ task_classes:
         - local
         - claude
   planning:
+    complexity_contract: {output_kind: structured, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1597,6 +1613,7 @@ task_classes:
         - local
         - cheap_cloud
   review:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1663,6 +1680,7 @@ task_classes:
   # quality gate's required-bar authority had nothing to resolve. Mirrors `review`
   # but with code-review-specific DoD heuristics and a cloud fallback ladder.
   code_review:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1728,6 +1746,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   summarization:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1867,6 +1886,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   agent_delegation:
+    complexity_contract: {output_kind: structured, verification: exact_match, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1942,6 +1962,7 @@ task_classes:
         - cheap_cloud
         - claude
   escalation:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
