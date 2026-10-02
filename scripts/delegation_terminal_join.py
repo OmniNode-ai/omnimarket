@@ -13,8 +13,13 @@ terminal was unknown. This reads the wire itself and reports:
 
 * the share of command correlation ids that got at least one terminal, and the
   ids that got none (dropped);
-* the count of correlation ids that got more than one terminal record
-  (duplicates), split by whether the command itself was published once.
+* the duplicate figures: the headline is the correlation ids that
+  published exactly one command and got more than one terminal record,
+  because a correlation id whose command was republished can show two
+  terminals without anything being duplicated; the per-correlation
+  count (any number of commands) stays beside it as a labelled
+  secondary until the terminal record carries the command id
+  (OMN-19437).
 
 WHERE THE TOPICS COME FROM. The command topic, the terminal topics and the
 longest run budget are read from ``runtime_dispatch`` in the orchestrator's own
@@ -464,8 +469,8 @@ def render_summary(payload: dict[str, object]) -> str:
         "- share with a terminal: "
         + ("n/a" if not isinstance(share, float) else f"{share:.4f}"),
         f"- dropped (no terminal): {dropped['count']}",
-        f"- more than one terminal: {duplicates['count']} "
-        f"(single command: {duplicates['with_single_command']})",
+        f"- duplicate terminals (single command): {duplicates['with_single_command']} "
+        f"[correlation ids with more than one terminal: {duplicates['count']}]",
         f"- planted controls: {payload['planted_controls']}",
     ]
     reasons = payload["indeterminate_reasons"]
