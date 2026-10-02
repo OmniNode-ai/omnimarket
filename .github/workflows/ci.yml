@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # OMN-17427: dev pushes run CI so a semantic merge race on dev (non-strict, no merge queue) shows
+  # as a red dev head at once instead of at the next release fast-forward to main.
   push:
-    branches: [main, 'hotfix/**']
+    branches: [main, dev, 'hotfix/**']
   pull_request:
     branches: [main, dev]
     # OMN-16217: default types (opened/synchronize/reopened) don't retrigger
