@@ -34,6 +34,7 @@ from omnimarket.nodes.node_projection_read_effect.models import (
 )
 from omnimarket.projection.discovery import parse_order_by_clauses
 from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.table_reader import TableRowSource
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres  # noqa: F401
 
 _DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
@@ -168,3 +169,21 @@ async def test_unmaterialized_table_is_a_named_refusal(
     assert result.ok is False
     assert result.error == "projection_table_missing"
     assert result.rows == []
+
+
+@pytest.mark.integration
+async def test_postgres_binding_is_unchanged_by_sqlite_support(
+    seeded: None, bound: None
+) -> None:
+    """OMN-20329: a Postgres binding still reads, and close() still drains its pools."""
+    handler = HandlerProjectionRead(topic_map=_topic_map())
+    result = await handler.handle(
+        ModelProjectionReadRequest(topic=_DECISIONS, tenant_id=_TENANT_A)
+    )
+    source = handler._owned_source
+    assert result.ok is True, result
+    assert isinstance(source, TableRowSource)
+    assert source._pools, "the read opened a pool on the bound database"
+    await handler.close()
+    assert source._pools == {}
+    assert handler._owned_source is None
