@@ -29,6 +29,7 @@ from omnimarket.ranges.compare import compare_paired_outcomes
 from omnimarket.ranges.evaluate import evaluate_range_line
 from omnimarket.ranges.register import (
     DEFAULT_CHECK_REGISTER_PATH,
+    required_check_ids,
     validate_check_register,
 )
 
@@ -46,7 +47,7 @@ _EVALUATE_EXIT = {
 
 def _check_register(path: Path) -> int:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    errors = validate_check_register(document)
+    errors = validate_check_register(document, required=required_check_ids())
     if errors:
         _emit(f"check register FAILED: {path.name}: {len(errors)} error(s)")
         for error in errors:
