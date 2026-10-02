@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelAttemptRubricVerdict(BaseModel):
     """Per-attempt record of node_delegation_rubric_check_compute (OMN-20165).
 
-    Recorded only: no accept, refuse, retry or escalation decision reads it
-    until OMN-20166 turns a measured class on. ``undetermined_criteria`` names
+    OMN-20166 reads this verdict only for a class whose configured false-pass
+    status is MET; other classes keep it as recorded evidence. ``undetermined_criteria`` names
     every criterion that could not decide, so an UNDETERMINED outcome is never
     read as a pass. ``rubric_check_error`` there means the compute itself could
     not run on this attempt.

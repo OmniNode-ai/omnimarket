@@ -108,6 +108,7 @@ from omnimarket.delegation.response_contract_instruction import (
     render_response_contract_instruction,
 )
 from omnimarket.delegation.rubric.attempt_verdict import (
+    apply_measured_rubric,
     record_attempt_rubric_verdict,
     rubric_check_error_verdict,
 )
@@ -3422,6 +3423,22 @@ class HandlerDelegationWorkflow:
             return []
 
         result = _gate_result_with_output_refusal(workflow, result)
+        assert workflow.request is not None
+        # OMN-20166: record every verdict; only configured MET classes decide.
+        try:
+            rubric_verdict = record_attempt_rubric_verdict(
+                task_class=workflow.request.task_type,
+                request_text=workflow.request.prompt,
+                answer_text=workflow.inference_content or "",
+            )
+        except Exception as exc:
+            # A recording fault must never fail the delegation it describes.
+            _logger.warning("Rubric recording failed: %s", type(exc).__name__)
+            rubric_verdict = rubric_check_error_verdict(workflow.request.task_type)
+
+        result = apply_measured_rubric(
+            result, rubric_verdict, task_class=workflow.request.task_type
+        )
         self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
         if workflow.response_contract_evidence is not None:
@@ -3517,6 +3534,8 @@ class HandlerDelegationWorkflow:
             score_below_required_bar=score_below_required_bar,
             no_rung_can_satisfy=no_rung_can_satisfy,
         )
+        if result.fail_category == "rubric_failed":
+            acceptance_reason = EnumDelegationAcceptanceReason.RUBRIC_FAILED
         _logger.info(
             "delegation acceptance decision: decision=%s reason=%s tier=%s "
             "model=%s score=%.3f required_bar=%.3f correlation_id=%s",
@@ -3528,19 +3547,6 @@ class HandlerDelegationWorkflow:
             required_bar_authority.required_bar,
             cid,
         )
-
-        # OMN-20165: the accept or climb decision above is settled; the rubric
-        # verdict is recorded on this rung's attempt and read by no decision.
-        try:
-            rubric_verdict = record_attempt_rubric_verdict(
-                task_class=workflow.request.task_type,
-                request_text=workflow.request.prompt,
-                answer_text=workflow.inference_content or "",
-            )
-        except Exception as exc:
-            # A recording fault must never fail the delegation it describes.
-            _logger.warning("Rubric recording failed: %s", type(exc).__name__)
-            rubric_verdict = rubric_check_error_verdict(workflow.request.task_type)
 
         if quality_accepted:
             # OMN-16932: record the WINNING rung in escalation_history. Until now
@@ -3640,6 +3646,11 @@ class HandlerDelegationWorkflow:
                 finish_reason=result.finish_reason,
                 reasoning_preamble_rule=result.reasoning_preamble_rule or None,
                 rubric_verdict=rubric_verdict,
+                failure_class=(
+                    EnumDelegationFailureClass.RUBRIC_FAILED.value
+                    if result.fail_category == "rubric_failed"
+                    else None
+                ),
             ),
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
@@ -3661,7 +3672,7 @@ class HandlerDelegationWorkflow:
         # returned byte-identical text, score and refusal.
         retry_local_intents = (
             None
-            if no_rung_can_satisfy
+            if no_rung_can_satisfy or result.fail_category == "rubric_failed"
             else self._maybe_retry_local(workflow, rejected_attempt_cost_usd)
         )
         if retry_local_intents is not None:
@@ -3709,7 +3720,11 @@ class HandlerDelegationWorkflow:
             # to the contract-declared escalation topic alongside the re-route.
             escalation_event = self._build_escalation_event(
                 workflow,
-                failure_class=EnumDelegationFailureClass.QUALITY_GATE_FAILED,
+                failure_class=(
+                    EnumDelegationFailureClass.RUBRIC_FAILED
+                    if result.fail_category == "rubric_failed"
+                    else EnumDelegationFailureClass.QUALITY_GATE_FAILED
+                ),
                 escalation_reason=self._score_vs_bar_reason(
                     result,
                     required_bar_authority,
@@ -4279,7 +4294,9 @@ class HandlerDelegationWorkflow:
         rejection is reported first because it short-circuits the other two.
         """
         score_below_bar = result.quality_score < required_bar_authority.required_bar
-        if pre_filter_rejected:
+        if result.fail_category == "rubric_failed":
+            prefix = "rubric_failed"
+        elif pre_filter_rejected:
             prefix = "pre_filter_rejected"
         elif score_below_bar:
             prefix = "score_below_required_bar"
