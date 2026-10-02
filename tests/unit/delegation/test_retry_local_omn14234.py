@@ -122,7 +122,7 @@ def _make_routing_decision(
 
 
 def _make_inference_response(
-    cid: UUID, content: str = "def f() -> int:\n    return 1"
+    cid: UUID, content: str = "### ANSWER\ndef f() -> int:\n    return 1"
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=cid,

@@ -6,19 +6,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Literal
 from uuid import UUID
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    ModelWrapValidatorHandler,
-    PrivateAttr,
-    StrictBool,
-    TypeAdapter,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class ModelDelegationShadowConfig(BaseModel):
@@ -134,32 +125,10 @@ class ModelDelegationBackendConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
 
-    # Consumer-first codec (OMN-17427): accept the next policy input, but keep
-    # the released serialization shape until a later producer release emits it.
-    _explicit_pin_only: bool = PrivateAttr(default=False)
-
-    @property
-    def explicit_pin_only(self) -> bool:
-        """Whether the consumed declaration requires an explicit backend pin."""
-        return self._explicit_pin_only
-
-    @model_validator(mode="wrap")
-    @classmethod
-    def consume_explicit_pin_policy(
-        cls, value: object, handler: ModelWrapValidatorHandler[Self]
-    ) -> Self:
-        """Decode one typed future key while rejecting all other extra keys."""
-        if not isinstance(value, dict) or "explicit_pin_only" not in value:
-            return handler(value)
-        payload = dict(value)
-        pin_only = TypeAdapter(StrictBool).validate_python(
-            payload.pop("explicit_pin_only")
-        )
-        result = handler(payload)
-        private = result.__pydantic_private__
-        assert private is not None
-        private["_explicit_pin_only"] = pin_only
-        return result
+    explicit_pin_only: StrictBool = Field(
+        default=False,
+        description="Exclude from ordinary routing; execute only when explicitly pinned by backend id.",
+    )
 
     backend_id: str = Field(
         ..., min_length=1, description="Stable human-readable slug."

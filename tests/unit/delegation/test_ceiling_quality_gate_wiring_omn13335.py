@@ -92,7 +92,7 @@ def _terminal_inputs_with_metered_prior(cid: UUID) -> TerminalEmissionInputs:
         task_type=_TASK_TYPE,
         model_used="qwen3-coder-30b",
         endpoint_url="http://local.test:8000/v1/chat/completions",
-        content="def add(a, b):\n    return a + b\n",
+        content="### ANSWER\ndef add(a, b):\n    return a + b\n",
         quality_passed=True,
         quality_score=0.95,
         operational_outcome=EnumDelegationOperationalOutcome.COMPLETED,
@@ -205,7 +205,7 @@ def _make_inference(
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=cid,
-        content="def solution():\n    return 42",
+        content="### ANSWER\ndef solution():\n    return 42",
         model_used=model_used,
         llm_call_id="chatcmpl-omn13335",
         latency_ms=88_998,

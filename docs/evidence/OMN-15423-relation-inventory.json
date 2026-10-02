@@ -8196,6 +8196,7 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
+        "idx_work_ledger_rows_event_id",
         "idx_work_ledger_rows_ts"
       ],
       "internal_tenant_column_transform": {
@@ -8205,7 +8206,8 @@
         "status": "not_applicable_no_source_tenant_id"
       },
       "keys": [
-        "PRIMARY KEY (row_id)"
+        "PRIMARY KEY (row_id)",
+        "UNIQUE INDEX idx_work_ledger_rows_event_id"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",

@@ -99,7 +99,7 @@ def _make_inference_response(
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=cid,
-        content="The delegation cost accumulation bug is caused by hardcoded zeros.",
+        content="### ANSWER\nThe delegation cost accumulation bug is caused by hardcoded zeros.",
         model_used="glm-4-flash",
         llm_call_id="chatcmpl-omn13408",
         latency_ms=850,

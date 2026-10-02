@@ -171,7 +171,11 @@ def render_extraction_marker_instruction(render_start_marker: str | None) -> str
         raise ValueError("text output shapes require a render start marker")
     return (
         "Put this exact extraction start marker on its own line immediately "
-        f"before the deliverable: {render_start_marker}"
+        f"before the deliverable: {render_start_marker}\n"
+        "The marker is transport metadata and is removed before the caller "
+        "receives the deliverable. Include it even when the request asks for "
+        "plain prose or no Markdown headers; those formatting constraints apply "
+        "to the deliverable after the marker."
     )
 
 

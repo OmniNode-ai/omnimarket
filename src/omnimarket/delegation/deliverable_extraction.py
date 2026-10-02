@@ -12,7 +12,10 @@ from hashlib import sha256
 
 import jsonschema
 import jsonschema.validators
-from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationOutputShape,
+    ModelDelegationOutputRefusal,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.delegation.response_contract_conformance import (
@@ -23,6 +26,7 @@ from omnimarket.inference.task_class_authority import (
     resolve_delegation_output_authority,
     resolve_task_class_output_contract,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 
 
 @unique
@@ -402,3 +406,34 @@ __all__ = [
     "resolve_deliverable_contract",
     "resolve_task_class_deliverable_contract",
 ]
+
+
+def gate_result_with_output_refusal(
+    result: ModelQualityGateResult,
+    refusal: ModelDelegationOutputRefusal | None,
+    *,
+    raw_content: str,
+) -> ModelQualityGateResult:
+    """Grade real content while keeping its unproven output boundary refused.
+
+    Extraction refusals are deterministic floors on both delegation paths.
+    """
+    if refusal is None:
+        return result
+    reasons = tuple(
+        reason
+        for reason in result.failure_reasons
+        if not raw_content.strip()
+        or ("empty response" not in reason and "response is empty" not in reason)
+    )
+    return result.model_copy(
+        update={
+            "passed": False,
+            "fail_category": "fail_deterministic",
+            "failure_reasons": (
+                f"DELIVERABLE_EXTRACTION: {refusal.reason.value}",
+                *reasons,
+            ),
+            "fallback_recommended": True,
+        }
+    )

@@ -116,7 +116,7 @@ def _run_workflow_to_gate(
 
     response = ModelInferenceResponseData(
         correlation_id=cid,
-        content="def test_x(): pass" if passed else "I cannot help.",
+        content="### ANSWER\ndef test_x(): pass" if passed else "I cannot help.",
         model_used="qwen3-coder-30b",
         llm_call_id="chatcmpl-test" if passed else "chatcmpl-fail",
         latency_ms=100 if passed else 50,

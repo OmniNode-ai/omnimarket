@@ -69,6 +69,17 @@ event_bus:
     - onex.evt.omnimarket.work-ledger-operator-consent.v1
     - onex.evt.omnimarket.work-ledger-friction.v1
     - onex.evt.omnimarket.work-ledger-correction.v1
+    - onex.evt.omnimarket.work-ledger-claim.v2
+    - onex.evt.omnimarket.work-ledger-status.v2
+    - onex.evt.omnimarket.work-ledger-terminal.v2
+    - onex.evt.omnimarket.work-ledger-hold.v2
+    - onex.evt.omnimarket.work-ledger-release.v2
+    - onex.evt.omnimarket.work-ledger-msg.v2
+    - onex.evt.omnimarket.work-ledger-ack.v2
+    - onex.evt.omnimarket.work-ledger-ruling.v2
+    - onex.evt.omnimarket.work-ledger-operator-consent.v2
+    - onex.evt.omnimarket.work-ledger-friction.v2
+    - onex.evt.omnimarket.work-ledger-correction.v2
     - onex.evt.omnimarket.work-ledger-emit-completed.v1
     - onex.evt.omnimarket.work-ledger-emit-failed.v1
 

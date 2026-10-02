@@ -22,7 +22,10 @@ and never a clock.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Annotated, Literal
+from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +35,28 @@ from omnimarket.events.enum_ledger_row_type import (
 
 SCHEMA_VERSION = "work-ledger-event/1"
 DEFAULT_LEDGER_ID = "rolling-work-ledger"
+WORK_LEDGER_EVENT_NAMESPACE = UUID("44cfd495-27b1-5bd6-960b-540950a90475")
+
+
+def work_ledger_row_id(raw_row: str) -> str:
+    """Hash the source preimage; never the subsequently rendered typed view."""
+    return hashlib.sha256(raw_row.strip().encode("utf-8")).hexdigest()
+
+
+def validate_work_ledger_id(ledger_id: str) -> str:
+    """Validate the contract's canonical ledger ID without rewriting it."""
+    if not ledger_id or ledger_id != ledger_id.strip():
+        raise ValueError("ledger_id must be a nonblank canonical ledger identifier")
+    return ledger_id
+
+
+def work_ledger_event_id(ledger_id: str, row_id: str) -> UUID:
+    """The single producer-owned UUID5 identity algorithm (KB-internal#895)."""
+    validate_work_ledger_id(ledger_id)
+    if not re.fullmatch(r"[0-9a-f]{64}", row_id):
+        raise ValueError("row_id must be a lowercase SHA256 hash")
+    return uuid5(uuid5(WORK_LEDGER_EVENT_NAMESPACE, ledger_id), row_id)
+
 
 _STAMP_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
