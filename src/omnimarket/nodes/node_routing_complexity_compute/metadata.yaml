@@ -21,3 +21,5 @@ authors: [OmniNode Team]
 license: MIT
 tags: [compute, routing, complexity]
 node_role: compute
+pack: "routing"
+display_name: "Routing Complexity Compute"
