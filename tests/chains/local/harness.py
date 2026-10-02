@@ -78,9 +78,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing,
 )
@@ -88,7 +85,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     BifrostBackendRef,
 )
 from omnimarket.routing import byok_provider_backends, delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 #: The provider slug both the shipped catalogue and the house rung declare.
 PROVIDER_SLUG = "openrouter"
@@ -505,7 +501,6 @@ async def run_local_delegation(
     prompt: str,
     db_path: Path,
     correlation_id: UUID,
-    adequacy_score: float = 0.95,
     task_type: str = TASK_TYPE,
     backend_id: str | None = HOUSE_BACKEND_ID,
     response_contract: dict[str, object] | None = None,
@@ -515,11 +510,6 @@ async def run_local_delegation(
     ``effect_process_boundary=False`` runs the effect handler in-process, the
     same setting the existing delegate golden chain uses; the handler, its
     transport and its classification are the production ones either way.
-
-    The judge is injected with a canned adequacy score for one reason: the
-    quality gate's verdict is L11's subject, not L4/L5/L6's. A pair about a
-    credential must not go red because a stub provider's canned sentence did
-    not persuade a live judge.
 
     ``backend_id`` defaults to the HOUSE OpenRouter rung, using the request
     model's own caller-supplied pin (OMN-15156). Every pair here is about what
@@ -534,9 +524,6 @@ async def run_local_delegation(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=adequacy_score)
-        ),
     )
     handler = HandlerDelegateSkill(dispatch_port=port)
     return await handler.handle(
