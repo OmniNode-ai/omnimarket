@@ -283,7 +283,7 @@ class HandlerJudgeAdequacy:
         self._judge_model_key = self._resolve_judge_model_key()
 
         # OMN-16932: do not spend a metered call on a provider that has already
-        # told us its quota is gone. The judge rides ``cloud-glm-judge``, which
+        # told us its quota is gone. The judge rides ``cloud-gemini-judge``, which
         # OMN-14625 repointed onto Gemini, so it shares the free-tier counter
         # (limit 20) with the escalation rung. Before this check the judge kept
         # calling after the cap was spent — 12 guaranteed-429 calls in one 8h

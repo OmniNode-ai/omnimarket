@@ -2176,7 +2176,7 @@ class DelegationWorkflowState:
     same_tier_failed_backend_tier: str | None = None
     # OMN-15503: workflow-wide transport-failure memory. The same backend_ref can
     # appear under more than one tier label (the committed cheap_cloud and claude
-    # slots both reference cloud-gemini-pro), so the per-tier sibling set above is
+    # slots both reference cloud-gemini-2-5-flash), so the per-tier sibling set above is
     # insufficient for cross-tier routing. Every retryable inference failure adds
     # its concrete ref here; all later routing intents and next-tier eligibility
     # probes exclude the accumulated set. A renamed/reordered tier can therefore

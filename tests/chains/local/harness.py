@@ -101,7 +101,7 @@ HOUSE_SECRET_REF = "llm.openrouter.api_key"
 BYOK_BACKEND_ID = "byok-openrouter"
 
 #: The house rung's backend id in ``bifrost_delegation.yaml``.
-HOUSE_BACKEND_ID = "openrouter-qwen3-coder-480b"
+HOUSE_BACKEND_ID = "openrouter-nemotron-ultra"
 
 #: Task type used by every pair. Declared on the rung's capabilities below.
 TASK_TYPE = "code_generation"
@@ -417,7 +417,7 @@ def install_rungs(monkeypatch: pytest.MonkeyPatch, rungs: list[dict[str, Any]]) 
 def house_openrouter_rung(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Make the tier ladder resolve the house-keyed OpenRouter rung.
 
-    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-qwen3-coder-480b``: the
+    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-nemotron-ultra``: the
     same backend id, the same house ``secret_ref``, the same tier and budgets.
     Supplied through the loader seam so a pair asserts the SUBSTITUTION rather
     than which rung today's ladder prefers for a task type.

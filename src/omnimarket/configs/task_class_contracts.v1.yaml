@@ -972,7 +972,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1090,7 +1090,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1121,7 +1121,7 @@ task_classes:
       - reasoning
     # OMN-13215: research declares ``claude`` as its escalation ceiling tier, which
     # is the HTTP frontier ceiling backend. OMN-13351 repointed that backend off the
-    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-pro
+    # dead Anthropic cloud-sonnet to the resolvable Gemini cloud-gemini-2-5-flash
     # (gemini-2.5-flash, served on the AI Studio free-tier key → ceiling tier cost
     # 0.0). This 0.015 cap stays as a generous ceiling-cap headroom (the 0.0 ceiling
     # tier is well under it); the prior $0.002 ceiling contradicted the tier_order —
@@ -1853,7 +1853,7 @@ task_classes:
     # class.
     #
     # The `claude` ceiling tier is deliberately NOT added. Its only model
-    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # resolves to backend `cloud-gemini-2-5-flash`, which carries the SAME provider
     # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
     # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
     # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
@@ -1987,9 +1987,9 @@ task_classes:
       terminology: controlled_reproducible_auditable
     # OMN-16811: ``local`` prepended. This class's tier_order was ``[claude]``
     # alone — the ONLY admitted task class whose entire ladder was a single
-    # credentialed cloud backend (``cloud-gemini-pro``). A read-only probe run
+    # credentialed cloud backend (``cloud-gemini-2-5-flash``). A read-only probe run
     # inside the dev-lane runtime container resolved escalation to exactly
-    # ``[('claude', 'cloud-gemini-pro')]`` while all eleven terminating classes
+    # ``[('claude', 'cloud-gemini-2-5-flash')]`` while all eleven terminating classes
     # kept a free local rung, which is why a quota-exhausted / unreachable
     # Gemini stranded this class specifically. Cheapest-first doctrine: the
     # zero-cost owned-GPU tier is tried first and the metered ceiling stays the
