@@ -20,6 +20,7 @@ from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
 HANDLER_LOCAL_FAILURE_CAUSES: frozenset[str] = frozenset(
     {
         EnumDelegationTerminalFailureCause.TIMEOUT.value,
+        EnumDelegationTerminalFailureCause.NO_TERMINAL.value,
         EnumDelegationTerminalFailureCause.RUNTIME_SHUTDOWN.value,
     }
 )
@@ -104,6 +105,10 @@ def outcome_for_failure_cause(cause: str) -> tuple[str, str]:
             EnumDelegationOperationalOutcome.TIMEOUT,
             EnumDelegationContentVerdict.NOT_APPLICABLE,
         ),
+        EnumDelegationTerminalFailureCause.NO_TERMINAL.value: (
+            EnumDelegationOperationalOutcome.TIMEOUT,
+            EnumDelegationContentVerdict.NOT_APPLICABLE,
+        ),
         EnumDelegationTerminalFailureCause.RUNTIME_SHUTDOWN.value: (
             EnumDelegationOperationalOutcome.CANCELLED,
             EnumDelegationContentVerdict.NOT_APPLICABLE,
@@ -140,10 +145,15 @@ def apply_terminal_precedence(
     cause = row.get("terminal_failure_cause", existing.get("terminal_failure_cause"))
     outcome = row.get("operational_outcome", existing.get("operational_outcome"))
     verdict = row.get("content_verdict", existing.get("content_verdict"))
-    if terminal_ok is False and not _is_blank(cause) and outcome == "completed":
+    reaper_failure = cause == EnumDelegationTerminalFailureCause.NO_TERMINAL.value
+    if (
+        terminal_ok is False
+        and not _is_blank(cause)
+        and (outcome == "completed" or (reaper_failure and _is_blank(outcome)))
+    ):
         failure_outcome, failure_verdict = outcome_for_failure_cause(str(cause))
         row["operational_outcome"] = failure_outcome
-        if verdict in ("usable", "correct"):
+        if verdict in ("usable", "correct") or (reaper_failure and _is_blank(verdict)):
             row["content_verdict"] = failure_verdict
 
 

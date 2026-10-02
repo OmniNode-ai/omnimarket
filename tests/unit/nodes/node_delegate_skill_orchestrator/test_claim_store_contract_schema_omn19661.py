@@ -71,7 +71,9 @@ class _FakeCursor:
 
     def execute(self, statement: str, params: object = None) -> None:
         self._sink.append(statement)
-        if "RETURNING" in statement and self._row is not None:
+        if "RETURNING" in statement:
+            if self._row is None and isinstance(params, dict):
+                self._row = (params["claimed_at"], params["terminal_json"])
             self.description = (("claimed_at",), ("terminal_json",))
 
     def fetchall(self) -> list[tuple[object, ...]]:
@@ -151,7 +153,11 @@ def test_claim_schema_record_terminal_uses_the_same_pin(
 ) -> None:
     port = claim_module.resolve_delegation_claim_store()
 
-    port.record_terminal(delivery_id=uuid4(), terminal={"cls": "X", "data": {}})
+    outcome = port.record_terminal(
+        delivery_id=uuid4(), terminal={"cls": "X", "data": {}}
+    )
+    assert outcome.won
+    assert len(postgres_binding) == 2
 
     options = str(postgres_binding[-1]["kwargs"].get("options", ""))
     assert f"search_path={_contract_declared_schema()}" in options
