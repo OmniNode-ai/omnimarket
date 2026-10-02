@@ -117,7 +117,7 @@ repos:
   # The rev moved from 6363509770 to the OMN-20304 commit for both hooks; the
   # lifecycle validator's source is identical at the two commits.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: d17f5be8be88a8d35fc6a69e13cb8c1896c3025b # pragma: allowlist secret
+    rev: 7f20b97895f01996c5858dde385ba8991c06e708 # pragma: allowlist secret
     hooks:
       # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
       # on the change-control preflight and never reads its result. BLOCKING, zero
@@ -131,6 +131,12 @@ repos:
         files: ^src/omnimarket/.*\.py$
       - id: canonical-file-shape
         require_serial: true
+      # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
+      # sanctioned delegation node package named in omnibase_core's policy.yaml.
+      # Shrink-only baseline, declared here so the shape ratchet accepts it.
+      - id: check-direct-model-call
+        require_serial: true
+        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
 
   # Transport-import + node-purity gates — first purity gate in omnimarket
   # (OMN-13283 / GAP-8a, under OMN-9048). Scoped to COMPUTE and REDUCER node code,

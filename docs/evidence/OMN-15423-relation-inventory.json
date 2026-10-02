@@ -7925,6 +7925,7 @@
         "node_build_loop_orchestrator",
         "node_generation_consumer",
         "node_occ_companion_compute",
+        "node_projection_delegation",
         "node_projection_runtime_error_fingerprints",
         "node_projection_traces",
         "service:omnimarket_projection_migration_runner"
