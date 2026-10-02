@@ -287,11 +287,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -755,11 +755,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -893,11 +893,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       # OMN-15390 (residual R3): the ONLY cross-repo differential in this repo
       # — node_dod_verify's supersession parity against onex_change_control's
       # REAL `contract_compliance_check._superseded_dod_ids` — used to SKIP on
@@ -917,7 +917,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OmniNode-ai/onex_change_control
-          ref: dev
+          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           path: onex_change_control
           sparse-checkout: src
           persist-credentials: false
@@ -1348,11 +1348,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -1466,13 +1466,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_infra
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -1740,7 +1740,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Clone omniclaude
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
+        run: git clone --depth=1 --branch v0.27.0 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -1767,9 +1767,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -1806,9 +1806,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -1926,18 +1926,18 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Clone omnibase_core
         run: |
-          OMNIBASE_CORE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_core.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          OMNIBASE_CORE_SHA=$(git -C ../omnibase_core rev-parse HEAD)
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
       - name: Clone omnibase_compat
         run: |
-          OMNIBASE_COMPAT_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_compat.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          OMNIBASE_COMPAT_SHA=$(git -C ../omnibase_compat rev-parse HEAD)
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
       - name: Clone omnimemory
         run: |
-          OMNIMEMORY_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnimemory.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          OMNIMEMORY_SHA=$(git -C ../omnimemory rev-parse HEAD)
           echo "omnimemory pinned to: $OMNIMEMORY_SHA"
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
@@ -2019,11 +2019,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -2058,11 +2058,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -2104,11 +2104,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -2253,6 +2253,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: OmniNode-ai/onex_change_control
+          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           path: onex_change_control
 
       - uses: astral-sh/setup-uv@v7
@@ -2352,7 +2353,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Clone omnibase_core (canonical aislop scanner)
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -2435,11 +2436,11 @@ jobs:
           fi
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv (dependency cache — OMN-14680)
         uses: astral-sh/setup-uv@v4
         with:
@@ -2628,7 +2629,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: dev
+          ref: v0.38.59
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -2779,7 +2780,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OmniNode-ai/omniclaude
-          ref: dev
+          ref: v0.27.0
           persist-credentials: false
           path: .contract-graph-checkouts/omniclaude
 
@@ -2787,7 +2788,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OmniNode-ai/omniintelligence
-          ref: dev
+          ref: 51e1cb356453ad325d76aea57ab371cf975df3a4
           persist-credentials: false
           path: .contract-graph-checkouts/omniintelligence
 
@@ -2802,7 +2803,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OmniNode-ai/onex_change_control
-          ref: dev
+          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           persist-credentials: false
           path: .contract-graph-checkouts/onex_change_control
 

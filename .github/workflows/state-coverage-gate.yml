@@ -46,10 +46,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
 
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
 
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4

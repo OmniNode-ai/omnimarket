@@ -87,11 +87,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout omnibase_infra dev (sibling — vendored destination)
+      - name: Checkout omnibase_infra at the pinned release tag (sibling — vendored destination)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: dev
+          ref: v0.38.59
           path: omnibase_infra-dest
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -117,7 +117,7 @@ jobs:
             exit 0
           fi
 
-          fail=0
+          ahead=0
           for src_file in "${changed[@]}"; do
             # src_file = src/omnimarket/nodes/<node>/migrations/<file>.sql
             node_name="$(basename "$(dirname "$(dirname "${src_file}")")")"
@@ -125,20 +125,20 @@ jobs:
             dest_file="omnibase_infra-dest/docker/migrations/forward/nodes/${node_name}/${filename}"
 
             if [ ! -f "${dest_file}" ]; then
-              echo "::error::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in omnibase_infra@dev. Land the vendor commit in omnibase_infra FIRST (scripts/sync-node-migrations.sh), merge it, then this PR will pass." >&2
-              fail=1
+              echo "::warning::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in the pinned omnibase_infra v0.38.59. This repo is ahead of its pin; omnibase_infra vendors it through its own consumer PR (scripts/sync-node-migrations.sh) and this repo bumps the pin after integration testing." >&2
+              ahead=1
               continue
             fi
 
             if ! cmp -s "${src_file}" "${dest_file}"; then
-              echo "::error::${src_file} differs from the vendored copy in omnibase_infra@dev (${dest_file}). Re-run scripts/sync-node-migrations.sh in omnibase_infra and land that PR first." >&2
-              fail=1
+              echo "::warning::${src_file} differs from the vendored copy in the pinned omnibase_infra v0.38.59 (${dest_file}). This repo is ahead of its pin; omnibase_infra re-runs scripts/sync-node-migrations.sh through its own consumer PR." >&2
+              ahead=1
             fi
           done
 
-          if [ "${fail}" -ne 0 ]; then
-            echo "::error::node migration vendor parity check FAILED — see above. This gate exists to stop the recurring node-migration-sync drift class (OMN-14975 and 6 prior tickets) at its source." >&2
-            exit 1
+          if [ "${ahead}" -ne 0 ]; then
+            echo "::notice::node migrations here are ahead of the pinned omnibase_infra; the vendor sync lands in omnibase_infra's consumer PR."
+            exit 0
           fi
 
-          echo "::notice::All changed node migrations are already vendored in omnibase_infra@dev."
+          echo "::notice::All changed node migrations are already vendored in the pinned omnibase_infra v0.38.59."

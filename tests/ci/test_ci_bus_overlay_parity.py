@@ -625,9 +625,9 @@ class TestParityWorkflowIsWired:
         assert checkouts, "no checkout of OmniNode-ai/omnibase_infra"
 
         with_block = checkouts[0]["with"]
-        assert with_block["ref"] == "dev", (
-            "the gate must read the branch the publisher itself runs from "
-            "(dev), not a pinned or stale ref"
+        assert with_block["ref"] == "v0.38.59", (
+            "the gate must read the omnibase_infra release this repo pins in "
+            "uv.lock, never omnibase_infra's live branch"
         )
         assert "scripts/runtime_change_classifier.py" in str(
             with_block.get("sparse-checkout", "")
