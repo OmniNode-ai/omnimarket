@@ -53,13 +53,15 @@ def build_sqlite_window_query(
     tenant_id: str | None,
     since: str | None = None,
     correlation_id: str | None = None,
+    selection: str = "newest",
 ) -> WindowQuery:
     """The SQLite SQL for one exposure's served window.
 
     The window is the one :func:`table_reader.build_window_query` reads: the
-    newest ``limit * 4`` rows by the recency column, or the next ``limit * 4``
-    above a ``since`` cursor. Every identifier comes from the contract; every
-    caller value is a bound parameter.
+    ``limit * 4`` rows ``selection`` names (``newest`` by the recency column,
+    ``walk`` the oldest by it, ``ranked`` the top of the declared order), or
+    the next ``limit * 4`` above a ``since`` cursor. Every identifier comes
+    from the contract; every caller value is a bound parameter.
     """
     relation = quote_identifier(cfg.table)
     retain = cfg.limit * RETAINED_WINDOW_FACTOR
@@ -91,10 +93,13 @@ def build_sqlite_window_query(
         params.append(since)
         where.append(f"{quote_identifier(cfg.cursor_column)} > ?")
         window_order = f"{quote_identifier(cfg.cursor_column)} ASC"
+    elif selection == "ranked":
+        window_order = order_clause(order_spec)
     else:
         recency = recency_column(cfg)
+        direction = "ASC" if selection == "walk" else "DESC"
         window_order = (
-            f"{quote_identifier(recency)} DESC"
+            f"{quote_identifier(recency)} {direction}"
             if recency is not None
             else order_clause(order_spec)
         )
@@ -232,6 +237,7 @@ class SqliteTableRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        selection: str = "newest",
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
         query = build_sqlite_window_query(
@@ -240,8 +246,49 @@ class SqliteTableRowSource:
             tenant_id=tenant_id,
             since=since,
             correlation_id=correlation_id,
+            selection=selection,
         )
         return await asyncio.to_thread(self._fetch, cfg, order_spec, query)
+
+    def _smallest_cursor(
+        self, cfg: ProjectionTableConfig, cursor_column: str, tenant_id: str | None
+    ) -> object:
+        where = ""
+        params: tuple[Any, ...] = ()
+        if cfg.tenant_column is not None and tenant_id is not None:
+            where = f" WHERE CAST({quote_identifier(cfg.tenant_column)} AS TEXT) = ?"
+            params = (tenant_id,)
+        conn = self._connect()
+        try:
+            _require_relation(conn, cfg, ())
+            row = conn.execute(
+                f"SELECT min({quote_identifier(cursor_column)}) "
+                f"FROM {quote_identifier(cfg.table)}{where}",
+                params,
+            ).fetchone()
+        except sqlite3.Error as exc:
+            raise _driver_refusal(cfg, exc) from exc
+        finally:
+            conn.close()
+        return None if row is None else row[0]
+
+    async def walk_origin(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> str | None:
+        """The ``since`` value that starts an ascending walk at the first row.
+
+        ``since`` is a strict ``>``, so the origin is one below the smallest
+        cursor. Only an integer cursor has one; any other cursor type has no
+        value a caller could be handed, and the answer is ``None``.
+        """
+        if cfg.cursor_column is None:
+            return None
+        smallest = await asyncio.to_thread(
+            self._smallest_cursor, cfg, cfg.cursor_column, tenant_id
+        )
+        if isinstance(smallest, int) and not isinstance(smallest, bool):
+            return str(smallest - 1)
+        return None
 
     async def latest_event_at(
         self,
