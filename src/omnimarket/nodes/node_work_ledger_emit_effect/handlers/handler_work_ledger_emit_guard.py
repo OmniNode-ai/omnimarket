@@ -10,9 +10,13 @@ convention a test can forget; this guard sits in the publish path.
 
 THE RULE. An emit is refused when BOTH hold:
 
-1. The process runs under a test runner: ``PYTEST_CURRENT_TEST`` is set, ``pytest`` or
-   ``unittest`` is imported, or ``ONEX_TEST_CONTEXT`` is set to any non-empty value. No
-   value of ``ONEX_TEST_CONTEXT`` removes a signal.
+1. The process runs under a test runner: ``PYTEST_CURRENT_TEST`` is set (pytest sets it
+   for every test's setup, call and teardown, and a subprocess inherits it), or
+   ``ONEX_TEST_CONTEXT`` is set to any non-empty value. No value of ``ONEX_TEST_CONTEXT``
+   removes a signal. A module merely being imported is not a signal: the long-lived
+   runtime imports pytest transitively, and treating that as a test refused every
+   production write and, through SystemExit, restarted the runtime every few minutes
+   (OMN-17427).
 2. The bus the emit would publish through is real: ``KAFKA_BOOTSTRAP_SERVERS`` names a
    host that is not loopback, and the spool-only opt-out is not set (spool-only publishes
    nothing).
@@ -37,7 +41,6 @@ SPOOL_ONLY_ENV = "ONEX_EMIT_EFFECT_SPOOL_ONLY"
 EXIT_TEST_WRITE_REFUSED = 79
 _LOOPBACK_HOSTS = frozenset({"", "localhost", "127.0.0.1", "::1"})
 _SPOOL_ONLY_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
-_RUNNER_MODULES = ("pytest", "unittest")
 
 
 class LedgerTestWriteRefusedError(Exception):
@@ -54,9 +57,6 @@ class HandlerWorkLedgerEmitGuard:
             return "PYTEST_CURRENT_TEST is set"
         if os.environ.get(TEST_CONTEXT_ENV, "").strip():
             return f"{TEST_CONTEXT_ENV} is set"
-        for name in _RUNNER_MODULES:
-            if name in sys.modules:
-                return f"{name} is imported"
         return None
 
     @staticmethod
