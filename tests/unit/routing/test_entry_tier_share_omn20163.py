@@ -520,3 +520,41 @@ def test_entry_share_defaults_to_zero_for_every_shipped_class(
     assert classes
     for name, entry in classes.items():
         assert entry_share_from_contract_entry(entry) is None, name
+
+
+def test_entry_miss_retries_local_port_threads_the_correlation_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-process port hands the run's id to both ladder helpers."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as port_mod,
+    )
+
+    seen: dict[str, dict[str, object]] = {}
+
+    def _first(task_type: str, **kwargs: object) -> None:
+        seen["first"] = kwargs
+
+    def _next(current: str, excluded: frozenset[str], **kwargs: object) -> None:
+        seen["next"] = kwargs
+
+    monkeypatch.setattr(port_mod, "first_eligible_tier", _first)
+    monkeypatch.setattr(port_mod, "next_eligible_tier", _next)
+    monkeypatch.setattr(
+        port_mod, "resolve_delegation_backend", lambda *_a, **_k: object()
+    )
+    port = port_mod.LocalDelegationDispatchPort(
+        evidence_db_path=tmp_path / "evidence.sqlite", effect_process_boundary=False
+    )
+    port._resolve_initial_backend("document", spread_key="run-1", quota_state=None)
+    assert seen["first"]["correlation_id"] == "run-1"
+    assert (
+        port._resolve_next_backend(
+            current_tier="cheap_frontier",
+            task_type="document",
+            excluded_tiers=frozenset({"cheap_frontier"}),
+            spread_key="run-1",
+        )
+        is None
+    )
+    assert seen["next"]["correlation_id"] == "run-1"
