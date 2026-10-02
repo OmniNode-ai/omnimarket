@@ -17,12 +17,21 @@ from omnimarket.nodes.contract_topics import (
 
 CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 
-SUBSCRIBE_TOPICS: tuple[str, ...] = contract_subscribe_topics(CONTRACT_PATH)
+ALL_SUBSCRIBE_TOPICS: tuple[str, ...] = contract_subscribe_topics(CONTRACT_PATH)
+SUBSCRIBE_TOPICS = tuple(
+    topic for topic in ALL_SUBSCRIBE_TOPICS if topic.endswith(".v1")
+)
+TYPED_SUBSCRIBE_TOPICS = tuple(
+    topic for topic in ALL_SUBSCRIBE_TOPICS if topic.endswith(".v2")
+)
 if len(SUBSCRIBE_TOPICS) != 11:
     raise ValueError(
         "node_projection_work_ledger must subscribe to exactly the eleven "
         f"work-ledger row topics; found {len(SUBSCRIBE_TOPICS)}"
     )
+
+if len(TYPED_SUBSCRIBE_TOPICS) != 11 or len(ALL_SUBSCRIBE_TOPICS) != 22:
+    raise ValueError("work-ledger requires the exact eleven v1 and eleven v2 routes")
 
 _PUBLISH = contract_publish_topics(CONTRACT_PATH)
 if len(_PUBLISH) != 1:
@@ -30,4 +39,10 @@ if len(_PUBLISH) != 1:
 
 TOPIC_PROJECTION_APPLIED = _PUBLISH[0]
 
-__all__: list[str] = ["CONTRACT_PATH", "SUBSCRIBE_TOPICS", "TOPIC_PROJECTION_APPLIED"]
+__all__: list[str] = [
+    "ALL_SUBSCRIBE_TOPICS",
+    "CONTRACT_PATH",
+    "SUBSCRIBE_TOPICS",
+    "TOPIC_PROJECTION_APPLIED",
+    "TYPED_SUBSCRIBE_TOPICS",
+]

@@ -15,7 +15,6 @@ It is deterministic and does no I/O, so it is falsifiable by a unit test.
 
 from __future__ import annotations
 
-import hashlib
 import re
 
 from omnimarket.events.enum_ledger_row_type import (
@@ -26,6 +25,7 @@ from omnimarket.events.model_ledger_row_event import (
     EVENT_MODEL_BY_TYPE,
     ModelLedgerCell,
     ModelLedgerRowEventBase,
+    work_ledger_row_id,
 )
 
 _STAMP = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
@@ -43,7 +43,7 @@ class LedgerRowRefusalError(ValueError):
 
 def row_id_of(raw_row: str) -> str:
     """The content hash that identifies a row: sha256 of the trimmed raw row."""
-    return hashlib.sha256(raw_row.strip().encode("utf-8")).hexdigest()
+    return work_ledger_row_id(raw_row)
 
 
 def _split_cells(rest: str) -> list[str]:

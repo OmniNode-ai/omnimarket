@@ -269,6 +269,14 @@ class ProjectionTableConfig(BaseModel):
     # cursor order under either value; the two reads are different questions
     # and neither answers the other's.
     page_selection: Literal["cursor", "order_by"] = "cursor"
+    # OMN-20327: the column that picks the newest row of a key when the table
+    # keeps every revision of it (consumer_flow_windows holds each window a
+    # consumer-group/topic pair ever had). Absent, the newest row of a key is
+    # the one with the greatest cursor. Naming a column the table's key index
+    # already orders (consumer-flow's ``window_start``, the tail of its primary
+    # key) is what lets the read take one row per key from the index instead of
+    # sorting the revisions.
+    latest_by: str | None = None
     # OMN-15797 AC2: the ROW column carrying this exposure's per-row tenant
     # identity. ``None`` (the default, and the state of every exposure that
     # predates this field) means the exposure is not tenant-scoped and is

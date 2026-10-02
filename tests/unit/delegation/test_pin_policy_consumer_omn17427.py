@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Consumer-first pin policy accepts new input without emitting a new wire key."""
+"""Released pin-policy input is now emitted by the producer contract."""
 
 import pytest
 from pydantic import ValidationError
@@ -11,7 +11,7 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 
 
 @pytest.mark.parametrize("pin_only", [False, True])
-def test_new_pin_policy_decodes_without_changing_released_wire_shape(
+def test_released_pin_policy_decodes_and_serializes_explicit_flag(
     pin_only: bool,
 ) -> None:
     declaration = ModelDelegationBackendConfig.model_validate(
@@ -27,8 +27,8 @@ def test_new_pin_policy_decodes_without_changing_released_wire_shape(
         is pin_only
     )
     assert declaration.model_copy().explicit_pin_only is pin_only
-    assert "explicit_pin_only" not in declaration.model_dump()
-    assert "explicit_pin_only" not in ModelDelegationBackendConfig.model_fields
+    assert declaration.model_dump()["explicit_pin_only"] is pin_only
+    assert "explicit_pin_only" in ModelDelegationBackendConfig.model_fields
 
 
 def test_old_backend_shape_defaults_to_ordinary_eligibility() -> None:

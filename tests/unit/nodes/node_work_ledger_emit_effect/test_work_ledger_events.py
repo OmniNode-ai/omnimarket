@@ -142,6 +142,19 @@ EXPECTED_ROW_TOPICS = {
     "onex.evt.omnimarket.work-ledger-friction.v1",
     "onex.evt.omnimarket.work-ledger-correction.v1",
 }
+EXPECTED_TYPED_ROW_TOPICS = {
+    "onex.evt.omnimarket.work-ledger-claim.v2",
+    "onex.evt.omnimarket.work-ledger-status.v2",
+    "onex.evt.omnimarket.work-ledger-terminal.v2",
+    "onex.evt.omnimarket.work-ledger-hold.v2",
+    "onex.evt.omnimarket.work-ledger-release.v2",
+    "onex.evt.omnimarket.work-ledger-msg.v2",
+    "onex.evt.omnimarket.work-ledger-ack.v2",
+    "onex.evt.omnimarket.work-ledger-ruling.v2",
+    "onex.evt.omnimarket.work-ledger-operator-consent.v2",
+    "onex.evt.omnimarket.work-ledger-friction.v2",
+    "onex.evt.omnimarket.work-ledger-correction.v2",
+}
 EXPECTED_TERMINAL_TOPICS = {
     "onex.evt.omnimarket.work-ledger-emit-completed.v1",
     "onex.evt.omnimarket.work-ledger-emit-failed.v1",
@@ -152,8 +165,15 @@ def test_the_enum_topics_are_exactly_the_eleven_the_plan_names() -> None:
     assert {t.topic for t in EnumLedgerRowType} == EXPECTED_ROW_TOPICS
 
 
+def test_the_typed_topics_are_the_eleven_v2_row_topics() -> None:
+    assert {t.typed_topic for t in EnumLedgerRowType} == EXPECTED_TYPED_ROW_TOPICS
+
+
 def test_contract_publishes_the_eleven_row_topics_and_its_two_terminals() -> None:
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
     published = set(contract["event_bus"]["publish_topics"])
-    assert published == EXPECTED_ROW_TOPICS | EXPECTED_TERMINAL_TOPICS
+    assert (
+        published
+        == EXPECTED_ROW_TOPICS | EXPECTED_TYPED_ROW_TOPICS | EXPECTED_TERMINAL_TOPICS
+    )
     assert contract["terminal_event"] in EXPECTED_TERMINAL_TOPICS

@@ -199,8 +199,11 @@ def test_house_work_is_not_rerouted(clean_install: Path, tmp_path: Path) -> None
     """Control: the substitution is for customer work only.
 
     House work keeps the untargeted resolution unchanged (OMN-15630 forbids
-    binding a class to an off-capability rung by accident), so with the class
-    rung undeclared it is NOT moved onto ``local-coder``.
+    binding a class to an off-capability rung by accident). OMN-17427 declares
+    the Gemini backends explicit-pin-only, so with the class rung undeclared the
+    untargeted resolution no longer has a Gemini rung to land on and reaches the
+    one declared local rung through the shipped local-first rules, never a
+    platform-credentialed cloud rung.
     """
     _overlay(clean_install, ("local-coder",))
     effect = _RecordingEffect()
@@ -208,7 +211,8 @@ def test_house_work_is_not_rerouted(clean_install: Path, tmp_path: Path) -> None
     _dispatch(tmp_path, effect, tenant_id=HOUSE_TENANT_SLUG, prompt="say ok")
 
     assert effect.calls, "house work reached no backend at all"
-    assert effect.calls[0].endpoint_ref != _LOOPBACK
+    assert effect.calls[0].endpoint_ref == _LOOPBACK
+    assert effect.calls[0].secret_ref is None
 
 
 def test_no_model_and_no_key_names_both_remedies(
