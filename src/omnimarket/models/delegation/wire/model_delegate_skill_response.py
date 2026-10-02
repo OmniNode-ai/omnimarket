@@ -30,6 +30,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
@@ -43,22 +44,20 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
 
-# OMN-19436, the consumer-first half. The second half of that ticket adds
-# ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
-# ``reasoning_preamble_rule`` to the terminal. Both models are
-# ``extra="forbid"``, so a consumer released before those fields exist would
-# refuse every terminal that carries them and dead-letter it (OMN-18852). The
-# wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
-# that decodes the new shape before the producer that emits it can merge.
+# OMN-19436 first accepted ``finish_reason`` and ``truncated`` on attempts,
+# and those two plus ``reasoning_preamble_rule`` on terminals, consumer-first.
+# Both models are ``extra="forbid"``, so a consumer released before those
+# fields existed would refuse every terminal carrying them and dead-letter
+# it (OMN-18852). The wire-compatibility gate (OMN-18868) therefore requires a
+# RELEASED consumer that decodes the new shape before the producer can merge.
 #
-# This consumer accepts exactly the keys listed below and discards them,
-# because it has nowhere typed to put them yet. Any other unknown key is still
-# refused. The half that declares the fields replaces this with the fields
-# themselves.
+# OMN-19436 now declares those keys as real fields below, so they are no
+# longer discarded. The frozensets and before-validators remain the mechanism
+# for accepting exactly the keys still awaiting their own declared fields;
+# every other unknown key is still refused.
 #
 # OMN-19765 added ``substituted_from_backend_id`` the same way, then this
-# same PR declares it as a real field below (the "half that declares the
-# fields" the paragraph above describes), so it is not listed here: the
+# same PR declares it as a real field below, so it is not listed here: the
 # frozenset holds only keys still awaiting their own declared field.
 #
 # OMN-20154 now declares ``provider_id``, ``http_status`` and ``provider_code``
@@ -66,7 +65,7 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 # producer and are no longer listed among the forthcoming keys.
 #
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset()
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -75,9 +74,7 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # delivering command message the OMN-18887 claim keys on, which the terminal will
 # carry so a served replay and a second command sharing a correlation can be told
 # apart. The second half declares it and the handler stamps it.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "reasoning_preamble_rule", "command_id"}
-)
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"command_id"})
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -124,6 +121,23 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     quality_gate_passed: bool = Field(...)
     quality_score: float | None = Field(default=None)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    # OMN-19436: retain the provider's stop reason on each rung.
+    finish_reason: EnumProviderFinishReason | None = Field(
+        default=None,
+        description=(
+            "How the provider said generation stopped, as this rung observed "
+            "it. None when the rung produced no response at all (a failed "
+            "call). 'absent' when a response arrived but no stop reason "
+            "reached this record, which is the bus path's success case today."
+        ),
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the output-token budget cut this rung's response short. "
+            "Derived from finish_reason and refused when it disagrees."
+        ),
+    )
     failure_class: str | None = Field(
         default=None,
         description="Transport failure_class (e.g. 'model_unavailable') when this "
@@ -241,6 +255,33 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     def accept_forthcoming_keys(cls, data: Any) -> Any:
         """Decode an attempt from a producer one release ahead (OMN-19436)."""
         return _without_forthcoming_keys(data, _FORTHCOMING_ATTEMPT_KEYS)
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_truncated_from_the_stop_reason(cls, data: Any) -> Any:
+        """Fill ``truncated`` from ``finish_reason`` when the producer omitted it."""
+        if not isinstance(data, dict) or "truncated" in data:
+            return data
+        reason = data.get("finish_reason")
+        return {
+            **data,
+            "truncated": reason is not None
+            and str(getattr(reason, "value", reason))
+            == EnumProviderFinishReason.LENGTH,
+        }
+
+    @model_validator(mode="after")
+    def refuse_a_flag_that_contradicts_the_stop_reason(self) -> Self:
+        """A truncation flag set beside the stop reason must agree with it."""
+        expected = self.finish_reason is EnumProviderFinishReason.LENGTH
+        if self.truncated != expected:
+            reason = self.finish_reason.value if self.finish_reason else None
+            msg = (
+                f"truncated={self.truncated} contradicts finish_reason={reason}: "
+                "only a 'length' stop reason is a truncation"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
@@ -438,6 +479,23 @@ class ModelDelegateSkillResponse(BaseModel):
         description="Best available per-attempt detail in order. Rich local "
         "attempts include the terminal attempt; escalation_history fallback may "
         "contain rejected attempts only. attempts_count remains authoritative.",
+    )
+    # OMN-19436: terminal facts belong to the accepted rung, else the last rung.
+    finish_reason: EnumProviderFinishReason | None = Field(
+        default=None,
+        description="Provider stop reason of the deciding rung: the accepted rung, "
+        "else the last. None when no stop reason was recorded.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description="Whether the output-token budget cut the deciding rung's "
+        "response short: the accepted rung, else the last. Must agree with "
+        "finish_reason; a completed or quality-passed terminal cannot be truncated.",
+    )
+    reasoning_preamble_rule: str | None = Field(
+        default=None,
+        description="Declared reasoning-preamble segmentation rule of the deciding "
+        "rung: the accepted rung, else the last. None when no rule was recorded.",
     )
     # OMN-18852. Two facts a caller previously could not tell apart, because
     # only their SUM was observable as wall clock. Measured on the .201 dev
@@ -648,6 +706,22 @@ class ModelDelegateSkillResponse(BaseModel):
         if isinstance(attempts, (list, tuple)) and attempts:
             data = {**data, "attempts_count": len(attempts)}
         return data
+
+    @model_validator(mode="after")
+    def validate_terminal_truncation(self) -> Self:
+        """Keep the deciding rung's truncation facts consistent (OMN-19436)."""
+        expected = self.finish_reason is EnumProviderFinishReason.LENGTH
+        if self.truncated != expected:
+            reason = self.finish_reason.value if self.finish_reason else None
+            msg = (
+                f"truncated={self.truncated} contradicts finish_reason={reason}: "
+                "only a 'length' stop reason is a truncation"
+            )
+            raise ValueError(msg)
+        if self.truncated and (self.status == "completed" or self.quality_gate_passed):
+            msg = "completed or quality_gate_passed terminal cannot have truncated=True"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
