@@ -78,7 +78,7 @@ jobs:
       - name: Run contract validation
         id: validate-contract
         if: steps.resolve-branch.outputs.skip_validation != 'true'
-        uses: OmniNode-ai/onex_change_control/.github/actions/validate-contract@6adc28168d023d027bf9c1172f262ac03c9d9055 # OCC dev 6adc2816
+        uses: OmniNode-ai/onex_change_control/.github/actions/validate-contract@802b5f7101f4c49f8b30e8deda3d4c5d024c5710 # OCC dev 802b5f71, the action reads its validators at this pin (OCC#12238), so a repo contract may carry binds_ac
         with:
           branch-name: ${{ steps.resolve-branch.outputs.resolved_branch }}
           contracts-path: contracts

@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@fa7e652ae51244e82e735fef26a9e17bc31e0836 # OMN-20070: immutable full-SHA pin of the omnibase_core commit that adds `evidence-source: caller`. It is the branch head of that change, not yet on dev: re-point it at the change's dev squash commit before this lands.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@47e893e5aaf708f932c952a9145688f7b4edbbf2 # OMN-20070: immutable full-SHA pin, the squash commit of omnibase_core#1855 on that repo's dev branch. It adds `evidence-source: caller`, which checks out the caller repository and reads its own contracts.
     with:
       evidence-source: caller
       verifier-version: 0.4.280
