@@ -772,6 +772,12 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # af9f024f-8aa9-4531-85f7-624d77b6d77e).
     if "provider http 429" in normalized:
         return EnumDelegationFailureClass.RATE_LIMITED
+    # OMN-19450: the same rule for a rejected credential. The message carries the
+    # call's URL, whose correlation query value can contain "429" by chance and
+    # read as a rate limit through the generic marker below, so the status the
+    # provider answered is matched first.
+    if "provider http 401" in normalized or "provider http 403" in normalized:
+        return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -1759,7 +1765,13 @@ def _inference_failure_cause(
     run; the final 429 only stopped the ladder collecting another answer, and
     it stays legible in that rung's own failure reason.
 
-    Otherwise unchanged: a final rate limit names quota exhaustion, and any
+    OMN-19450: a final failure the provider's own signal classifies names that
+    cause instead of none, so the terminal the projection copies agrees with
+    the one the caller reads. A rejected credential is ``auth_failed``, an
+    exceeded call budget is ``timeout``, and a response the provider cut off at
+    ``finish_reason=length`` is ``quality_gate_refused``: the output-budget rule
+    refused an answer the provider did give, and the rung records the stop
+    reason and the truncated flag that tell it apart from a rule's veto. Any
     other final failure states no cause rather than inventing one.
     """
     if ladder_is_gate_decided(
@@ -1769,8 +1781,14 @@ def _inference_failure_cause(
         ]
     ):
         return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    if workflow.escalation_history and workflow.escalation_history[-1].truncated:
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if failure_class is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
+        return EnumDelegationTerminalFailureCause.AUTH_FAILED
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     return None
 
 
