@@ -49,6 +49,12 @@ from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     ModelCloseEvidence,
     enforce_close_evidence,
 )
+from omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate import (
+    DodVerdictProbe,
+    DodVerifySubprocessProbe,
+    DoneWriteReceiptRefusedError,
+    enforce_done_write_receipt,
+)
 
 # Known OmniNode repos used for PR lookup
 KNOWN_REPOS = [
@@ -208,7 +214,7 @@ class LinearHttpClient:
     def get_issue(self, *, issue_id: str) -> Any:
         query = """
         query GetIssue($id: String!) {
-          issue(id: $id) { id identifier state { name } }
+          issue(id: $id) { id identifier description state { name } }
         }
         """
         return self._post(query, {"id": issue_id})
@@ -1217,6 +1223,48 @@ def _stale_recommendation(ticket: ModelLinearTicket, age_days: int) -> str:
     return "keep_open"
 
 
+def _issue_description(
+    client: LinearClientProtocol, ticket: ModelLinearTicket
+) -> str | None:
+    """The ticket's CURRENT description, read live; ``None`` when unreadable.
+
+    ``get_issue`` answers ``{"data": {"issue": {...}}}`` over HTTP; a fake may
+    hand back the issue itself. Anything else, or a failed read, is ``None``:
+    criteria that cannot be read cannot be judged, so the caller refuses.
+    """
+    try:
+        raw = client.get_issue(issue_id=ticket.id)
+    except Exception as exc:
+        _log.warning("description read failed for %s: %s", ticket.identifier, exc)
+        return None
+    issue = raw
+    if isinstance(raw, dict) and isinstance(raw.get("data"), dict):
+        issue = raw["data"].get("issue")
+    if not isinstance(issue, dict):
+        return None
+    description = issue.get("description")
+    return description if isinstance(description, str) else None
+
+
+def _held_no_bound_receipt(
+    ticket: ModelLinearTicket, refusal: DoneWriteReceiptRefusedError
+) -> tuple[list[ModelTriageAction], int, str | None]:
+    """The record a refused Done flip leaves: the ticket is untouched, and why."""
+    _log.info("%s left open: %s", ticket.identifier, refusal.decision.reason)
+    return (
+        [
+            ModelTriageAction(
+                ticket_id=ticket.identifier,
+                ticket_title=ticket.title,
+                action=EnumTriageAction.HELD_NO_BOUND_RECEIPT,
+                evidence=refusal.decision.reason,
+            )
+        ],
+        0,
+        None,
+    )
+
+
 class HandlerLinearTriage:
     """Handler that scans Linear tickets, checks PR state, and marks done or flags stale."""
 
@@ -1225,10 +1273,12 @@ class HandlerLinearTriage:
         client: LinearClientProtocol | None = None,
         github_client: GitHubClientProtocol | None = None,
         occ_receipt_probe: OccReceiptProbe | None = None,
+        dod_verdict_probe: DodVerdictProbe | None = None,
     ) -> None:
         self._client = client
         self._github_client = github_client
         self._occ_receipt_probe = occ_receipt_probe
+        self._dod_verdict_probe = dod_verdict_probe
 
     def _get_client(self) -> LinearClientProtocol:
         if self._client is not None:
@@ -1265,6 +1315,16 @@ class HandlerLinearTriage:
         if self._occ_receipt_probe is None:
             self._occ_receipt_probe = OccReceiptSubprocessProbe()
         return self._occ_receipt_probe
+
+    def _get_dod_verdict_probe(self) -> DodVerdictProbe:
+        """Return the dod_verify verdict probe, lazily building the real default.
+
+        The default runs ``onex skill dod_verify <ticket>`` and fails closed:
+        any launch, timeout, parse or verdict failure refuses the close.
+        """
+        if self._dod_verdict_probe is None:
+            self._dod_verdict_probe = DodVerifySubprocessProbe()
+        return self._dod_verdict_probe
 
     async def handle(
         self, request: ModelLinearTriageStartCommand
@@ -1518,15 +1578,29 @@ class HandlerLinearTriage:
     ) -> None:
         """Single fail-closed chokepoint for every auto Backlog-or-unstarted close.
 
-        Refuses the ``save_issue(state="Done")`` write unless ``evidence`` carries
-        a recognized durable evidence kind with a non-empty detail (OMN-13817).
-        A no-evidence attempt — the ``wf_1628d9a5`` signature — raises
-        :class:`CloseEvidenceRefusedError` before any mutation reaches Linear, so
-        no ticket is closed without a merged PR / superseding PR / all-children
-        roll-up / OCC receipt. Every close call site MUST route through here; do
-        not call ``client.save_issue(..., state="Done")`` directly.
+        Two gates, both before any mutation reaches Linear:
+
+        1. The delivery-evidence gate (OMN-13817): refuses unless ``evidence``
+           carries a recognized durable evidence kind with a non-empty detail,
+           so no ticket is closed without a merged PR / superseding PR /
+           all-children roll-up / OCC receipt. The ``wf_1628d9a5`` signature
+           raises :class:`CloseEvidenceRefusedError`.
+        2. The Done-write receipt gate (OMN-20368): refuses unless a PASS
+           dod_verify receipt binds EVERY acceptance criterion in the ticket's
+           current description through ``binds_ac``. A merged PR is necessary
+           and never sufficient. A refusal raises
+           :class:`DoneWriteReceiptRefusedError`, and the caller leaves the
+           ticket alone and records why.
+
+        Every close call site MUST route through here; do not call
+        ``client.save_issue(..., state="Done")`` directly.
         """
         enforce_close_evidence(ticket_id=ticket.identifier, evidence=evidence)
+        enforce_done_write_receipt(
+            ticket_id=ticket.identifier,
+            description=_issue_description(client, ticket),
+            probe=self._get_dod_verdict_probe(),
+        )
         client.save_issue(issue_id=ticket.id, state="Done")
         client.save_comment(issue_id=ticket.id, body=comment)
 
@@ -1618,6 +1692,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except DoneWriteReceiptRefusedError as refusal:
+                return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
                 return (
                     [
@@ -1724,6 +1800,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except DoneWriteReceiptRefusedError as refusal:
+                return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
                 return (
                     [
@@ -1842,6 +1920,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except DoneWriteReceiptRefusedError as refusal:
+                return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
                 return (
                     [
@@ -1995,6 +2075,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except DoneWriteReceiptRefusedError as refusal:
+                return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
                 return (
                     [
@@ -2126,6 +2208,10 @@ class HandlerLinearTriage:
                         ),
                     )
                     epics_closed += 1
+                except DoneWriteReceiptRefusedError as refusal:
+                    held, _, _ = _held_no_bound_receipt(ticket, refusal)
+                    actions.extend(held)
+                    continue
                 except Exception as exc:
                     actions.append(
                         ModelTriageAction(

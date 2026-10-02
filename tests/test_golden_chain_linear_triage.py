@@ -25,6 +25,16 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
     ModelLinearTriageResult,
     ModelLinearTriageStartCommand,
 )
+from tests.helpers.linear_triage_done_write_gate import (
+    stand_down_done_write_gate,
+)
+
+
+@pytest.fixture(autouse=True)
+def _done_write_gate_stood_down(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_down_done_write_gate(request, monkeypatch)
 
 
 def _make_issue(
