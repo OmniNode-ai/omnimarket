@@ -52,6 +52,7 @@ Related:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 from collections.abc import Iterator
@@ -101,7 +102,7 @@ HOUSE_SECRET_REF = "llm.openrouter.api_key"
 BYOK_BACKEND_ID = "byok-openrouter"
 
 #: The house rung's backend id in ``bifrost_delegation.yaml``.
-HOUSE_BACKEND_ID = "openrouter-qwen3-coder-480b"
+HOUSE_BACKEND_ID = "openrouter-nemotron-ultra"
 
 #: Task type used by every pair. Declared on the rung's capabilities below.
 TASK_TYPE = "code_generation"
@@ -132,12 +133,22 @@ class LocalProviderStub:
     """
 
     def __init__(
-        self, *, model_id: str, content: str = "### ANSWER\nprint('ok')\n"
+        self,
+        *,
+        model_id: str,
+        content: str = "### ANSWER\nprint('ok')\n",
+        completion_error_body: dict[str, Any] | None = None,
+        completion_delay_seconds: float = 0.0,
+        finish_reason: str = "stop",
     ) -> None:
         self.model_id = model_id
         self.content = content
         #: ``401`` rejects every completion; ``200`` answers it.
         self.completion_status = 200
+        self.completion_error_body = completion_error_body
+        self.completion_delay_seconds = completion_delay_seconds
+        self.finish_reason = finish_reason
+        self._stop_event = threading.Event()
         #: Authorization header per completion request, in order. ``None`` for
         #: a request that carried none.
         self.authorizations: list[str | None] = []
@@ -150,6 +161,7 @@ class LocalProviderStub:
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
+        self._stop_event.clear()
         outer = self
 
         class _Handler(BaseHTTPRequestHandler):
@@ -170,10 +182,13 @@ class LocalProviderStub:
                     outer.payloads.append(json.loads(raw or b"{}"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     outer.payloads.append({})
+                outer._stop_event.wait(outer.completion_delay_seconds)
                 if outer.completion_status != 200:
                     self._respond(
                         outer.completion_status,
-                        {
+                        outer.completion_error_body
+                        if outer.completion_error_body is not None
+                        else {
                             "error": {
                                 "message": "Incorrect API key provided.",
                                 "type": "invalid_request_error",
@@ -187,7 +202,7 @@ class LocalProviderStub:
                         "choices": [
                             {
                                 "message": {"content": outer.content},
-                                "finish_reason": "stop",
+                                "finish_reason": outer.finish_reason,
                             }
                         ],
                         "model": outer.model_id,
@@ -205,13 +220,16 @@ class LocalProviderStub:
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(payload)
+                # A timed-out client can close before the delayed reply.
+                with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                    self.wfile.write(payload)
 
         self._server = HTTPServer(("127.0.0.1", 0), _Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
+        self._stop_event.set()
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
@@ -417,7 +435,7 @@ def install_rungs(monkeypatch: pytest.MonkeyPatch, rungs: list[dict[str, Any]]) 
 def house_openrouter_rung(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Make the tier ladder resolve the house-keyed OpenRouter rung.
 
-    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-qwen3-coder-480b``: the
+    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-nemotron-ultra``: the
     same backend id, the same house ``secret_ref``, the same tier and budgets.
     Supplied through the loader seam so a pair asserts the SUBSTITUTION rather
     than which rung today's ladder prefers for a task type.

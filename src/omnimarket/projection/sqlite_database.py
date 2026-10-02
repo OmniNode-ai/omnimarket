@@ -156,6 +156,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key
 ON metering_summary (tenant_id, window_kind, window_start, baseline_model)
 """
 
+# OMN-19968: the local half of the tenant BYOK credential projection's two
+# tables, declared from node_projection_tenant_credentials/migrations (0000,
+# 0001: name and provider nullable for a revoke tombstone) and
+# node_delegation_routing_reducer/migrations (0001, 0004: provider). Timestamps
+# are ISO text; the primary key and the (tenant_id, task_type) unique key back
+# the two upserts in handler_tenant_credentials_store.
+_TENANT_INFERENCE_CREDENTIALS_DDL = """
+CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
+    api_key_ref TEXT PRIMARY KEY,
+    tenant_id   TEXT NOT NULL,
+    name        TEXT,
+    provider    TEXT,
+    created_at  TEXT NOT NULL,
+    revoked_at  TEXT
+)
+"""
+
+_DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
+CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id    TEXT NOT NULL,
+    task_type    TEXT NOT NULL,
+    backend_id   TEXT NOT NULL,
+    provider     TEXT,
+    endpoint_url TEXT NOT NULL,
+    model_name   TEXT NOT NULL,
+    secret_ref   TEXT,
+    timeout_ms   INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+    max_tokens   INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0),
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    UNIQUE (tenant_id, task_type)
+)
+"""
+
 # OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
 # schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
 # Same column set, so the SAME pure fold (row_llm_call_metrics) feeds both stores.
@@ -259,6 +294,8 @@ class SqliteDatabaseAdapter:
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
+        conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
+        conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
         return conn
 

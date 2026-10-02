@@ -593,7 +593,9 @@ class TestContractShape:
             "the overlay write must be declared, not incidental -- an undeclared "
             "write is invisible to the relation-ownership inventory"
         )
-        assert by_name[TENANT_OVERLAY_TABLE]["access"] == "write"
+        # OMN-19968: read_write since the local store path reads a route before
+        # blanking it; what this pins is that the overlay WRITE is declared.
+        assert by_name[TENANT_OVERLAY_TABLE]["access"] in {"write", "read_write"}
         assert by_name[TENANT_OVERLAY_TABLE]["role"] == "routing_overlay"
 
     def test_handler_refuses_a_contract_missing_the_overlay_role(

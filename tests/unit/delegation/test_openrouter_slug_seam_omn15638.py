@@ -60,7 +60,7 @@ _REGISTRY_PATH = (
 # The one backend whose slug is pinned on BOTH surfaces under the same key.
 # Keyed by the shared identifier so the assertion cannot drift onto a different
 # backend if either file is reordered.
-_SHARED_KEY = "openrouter-qwen3-coder-480b"
+_SHARED_KEY = "openrouter-nemotron-ultra"
 
 
 def _bifrost_backends() -> dict[str, dict[str, Any]]:

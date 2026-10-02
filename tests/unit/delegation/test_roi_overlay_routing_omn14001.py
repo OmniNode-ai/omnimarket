@@ -63,9 +63,9 @@ from omnimarket.routing.roi_overlay import (
 # --- Fixtures -------------------------------------------------------------------
 
 # Three routable tiers for code_generation (tier_order = local -> cheap_cloud ->
-# cheap_frontier -> claude): local-coder, cloud-gemini-pro (cheap_cloud AND
+# cheap_frontier -> claude): local-coder, cloud-gemini-2-5-flash (cheap_cloud AND
 # claude ceiling — OMN-14625 repointed both off cloud-glm, whose z.ai route is
-# DEAD from the .201 runtime), openrouter-qwen3-coder-480b (cheap_frontier).
+# DEAD from the .201 runtime), openrouter-nemotron-ultra (cheap_frontier).
 # Complete endpoint_urls so the tiers route in CI without a host overlay.
 _BIFROST_THREE_TIER = textwrap.dedent(
     """\
@@ -80,7 +80,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
-      - backend_id: cloud-gemini-pro
+      - backend_id: cloud-gemini-2-5-flash
         provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
@@ -88,7 +88,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         timeout_ms: 60000
         max_tokens: 65536
         capabilities: [code_generation]
-      - backend_id: openrouter-qwen3-coder-480b
+      - backend_id: openrouter-nemotron-ultra
         provider: openrouter
         endpoint_url: "https://openrouter.test/v1/chat/completions"
         model_name: qwen3-coder-480b
@@ -104,7 +104,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-gemini-pro, openrouter-qwen3-coder-480b]
+        backend_ids: [local-coder, cloud-gemini-2-5-flash, openrouter-nemotron-ultra]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -756,8 +756,8 @@ def test_port_resolve_initial_backend_roi_flips_tier(
         "code_generation", roi_overlay=_suppress("local")
     )
     # OMN-14225 free-before-paid: a suppressed local flips to the FREE cheap_frontier
-    # tier (openrouter-qwen3-coder-480b), not the paid cheap_cloud.
-    assert flipped.backend_id == "openrouter-qwen3-coder-480b"
+    # tier (openrouter-nemotron-ultra), not the paid cheap_cloud.
+    assert flipped.backend_id == "openrouter-nemotron-ultra"
     assert flipped.tier == "cheap_frontier"
 
 

@@ -8,7 +8,7 @@ Verifies that the 2026-05-30 registry refresh correctly contains:
   Qwen3.6-27B-MTP (.201:8001) under the stable routing keys
 - New ds-v4-flash entry (DeepSeek V4 Flash on .200:8101)
 - Cloud Gemini Flash entry, retargeted to gemini-2.5-flash-lite (OMN-12937)
-- New openrouter-qwen3-coder-480b entry (cheap frontier direct)
+- New openrouter-nemotron-ultra entry (cheap frontier direct)
 - All new entries pass existing registry invariants
 """
 
@@ -142,16 +142,16 @@ class TestOmn12937GeminiFlashLite:
 
 @pytest.mark.unit
 class TestOmn12492OpenRouterCheapFrontier:
-    """openrouter-qwen3-coder-480b entry correct for cheap frontier direct tier."""
+    """openrouter-nemotron-ultra entry correct for cheap frontier direct tier."""
 
-    def test_openrouter_qwen3_coder_480b_present(self, registry) -> None:  # type: ignore[no-untyped-def]
-        model = registry.get_model("openrouter-qwen3-coder-480b")
+    def test_openrouter_nemotron_ultra_present(self, registry) -> None:  # type: ignore[no-untyped-def]
+        model = registry.get_model("openrouter-nemotron-ultra")
         assert model.provider == "openrouter"
         assert model.endpoint_env == "OPENROUTER_URL"
         # OMN-15638: repointed from the RETIRED qwen/qwen3-coder:free (permanent
         # HTTP 404, absent from the live OpenRouter catalog) to the strongest
         # FREE model live in the catalog. The model_id stays
-        # openrouter-qwen3-coder-480b — it is a stable seam key naming the rung.
+        # openrouter-nemotron-ultra — it is a stable seam key naming the rung.
         assert model.model_name == "nvidia/nemotron-3-ultra-550b-a55b:free"
         assert model.requires_api_key_env == "OPENROUTER_API_KEY"
 
@@ -165,23 +165,23 @@ class TestOmn12492OpenRouterCheapFrontier:
         with truthful pricing here and in routing_tiers.yaml — which reddens
         this test first, on purpose.
         """
-        model = registry.get_model("openrouter-qwen3-coder-480b")
+        model = registry.get_model("openrouter-nemotron-ultra")
         assert model.model_name.endswith(":free"), (
             f"cheap_frontier slug {model.model_name!r} is not a free variant, "
             "but the registry still declares 0.00/0.00 zero_marginal_api_cost"
         )
 
-    def test_openrouter_qwen3_coder_480b_zero_cost(self, registry) -> None:  # type: ignore[no-untyped-def]
+    def test_openrouter_nemotron_ultra_zero_cost(self, registry) -> None:  # type: ignore[no-untyped-def]
         """Free tier model — zero marginal API cost."""
-        model = registry.get_model("openrouter-qwen3-coder-480b")
+        model = registry.get_model("openrouter-nemotron-ultra")
         assert model.pricing_per_1m_input == Decimal("0.00")
         assert model.pricing_per_1m_output == Decimal("0.00")
         assert model.cost_basis == EnumCostBasis.ZERO_MARGINAL_API_COST
 
-    def test_openrouter_qwen3_coder_480b_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]
+    def test_openrouter_nemotron_ultra_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]
         # OMN-15638: 1M, the live context_length of the repointed free model
         # (was 262144 under the retired qwen/qwen3-coder:free).
-        model = registry.get_model("openrouter-qwen3-coder-480b")
+        model = registry.get_model("openrouter-nemotron-ultra")
         assert model.context_window == 1000000
 
 
@@ -192,7 +192,7 @@ class TestOmn12492RegistryInvariants:
     NEW_MODEL_IDS = [
         "ds-v4-flash",
         "gemini-2.5-flash-lite",
-        "openrouter-qwen3-coder-480b",
+        "openrouter-nemotron-ultra",
     ]
 
     def test_new_models_have_positive_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]

@@ -343,10 +343,23 @@ class TestTheEnvelopeTenantBecomesTheRowTenant:
         assert row["tenant_id"] == BETA_TENANT_UUID
         assert row["tenant_id"] != BETA_TENANT_SLUG
 
-    def test_payload_tenant_on_the_canonical_delegation_terminal(self) -> None:
+    def test_payload_tenant_on_the_canonical_delegation_terminal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         db = _mock_db(registry_uuid=BETA_TENANT_UUID)
         runner = SavingsProjectionRunner()
+        runner._delegate_skill_baseline_model = "claude-opus-4-6"
         runner._db = db  # type: ignore[assignment]
+        from functools import partial
+
+        from omnimarket.nodes.node_projection_savings.handlers import handler_savings
+        from omnimarket.pricing import build_premium_counterfactual
+
+        monkeypatch.setattr(
+            handler_savings,
+            "build_premium_counterfactual",
+            partial(build_premium_counterfactual, premium_model="claude-opus-4-6"),
+        )
         ok = asyncio.run(
             runner.project_event(
                 DELEGATION_COMPLETED_TOPIC,

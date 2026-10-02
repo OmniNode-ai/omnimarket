@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_recombine_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B COMPUTE. Join unit answers in source order and deduplicate findings by path and line.
+  Stateless and deterministic. No model calls or I/O.
+
+input_model:
+  name: ModelDelegationRecombineRequest
+  module: omnimarket.models.model_delegation_split_recombine
+output_model:
+  name: ModelDelegationRecombineResult
+  module: omnimarket.models.model_delegation_split_recombine
+
+handler:
+  module: omnimarket.nodes.node_delegation_recombine_compute.handlers.handler_delegation_recombine
+  class: HandlerDelegationRecombine
+  input_model: omnimarket.models.model_delegation_split_recombine.ModelDelegationRecombineRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_recombine
+      handler:
+        name: HandlerDelegationRecombine
+        module: omnimarket.nodes.node_delegation_recombine_compute.handlers.handler_delegation_recombine
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-recombine-requested.v1
+terminal_event: onex.evt.omnimarket.delegation-recombine-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-recombine-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-recombine-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-recombine-completed.v1
+
+metadata:
+  transport_type: kafka
+
+recombine_rules:
+  answer_order: ascending_source_position
+  answer_separator: "\n\n"
+  finding_identity: [path, line]
+  duplicate_winner: lexicographically_smallest_message
+  finding_order: [path, line]
+  description: >
+    Caller supplies the complete unit answer set. IDs and source positions must
+    be unique. Preserve each answer verbatim; join without model synthesis.
+    Review findings use exact path and positive line identity. Resolve conflicting
+    messages lexically so neither arrival order nor unit order chooses the winner.
+
+inputs:
+  task_id: {type: str, required: true}
+  task_class: {type: str, required: true}
+  answers: {type: tuple, required: true}
+outputs:
+  task_id: {type: str}
+  task_class: {type: str}
+  answer: {type: str}
+  findings: {type: tuple}

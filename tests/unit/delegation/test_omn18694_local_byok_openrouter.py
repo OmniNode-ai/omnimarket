@@ -69,7 +69,7 @@ def _house_rung(
 ) -> ModelResolvedDelegationBackend:
     """A resolved platform rung shaped like the ones bifrost actually yields."""
     return ModelResolvedDelegationBackend(
-        backend_id="openrouter-qwen3-coder-480b",
+        backend_id="openrouter-nemotron-ultra",
         model_id="house/model:free",
         endpoint_ref="https://openrouter.ai/api/v1/chat/completions",
         tier="cheap_cloud",
@@ -259,7 +259,7 @@ class TestAc3HouseCredentialIsUnreachable:
         """
         routed = substitute_local_byok_route(_house_rung(), db_path=local_db)
 
-        assert routed.backend_id == "openrouter-qwen3-coder-480b"
+        assert routed.backend_id == "openrouter-nemotron-ultra"
         assert routed.secret_ref == "llm.openrouter.api_key"
 
     def test_the_customer_ref_does_not_fall_back_to_the_house_value(
