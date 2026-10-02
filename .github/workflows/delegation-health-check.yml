@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation-health-check.yml -- OMN-19451. omnimarket's caller of the
+# delegation-health check on runtime PRs. The check itself is authored once, in
+# omnibase_infra (delegation-health-reusable.yml, scripts/ci/delegation_health_check.py
+# and config/delegation_health_check.yaml); nothing of it is copied here, so the
+# source list cannot fork.
+#
+# ENFORCING. The check-run this caller produces, `delegation-health-check /
+# Delegation Health Check`, is a member of EXPECTED_EXTERNAL_CONTEXTS in
+# scripts/ci/ci_summary_gate.py, so CI Summary requires it present, completed
+# and green on every pull request head and every merge-queue head (operator
+# ruling 2026-09-29T12:02:35Z, OMN-19998: no shadow or advisory mode). A runtime-
+# affecting PR is red while the delegation regression nightly or the M4 C17
+# verdict is red; a PR that repairs the red carries the label
+# `delegation-fix-forward:OMN-<n>`, which admits it and is recorded in the job
+# summary. A docs-only PR is never blocked.
+#
+# The shape exists to satisfy that registration: it runs on `pull_request` AND
+# `merge_group`, the one job carries no `needs:`, no job-level `if:` and no path
+# filter, so it can neither skip-as-passed nor leave a queue head waiting on a
+# context that never reports. There is no `branches:` filter either, because
+# ci.yml also runs on pull requests to main and L4 would wait on a context that
+# never arrives there. A fork pull request carries no secrets, so it cannot read
+# the verdicts and fails closed.
+#
+# THE PIN. The reusable is called at a full commit sha, and it checks its own
+# scripts and config out at github.job_workflow_sha, so the YAML and the code it
+# runs are one omnibase_infra commit (the same pinning runtime-rebuild-trigger.yml
+# uses, OMN-18387). tests/ci/test_delegation_health_check_caller_omn19451.py
+# replays infra's own fixtures at this pin, so moving it re-proves the check.
+name: Delegation Health Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  merge_group:
+
+concurrency:
+  # A merge-queue entry carries its own github.ref, so queue heads never
+  # cancel one another; pull-request runs cancel their superseded predecessor.
+  group: delegation-health-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # No `name:` on purpose: the check-run is then `<job id> / <called job name>`,
+  # `delegation-health-check / Delegation Health Check`, the exact context
+  # EXPECTED_EXTERNAL_CONTEXTS registers and the prefix the advisory-job gate
+  # matches a called workflow's job by.
+  delegation-health-check:
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@5fafcddd76995a24c65f62f13b0b5a805798a0cf
+    with:
+      repo_key: omnimarket
+    secrets:
+      ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+      ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
