@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_hook_followup_compute
+version: "0.1.0"
+description: "Pure receipt-to-hook follow-up activity, with conservative attribution"
+pack: pipeline
+node_role: compute
+display_name: "Delegation Hook Follow-up Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_hook_followup_compute: "omnimarket.nodes.node_delegation_hook_followup_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "deterministic"]

@@ -522,8 +522,9 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.metrics.total_tokens == 46
     assert response.metrics.tokens_to_compliance == 46
     assert response.metrics.compliance_attempts == 1
-    assert response.baseline_state == "BASELINE_UNRESOLVED"
-    assert response.metrics.cost_savings_usd is None
+    assert response.baseline_state == "RESOLVED"
+    assert response.metrics.cost_savings_usd is not None
+    assert response.metrics.cost_savings_usd == pytest.approx(0.000364)
     assert DEFAULT_BASELINE_MODEL not in response.metrics.frontier_costs_usd
     assert "claude-sonnet-4-20250514" in response.metrics.frontier_costs_usd
 

@@ -101,6 +101,7 @@ from omnimarket.delegation.response_contract_instruction import (
     render_response_contract_instruction,
 )
 from omnimarket.delegation.rubric.attempt_verdict import (
+    apply_measured_rubric,
     record_attempt_rubric_verdict,
     rubric_check_error_verdict,
 )
@@ -1704,6 +1705,28 @@ class LocalDelegationDispatchPort:
             preamble_chars = attempt_outcome.preamble_chars
             output_refusal = attempt_outcome.output_refusal
             response_contract_evidence = attempt_outcome.response_contract_evidence
+            # OMN-20166: record every verdict; only configured MET classes decide.
+            try:
+                rubric_verdict = record_attempt_rubric_verdict(
+                    task_class=task_type,
+                    request_text=(
+                        attempt_outcome.request_text
+                        if attempt_outcome.request_text is not None
+                        else prompt
+                    ),
+                    answer_text=result.content or "",
+                )
+            except Exception as exc:
+                # A recording fault must never fail the delegation it describes.
+                logger.warning("Rubric recording failed: %s", type(exc).__name__)
+                rubric_verdict = rubric_check_error_verdict(task_type)
+            gate_result = apply_measured_rubric(
+                gate_result, rubric_verdict, task_class=task_type
+            )
+            if response_contract_evidence is not None:
+                response_contract_evidence = response_contract_evidence.model_copy(
+                    update={"validated": gate_result.passed}
+                )
             quality_passed = self._is_quality_accepted(task_type, gate_result)
             # OMN-16932: the accept/climb verdict, typed, on the bus-less path
             # too — so `onex delegate` and the bus terminal describe a
@@ -1730,22 +1753,9 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
-            # OMN-20165: acceptance is settled above; the rubric verdict is
-            # recorded on this attempt and read by no decision.
-            try:
-                rubric_verdict = record_attempt_rubric_verdict(
-                    task_class=task_type,
-                    request_text=(
-                        attempt_outcome.request_text
-                        if attempt_outcome.request_text is not None
-                        else prompt
-                    ),
-                    answer_text=result.content or "",
-                )
-            except Exception as exc:
-                # A recording fault must never fail the delegation it describes.
-                logger.warning("Rubric recording failed: %s", type(exc).__name__)
-                rubric_verdict = rubric_check_error_verdict(task_type)
+            if gate_result.fail_category == "rubric_failed":
+                acceptance_reason = EnumDelegationAcceptanceReason.RUBRIC_FAILED
+                acceptance_detail = "; ".join(gate_result.failure_reasons)
             # OMN-19205: a customer call that was throttled (or whose upstream
             # was down) on its first model and answered on a second one, both
             # on this one backend. The first call is a rejected routing attempt
@@ -1790,6 +1800,8 @@ class LocalDelegationDispatchPort:
                     "failure_class": (
                         None
                         if quality_passed
+                        else EnumDelegationFailureClass.RUBRIC_FAILED.value
+                        if gate_result.fail_category == "rubric_failed"
                         else EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
                     ),
                     "acceptance_decision": acceptance_decision.value,
@@ -1958,6 +1970,7 @@ class LocalDelegationDispatchPort:
             # and recorded above, and ``best_content`` already tracks it.
             if (
                 not ladder_stopped_by_veto
+                and gate_result.fail_category != "rubric_failed"
                 and is_free_tier(current_tier)
                 and local_retry_counts.get(current_tier, 0)
                 < tier_max_retries(current_tier)

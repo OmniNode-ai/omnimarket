@@ -15,6 +15,7 @@ at the caller's deadline — never SUCCESS and never absence.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,109 @@ def _healthy_jobs() -> list[dict[str, object]]:
     # The poller's own job, still running while it evaluates.
     jobs.append(_job(SELF_JOB_NAME, status="in_progress", conclusion=None))
     return jobs
+
+
+class TestRunningRowsHoldTheVerdictOmn20066:
+    """In-run rows without a verdict must hold CI Summary at PENDING."""
+
+    @pytest.mark.parametrize("status", ["queued", "in_progress", "waiting", "pending"])
+    def test_running_unregistered_job_cannot_conclude_success(
+        self, status: str
+    ) -> None:
+        jobs = _healthy_jobs()
+        jobs.append(_job("Some New Job", status=status, conclusion=None))
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_PENDING, report
+        assert (
+            "  default-deny sweep rows still running (PENDING, re-polled): Some New Job"
+            in report
+        )
+
+    def test_running_job_then_completed_success_concludes_success(self) -> None:
+        jobs = _healthy_jobs()
+        jobs.append(_job("Some New Job", status="in_progress", conclusion=None))
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_PENDING, report
+        jobs[-1] = _job("Some New Job", conclusion="success")
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_SUCCESS, report
+        assert "default-deny sweep rows still running" not in report
+
+    def test_running_job_then_completed_failure_fails(self) -> None:
+        jobs = _healthy_jobs()
+        jobs.append(_job("Some New Job", status="in_progress", conclusion=None))
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_PENDING, report
+        jobs[-1] = _job("Some New Job", conclusion="failure")
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_FAILURE, report
+        assert "default-deny sweep failures: Some New Job" in report
+        assert "default-deny sweep rows still running" not in report
+
+    def test_failure_wins_over_a_running_row(self) -> None:
+        jobs = [
+            *_healthy_jobs(),
+            _job("Failed New Job", conclusion="failure"),
+            _job("Some New Job", status="in_progress", conclusion=None),
+        ]
+        code, report = evaluate(jobs, run_attempt=1)
+        assert code == EXIT_FAILURE, report
+        assert "default-deny sweep failures: Failed New Job" in report
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Some Advisory Shadow Job",
+            "Some Advisory Shadow Job / detect",
+            SELF_JOB_NAME,
+        ],
+    )
+    def test_allowlisted_running_rows_do_not_hold(self, name: str) -> None:
+        jobs = _healthy_jobs()
+        jobs.append(_job(name, status="in_progress", conclusion=None))
+        code, report = evaluate(
+            jobs, run_attempt=1, allowlist=frozenset({"Some Advisory Shadow Job"})
+        )
+        assert code == EXIT_SUCCESS, report
+        assert "default-deny sweep rows still running" not in report
+
+    def test_every_job_needing_ci_summary_is_allowlisted(self) -> None:
+        """A job waiting on CI Summary must not deadlock the poller."""
+        workflow = yaml.safe_load(CI_WORKFLOW.read_text())
+        for job_id, job in workflow["jobs"].items():
+            needs = job.get("needs", [])
+            if isinstance(needs, str):
+                needs = [needs]
+            if "ci-summary" in needs:
+                display_name = job.get("name") or job_id
+                assert display_name in SOFT_ALLOWLIST, display_name
+
+    def test_running_rows_are_reported_in_sorted_order(self) -> None:
+        jobs = [
+            *_healthy_jobs(),
+            _job("Z New Job", status="waiting", conclusion=None),
+            _job("A New Job", status="queued", conclusion=None),
+        ]
+        code, report = evaluate(jobs)
+        assert code == EXIT_PENDING, report
+        assert (
+            "  default-deny sweep rows still running (PENDING, re-polled): "
+            "A New Job, Z New Job" in report
+        )
+
+    @pytest.mark.parametrize("status", ["completed", "in_progress"])
+    def test_provisional_cancellation_is_not_double_reported(self, status: str) -> None:
+        row = _job("Some New Job", status=status, conclusion="cancelled")
+        row["completed_at"] = "2026-10-02T12:00:00Z"
+        code, report = evaluate(
+            [*_healthy_jobs(), row],
+            now=datetime(2026, 10, 2, 12, 0, 30, tzinfo=UTC),
+            superseded_by_newer_run=True,
+        )
+        assert code == EXIT_PENDING, report
+        assert "own-job cancellations awaiting the newer run: Some New Job" in report
+        assert "default-deny sweep rows still running" not in report
+        assert "default-deny sweep failures" not in report
 
 
 # --------------------------------------------------------------------------- #

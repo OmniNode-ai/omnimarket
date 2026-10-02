@@ -191,7 +191,13 @@ dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -302,6 +308,7 @@ node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sam
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
+node_delegation_hook_followup_compute = "omnimarket.nodes.node_delegation_hook_followup_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
@@ -665,6 +672,7 @@ node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 node_delegation_orchestrator = "omnimarket.nodes.node_delegation_orchestrator"
 node_llm_delegation_routing_compute = "omnimarket.nodes.node_llm_delegation_routing_compute"
+node_routing_complexity_compute = "omnimarket.nodes.node_routing_complexity_compute"
 node_delegation_quality_gate_reducer = "omnimarket.nodes.node_delegation_quality_gate_reducer"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
@@ -951,7 +959,13 @@ override-dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
