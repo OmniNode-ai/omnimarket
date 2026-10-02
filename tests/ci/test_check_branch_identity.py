@@ -136,3 +136,25 @@ def test_identity_check_fails_with_hint_when_branch_omits_ticket(
 def test_identity_check_noop_without_evidence_ticket() -> None:
     rc = cbi.run_identity_check(branch="jonah/whatever", evidence_text="no trailer\n")
     assert rc == 0
+
+
+def test_identity_check_passes_when_a_commit_message_references_ticket() -> None:
+    # OMN-16140 parity with the Receipt Gate, using the OMN-18010 failure.
+    rc = cbi.run_identity_check(
+        branch="jonah/omn-20068-s8-release-staleness",
+        evidence_text="Evidence-Ticket: OMN-18010\n",
+        commit_texts=[
+            "chore: unrelated\n",
+            "feat(OMN-18010): enforce release staleness gate in omnimarket CI\n",
+        ],
+    )
+    assert rc == 0
+
+
+def test_identity_check_fails_when_no_commit_message_references_ticket() -> None:
+    rc = cbi.run_identity_check(
+        branch="jonah/omn-20068-s8-release-staleness",
+        evidence_text="Evidence-Ticket: OMN-18010\n",
+        commit_texts=["fix(OMN-99999): another ticket\n"],
+    )
+    assert rc == 1
