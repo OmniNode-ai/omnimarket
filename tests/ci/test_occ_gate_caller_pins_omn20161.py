@@ -36,11 +36,34 @@ _REF_RE = re.compile(
 )
 
 
+def _runs_caller_evidence_mode(path: Path) -> bool:
+    """True for a workflow whose receipt-gate job reads the repo's own contracts.
+
+    Caller mode (``evidence-source: caller``) runs no OCC checkout, so the OCC
+    writer-app exemption this test follows is not part of what it executes, and
+    its pin moves with the reusable's caller-mode change instead.
+    """
+    if path.suffix != ".yml":
+        return False
+    data = yaml.safe_load(path.read_text())
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, dict):
+        return False
+    return any(
+        isinstance(job, dict)
+        and isinstance(job.get("with"), dict)
+        and job["with"].get("evidence-source") == "caller"
+        for job in jobs.values()
+    )
+
+
 def _sha_pins() -> list[tuple[str, str, str]]:
     """Every (source, workflow file, ref) that names an OCC gate reusable by ref."""
     sources = [*sorted(WORKFLOWS_DIR.glob("*.yml")), REQUIRED_CHECKS_PATH]
     found: list[tuple[str, str, str]] = []
     for path in sources:
+        if _runs_caller_evidence_mode(path):
+            continue
         for line in path.read_text().splitlines():
             if line.lstrip().startswith("#"):
                 continue
