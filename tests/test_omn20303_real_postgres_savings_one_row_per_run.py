@@ -106,7 +106,9 @@ async def _connect_or_skip() -> asyncpg.Connection:
 
 
 def _cf_cost() -> float:
-    cf = build_premium_counterfactual(prompt_tokens=319, completion_tokens=154)
+    cf = build_premium_counterfactual(
+        prompt_tokens=319, completion_tokens=154, premium_model="claude-opus-4-6"
+    )
     assert cf is not None
     return float(cf.counterfactual_cost_usd)
 
