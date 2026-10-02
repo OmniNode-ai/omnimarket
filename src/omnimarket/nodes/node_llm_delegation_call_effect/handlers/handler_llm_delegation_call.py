@@ -598,14 +598,23 @@ class HandlerLlmDelegationCall:
         """Re-aim a throttled or unavailable customer call ONCE; return result and request.
 
         OMN-19205. Same backend, same key, same customer route: only the model
-        changes, chosen from the key's own list excluding the one that failed.
+        changes, chosen from the key's own list excluding the one that failed
+        and every listed model of its preference family.
         When the list offers nothing else the first result stands as the typed
         refusal. The retry is not remembered as the key's model, since a
         throttle is momentary and says nothing about the model's availability
         to this key.
         """
+        # The throttle or the overload belongs to the slug's upstream, which its
+        # preference-family siblings share (2026-10-02: both google/gemma-4 free
+        # slugs 429 at once), so the one switch leaves the whole family.
         retry = self._resolve_byok_model(
-            request, byok, exclude=(request.model_id,), refused=first, remember=False
+            request,
+            byok,
+            exclude=(request.model_id,),
+            exclude_families_of=(request.model_id,),
+            refused=first,
+            remember=False,
         )
         if isinstance(retry, ModelLlmDelegationCallResult):
             return retry, request
@@ -643,6 +652,7 @@ class HandlerLlmDelegationCall:
         byok: ModelByokProviderBackend,
         *,
         exclude: tuple[str, ...],
+        exclude_families_of: tuple[str, ...] = (),
         refused: ModelLlmDelegationCallResult | None = None,
         remember: bool = True,
     ) -> ModelLlmDelegationCallRequest | ModelLlmDelegationCallResult:
@@ -670,7 +680,9 @@ class HandlerLlmDelegationCall:
                 EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
                 detail_text="",
             )
-        discovery = discover_byok_model_sync(byok, api_key, exclude=exclude)
+        discovery = discover_byok_model_sync(
+            byok, api_key, exclude=exclude, exclude_families_of=exclude_families_of
+        )
         if discovery.model is not None:
             logger.info(
                 "byok model resolved from the provider's list provider=%s plan=%s "

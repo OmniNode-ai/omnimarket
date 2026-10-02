@@ -817,6 +817,7 @@ def select_byok_model(
     available_model_ids: Iterable[str],
     *,
     exclude: Iterable[str] = (),
+    exclude_families_of: Iterable[str] = (),
 ) -> str | None:
     """The best model ``backend`` prefers among the ids a key can use (OMN-20157).
 
@@ -825,14 +826,20 @@ def select_byok_model(
     Preference entries are tried in order; within an entry the highest
     generation wins. ``exclude`` removes ids already known not to answer (a
     model the provider just refused with 404), so a re-resolve never returns the
-    model that failed. ``None`` when nothing listed matches any entry.
+    model that failed. ``exclude_families_of`` skips every preference entry that
+    matches one of those ids (OMN-19205): a throttled or overloaded free slug's
+    siblings share its upstream, so a switch away from it leaves the family
+    whole. ``None`` when nothing listed matches any entry.
     """
-    excluded = frozenset(exclude)
+    excluded = frozenset(exclude) | frozenset(exclude_families_of)
     candidates = sorted(
         {model for model in available_model_ids if model and model not in excluded},
         reverse=True,
     )
+    left_families = tuple(exclude_families_of)
     for preference in backend.model_preference:
+        if any(preference.generation_of(model) is not None for model in left_families):
+            continue
         ranked = [
             (generation, model)
             for model in candidates
