@@ -402,6 +402,11 @@ projection_api:
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source
+        # OMN-19448: the terminal's trace id, the model that answered and the
+        # backend route that served it (migration 0052).
+        - trace_id
+        - routed_model
+        - answering_backend
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model
