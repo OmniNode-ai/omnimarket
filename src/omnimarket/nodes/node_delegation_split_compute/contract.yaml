@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_split_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B COMPUTE. Deterministically shrink delegation source into isolated lower-band units.
+  Stateless and deterministic. No model calls or I/O.
+
+input_model:
+  name: ModelDelegationSplitRequest
+  module: omnimarket.models.model_delegation_split_recombine
+output_model:
+  name: ModelDelegationSplitResult
+  module: omnimarket.models.model_delegation_split_recombine
+
+handler:
+  module: omnimarket.nodes.node_delegation_split_compute.handlers.handler_delegation_split
+  class: HandlerDelegationSplit
+  input_model: omnimarket.models.model_delegation_split_recombine.ModelDelegationSplitRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_split
+      handler:
+        name: HandlerDelegationSplit
+        module: omnimarket.nodes.node_delegation_split_compute.handlers.handler_delegation_split
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-split-requested.v1
+terminal_event: onex.evt.omnimarket.delegation-split-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-split-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-split-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-split-completed.v1
+
+metadata:
+  transport_type: kafka
+
+# These rules are fixed in v1 and implemented by the pure handler. No runtime
+# contract reads occur; changing a rule requires a handler version change.
+split_rules:
+  summarization: by_source_section
+  code_review: per_file_then_per_hunk
+  review: per_file_then_per_hunk
+  document: per_section
+  migration: per_listed_unit
+  planning: not_decomposable
+  reasoning: not_decomposable
+  code_generation: not_decomposable
+
+size_bands:
+  order: [small, medium, large, extra_large]
+  child_band: immediate_predecessor
+  minimum_band_result: not_decomposable
+  description: >
+    Caller supplies the parent size band after a size failure. Each split unit
+    gets the immediately smaller label for retry. Bands are ordinal labels,
+    not token ceilings; this node neither estimates tokens nor calls a model.
+
+source_rules:
+  sections: >
+    ATX Markdown headings outside backtick or tilde fences delimit sections.
+    Preserve all bytes and retain a nonempty preamble as its own source slice.
+  reviews: >
+    Git unified diffs split by diff --git file boundary (ordinary ---/+++
+    unified diffs are also accepted). A single-file diff splits by @@ hunk.
+    Each hunk retains the file header and only its own hunk. Binary diffs and
+    single hunks without a second split boundary are not decomposable.
+  migration: >
+    migration_units is the exclusive source: one nonempty listed string per
+    unit, in listed order. Do not attach other units or parent source.
+  atomic_input: Fewer than two slices yields typed not_decomposable.
+  identities: unit_id is task_id followed by colon and the zero-based source position.
+
+inputs:
+  task_id: {type: str, required: true}
+  task_class: {type: str, required: true}
+  size_band: {type: str, required: true}
+  source: {type: str, required: false}
+  migration_units: {type: tuple, required: false}
+outputs:
+  status: {type: str, enum: [split, not_decomposable]}
+  task_id: {type: str}
+  units: {type: tuple, description: Present only on split.}
+  task_class: {type: str, description: Present only on not_decomposable.}
+  reason: {type: str, description: Present only on not_decomposable.}
