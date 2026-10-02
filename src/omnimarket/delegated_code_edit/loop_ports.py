@@ -51,7 +51,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
     ModelTurnReply,
+    ResumeRefusedError,
     WorkspacePathError,
+    bound_error,
     parse_turn_reply,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
@@ -196,14 +198,29 @@ class DelegatedCodeEditPorts:
     def _loop_dir(self, loop_run_id: str) -> Path:
         return self._state_root / "runs" / loop_run_id
 
-    def claim_loop_receipt(self, loop_run_id: str) -> None:
+    @property
+    def state_root(self) -> str:
+        """The receipt root for the resume command."""
+        return str(self._state_root)
+
+    def load_loop_receipt(self, loop_run_id: str) -> dict[str, object] | None:
+        """Read the current receipt, tolerating missing or unreadable JSON."""
+        try:
+            payload = json.loads(
+                (self._loop_dir(loop_run_id) / "loop_receipt.json").read_text()
+            )
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            return None
+        return cast("dict[str, object]", payload) if isinstance(payload, dict) else None
+
+    def claim_loop_receipt(self, loop_run_id: str, *, resume: bool = False) -> None:
         """Claim the correlation id with an exclusive create, so two concurrent
         runs of one id cannot both pass: the second finds the claim and is refused.
         A run that dies after claiming leaves the claim; rerun with a new id."""
         loop_dir = self._loop_dir(loop_run_id)
         loop_dir.mkdir(parents=True, exist_ok=True)
         receipt = loop_dir / "loop_receipt.json"
-        if receipt.exists():
+        if not resume and receipt.exists():
             raise LoopReceiptExistsError(
                 f"loop {loop_run_id} is already claimed and has a receipt"
             )
@@ -220,6 +237,18 @@ class DelegatedCodeEditPorts:
                     else ""
                 )
             ) from exc
+        if resume:
+            try:
+                if not receipt.exists():
+                    raise ResumeRefusedError(
+                        f"loop {loop_run_id} has no receipt to resume"
+                    )
+                number = 1 + len(list(loop_dir.glob("loop_receipt.*.json")))
+                os.replace(receipt, loop_dir / f"loop_receipt.{number}.json")
+            except Exception:
+                claim.unlink(missing_ok=True)
+                raise
+            return
         if receipt.exists():
             claim.unlink(missing_ok=True)
             raise LoopReceiptExistsError(
@@ -515,7 +544,7 @@ class DelegatedCodeEditPorts:
         )
         if not text:
             reason = (
-                f"onex delegate exited {result.returncode}: {result.stderr[-300:]}"
+                f"onex delegate exited {result.returncode}: {result.stderr.rstrip()}"
                 if result.returncode != 0
                 else f"onex delegate run {run_id or '?'} returned no result text"
             )
@@ -527,7 +556,7 @@ class DelegatedCodeEditPorts:
                 tokens_in=receipt.tokens_in,
                 tokens_out=receipt.tokens_out,
                 model=receipt.model,
-                invalid_reason=reason,
+                invalid_reason=bound_error(reason),
             )
         actions, reason = parse_turn_reply(text)
         return ModelTurnReply(

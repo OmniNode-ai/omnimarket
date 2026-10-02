@@ -30,12 +30,33 @@ MAX_VIEW_BYTES = 60_000
 MAX_WRITE_BYTES = 200_000
 #: Bytes of tool output fed back per action.
 MAX_OBSERVATION_BYTES = 6_000
+#: Characters of one error retained in the loop receipt.
+MAX_ERROR_CHARS = 4096
 #: Lines one view shows; a longer file is paged with ``offset``.
 VIEW_WINDOW_LINES = 250
 #: Bytes one view window may carry.
 MAX_VIEW_WINDOW_BYTES = 16_000
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
+
+
+def bound_error(text: str, limit: int = MAX_ERROR_CHARS) -> str:
+    """Bound an error while preserving its head, tail and exact cut count."""
+    if len(text) <= limit:
+        return text
+    if limit < 64:
+        return text[:limit]
+    cut = len(text) - limit
+    while True:
+        marker = f"\n... [{cut} characters cut] ...\n"
+        share = limit - len(marker)
+        removed = len(text) - share
+        if removed == cut:
+            break
+        cut = removed
+    head = (share + 1) // 2
+    tail = share // 2
+    return text[:head] + marker + text[-tail:]
 
 
 class EnumCodeEditTool(StrEnum):
@@ -223,6 +244,7 @@ class ModelCodeEditResult(BaseModel):
     delegate_run_ids: tuple[str, ...] = ()
     changed_paths: tuple[str, ...] = ()
     diff_sha256: str = ""
+    resumable: bool = False
     checks: tuple[ModelCheckResult, ...] = ()
     refusals: int = Field(default=0, ge=0)
     rubric_outcome: str = ""
@@ -235,6 +257,7 @@ class ModelCodeEditResult(BaseModel):
 
 __all__ = [
     "MAX_ACTIONS_PER_TURN",
+    "MAX_ERROR_CHARS",
     "MAX_OBSERVATION_BYTES",
     "MAX_TURNS_CEILING",
     "MAX_VIEW_BYTES",
@@ -251,4 +274,5 @@ __all__ = [
     "ModelDelegatedCodeEditRequest",
     "ModelObservation",
     "ModelTurnReply",
+    "bound_error",
 ]
