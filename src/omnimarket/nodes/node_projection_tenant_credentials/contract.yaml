@@ -92,7 +92,10 @@ db_io:
       database_ref: application
       schema: public
       migration: "0000_create_tenant_inference_credentials.sql"
-      access: write
+      # OMN-19968: read_write, not write. The runner already reads this table
+      # (the overlay's WHERE NOT EXISTS revoke guard and every RETURNING), and
+      # the store-neutral local path reads the stored row before a revoke.
+      access: read_write
       role: credentials
     # OMN-17372 blocker b3. Created and owned by node_delegation_routing_reducer
     # (migrations/0001) and already granted SELECT, INSERT, UPDATE to
@@ -118,7 +121,7 @@ db_io:
       database_ref: application
       schema: public
       migration: "../node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
-      access: write
+      access: read_write
       role: routing_overlay
 
 event_bus:
