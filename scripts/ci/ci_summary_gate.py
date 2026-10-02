@@ -185,6 +185,7 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Compliance Sweep",  # compliance-sweep — needs occ-preflight, no if:
     "Core-Only Install Gate",  # core-only-install — needs occ-preflight, no if:
     "Customer Clean-Install Delegate Gate",  # customer-clean-install (OMN-16200) — needs occ-preflight, if: always()
+    "Sibling Release Compatibility Gate (OMN-20381)",  # sibling-release-compat (OMN-20381) — needs occ-preflight, if: always()
     # contract-compliance — its ``if:`` is
     # ``occ-preflight.result == 'success' && (pull_request||merge_group||push)``;
     # the event clause is always true (those are the only triggers), so it never
