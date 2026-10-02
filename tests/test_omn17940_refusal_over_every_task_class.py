@@ -67,7 +67,10 @@ import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
-from omnimarket.inference.task_class_authority import load_task_class_authority
+from omnimarket.inference.task_class_authority import (
+    load_task_class_authority,
+    withheld_delegation_refusal,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -273,6 +276,13 @@ def test_every_task_class_refuses_a_keyless_customer_on_the_cloud(
     customer-facing one, carrying the pinned error code and the actionable
     reason — an unrelated crash fails, and so does a returned decision.
     """
+    # OMN-17427: a withheld class is refused before provider policy.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        with pytest.raises(ProtocolConfigurationError) as excinfo:
+            delta(_request(task_type), surface=EnumDelegationSurface.CLOUD)
+        assert refusal in str(excinfo.value)
+        return
     with pytest.raises(CustomerKeyRefusedError) as excinfo:
         delta(_request(task_type), surface=EnumDelegationSurface.CLOUD)
 
@@ -296,6 +306,15 @@ def test_platform_work_is_unrefused_on_every_task_class(task_type: str) -> None:
     above. OmniNode's own untenanted work must still route — or fail on its
     own config, never on the customer terminus.
     """
+    # OMN-17427: a withheld class returns its own refusal on house work too.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        with pytest.raises(ProtocolConfigurationError) as excinfo:
+            delta(
+                _request(task_type, tenant_id=None), surface=EnumDelegationSurface.CLOUD
+            )
+        assert refusal in str(excinfo.value)
+        return
     try:
         decision = delta(
             _request(task_type, tenant_id=None), surface=EnumDelegationSurface.CLOUD
@@ -330,6 +349,14 @@ def test_every_task_class_has_an_honest_customer_local_terminus(
     """
     routing._load_bifrost_endpoints.cache_clear()
     house_refs = house_credential_refs(routing._load_bifrost_endpoints())
+
+    # OMN-17427: the contract refusal precedes customer-local backend selection.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        with pytest.raises(ProtocolConfigurationError) as excinfo:
+            delta(_request(task_type), surface=EnumDelegationSurface.CUSTOMER_LOCAL)
+        assert refusal in str(excinfo.value)
+        return
 
     decision = None
     refusal_reason: EnumCustomerKeyRefusalReason | None = None
@@ -380,8 +407,20 @@ def test_a_customer_with_a_registered_key_is_not_refused_on_any_task_class(
 
     If the guard refused a keyed customer too, the sweeps would still be green
     and the product would be broken. The overlay path wholesale-replaces tier
-    resolution, so this holds even for a class the ladder cannot serve.
+    resolution, so this holds even for a class the ladder cannot serve; only a
+    class the contract withholds from delegation keeps its refusal.
     """
+    # OMN-17427: a customer key cannot override a withheld declaration.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        with pytest.raises(ProtocolConfigurationError) as excinfo:
+            delta(
+                _request(task_type),
+                tenant_overlay=_overlay(task_type, secret_ref=_MINTED_CUSTOMER_REF),
+                surface=EnumDelegationSurface.CLOUD,
+            )
+        assert refusal in str(excinfo.value)
+        return
     decision = delta(
         _request(task_type),
         tenant_overlay=_overlay(task_type, secret_ref=_MINTED_CUSTOMER_REF),
@@ -402,6 +441,17 @@ def test_an_overlay_naming_a_house_credential_is_refused_on_every_task_class(
     configuration, and it bypasses the OMN-16944 minted-ref guard precisely
     because such a ref is not tenant-shaped. Proven for one class before this.
     """
+    # OMN-17427: a withheld class is refused even with a tenant override.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        with pytest.raises(ProtocolConfigurationError) as excinfo:
+            delta(
+                _request(task_type),
+                tenant_overlay=_overlay(task_type, secret_ref="llm.glm.api_key"),
+                surface=EnumDelegationSurface.CLOUD,
+            )
+        assert refusal in str(excinfo.value)
+        return
     with pytest.raises(CustomerKeyRefusedError) as excinfo:
         delta(
             _request(task_type),
