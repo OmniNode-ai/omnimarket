@@ -251,7 +251,7 @@ class TestHandlerInferenceIntent:
         """OMN-13215/OMN-13351: the ceiling tier executes via the canonical HTTP path.
 
         A complete Gemini chat-completions URL (the default ceiling backend
-        ``cloud-gemini-pro``, repointed off the dead Anthropic ``cloud-sonnet`` in
+        ``cloud-gemini-2-5-flash``, repointed off the dead Anthropic ``cloud-sonnet`` in
         OMN-13351) is posted verbatim with the resolved api_key, identical to every
         lower tier.
         """

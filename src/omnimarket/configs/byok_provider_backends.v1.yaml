@@ -181,7 +181,7 @@ providers:
     # OMN-20157. OpenRouter's catalogue is account-independent and public; the
     # listed ids are what any key may address. Free tier: rate-limited, no SLA,
     # and $0 on the customer's account. The first family is the one the
-    # platform's `openrouter-qwen3-coder-480b` rung runs (OMN-15638 repoint),
+    # platform's `openrouter-nemotron-ultra` rung runs (OMN-15638 repoint),
     # newest generation first; the second is the free Qwen coder family.
     # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
     models_url: "https://openrouter.ai/api/v1/models"

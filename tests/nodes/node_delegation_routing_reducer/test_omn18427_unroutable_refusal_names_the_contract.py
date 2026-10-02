@@ -116,7 +116,7 @@ def _write_onex_dev_shaped_contract(tmp_path: Path) -> Path:
                 tier: local
                 timeout_ms: 30000
                 capabilities: [code_generation]
-              - backend_id: openrouter-qwen3-coder-480b
+              - backend_id: openrouter-nemotron-ultra
                 provider: openrouter
                 endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
                 model_name: qwen/qwen3-coder
@@ -185,7 +185,7 @@ def _write_tiers(tmp_path: Path) -> Path:
                 cost_per_1k_tokens: 0.0
                 models:
                   - id: qwen/qwen3-coder
-                    backend_id: openrouter-qwen3-coder-480b
+                    backend_id: openrouter-nemotron-ultra
                     max_context_tokens: 262144
                     use_for: [summarization]
                 eval_before_accept: false
@@ -257,7 +257,7 @@ class TestRefusalEnumeratesEveryCandidate:
 
         message = str(exc_info.value)
         assert "local-coder" in message, message
-        assert "openrouter-qwen3-coder-480b" in message, message
+        assert "openrouter-nemotron-ultra" in message, message
         assert "cloud-glm" in message, message
         assert (
             EnumRoutingExclusionReason.BACKEND_NOT_DECLARED_WITH_AN_ENDPOINT in message

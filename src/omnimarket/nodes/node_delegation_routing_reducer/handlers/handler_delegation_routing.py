@@ -86,6 +86,12 @@ from omnimarket.models.delegation.credential_withheld_rung import (
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
 )
+from omnimarket.models.delegation.model_entry_tier_share import (
+    entry_first_order,
+    entry_share_draw,
+    entry_share_from_contract_entry,
+    validate_entry_share,
+)
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
@@ -1169,6 +1175,49 @@ def _tier_order_from_contract(
     return tuple(ordered)
 
 
+def _is_free_config_tier(config: ModelDelegationConfig, tier_name: str) -> bool:
+    """Classify a rung using its typed cost, with the legacy flat-cost fallback."""
+    for tier in config.tiers:
+        if tier.name == tier_name:
+            if tier.cost is not None:
+                return tier.cost.cost_type == EnumTierCostType.FREE_LOCAL
+            return tier.cost_per_1k_tokens == 0.0
+    return False
+
+
+def _entry_first_tiers(
+    config: ModelDelegationConfig,
+    entry: dict[str, object] | None,
+    tiers: tuple[ModelRoutingTier, ...],
+    correlation_id: object | None,
+    *,
+    quota_state: ModelProviderQuotaSnapshot | None,
+    apply_quota: bool,
+) -> tuple[ModelRoutingTier, ...]:
+    """Use one drawn ladder for picks and retries; quota bounds only the pick."""
+    share = entry_share_from_contract_entry(entry)
+    if share is None:
+        return tiers
+    tier_names = tuple(tier.name for tier in tiers)
+    validate_entry_share(
+        share, tier_names, lambda name: _is_free_config_tier(config, name)
+    )
+    if correlation_id is None:
+        return tiers
+    tier_by_name = {tier.name: tier for tier in tiers}
+    if apply_quota and quota_state is not None:
+        entry_refs = frozenset(
+            model.backend_ref for model in tier_by_name[share.tier].models
+        )
+        if entry_refs <= quota_blocked_backend_refs(quota_state):
+            return tiers
+    if not entry_share_draw(correlation_id, share.share):
+        return tiers
+    return tuple(
+        tier_by_name[name] for name in entry_first_order(tier_names, share.tier)
+    )
+
+
 def _definition_of_done_checks(
     entry: dict[str, object] | None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -1597,6 +1646,7 @@ def next_eligible_tier(
     task_type: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
+    correlation_id: object | None = None,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1623,6 +1673,10 @@ def next_eligible_tier(
     concrete backend: the later label is not a fresh quota/failure domain and must
     be skipped after that backend fails once (OMN-15503).
 
+    ``correlation_id`` preserves the drawn entry-first ladder (OMN-20163): an
+    entry-tier miss proceeds to the original first rung before metered tiers.
+    Quota never changes this escalation order.
+
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
     """
@@ -1634,6 +1688,9 @@ def next_eligible_tier(
         _tier_order_from_contract(config, entry)
         if task_type is not None
         else config.tiers
+    )
+    tiers = _entry_first_tiers(
+        config, entry, tiers, correlation_id, quota_state=None, apply_quota=False
     )
     suppressed = _roi_suppressed_tiers(roi_overlay)
     for extra_skip in (suppressed, frozenset[str]()):
@@ -1664,8 +1721,10 @@ def first_eligible_tier(
     task_type: str,
     *,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
+    correlation_id: object | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> str | None:
-    """Return the CHEAPEST-FIRST initial tier for ``task_type``, or None.
+    """Return the initial tier for ``task_type``, honoring its entry share.
 
     Single parsing path for the INITIAL tier the bus-less local dispatch port
     resolves (OMN-13861). Reads the closed-set task-class ``escalation_policy.
@@ -1678,7 +1737,7 @@ def first_eligible_tier(
     This lets the initial resolution honor the cheapest-first + closed-set
     tier_order guardrails instead of the untargeted, bifrost-file-order
     ``resolve_delegation_backend(task_type)`` that could land on an off-ladder
-    backend (e.g. the abandoned ``cloud-gemini-pro`` for ``code_generation``,
+    backend (e.g. the abandoned ``cloud-gemini-2-5-flash`` for ``code_generation``,
     OMN-13667) and strand the escalation loop.
 
     When ``roi_overlay`` is provided (OMN-14001 — the first closed platform
@@ -1689,6 +1748,9 @@ def first_eligible_tier(
     it would leave no routable tier, so ROI can only re-pick among statically
     routable tiers, never make routing fail. ``None`` overlay is byte-identical to
     the pre-OMN-14001 cheapest-first resolution.
+
+    ``correlation_id`` applies the class's deterministic entry share (OMN-20163).
+    ``quota_state`` disables that initial draw while every entry backend is blocked.
 
     Returns ``None`` when the task class declares no tier_order (no contract entry)
     or when no declared tier can route the task — the caller then falls back to the
@@ -1706,6 +1768,14 @@ def first_eligible_tier(
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
     ordered = _tier_order_from_contract(config, entry)
+    ordered = _entry_first_tiers(
+        config,
+        entry,
+        ordered,
+        correlation_id,
+        quota_state=quota_state,
+        apply_quota=True,
+    )
     suppressed = _roi_suppressed_tiers(roi_overlay)
     for skip in (suppressed, frozenset[str]()):
         for tier in ordered:
@@ -1770,6 +1840,7 @@ def describe_no_higher_tier_available(
     *,
     task_type: str,
     excluded_backend_refs: frozenset[str] = frozenset(),
+    correlation_id: object | None = None,
 ) -> str:
     """Return a precise terminal reason when no higher tier can serve a task.
 
@@ -1782,12 +1853,17 @@ def describe_no_higher_tier_available(
     (OMN-13167). The orchestrator emits this as ``terminal_failure_reason`` so the
     delegation-failed event and its correlation-trace projection row identify the
     missing tier rather than a bare ``no_higher_tier_available``.
+    With ``correlation_id``, the diagnostic describes the same entry-first
+    ladder as the pick and escalation helpers (OMN-20163).
     """
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
     tiers = _tier_order_from_contract(config, entry)
+    tiers = _entry_first_tiers(
+        config, entry, tiers, correlation_id, quota_state=None, apply_quota=False
+    )
     policy_order = tuple(t.name for t in tiers)
 
     # Candidate tiers are those the policy lists strictly after the current tier.
@@ -2143,13 +2219,7 @@ def is_free_tier(tier_name: str) -> bool:
     unrecognized tier is never treated as a free retry surface, so retry-local can
     never keep a paid/unknown tier off the escalation ladder).
     """
-    config = _get_config()
-    for tier in config.tiers:
-        if tier.name == tier_name:
-            if tier.cost is not None:
-                return tier.cost.cost_type == EnumTierCostType.FREE_LOCAL
-            return tier.cost_per_1k_tokens == 0.0
-    return False
+    return _is_free_config_tier(_get_config(), tier_name)
 
 
 def tier_max_retries(tier_name: str) -> int:
@@ -2818,6 +2888,15 @@ def delta(
         if requested_backend_ref is not None
         else _tier_order_from_contract(config, entry)
     )
+    if requested_backend_ref is None:
+        tiers = _entry_first_tiers(
+            config,
+            entry,
+            tiers,
+            request.correlation_id,
+            quota_state=quota_state,
+            apply_quota=min_tier_name is None,
+        )
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)

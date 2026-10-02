@@ -85,7 +85,7 @@ class TestPlacementReasonField:
         recorder.record(
             _record(
                 tier="cheap_frontier",
-                backend_id="openrouter-qwen3-coder-480b",
+                backend_id="openrouter-nemotron-ultra",
                 placement_reason=EnumPlacementReason.SATURATION_ESCALATE,
             )
         )
