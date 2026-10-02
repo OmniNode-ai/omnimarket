@@ -47,6 +47,9 @@ from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     SUBSCRIBE_TOPICS,
     TYPED_SUBSCRIBE_TOPICS,
 )
+from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard import (
+    HandlerWorkLedgerWriteGuard,
+)
 from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
     WorkLedgerFoldError,
     fold_records,
@@ -237,6 +240,7 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> int:
+        self._refuse_real_dsn_under_test()
         try:
             await self.db.connect()
             return await self._project_and_report(topic, data, meta)
@@ -253,6 +257,10 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         with ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
 
+    def _refuse_real_dsn_under_test(self) -> None:
+        """Judged before any connect or statement: a test process never writes the real DSN."""
+        HandlerWorkLedgerWriteGuard.check_dsn(str(getattr(self._db, "dsn", "") or ""))
+
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -263,6 +271,7 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> int:
         """Fold, then write the log record and each state op. Returns rows written."""
+        self._refuse_real_dsn_under_test()
         if topic in TYPED_SUBSCRIBE_TOPICS:
             return await self._project_typed(topic, data)
         if topic not in SUBSCRIBE_TOPICS:
