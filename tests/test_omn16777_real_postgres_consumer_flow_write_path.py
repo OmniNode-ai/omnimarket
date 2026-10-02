@@ -665,6 +665,92 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
 
 
 @pytest.mark.integration
+def test_real_rows_publish_a_snapshot_once_per_unchanged_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The table keeps every window; the snapshot topic gets one delta per
+    unchanged verdict per refresh interval (bus write budget). Only real
+    Postgres hands back ``window_end`` as a TIMESTAMPTZ datetime.
+    """
+    from typing import Any
+
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+    from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner import (
+        ConsumerFlowProjectionWriter,
+    )
+    from omnimarket.projection.models import ProjectionTableConfig
+
+    database = f"omn16777_{uuid4().hex[:16]}"
+    node_id = str(uuid4())
+
+    async def _create() -> None:
+        admin = await _connect_or_skip()
+        try:
+            await admin.execute(f'CREATE DATABASE "{database}"')
+        finally:
+            await admin.close()
+        conn = await asyncpg.connect(_dsn(database))
+        try:
+            await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
+            for migration in _MIGRATION_FILES:
+                await conn.execute(_migration_sql(migration))
+        finally:
+            await conn.close()
+
+    async def _count_rows() -> int:
+        conn = await asyncpg.connect(_dsn(database))
+        try:
+            return int(
+                await conn.fetchval(
+                    "SELECT count(*) FROM omninode_internal.consumer_flow_windows"
+                )
+            )
+        finally:
+            await conn.close()
+
+    async def _drop() -> None:
+        admin = await _connect_or_skip()
+        try:
+            await admin.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
+        finally:
+            await admin.close()
+
+    asyncio.run(_create())
+    try:
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", _dsn(database))
+        writer = ConsumerFlowProjectionWriter()
+        writer._db = AsyncpgAdapter(dsn=_dsn(database), min_size=1, max_size=2)
+        published: list[tuple[ProjectionTableConfig, dict[str, Any]]] = []
+
+        async def record_publish(
+            exposure: ProjectionTableConfig, **kwargs: Any
+        ) -> None:
+            published.append((exposure, kwargs))
+
+        monkeypatch.setattr(writer, "publish_snapshot_delta", record_publish)
+
+        results = [
+            writer.handle(_heartbeat_payload(node_id=node_id, sequence=sequence))
+            for sequence in (1, 2, 3)
+        ]
+
+        assert all(result["rows_upserted"] >= 1 for result in results)
+        assert asyncio.run(_count_rows()) == 3
+        assert len(published) == 1
+        exposure, kwargs = published[0]
+        assert exposure is writer._snapshot_exposure
+        row = kwargs["row"]
+        assert row["consumer_group"] == _GROUP
+        assert row["topic"] == _TOPIC
+        assert isinstance(row["window_end"], datetime)
+        assert row["window_end"].tzinfo is not None
+        assert row["window_end"].utcoffset() is not None
+        assert row["flow_state"] == EnumConsumerFlowState.STALLED.value
+    finally:
+        asyncio.run(_drop())
+
+
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_the_gap_lookup_is_index_backed_and_never_a_sequential_scan() -> None:
     """``_SELECT_PRIOR_STATE`` must not degrade to a scan of the whole relation.

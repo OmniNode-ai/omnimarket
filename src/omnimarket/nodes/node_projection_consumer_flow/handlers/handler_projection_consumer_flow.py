@@ -36,6 +36,8 @@ quiet one. Its counter fields are ``None``, never 0 (AC5).
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from omnimarket.nodes.node_projection_consumer_flow.models import (
     EnumConsumerFlowState,
     EnumUpstreamEvidence,
@@ -43,12 +45,33 @@ from omnimarket.nodes.node_projection_consumer_flow.models import (
     ModelConsumerFlowProjectionRequest,
     ModelConsumerFlowProjectionResult,
     ModelConsumerFlowRow,
+    ModelSnapshotPublishPolicy,
 )
 
 TABLE_FLOW = "consumer_flow_windows"
 TABLE_PRODUCE = "topic_produce_windows"
 FLOW_CONFLICT_KEY = "consumer_group,topic,window_start"
 PRODUCE_CONFLICT_KEY = "topic,window_start"
+
+
+def snapshot_publish_due(
+    *,
+    policy: ModelSnapshotPublishPolicy,
+    last_published: tuple[tuple[str, ...], datetime] | None,
+    verdict: tuple[str, ...],
+    window_end: datetime,
+) -> bool:
+    """Publish first sightings, verdict changes, and bounded refreshes.
+
+    The clock is the row's own window_end (event time), never a wall clock,
+    so a replay decides identically. An unchanged earlier window is not due.
+    """
+    if last_published is None:
+        return True
+    last_verdict, last_window_end = last_published
+    return verdict != last_verdict or window_end - last_window_end >= timedelta(
+        seconds=policy.refresh_interval_seconds
+    )
 
 
 def derive_flow_state(
@@ -221,4 +244,5 @@ __all__ = [
     "TABLE_PRODUCE",
     "HandlerProjectionConsumerFlow",
     "derive_flow_state",
+    "snapshot_publish_due",
 ]
