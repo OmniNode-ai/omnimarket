@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -320,26 +321,26 @@ def _fake_run(
 
 @pytest.mark.unit
 class TestSubprocessProbe:
-    def test_argv_runs_the_sibling_onex_of_this_interpreter(self) -> None:
-        argv = dod_verify_argv("OMN-1")
-        assert argv[0].endswith("/onex")
-        assert argv[1:] == [
-            "skill",
-            "dod_verify",
+    def test_argv_runs_the_verifier_node_under_this_interpreter(self) -> None:
+        assert dod_verify_argv("OMN-1") == [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_dod_verify",
+            "--ticket-id",
             "OMN-1",
             "--execution-audience",
             "hosted",
         ]
-        assert "uv" not in argv
 
     @pytest.mark.parametrize(
         "receipt",
         [
             {"result_model": _STATE_MODEL, "result": _BOUND},
             {"result_model": _SUMMARY_MODEL, "result": {"terminal_payload": _BOUND}},
+            _BOUND,  # the node entry point prints the verdict itself, flat
         ],
     )
-    def test_reads_either_declared_arm_whatever_the_exit_code(
+    def test_reads_whichever_shape_it_prints_whatever_the_exit_code(
         self, monkeypatch: pytest.MonkeyPatch, receipt: dict[str, Any]
     ) -> None:
         monkeypatch.setattr(
@@ -357,7 +358,7 @@ class TestSubprocessProbe:
         )
         verdict, why = DodVerifySubprocessProbe().verdict_for(ticket_id="OMN-1")
         assert verdict is None
-        assert "no JSON receipt" in why
+        assert "printed no JSON verdict" in why
 
     def test_a_receipt_with_no_verdict_is_no_verdict(
         self, monkeypatch: pytest.MonkeyPatch
