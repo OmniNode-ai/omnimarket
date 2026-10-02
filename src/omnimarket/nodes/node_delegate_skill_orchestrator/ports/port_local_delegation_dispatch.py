@@ -2330,7 +2330,12 @@ class LocalDelegationDispatchPort:
         """
         if backend_id is not None:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
-        first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
+        first_tier = first_eligible_tier(
+            task_type,
+            roi_overlay=roi_overlay,
+            correlation_id=spread_key,
+            quota_state=quota_state,
+        )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
                 first_tier, task_type, spread_key=spread_key
@@ -2534,6 +2539,7 @@ class LocalDelegationDispatchPort:
             task_type=task_type,
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
+            correlation_id=spread_key,
         )
         if next_tier is None:
             return None
