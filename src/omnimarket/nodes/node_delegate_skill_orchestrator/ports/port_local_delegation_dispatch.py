@@ -3104,11 +3104,7 @@ class LocalDelegationDispatchPort:
             judge_verdict = await self._judge.score(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                prompt=(
-                    "Judge whether the candidate adequately fulfills a "
-                    f"{task_type} task that satisfies the declared "
-                    "acceptance criteria."
-                ),
+                prompt=prompt,
                 candidate_output=content,
                 acceptance_criteria=acceptance_criteria,
             )
