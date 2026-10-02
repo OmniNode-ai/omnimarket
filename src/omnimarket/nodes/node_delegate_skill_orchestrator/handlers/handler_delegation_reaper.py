@@ -57,6 +57,14 @@ class HandlerDelegationReaper:
             < self._config.scan_interval_seconds
         ):
             return None
+        if self._last_scan is None:
+            # One line per process, so a deployed runtime shows that the tick
+            # reached this handler before any command is ever overdue.
+            logger.info(
+                "Delegation reaper scanning every %ss, at most %s commands per scan",
+                self._config.scan_interval_seconds,
+                self._config.max_reaps_per_tick,
+            )
         self._last_scan = now
         stalled = port.stalled_claims(now=now, limit=self._config.max_reaps_per_tick)
         terminals: list[ModelDelegateSkillCompleted | ModelDelegateSkillFailed] = []
@@ -105,6 +113,13 @@ class HandlerDelegationReaper:
                 )
         if not terminals:
             return None
+        logger.info(
+            "Delegation reaper handed off %s terminal(s): reaped=%s healed=%s failed=%s",
+            len(terminals),
+            won,
+            healed,
+            failed,
+        )
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=tick.tick_id,
             correlation_id=tick.correlation_id or tick.tick_id,

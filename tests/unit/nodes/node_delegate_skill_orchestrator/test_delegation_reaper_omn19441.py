@@ -409,7 +409,7 @@ def test_reaper_config_refuses_missing_and_invalid_declarations(tmp_path, config
         load_delegation_reaper_config(path)
 
 
-async def test_scan_is_throttled_to_the_contract_interval(monkeypatch):
+async def test_scan_is_throttled_to_the_contract_interval(monkeypatch, caplog):
     _, port, _, _, ctx = _setup()
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper import (
         HandlerDelegationReaper,
@@ -433,9 +433,12 @@ async def test_scan_is_throttled_to_the_contract_interval(monkeypatch):
         ),
     )
     start = ctx.deadline_at - timedelta(minutes=5)
-    for seconds in (0, 1, 14, 15, 16, 30):
-        await reaper.handle(_tick(start + timedelta(seconds=seconds)))
+    with caplog.at_level("INFO"):
+        for seconds in (0, 1, 14, 15, 16, 30):
+            await reaper.handle(_tick(start + timedelta(seconds=seconds)))
     assert [(s - start).total_seconds() for s in scans] == [0, 15, 30]
+    started = [r for r in caplog.records if "Delegation reaper scanning" in r.message]
+    assert len(started) == 1
 
 
 def test_context_refuses_naive_deadline_and_normalizes_aware_deadline():
