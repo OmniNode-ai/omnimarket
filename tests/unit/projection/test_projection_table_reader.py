@@ -42,6 +42,7 @@ from omnimarket.projection.discovery import (
     resolve_relation_schema,
 )
 from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.read_page import read_projection_page
 from omnimarket.projection.table_reader import (
     DEFAULT_DSN_ENV,
     RETAINED_WINDOW_FACTOR,
@@ -446,3 +447,210 @@ async def test_a_real_table_serves_the_newest_window_for_one_tenant_only() -> No
     finally:
         await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await connection.close()
+
+
+async def _walk_keys(
+    source: TableRowSource, cfg: ProjectionTableConfig
+) -> tuple[list[dict[str, Any]], int]:
+    """Read ``cfg`` the way a caller does: no ``since`` first, then each
+    ``next_cursor`` until it is null. Returns every row and the page count."""
+    topic_map = {cfg.topic: cfg}
+    rows: list[dict[str, Any]] = []
+    since: str | None = None
+    pages = 0
+    while True:
+        page = await read_projection_page(
+            cfg.topic, topic_map=topic_map, source=source, since=since
+        )
+        assert page.status_code == 200, page.body
+        pages += 1
+        rows.extend(page.body["rows"])
+        since = page.body["next_cursor"]
+        if since is None or pages > 50:
+            return rows, pages
+
+
+@pytest.mark.integration
+async def test_a_real_table_walk_reaches_every_key_once_at_its_latest_row() -> None:
+    """OMN-20327: a mutable-grain exposure over a table holding every window a
+    key ever had. 12 keys, two of them busy (6 windows), limit 3: the newest 12
+    rows name only the 2 busy keys, so a walk that starts in the newest window
+    cannot reach the other 10."""
+    connection, dsn = await _connect_or_skip()
+    schema = f"omn20327_{uuid4().hex[:12]}"
+    try:
+        await connection.execute(f'CREATE SCHEMA "{schema}"')
+        await connection.execute(
+            f'CREATE TABLE "{schema}".flow_windows ('
+            "consumer_group text NOT NULL, topic text NOT NULL, "
+            "window_start timestamptz NOT NULL, "
+            "projection_cursor bigserial NOT NULL UNIQUE, "
+            "PRIMARY KEY (consumer_group, topic, window_start))"
+        )
+        base = datetime(2026, 10, 1, tzinfo=UTC)
+        windows = [(group, 0) for group in range(12)] + [
+            (group, window) for window in range(1, 6) for group in (0, 1)
+        ]
+        for group, window in windows:
+            await connection.execute(
+                f'INSERT INTO "{schema}".flow_windows '
+                "(consumer_group, topic, window_start) VALUES ($1, $2, $3)",
+                f"group-{group:02d}",
+                "topic-a",
+                base + timedelta(minutes=window),
+            )
+        columns = ("projection_cursor", "consumer_group", "topic", "window_start")
+        cfg = ProjectionTableConfig(
+            topic=_FLOW,
+            table="flow_windows",
+            schema_name="omnidash_analytics",
+            relation_schema=schema,
+            columns=columns,
+            order_by="window_start DESC",
+            order_by_spec=parse_order_by_clauses("window_start DESC", columns),
+            freshness_column="window_start",
+            cursor_column="projection_cursor",
+            limit=3,
+            bus_backed=True,
+            key_columns=("consumer_group", "topic"),
+            latest_by="window_start",
+        )
+        source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+        try:
+            rows, pages = await _walk_keys(source, cfg)
+        finally:
+            await source.close()
+        assert pages == 4, "limit 3 over 12 keys is four pages"
+        assert len(rows) == 12, "one row per key, not one per window"
+        assert len({row["consumer_group"] for row in rows}) == 12
+        newest = {row["consumer_group"]: row["window_start"] for row in rows}
+        assert newest["group-00"] == (base + timedelta(minutes=5)).isoformat()
+        assert newest["group-07"] == base.isoformat(), "a quiet key still appears"
+    finally:
+        await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await connection.close()
+
+
+@pytest.mark.integration
+async def test_a_real_ranked_table_walk_reaches_every_key() -> None:
+    """OMN-20327: a ranked exposure's first page is the top rows of the WHOLE
+    table, and its cursor starts a walk that reaches every key."""
+    connection, dsn = await _connect_or_skip()
+    schema = f"omn20327_{uuid4().hex[:12]}"
+    try:
+        await connection.execute(f'CREATE SCHEMA "{schema}"')
+        await connection.execute(
+            f'CREATE TABLE "{schema}".fingerprints ('
+            "fingerprint text PRIMARY KEY, occurrence_count bigint NOT NULL, "
+            "projection_cursor bigserial NOT NULL UNIQUE)"
+        )
+        for i in range(30):
+            await connection.execute(
+                f'INSERT INTO "{schema}".fingerprints '
+                "(fingerprint, occurrence_count) VALUES ($1, $2)",
+                f"fp-{i:02d}",
+                100 if i == 0 else 1,
+            )
+        columns = ("fingerprint", "occurrence_count", "projection_cursor")
+        cfg = ProjectionTableConfig(
+            topic=_FLOW,
+            table="fingerprints",
+            schema_name="omnidash_analytics",
+            relation_schema=schema,
+            columns=columns,
+            order_by="occurrence_count DESC, projection_cursor DESC",
+            order_by_spec=parse_order_by_clauses(
+                "occurrence_count DESC, projection_cursor DESC", columns
+            ),
+            page_selection="order_by",
+            cursor_column="projection_cursor",
+            limit=5,
+            bus_backed=True,
+            key_columns=("fingerprint",),
+        )
+        source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+        try:
+            first = await read_projection_page(
+                cfg.topic, topic_map={cfg.topic: cfg}, source=source
+            )
+            rows, _ = await _walk_keys(source, cfg)
+        finally:
+            await source.close()
+        assert first.body["rows"][0]["fingerprint"] == "fp-00"
+        assert first.body["truncated"] is True
+        assert {row["fingerprint"] for row in rows} == {
+            f"fp-{i:02d}" for i in range(30)
+        }
+    finally:
+        await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await connection.close()
+
+
+@pytest.mark.unit
+def test_a_keyed_window_takes_the_newest_row_of_each_key_by_the_declared_column() -> (
+    None
+):
+    """OMN-20327: one row per key, found by a skip scan over the key index and
+    ordered by ``latest_by`` (the tail of the table's primary key) so the table's
+    revision history is never sorted."""
+    columns = ("projection_cursor", "consumer_group", "topic", "window_start")
+    cfg = _flow_cfg(
+        columns=columns,
+        order_by_spec=parse_order_by_clauses("window_start DESC", columns),
+        key_columns=("consumer_group", "topic"),
+        latest_by="window_start",
+    )
+    query = build_window_query(
+        cfg,
+        order_spec=(("projection_cursor", "ASC", None),),
+        tenant_id=None,
+        selection="walk",
+    )
+    assert "WITH RECURSIVE k AS" in query.sql
+    assert 'ORDER BY t."window_start" DESC LIMIT 1) AS l' in query.sql
+    assert 't."consumer_group" = k."consumer_group"' in query.sql
+    assert 't."topic" = k."topic"' in query.sql
+    assert 'ORDER BY "projection_cursor" ASC LIMIT' in query.sql
+
+
+@pytest.mark.unit
+def test_a_keyed_window_without_latest_by_orders_each_key_by_its_cursor() -> None:
+    query = build_window_query(
+        _flow_cfg(), order_spec=(("projection_cursor", "ASC", None),), tenant_id=None
+    )
+    assert 'ORDER BY t."projection_cursor" DESC LIMIT 1) AS l' in query.sql
+
+
+@pytest.mark.unit
+def test_the_selection_decides_which_rows_the_window_holds() -> None:
+    cfg = _flow_cfg()
+    spec = cfg.order_by_spec
+    walk = build_window_query(cfg, order_spec=spec, tenant_id=None, selection="walk")
+    newest = build_window_query(cfg, order_spec=spec, tenant_id=None)
+    ranked = build_window_query(
+        cfg, order_spec=spec, tenant_id=None, selection="ranked"
+    )
+    limit = cfg.limit * RETAINED_WINDOW_FACTOR
+    assert f'ORDER BY "projection_cursor" ASC LIMIT {limit}' in walk.sql
+    assert f'ORDER BY "projection_cursor" DESC LIMIT {limit}' in newest.sql
+    assert f'ORDER BY "window_end" DESC NULLS LAST LIMIT {limit}' in ranked.sql
+
+
+@pytest.mark.unit
+def test_the_consumer_flow_contract_declares_the_column_that_picks_a_keys_newest_row() -> (
+    None
+):
+    from pathlib import Path
+
+    import yaml
+
+    import omnimarket.nodes.node_projection_consumer_flow as flow_node
+    from omnimarket.projection.discovery import load_projection_exposures_from_contract
+
+    path = Path(flow_node.__file__).parent / "contract.yaml"
+    contract = yaml.safe_load(path.read_text())
+    (cfg,) = load_projection_exposures_from_contract(
+        contract, str(contract["name"]), path
+    )
+    assert cfg.key_columns == ("consumer_group", "topic")
+    assert cfg.latest_by == "window_start"

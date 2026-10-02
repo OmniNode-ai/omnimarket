@@ -63,21 +63,11 @@ from omnimarket.routing.delegation_backend_resolution import (
 
 logger = logging.getLogger(__name__)
 
-# The judge rides a concrete CLOUD backend declared in the committed routing
-# contract (bifrost_delegation.yaml). ``cloud-glm-judge`` carries a COMPLETE
-# verbatim endpoint_url (z.ai GLM coding endpoint), a concrete model_name
-# (glm-5.2, the FLAGSHIP), and the logical secret_ref ``llm.glm.api_key``. It is
-# internet-reachable (not a LAN .201 backend), so the judge effect resolves it
-# identically in every runtime lane.
-#
-# OMN-14225: the judge backend is DECOUPLED from the ``cloud-glm`` escalation
-# backend. ``cloud-glm`` is the paid ESCALATION model and was repointed to the
-# cheaper ``glm-5-turbo``; the JUDGE is a quality authority, not an escalation
-# step, so it keeps its own ``cloud-glm-judge`` backend pinned to the flagship
-# ``glm-5.2`` and is unaffected by the escalation model. To swap the judge model,
-# repoint ``cloud-glm-judge``'s model_name in the contract — no code change here,
-# and the escalation model stays independent.
-_DEFAULT_JUDGE_BACKEND_ID = "cloud-glm-judge"
+# OMN-17427: Gemini is reserved for explicitly pinned operator tests. Ordinary
+# judging uses the existing free OpenRouter reasoning rung, declared by the
+# routing contract with the judge_adequacy capability. Local reviewer fallback
+# below remains available when that provider's key is unbound.
+_DEFAULT_JUDGE_BACKEND_ID = "openrouter-nemotron-super"
 
 # OMN-19198: the reviewer a machine can bind with nothing but its own model.
 # The declared judge above names a metered provider and a credential reference;

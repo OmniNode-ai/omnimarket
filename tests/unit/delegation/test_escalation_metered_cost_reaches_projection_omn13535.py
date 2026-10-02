@@ -128,7 +128,7 @@ def _make_inference_response(
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
-        content="def solution():\n    return 42",
+        content="### ANSWER\ndef solution():\n    return 42",
         model_used=model_used,
         llm_call_id="chatcmpl-omn13535",
         latency_ms=88_998,

@@ -175,11 +175,10 @@ def test_the_caller_still_receives_nothing_of_the_reasoning() -> None:
 
 
 def test_an_unmarked_answer_is_unchanged() -> None:
-    """Negative control: an ordinary unmarked answer is not reasoning, so the
-    gate still receives the blank the extraction refusal produced."""
+    """Unmarked prose remains refused while its gate retains the original text."""
     workflow, request, gate_intent = _drive(_UNMARKED_ANSWER)
     state = workflow._workflows[request.correlation_id]
-    assert gate_intent.payload.llm_response_content == ""
+    assert gate_intent.payload.llm_response_content == _UNMARKED_ANSWER
     assert state.inference_content == ""
     assert state.output_refusal is not None
-    assert state.gate_content_override is None
+    assert state.gate_content_override == _UNMARKED_ANSWER

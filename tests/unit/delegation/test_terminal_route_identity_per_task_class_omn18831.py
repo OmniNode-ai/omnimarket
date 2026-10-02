@@ -197,11 +197,19 @@ def _drive_to_completed_terminals(
     intents = [event for event in emitted if hasattr(event, "route")]
     assert len(intents) == 1, [type(event).__name__ for event in emitted]
     intent = intents[0]
+    # OMN-17427: an unmarked response to a marker-required contract is refused
+    # and floors the gate, so the probe answer opens with the marker the
+    # class's own declared deliverable contract names.
+    contract = handler._workflows[cid].effective_deliverable_contract
+    assert contract is not None
+    answer = "route identity probe answer"
+    if contract.markers:
+        answer = f"{contract.markers[0]}\n{answer}"
     handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=cid,
             inference_attempt_id=getattr(intent, "inference_attempt_id", None),
-            content="route identity probe answer",
+            content=answer,
             model_used=decision.selected_model,
             llm_call_id="chatcmpl-omn18831-route",
             latency_ms=10,

@@ -578,7 +578,71 @@ class HandlerEventEmitEffect:
                 return value
         return fallback
 
+    @staticmethod
+    def _work_ledger_request(request: ModelEmitRequest) -> ModelEmitRequest:
+        """Assign/validate work-ledger identity at the final producer boundary."""
+        if not request.event_type.startswith("work.ledger."):
+            return request
+        from omnibase_core.models.events.work.model_work_ledger_render import (
+            ROW_TYPE_BY_KIND,
+        )
+
+        from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
+        from omnimarket.events.model_ledger_row_event import (
+            work_ledger_event_id,
+            work_ledger_row_id,
+        )
+        from omnimarket.models.model_work_ledger_projection_inbound import (
+            ModelWorkLedgerProjectionInbound,
+        )
+        from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
+            parse_ledger_row,
+        )
+
+        if not isinstance(request.payload, dict):
+            raise ValueError("work-ledger producer requires a typed mapping")
+        payload = dict(request.payload)
+        if request.event_type.startswith("work.ledger.typed."):
+            inbound = ModelWorkLedgerProjectionInbound.model_validate(payload)
+            row_type = EnumLedgerRowType(ROW_TYPE_BY_KIND[inbound.event.kind])
+            expected_type, expected_topic = (
+                row_type.typed_event_type,
+                row_type.typed_topic,
+            )
+            event_id = inbound.event_id
+        else:
+            event = parse_ledger_row(
+                str(payload.get("raw_row", "")),
+                ledger_id=str(payload.get("ledger_id", "")),
+                source=str(payload.get("source", "")),
+            )
+            if payload.get("row_id") != work_ledger_row_id(event.raw_row):
+                raise ValueError("legacy row_id does not match normalized source row")
+            expected_type, expected_topic = (
+                event.row_type.event_type,
+                event.row_type.topic,
+            )
+            event_id = work_ledger_event_id(event.ledger_id, event.row_id)
+        if request.event_type != expected_type or (
+            request.topic is not None and request.topic != expected_topic
+        ):
+            raise ValueError("work-ledger topic/type mismatch")
+        supplied = payload.get("event_id")
+        if supplied is not None and str(supplied) != str(event_id):
+            raise ValueError(
+                "work-ledger event_id disagrees with canonical producer identity"
+            )
+        if "event_id" in request.model_fields_set and request.event_id != str(event_id):
+            raise ValueError(
+                "work-ledger request event_id disagrees with canonical producer identity"
+            )
+        payload["event_id"] = str(event_id)
+        return request.model_copy(
+            update={"event_id": str(event_id), "payload": payload}
+        )
+
     def handle(self, request: ModelEmitRequest) -> ModelEmitResult:
+        request = self._work_ledger_request(request)
         spool = self._spool if self._spool is not None else self._build_default_spool()
 
         targets, partition_key_field = self._resolve_targets(request)

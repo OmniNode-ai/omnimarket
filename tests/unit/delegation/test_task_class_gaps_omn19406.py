@@ -35,6 +35,7 @@ from __future__ import annotations
 import pytest
 
 from omnimarket.delegation.response_contract_instruction import (
+    render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
 from omnimarket.inference.task_class_authority import resolve_quality_rule
@@ -216,10 +217,17 @@ def test_task_class_gaps_output_instruction_does_not_forbid_requested_reasoning(
     assert "before the extraction marker" in lowered
     # And the reasoning a request asks for is placed inside the deliverable.
     assert "belongs inside the deliverable" in lowered
-    # The marker sentence is unchanged, since the user turn restates it verbatim.
+    # The marker instruction (the user turn restates it verbatim) names the
+    # exact marker and says it is transport metadata that formatting
+    # constraints on the deliverable do not suppress.
+    assert rendered.endswith(render_extraction_marker_instruction(marker))
     assert rendered.endswith(
         "Put this exact extraction start marker on its own line immediately "
-        f"before the deliverable: {marker}"
+        f"before the deliverable: {marker}\n"
+        "The marker is transport metadata and is removed before the caller "
+        "receives the deliverable. Include it even when the request asks for "
+        "plain prose or no Markdown headers; those formatting constraints apply "
+        "to the deliverable after the marker."
     )
 
 
