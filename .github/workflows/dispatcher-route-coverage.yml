@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.59
+          ref: v0.38.61
           path: omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           # Sparse checkout: only the gate script is needed

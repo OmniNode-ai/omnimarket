@@ -13,10 +13,15 @@ Evidence-Ticket is present.
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODULE_PATH = _REPO_ROOT / "scripts" / "ci" / "check_branch_identity.py"
@@ -136,3 +141,71 @@ def test_identity_check_fails_with_hint_when_branch_omits_ticket(
 def test_identity_check_noop_without_evidence_ticket() -> None:
     rc = cbi.run_identity_check(branch="jonah/whatever", evidence_text="no trailer\n")
     assert rc == 0
+
+
+def test_identity_check_passes_when_a_commit_message_references_ticket() -> None:
+    # OMN-16140 parity with the Receipt Gate: a commit message binds the ticket
+    # when the branch name (fixed at creation) omits it.
+    rc = cbi.run_identity_check(
+        branch="fix/omn14766-x",
+        evidence_text="Evidence-Ticket: OMN-14766\n",
+        commit_texts=["chore: unrelated\n", "fix(OMN-14766): the change\n"],
+    )
+    assert rc == 0
+
+
+def test_identity_check_fails_when_no_commit_message_references_ticket() -> None:
+    rc = cbi.run_identity_check(
+        branch="fix/omn14766-x",
+        evidence_text="Evidence-Ticket: OMN-14766\n",
+        commit_texts=["fix(OMN-99999): another ticket\n"],
+    )
+    assert rc == 1
+
+
+def test_commit_messages_reads_each_message_in_range(tmp_path: Path) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            env=scrub_git_location_env(os.environ),
+        )
+
+    git("init", "-q")
+    git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "base",
+    )
+    git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "fix(OMN-14766): one",
+    )
+    git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "two",
+    )
+    messages = cbi._commit_messages(tmp_path, "HEAD~2..HEAD")
+    assert [m.strip() for m in messages] == ["two", "fix(OMN-14766): one"]
