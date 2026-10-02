@@ -80,8 +80,7 @@ repos:
   # claude -p or llama-cli; a model SDK import; or a caller of one) must sit in a
   # sanctioned delegation node package named in omnibase_core's policy.yaml.
   # Shrink-only baseline .onex_ratchets/direct_model_call_baseline.yaml; no
-  # suppression marker. Keep this rev equal to the pin in
-  # .github/workflows/direct-model-call.yml. Server-side backstop: OMN-20299.
+  # suppression marker. Server-side backstop: OMN-20299.
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: 1a03583ee733daa85f2cf11fc84e1967a951623d # pragma: allowlist secret
     hooks:
