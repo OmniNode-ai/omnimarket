@@ -2192,6 +2192,11 @@ jobs:
           CORE_VERSION: ${{ steps.pins.outputs.core_version }}
         run: |
           set -euo pipefail
+          # Some node modules read OMNI_HOME at import and refuse a silent
+          # default (OMN-16856); a developer's install has it set, so give the
+          # import an explicit, empty one rather than letting it KeyError.
+          export OMNI_HOME="$RUNNER_TEMP/omni_home"
+          mkdir -p "$OMNI_HOME"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'
           import importlib
