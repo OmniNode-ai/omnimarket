@@ -118,6 +118,7 @@ def _install_ladder(
         task_type=None,
         roi_overlay=None,
         excluded_backend_refs=frozenset(),
+        correlation_id=None,
     ):
         try:
             idx = _LADDER.index(current)
