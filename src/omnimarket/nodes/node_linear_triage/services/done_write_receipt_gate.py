@@ -7,9 +7,8 @@ whose checks bind every acceptance criterion; a merged PR or ticked boxes is
 never enough. The rule itself is
 ``omnibase_core.handlers.handler_done_write_receipt_gate`` -- the evidence-autoclose
 closer's rule, lifted into the layer both repos import. This module is the
-triage half: it runs the verifier, reads the verdict off either declared
-receipt arm, and hands verdict plus the ticket's current description to that
-rule.
+triage half: it runs the verifier node, reads the verdict it prints, and hands
+verdict plus the ticket's current description to that rule.
 
 It sits BEHIND :mod:`close_evidence_gate`, never in place of it: the evidence
 gate says what kind of delivery proof the close carries (a merged PR, a
@@ -17,7 +16,7 @@ roll-up, a receipt); this gate says whether the ticket's own acceptance
 criteria are proven. The first is necessary and the second decides.
 
 Fail-closed at every step. A verifier that cannot be launched, times out,
-prints no JSON, declares no receipt arm, or reaches no verdict is a refusal.
+prints no JSON, or reaches no verdict is a refusal.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from omnibase_core.handlers.handler_done_write_receipt_gate import (
@@ -50,28 +48,52 @@ class DodVerdictProbe(Protocol):
 
 
 def dod_verify_argv(ticket_id: str) -> list[str]:
-    """Argv that runs the verifier from THIS process's own environment.
+    """Argv that runs the verifier node from THIS process's own environment.
 
-    The sibling ``onex`` of the running interpreter, not ``uv run`` from a cwd:
-    the verifier's environment is a property of how this process was composed
-    (the same reasoning the closer's dispatch carries, OMN-16846).
+    The node's own entry point under the running interpreter, not ``onex skill``
+    and not ``uv run`` from a cwd: the verifier's environment is a property of
+    how this process was composed, and the node CLI carries ``--execution-audience``
+    itself, so no omnibase_infra release has to be new enough to map it. Run
+    against a ``.201`` lab checkout (2026-10-02) the infra skill CLI at 0.38.59
+    refused that flag outright; the node entry point answered.
     """
     return [
-        str(Path(sys.executable).parent / "onex"),
-        "skill",
-        "dod_verify",
+        sys.executable,
+        "-m",
+        "omnimarket.nodes.node_dod_verify",
+        "--ticket-id",
         ticket_id,
         "--execution-audience",
         "hosted",
     ]
 
 
-class DodVerifySubprocessProbe:
-    """Default :class:`DodVerdictProbe`: ``onex skill dod_verify <ticket>``.
+def _verdict_from_stdout(stdout: str) -> tuple[dict[str, object] | None, str]:
+    """The verdict off the verifier's stdout, whichever shape it printed.
 
-    stdout is parsed REGARDLESS of exit code. The CLI exits non-zero on every
-    genuine evidence gap while still printing a complete receipt; discarding it
-    would report "the ticket is not proven" as "the verifier crashed".
+    The node entry point prints the verdict itself (``ModelDodVerifyState`` as
+    JSON, flat); the ``onex skill`` receipt wraps it and names its arm in
+    ``result_model``. Both are read; an object that is neither is no verdict.
+    """
+    try:
+        printed = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        return None, f"printed no JSON verdict: {exc}"
+    if not isinstance(printed, dict):
+        return None, "output was not a JSON object"
+    if "result_model" in printed:
+        return extract_dod_verify_verdict(printed)
+    if "total_checks" in printed:
+        return printed, ""
+    return None, "the output carries no `total_checks`, so no verdict was reached"
+
+
+class DodVerifySubprocessProbe:
+    """Default :class:`DodVerdictProbe`: the dod_verify node, run as a subprocess.
+
+    stdout is parsed REGARDLESS of exit code. The node exits non-zero on every
+    genuine evidence gap while still printing the complete verdict; discarding
+    it would report "the ticket is not proven" as "the verifier crashed".
     """
 
     def __init__(self, timeout_seconds: float = DOD_VERIFY_TIMEOUT_SECONDS) -> None:
@@ -91,19 +113,13 @@ class DodVerifySubprocessProbe:
             return None, f"Timeout running dod_verify for {ticket_id}"
         except OSError as exc:
             return None, f"OS error launching dod_verify for {ticket_id}: {exc}"
-        try:
-            receipt = json.loads(proc.stdout)
-        except json.JSONDecodeError as exc:
-            detail = proc.stderr.strip() if proc.returncode != 0 else str(exc)
-            return None, (
-                f"dod_verify exit_code={proc.returncode} printed no JSON "
-                f"receipt: {detail}"
-            )
-        if not isinstance(receipt, dict):
-            return None, "dod_verify output was not a JSON object"
-        verdict, why = extract_dod_verify_verdict(receipt)
+        verdict, why = _verdict_from_stdout(proc.stdout)
         if verdict is None:
-            return None, f"dod_verify exit_code={proc.returncode}: {why}"
+            detail = proc.stderr.strip() if proc.returncode != 0 else ""
+            return None, (
+                f"dod_verify exit_code={proc.returncode}: {why}"
+                + (f" ({detail[-300:]})" if detail else "")
+            )
         return verdict, ""
 
 
