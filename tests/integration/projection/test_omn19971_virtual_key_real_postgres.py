@@ -34,8 +34,6 @@ from omnimarket.projection.table_reader import (
 )
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres
 
-# The disposable-PostgreSQL fixture the ``dsn`` fixture falls back to.
-_FIXTURES = (local_postgres,)
 _SCHEMA = "omn19971"
 _TENANT_A = "820272f9-4aaf-5add-a2df-0af942852ab2"
 _TENANT_B = "11111111-2222-4333-8444-555555555555"
@@ -98,7 +96,8 @@ def dsn(request: pytest.FixtureRequest) -> str:
         database = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
         user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
-    pg = request.getfixturevalue("local_postgres")[0]
+    # The imported disposable-PostgreSQL fixture, requested by its own name.
+    pg = request.getfixturevalue(local_postgres.__name__)[0]
     return f"postgresql://postgres@/{pg.database}?host={pg.host}"
 
 
