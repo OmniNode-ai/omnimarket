@@ -178,7 +178,12 @@ class WindowQuery:
 
 
 def _latest_per_key_sql(
-    cfg: ProjectionTableConfig, relation: str, *, tenant_where: str, order_column: str
+    cfg: ProjectionTableConfig,
+    relation: str,
+    *,
+    key_columns: tuple[str, ...],
+    tenant_where: str,
+    order_column: str,
 ) -> str:
     """The newest row of each key, reached by a skip scan over the key index.
 
@@ -190,30 +195,52 @@ def _latest_per_key_sql(
     consumer-group/topic pairs). The distinct keys are found one index probe
     each, and the newest row of each is one more, so the cost follows the key
     count, not the table's row count.
+
+    ``key_columns`` are the declared key columns the relation carries (see
+    :func:`physical_key_columns`).
     """
-    keys = ", ".join(quote_identifier(column) for column in cfg.key_columns)
+    keys = ", ".join(quote_identifier(column) for column in key_columns)
     tenant_and = f" AND {tenant_where}" if tenant_where else ""
     tenant_only = f" WHERE {tenant_where}" if tenant_where else ""
     after_key = (
         "("
-        + ", ".join(f"t.{quote_identifier(column)}" for column in cfg.key_columns)
+        + ", ".join(f"t.{quote_identifier(column)}" for column in key_columns)
         + ") > ("
-        + ", ".join(f"k.{quote_identifier(column)}" for column in cfg.key_columns)
+        + ", ".join(f"k.{quote_identifier(column)}" for column in key_columns)
         + ")"
     )
     same_key = " AND ".join(
         f"t.{quote_identifier(column)} = k.{quote_identifier(column)}"
-        for column in cfg.key_columns
+        for column in key_columns
     )
     return (
         "WITH RECURSIVE k AS ("
         f"(SELECT {keys} FROM {relation}{tenant_only} ORDER BY {keys} LIMIT 1) "
-        f"UNION ALL SELECT {', '.join(f'n.{quote_identifier(c)}' for c in cfg.key_columns)} "
+        f"UNION ALL SELECT {', '.join(f'n.{quote_identifier(c)}' for c in key_columns)} "
         f"FROM k, LATERAL (SELECT {keys} FROM {relation} AS t "
         f"WHERE {after_key}{tenant_and} ORDER BY {keys} LIMIT 1) AS n) "
         f"SELECT l.* FROM k CROSS JOIN LATERAL (SELECT {select_list(cfg)} "
         f"FROM {relation} AS t WHERE {same_key}{tenant_and} "
         f"ORDER BY t.{quote_identifier(order_column)} DESC LIMIT 1) AS l"
+    )
+
+
+def physical_key_columns(
+    cfg: ProjectionTableConfig, relation_columns: frozenset[str] | None
+) -> tuple[str, ...]:
+    """The declared key columns the relation carries, in declared order.
+
+    A key column can be part of the bus compaction key without being a column
+    of the relation: the delegation and savings aggregates key on
+    ``snapshot_grain``, a constant the republish query mints and the view
+    deliberately lacks (OMN-19971). Such a column can never select or order a
+    row, so the latest-row-per-key read keys on the rest. ``None`` means the
+    relation's columns are unknown, and every declared key is kept.
+    """
+    if relation_columns is None:
+        return cfg.key_columns
+    return tuple(
+        column for column in cfg.key_columns if column.strip('"') in relation_columns
     )
 
 
@@ -226,6 +253,7 @@ def build_window_query(
     since_type: str | None = None,
     correlation_id: str | None = None,
     selection: str = "newest",
+    relation_columns: frozenset[str] | None = None,
 ) -> WindowQuery:
     """The SQL for one exposure's served window.
 
@@ -239,6 +267,9 @@ def build_window_query(
     start of the ascending cursor walk, so a read without ``since`` is page one
     of a walk that reaches every key) or ``ranked`` (the top of the declared
     order over the whole set). A ``since`` read is always a walk.
+
+    ``relation_columns`` are the relation's live column names; a declared key
+    column outside them is left out of the latest-row-per-key read.
     """
     relation = qualified_relation(cfg)
     columns = select_list(cfg)
@@ -298,8 +329,9 @@ def build_window_query(
             else order_clause(order_spec)
         )
 
-    if cfg.key_columns and recency is not None:
-        source = f"({_latest_per_key_sql(cfg, relation, tenant_where=tenant_where, order_column=cfg.latest_by or recency)}) AS latest"
+    key_columns = physical_key_columns(cfg, relation_columns)
+    if key_columns and recency is not None:
+        source = f"({_latest_per_key_sql(cfg, relation, key_columns=key_columns, tenant_where=tenant_where, order_column=cfg.latest_by or recency)}) AS latest"
     else:
         if tenant_where:
             where.insert(0, tenant_where)
@@ -455,6 +487,7 @@ class TableRowSource:
         self._pools: dict[str, asyncpg.Pool] = {}
         self._pool_lock = asyncio.Lock()
         self._column_types: dict[tuple[str, str], str] = {}
+        self._relation_columns: dict[str, frozenset[str]] = {}
 
     @classmethod
     def for_database_url(cls, database_url: str) -> TableRowSource:
@@ -528,6 +561,30 @@ class TableRowSource:
         self._column_types[key] = found
         return found
 
+    async def _columns_of(
+        self, connection: asyncpg.Connection, cfg: ProjectionTableConfig
+    ) -> frozenset[str] | None:
+        """The relation's live column names, read once; ``None`` if it has none.
+
+        Read only for an exposure whose window keys on its key columns. A
+        relation that does not resolve answers ``None``, so every declared key
+        is kept and the read itself names the missing table.
+        """
+        relation = qualified_relation(cfg)
+        cached = self._relation_columns.get(relation)
+        if cached is not None:
+            return cached
+        found = await connection.fetchval(
+            "SELECT array_agg(attname::text) FROM pg_attribute "
+            "WHERE attrelid = to_regclass($1) AND attnum > 0 AND NOT attisdropped",
+            relation,
+        )
+        if not isinstance(found, list) or not found:
+            return None
+        columns = frozenset(str(column) for column in found)
+        self._relation_columns[relation] = columns
+        return columns
+
     async def rows(
         self,
         cfg: ProjectionTableConfig,
@@ -555,6 +612,11 @@ class TableRowSource:
                     if since is not None and cfg.cursor_column is not None
                     else None
                 )
+                relation_columns = (
+                    await self._columns_of(connection, cfg)
+                    if cfg.key_columns and recency_column(cfg) is not None
+                    else None
+                )
                 query = build_window_query(
                     cfg,
                     order_spec=order_spec,
@@ -563,6 +625,7 @@ class TableRowSource:
                     since_type=since_type,
                     correlation_id=correlation_id,
                     selection=selection,
+                    relation_columns=relation_columns,
                 )
                 records = await connection.fetch(query.sql, *query.params)
         except ProjectionReadError:

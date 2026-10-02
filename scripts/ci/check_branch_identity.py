@@ -27,7 +27,9 @@ the PR body / commit trailers, assert the branch name references the ticket —
 failing with the EXACT required branch fragment. It reuses the SAME
 ``omnibase_core.validation.validator_receipt_gate`` regexes and branch-axis logic
 (including the OMN-13395 dual-ticket ``omn-A-B`` cluster convention), so the early
-check and the late gate can never drift.
+check and the late gate can never drift. Like the late gate (OMN-16140), a commit
+message on the PR that references the ticket satisfies the axis too: a branch
+name is fixed at creation and renaming an open PR's branch closes it (F-11).
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ import argparse
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 # Reuse the gate's OWN ticket/branch regexes so the early check and the late
@@ -226,8 +229,35 @@ def _git_range_messages(root: Path, base: str) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
-def run_identity_check(*, branch: str | None, evidence_text: str) -> int:
-    """Assert ``branch`` references every Evidence-Ticket in ``evidence_text``."""
+def _commit_messages(root: Path, commit_range: str) -> list[str]:
+    """Return each commit message in ``commit_range`` (e.g. ``<base>..<head>``)."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-z", "--format=%B", commit_range],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [m for m in result.stdout.split("\0") if m.strip()]
+
+
+def run_identity_check(
+    *,
+    branch: str | None,
+    evidence_text: str,
+    commit_texts: Sequence[str] = (),
+) -> int:
+    """Assert ``branch`` or a commit message references every Evidence-Ticket.
+
+    Mirrors the Receipt Gate's axis 2 (OMN-16140): a ticket the branch name omits
+    is still bound when any of the PR's ``commit_texts`` references it.
+    """
     tickets = extract_evidence_tickets(evidence_text)
     if not tickets:
         # No Evidence-Ticket to bind — the Receipt Gate governs the missing case.
@@ -240,7 +270,12 @@ def run_identity_check(*, branch: str | None, evidence_text: str) -> int:
         )
         return 1
 
-    mismatches = [t for t in tickets if not branch_binds_ticket(branch, t)]
+    mismatches = [
+        t
+        for t in tickets
+        if not branch_binds_ticket(branch, t)
+        and not any(branch_binds_ticket(text, t) for text in commit_texts)
+    ]
     if mismatches:
         hints = ", ".join(sorted(f"'{required_branch_hint(t)}'" for t in mismatches))
         print(
@@ -249,8 +284,9 @@ def run_identity_check(*, branch: str | None, evidence_text: str) -> int:
             f"    The branch name must contain {hints} (the Receipt Gate branch "
             f"axis rejects it otherwise — the omnidash#258 late-failure class).\n"
             f"    Fix: renaming an open PR's branch closes it (F-11); create the "
-            f"branch/PR with the ticket in its name, or add the Evidence-Ticket "
-            f"that matches the branch.",
+            f"branch/PR with the ticket in its name, add a commit whose message "
+            f"references the ticket, or add the Evidence-Ticket that matches "
+            f"the branch.",
             file=sys.stderr,
         )
         return 1
@@ -287,6 +323,11 @@ def main(argv: list[str] | None = None) -> int:
         help="identity: read Evidence-Ticket from commit messages in "
         "<base>..HEAD (e.g. origin/dev).",
     )
+    parser.add_argument(
+        "--commit-range",
+        help="identity: commits whose messages may bind the ticket when the "
+        "branch name omits it (e.g. <base_sha>..<head_sha>).",
+    )
     args = parser.parse_args(argv)
 
     if args.mode == "rename-scan":
@@ -298,7 +339,12 @@ def main(argv: list[str] | None = None) -> int:
         evidence_text = args.body_file.read_text(encoding="utf-8")
     elif args.from_git_base:
         evidence_text = _git_range_messages(args.root, args.from_git_base)
-    return run_identity_check(branch=branch, evidence_text=evidence_text)
+    commit_texts = (
+        _commit_messages(args.root, args.commit_range) if args.commit_range else []
+    )
+    return run_identity_check(
+        branch=branch, evidence_text=evidence_text, commit_texts=commit_texts
+    )
 
 
 if __name__ == "__main__":

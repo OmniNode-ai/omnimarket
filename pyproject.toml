@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.281"
+version = "0.4.282"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -191,7 +191,13 @@ dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -951,7 +957,13 @@ override-dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

@@ -294,6 +294,7 @@ class TestSavingsProjection:
             "task_type": "document",
             "provider": "local-qwen",
             "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "model_cloud_baseline": MODEL_CLAUDE_OPUS_4_6,
             "quality_gate_passed": True,
             "metrics": {
                 "input_tokens": 81,

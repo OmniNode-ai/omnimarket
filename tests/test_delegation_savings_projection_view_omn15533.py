@@ -41,6 +41,7 @@ import json
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 
 import asyncpg
@@ -452,7 +453,9 @@ class TestWritePathCarriesTaskTypeAndTokens:
                 "cumulative_output_tokens": _COMPLETION_TOKENS,
                 "timestamp": _EVENT_TIMESTAMP,
             },
-            counterfactual_builder=build_premium_counterfactual,
+            counterfactual_builder=partial(
+                build_premium_counterfactual, premium_model=MODEL_CLAUDE_OPUS_4_6
+            ),
         )
         projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
             source, baseline_model=MODEL_CLAUDE_OPUS_4_6
@@ -785,7 +788,9 @@ class TestWritePathCarriesSourceProvenance:
                 "cumulative_output_tokens": _COMPLETION_TOKENS,
                 "timestamp": _EVENT_TIMESTAMP,
             },
-            counterfactual_builder=build_premium_counterfactual,
+            counterfactual_builder=partial(
+                build_premium_counterfactual, premium_model=MODEL_CLAUDE_OPUS_4_6
+            ),
         )
         projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
             source, baseline_model=MODEL_CLAUDE_OPUS_4_6

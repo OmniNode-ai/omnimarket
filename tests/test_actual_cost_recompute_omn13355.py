@@ -52,7 +52,11 @@ class TestResolveTierCost:
 class TestRecomputeActualCostAndSavings:
     def test_metered_saving_is_counterfactual_minus_real_actual(self) -> None:
         # 1500 tokens @ 0.002/1k = 0.003 real actual; the saving must subtract it.
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         m = recompute_actual_cost_and_savings(
             tier_name="cheap_cloud",
@@ -67,7 +71,11 @@ class TestRecomputeActualCostAndSavings:
         assert m.cost_savings_usd == pytest.approx(0.0495)
 
     def test_free_local_actual_is_zero_full_counterfactual_saved(self) -> None:
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         m = recompute_actual_cost_and_savings(
             tier_name="local",
@@ -97,7 +105,11 @@ class TestRecomputeActualCostAndSavings:
 class TestProjectionWiresMeasuredActualCost:
     def test_metered_row_persists_measured_cost_not_zero(self) -> None:
         db = InmemoryDatabaseAdapter()
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         # The durable event carries cost_usd=0.0 (the workflow-handler bug); the
         # projection must OVERRIDE it with the measured tier cost.
@@ -127,7 +139,11 @@ class TestProjectionWiresMeasuredActualCost:
 
     def test_free_local_row_full_counterfactual_saved(self) -> None:
         db = InmemoryDatabaseAdapter()
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         event = ModelTaskDelegatedEvent(
             correlation_id="corr-actual-local",

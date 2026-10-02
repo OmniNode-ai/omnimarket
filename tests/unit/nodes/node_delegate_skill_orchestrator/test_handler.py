@@ -49,6 +49,7 @@ def mock_dispatch_port() -> AsyncMock:
         "content": "Generated test code...",
         "delegated_to": "qwen-coder",
         "model_name": "Qwen3-Coder-30B",
+        "baseline_model": "claude-opus-4-6",
         "quality_gate_passed": True,
         "quality_score": 0.95,
         "cost_usd": 0.001,
@@ -73,6 +74,7 @@ def _normalized_canonical_terminal(
     completion_tokens: int = 500,
     cumulative_input_tokens: int = 1_000,
     cumulative_output_tokens: int = 500,
+    baseline_model: str | None = "claude-opus-4-6",
     nested: bool = False,
 ) -> dict[str, object]:
     """Drive the canonical Core terminal through Infra's production normalizer."""
@@ -102,7 +104,7 @@ def _normalized_canonical_terminal(
     payload: object = terminal.model_dump(mode="json")
     if nested:
         payload = {"payload": payload}
-    return cast(
+    normalized = cast(
         dict[str, object],
         _normalize_result_payload(
             status=status,
@@ -110,6 +112,9 @@ def _normalized_canonical_terminal(
             error_message=None,
         ),
     )
+    if baseline_model is not None:
+        normalized["baseline_model"] = baseline_model
+    return normalized
 
 
 @pytest.mark.unit
@@ -517,10 +522,10 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.metrics.total_tokens == 46
     assert response.metrics.tokens_to_compliance == 46
     assert response.metrics.compliance_attempts == 1
-    assert response.metrics.cost_savings_usd == round(
-        estimate_baseline_cost_usd(prompt_tokens=12, completion_tokens=34), 6
-    )
-    assert response.metrics.frontier_costs_usd[DEFAULT_BASELINE_MODEL] > 0
+    assert response.baseline_state == "RESOLVED"
+    assert response.metrics.cost_savings_usd is not None
+    assert response.metrics.cost_savings_usd == pytest.approx(0.000364)
+    assert DEFAULT_BASELINE_MODEL not in response.metrics.frontier_costs_usd
     assert "claude-sonnet-4-20250514" in response.metrics.frontier_costs_usd
 
 
@@ -536,6 +541,7 @@ async def test_handler_subtracts_measured_actual_cost_from_fallback_savings() ->
         "prompt_tokens": 1_000,
         "completion_tokens": 500,
         "cost_usd": 0.003,
+        "baseline_model": "claude-opus-4-6",
     }
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
@@ -548,6 +554,7 @@ async def test_handler_subtracts_measured_actual_cost_from_fallback_savings() ->
     counterfactual = estimate_baseline_cost_usd(
         prompt_tokens=1_000,
         completion_tokens=500,
+        baseline_model="claude-opus-4-6",
     )
 
     assert response.metrics.cost_usd == pytest.approx(0.003)
@@ -569,6 +576,7 @@ async def test_handler_never_reports_negative_fallback_savings() -> None:
         "prompt_tokens": 1,
         "completion_tokens": 1,
         "cost_usd": 1.0,
+        "baseline_model": "claude-opus-4-6",
     }
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
@@ -601,6 +609,7 @@ async def test_handler_maps_cumulative_cost_through_infra_normalizer() -> None:
     counterfactual = estimate_baseline_cost_usd(
         prompt_tokens=1_000,
         completion_tokens=500,
+        baseline_model="claude-opus-4-6",
     )
 
     assert response.metrics.cost_usd == pytest.approx(0.003)
@@ -619,6 +628,7 @@ async def test_handler_uses_cumulative_counterfactual_tokens() -> None:
         completion_tokens=500,
         cumulative_input_tokens=2_000,
         cumulative_output_tokens=1_000,
+        baseline_model="claude-opus-4-6",
     )
 
     port = AsyncMock()
@@ -633,7 +643,7 @@ async def test_handler_uses_cumulative_counterfactual_tokens() -> None:
 
     assert response.metrics.cost_usd == pytest.approx(0.003)
     assert response.metrics.cost_savings_usd == pytest.approx(0.102)
-    assert response.metrics.frontier_costs_usd[DEFAULT_BASELINE_MODEL] == (
+    assert response.metrics.frontier_costs_usd["claude-opus-4-6"] == (
         pytest.approx(0.105)
     )
     counterfactual = response.metrics.premium_counterfactual
@@ -649,6 +659,7 @@ async def test_handler_preserves_current_infra_max_attempt_cost_invariant() -> N
     normalized = _normalized_canonical_terminal(
         cumulative_attempt_cost=0.001,
         final_attempt_cost=0.003,
+        baseline_model="claude-opus-4-6",
     )
     # Exact output invariant of pinned Infra #2581's production normalizer:
     # canonical attempt fields remain present and cost_usd is their maximum.
@@ -738,6 +749,7 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
         "cumulative_attempt_cost": 0.0008,
         "final_attempt_cost": 0.0008,
         "failure_reason": "TASK_MISMATCH",
+        "baseline_model": "claude-opus-4-6",
     }
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
