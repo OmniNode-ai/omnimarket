@@ -4,7 +4,7 @@
 # Repo Evidence Gate caller (OMN-20070) verifies repo-owned DoD contracts through
 # omnibase_core's receipt-gate reusable with evidence-source: caller.
 #
-# Why pull_request_target: GitHub reads the workflow definition from the BASE
+# Why pull_request: GitHub reads the workflow definition from the BASE
 # branch, so a pull request that edits this file or the reusable's pin does not
 # change which definition runs on it. The pull request's own code is only ever
 # checked out as data by the reusable, which refuses fork heads.
@@ -26,7 +26,7 @@
 name: Repo Evidence Gate
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review]
     branches: [dev, main, scratch/occ-s3-base]
 
