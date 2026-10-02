@@ -1746,11 +1746,39 @@ class LocalDelegationDispatchPort:
                 # A recording fault must never fail the delegation it describes.
                 logger.warning("Rubric recording failed: %s", type(exc).__name__)
                 rubric_verdict = rubric_check_error_verdict(task_type)
+            # OMN-19205: a customer call that was throttled (or whose upstream
+            # was down) on its first model and answered on a second one, both
+            # on this one backend. The first call is a rejected routing attempt
+            # of its own, and the attempt below names the model that answered.
+            for earlier in result.earlier_model_attempts:
+                attempts.append(
+                    {
+                        "tier": attempt_tier,
+                        "backend_id": backend.backend_id,
+                        "model_id": earlier.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
+                        "quality_gate_passed": False,
+                        "quality_score": None,
+                        "cost_usd": 0.0,
+                        "failure_class": earlier.failure_class.value,
+                        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                        "http_status": earlier.http_status,
+                        "error_message": earlier.error_message,
+                        "acceptance_decision": (
+                            EnumDelegationAcceptanceDecision.CLIMB.value
+                        ),
+                        "acceptance_reason": (
+                            EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value
+                        ),
+                    }
+                )
             attempts.append(
                 {
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
-                    "model_id": backend.model_id,
+                    "model_id": result.served_model_id or backend.model_id,
                     "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,

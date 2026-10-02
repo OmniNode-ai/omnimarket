@@ -54,6 +54,7 @@ from omnimarket.inference.provider_quota_observation import (
 )
 from omnimarket.inference.provider_quota_policy import ModelQuotaVerdict
 from omnimarket.inference.provider_response_error import (
+    IN_BODY_ERROR_MESSAGE_PREFIX,
     describe_provider_refusal,
     failure_class_for_status,
     provider_error_from_body,
@@ -83,6 +84,9 @@ from omnimarket.nodes.contract_topics import (
     contract_subscribe_topics,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
+    ModelEarlierModelAttempt,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
 )
@@ -342,6 +346,20 @@ def _uuid_or_none(value: str | None) -> UUID | None:
         return None
 
 
+def _is_transient_model_failure(result: ModelLlmDelegationCallResult) -> bool:
+    """Whether the model is throttled (429) or its upstream is down (OMN-19205).
+
+    The 429 class, or the provider-unavailable error an aggregator delivers in
+    a 200 body. Every other failure (a timeout, a refused connection, billing,
+    auth, a missing model) is not a verdict on this model and keeps its path.
+    """
+    if result.failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return True
+    return result.failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE and (
+        result.error_message or ""
+    ).startswith(IN_BODY_ERROR_MESSAGE_PREFIX)
+
+
 class HandlerLlmDelegationCall:
     """Executes a single LLM API call and returns a typed result with cost telemetry.
 
@@ -521,7 +539,12 @@ class HandlerLlmDelegationCall:
         * the provider answers 404 model-not-found: the model is re-resolved
           ONCE from the same list, excluding the one that failed, and the call
           is re-issued with it. A second 404, or a list naming no other
-          preferred model, is the typed ``PROVIDER_MODEL_NOT_FOUND`` refusal.
+          preferred model, is the typed ``PROVIDER_MODEL_NOT_FOUND`` refusal;
+        * OMN-19205: the chosen model is throttled (429) or its upstream is down
+          (an "Upstream error from ..." inside a 200): the same one-shot
+          re-resolve, excluding the failed model. A free slug's mood is not the
+          customer's route. A second failure is the typed refusal naming both
+          models, and never a third call.
 
         This is not a transport retry and it never changes backend: it is the
         same customer route asking its own provider which model it offers. A
@@ -549,6 +572,10 @@ class HandlerLlmDelegationCall:
                 return retry
             request = retry
             result = self._execute_call_once(request, endpoint_url, event_publisher)
+        elif not result.success and _is_transient_model_failure(result):
+            result, request = self._retry_on_another_model(
+                request, byok, endpoint_url, event_publisher, first=result
+            )
         if (
             result.success
             and request.model_id != configured
@@ -558,6 +585,48 @@ class HandlerLlmDelegationCall:
             # answered, so it is the attribution, not the route's stale value.
             result = result.model_copy(update={"served_model_id": request.model_id})
         return result
+
+    def _retry_on_another_model(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        byok: ModelByokProviderBackend,
+        endpoint_url: str,
+        event_publisher: Any,
+        *,
+        first: ModelLlmDelegationCallResult,
+    ) -> tuple[ModelLlmDelegationCallResult, ModelLlmDelegationCallRequest]:
+        """Re-aim a throttled or unavailable customer call ONCE; return result and request.
+
+        OMN-19205. Same backend, same key, same customer route: only the model
+        changes, chosen from the key's own list excluding the one that failed.
+        When the list offers nothing else the first result stands as the typed
+        refusal. The retry is not remembered as the key's model, since a
+        throttle is momentary and says nothing about the model's availability
+        to this key.
+        """
+        retry = self._resolve_byok_model(
+            request, byok, exclude=(request.model_id,), refused=first, remember=False
+        )
+        if isinstance(retry, ModelLlmDelegationCallResult):
+            return retry, request
+        earlier = ModelEarlierModelAttempt(
+            model_id=request.model_id,
+            failure_class=first.failure_class or EnumDelegationFailureClass.UNKNOWN,
+            error_message=first.error_message or "",
+            http_status=first.http_status,
+        )
+        second = self._execute_call_once(retry, endpoint_url, event_publisher)
+        update: dict[str, Any] = {
+            "earlier_model_attempts": (*first.earlier_model_attempts, earlier)
+        }
+        if not second.success:
+            update["error_message"] = (
+                f"{second.error_message} | models tried on this key's own list: "
+                f"{earlier.model_id} ({earlier.failure_class.value}), "
+                f"{retry.model_id} "
+                f"({second.failure_class.value if second.failure_class else 'unknown'})"
+            )
+        return second.model_copy(update=update), retry
 
     @staticmethod
     def _customer_byok_row(
@@ -575,6 +644,7 @@ class HandlerLlmDelegationCall:
         *,
         exclude: tuple[str, ...],
         refused: ModelLlmDelegationCallResult | None = None,
+        remember: bool = True,
     ) -> ModelLlmDelegationCallRequest | ModelLlmDelegationCallResult:
         """Ask the provider which model this key may use; return the re-aimed request.
 
@@ -611,7 +681,7 @@ class HandlerLlmDelegationCall:
                 request.model_id,
                 request.correlation_id,
             )
-            if request.secret_ref is not None:
+            if remember and request.secret_ref is not None:
                 # A local credential remembers it, so the next delegation runs
                 # it without re-learning. A hosted reference has no local row
                 # and updates nothing.

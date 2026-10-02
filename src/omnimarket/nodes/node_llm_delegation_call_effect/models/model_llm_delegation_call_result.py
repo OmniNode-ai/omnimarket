@@ -18,6 +18,9 @@ from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
+    ModelEarlierModelAttempt,
+)
 
 
 class ModelLlmDelegationCallResult(BaseModel):
@@ -106,6 +109,13 @@ class ModelLlmDelegationCallResult(BaseModel):
     # this is MORE TRUSTWORTHY attribution than the configured name alone and
     # should be preferred for event/receipt attribution.
     served_model_id: str | None = None
+
+    # OMN-19205: earlier calls of this same customer route that the provider
+    # could not serve (a throttle, or an upstream outage inside a 200), in the
+    # order they were tried. The model of THIS result is the one that answered
+    # (or the last one tried, on a failure). Empty on every call that was not
+    # re-resolved.
+    earlier_model_attempts: tuple[ModelEarlierModelAttempt, ...] = ()
 
     # OMN-18695: WHERE the credential for this call was resolved from, and the
     # reference it was resolved by. Recorded because a resolver that reads the
