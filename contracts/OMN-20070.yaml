@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20070"
+title: "scratch: repo-evidence gate proof (never merged)"
+summary: "Scratch pull request for the repo-evidence gate proof; closed unmerged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-scratch"
+    statement: "Scratch criterion for the gate proof."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the probe answers 42 -- falsifier: uv run pytest tests/scratch_s3/test_probe_fix.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "scratch probe test passes"
+    command: "uv run pytest tests/scratch_s3/test_probe_fix.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-scratch-ac1"
+    description: "AC1 proof: the scratch probe test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/scratch_s3/test_probe_fix.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
