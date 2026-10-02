@@ -323,6 +323,12 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # default-deny sweep, and this row makes a skipped or absent conclusion fail
     # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Canonical File Shape (OMN-20304)",  # canonical-file-shape
+    # OMN-18010: release staleness moved from OCC under retirement plan S8,
+    # option (b) of addendum section 11 question 2 (B3). Registered on the
+    # same terms: a FAILURE already fails CI Summary through the default-deny
+    # sweep, and this row makes a skipped or absent conclusion fail closed too.
+    # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
+    "Release Staleness (OMN-18010)",  # release-staleness
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.

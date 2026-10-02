@@ -3164,6 +3164,144 @@ jobs:
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
 
+  # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
+  # option (b) of the addendum's section 11 question 2 (B3): enforce release
+  # debt only on the repository it measures, under its required CI Summary.
+  # Unconditional: no `if:`, no `needs:`. Controls prove stale source is refused
+  # and old docs are accepted before measuring origin/dev, never the PR head.
+  # When red, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).
+  release-staleness:
+    name: Release Staleness (OMN-18010)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch dev
+        run: |
+          git fetch --no-tags origin '+refs/heads/dev:refs/remotes/origin/dev'
+          git fetch --tags origin
+      - name: Measure dev-vs-tag release staleness (OMN-18010)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          measurement_error() {
+            printf 'release-staleness: ERROR base=- unreleased=- unreleased_packaged=- oldest=- age_hours=0.0 limit=24\n'
+          }
+
+          measure() {
+            local repo="$1" tags tag commits commit paths timestamp now age_seconds
+            local unreleased=0 packaged=0 oldest_epoch='' oldest='-' age_hours=0.0
+            local verdict=FRESH result=0
+            # Every git read checks its exit status explicitly: measure is called
+            # in conditionals, where bash's errexit alone cannot fail closed.
+            git -C "$repo" rev-parse --verify 'refs/remotes/origin/dev^{commit}' > /dev/null || {
+              measurement_error; return 2;
+            }
+            tags=$(git -C "$repo" tag --list) || { measurement_error; return 2; }
+            tag=$(printf '%s\n' "$tags" |
+              awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ {print substr($0, 2)}' |
+              LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1) || {
+              measurement_error; return 2;
+            }
+            if [ -z "$tag" ]; then
+              echo 'Cannot measure release staleness: no vX.Y.Z release tag' >&2
+              measurement_error
+              return 2
+            fi
+            tag="v$tag"
+            commits=$(git -C "$repo" rev-list "$tag..refs/remotes/origin/dev") || {
+              measurement_error; return 2;
+            }
+            # Inspect each reachable commit, including merged branch commits;
+            # neither the range's net diff nor traversal order gives its age.
+            for commit in $commits; do
+              unreleased=$((unreleased + 1))
+              paths=$(git -C "$repo" diff-tree --root -m --no-commit-id --name-only -r \
+                "$commit" -- src pyproject.toml uv.lock) || {
+                measurement_error; return 2;
+              }
+              if [ -n "$paths" ]; then
+                packaged=$((packaged + 1))
+                timestamp=$(git -C "$repo" log -1 --format=%ct "$commit") || {
+                  measurement_error; return 2;
+                }
+                if [[ ! "$timestamp" =~ ^[0-9]+$ ]]; then
+                  measurement_error
+                  return 2
+                fi
+                if [ -z "$oldest_epoch" ] || [ "$timestamp" -lt "$oldest_epoch" ]; then
+                  oldest_epoch="$timestamp"
+                fi
+              fi
+            done
+            if [ -n "$oldest_epoch" ]; then
+              now=$(date +%s) || { measurement_error; return 2; }
+              oldest=$(date -u -d "@$oldest_epoch" +%Y-%m-%dT%H:%M:%SZ) || {
+                measurement_error; return 2;
+              }
+              age_seconds=$((now - oldest_epoch))
+              age_hours=$(awk -v seconds="$age_seconds" 'BEGIN {printf "%.1f", seconds / 3600}') || {
+                measurement_error; return 2;
+              }
+              if (( age_seconds > 24 * 3600 )); then
+                verdict=STALE
+                result=1
+              fi
+            fi
+            printf 'release-staleness: %s base=%s unreleased=%s unreleased_packaged=%s oldest=%s age_hours=%s limit=24\n' \
+              "$verdict" "$tag" "$unreleased" "$packaged" "$oldest" "$age_hours"
+            return "$result"
+          }
+
+          controls=$(mktemp -d)
+          trap 'rm -rf "$controls"' EXIT
+          control_now=$(date +%s)
+          for kind in src docs; do
+            repo="$controls/$kind"
+            git init -q "$repo"
+            mkdir -p "$repo/src" "$repo/docs"
+            printf 'base\n' > "$repo/src/x.py"
+            git -C "$repo" add src/x.py
+            GIT_AUTHOR_DATE="@$((control_now - 96 * 3600)) +0000" \
+              GIT_COMMITTER_DATE="@$((control_now - 96 * 3600)) +0000" \
+              git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
+                -c commit.gpgsign=false commit -qm base
+            git -C "$repo" -c tag.gpgsign=false tag v0.0.1
+            if [ "$kind" = src ]; then
+              path=src/x.py
+            else
+              path=docs/x.md
+            fi
+            printf 'unreleased\n' >> "$repo/$path"
+            git -C "$repo" add "$path"
+            GIT_AUTHOR_DATE="@$((control_now - 72 * 3600)) +0000" \
+              GIT_COMMITTER_DATE="@$((control_now - 72 * 3600)) +0000" \
+              git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
+                -c commit.gpgsign=false commit -qm unreleased
+            git -C "$repo" update-ref refs/remotes/origin/dev "$(git -C "$repo" rev-parse HEAD)"
+            status=0
+            measure "$repo" || status=$?
+            expected=0
+            if [ "$kind" = src ]; then expected=1; fi
+            if [ "$status" -ne "$expected" ]; then
+              echo "POSITIVE CONTROL FAILED: $kind returned $status, expected $expected"
+              exit 1
+            fi
+          done
+
+          status=0
+          measure . || status=$?
+          if [ "$status" -eq 1 ]; then
+            echo 'Release debt is stale: dispatch the Release Cut workflow (.github/workflows/release-cut.yml).'
+          fi
+          if [ "$status" -ne 0 ]; then exit 1; fi
+
   ci-summary:
     name: CI Summary
     # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a
