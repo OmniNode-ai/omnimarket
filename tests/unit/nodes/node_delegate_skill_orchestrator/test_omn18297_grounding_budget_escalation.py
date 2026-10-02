@@ -39,7 +39,7 @@ pytestmark = pytest.mark.unit
 _LADDER: tuple[str, ...] = ("local", "cheap_cloud")
 _TIER_BACKEND_ID: dict[str, str] = {
     "local": "local-heavy-reasoning",
-    "cheap_cloud": "cloud-gemini-pro",
+    "cheap_cloud": "cloud-gemini-2-5-flash",
 }
 _BACKEND_TIER: dict[str, str] = {v: k for k, v in _TIER_BACKEND_ID.items()}
 _TIER_MODEL: dict[str, str] = {
@@ -174,7 +174,10 @@ def test_over_budget_input_escalates_and_is_never_sent_to_the_local_backend(
     """RED before OMN-18297: the oversized prompt was dispatched to local."""
     _install_ladder(
         monkeypatch,
-        budgets={"local-heavy-reasoning": _LOCAL_BUDGET, "cloud-gemini-pro": None},
+        budgets={
+            "local-heavy-reasoning": _LOCAL_BUDGET,
+            "cloud-gemini-2-5-flash": None,
+        },
     )
     effect = _RecordingEffect()
     port = LocalDelegationDispatchPort(
@@ -196,7 +199,10 @@ def test_receipt_records_the_budget_and_the_measured_input(
     """Both numbers, as a pair, on the skipped rung's attempt record."""
     _install_ladder(
         monkeypatch,
-        budgets={"local-heavy-reasoning": _LOCAL_BUDGET, "cloud-gemini-pro": None},
+        budgets={
+            "local-heavy-reasoning": _LOCAL_BUDGET,
+            "cloud-gemini-2-5-flash": None,
+        },
     )
     port = LocalDelegationDispatchPort(
         effect_handler=_RecordingEffect(),
@@ -226,7 +232,10 @@ def test_under_budget_input_is_dispatched_to_the_local_backend_unchanged(
     """The default path is byte-identical: no budget hop for an in-budget prompt."""
     _install_ladder(
         monkeypatch,
-        budgets={"local-heavy-reasoning": _LOCAL_BUDGET, "cloud-gemini-pro": None},
+        budgets={
+            "local-heavy-reasoning": _LOCAL_BUDGET,
+            "cloud-gemini-2-5-flash": None,
+        },
     )
     effect = _RecordingEffect()
     port = LocalDelegationDispatchPort(
@@ -250,7 +259,7 @@ def test_a_backend_declaring_no_budget_is_unbounded_not_defaulted(
     """None means NOT DECLARED. No backend is silently given a budget."""
     _install_ladder(
         monkeypatch,
-        budgets={"local-heavy-reasoning": None, "cloud-gemini-pro": None},
+        budgets={"local-heavy-reasoning": None, "cloud-gemini-2-5-flash": None},
     )
     effect = _RecordingEffect()
     port = LocalDelegationDispatchPort(
@@ -272,7 +281,7 @@ def test_over_budget_with_no_reachable_rung_fails_rather_than_truncating(
         monkeypatch,
         budgets={
             "local-heavy-reasoning": _LOCAL_BUDGET,
-            "cloud-gemini-pro": _LOCAL_BUDGET,
+            "cloud-gemini-2-5-flash": _LOCAL_BUDGET,
         },
     )
     effect = _RecordingEffect()

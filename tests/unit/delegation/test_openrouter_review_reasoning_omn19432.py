@@ -26,7 +26,7 @@ pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _CLASSES = ("review", "reasoning")
-_FREE_RUNG = "openrouter-qwen3-coder-480b"
+_FREE_RUNG = "openrouter-nemotron-ultra"
 
 
 def _task_classes() -> dict[str, Any]:

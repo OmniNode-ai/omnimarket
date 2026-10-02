@@ -60,10 +60,10 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
-      # OMN-14625: cheap_cloud and the claude ceiling now select cloud-gemini-pro
+      # OMN-14625: cheap_cloud and the claude ceiling now select cloud-gemini-2-5-flash
       # (see routing_tiers.yaml); a complete endpoint is required here so
       # next_eligible_tier can resolve past cheap_cloud to the claude ceiling.
-      - backend_id: cloud-gemini-pro
+      - backend_id: cloud-gemini-2-5-flash
         provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
@@ -79,7 +79,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-glm, cloud-gemini-pro]
+        backend_ids: [local-coder, cloud-glm, cloud-gemini-2-5-flash]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -208,7 +208,7 @@ def test_first_eligible_tier_is_local_in_closed_set_order() -> None:
 def test_first_eligible_tier_backend_is_on_ladder_not_off_ladder() -> None:
     """The initial backend the ladder selects is classifiable by tier_for_backend.
 
-    The bug was that the untargeted resolver landed on ``cloud-gemini-pro`` — a
+    The bug was that the untargeted resolver landed on ``cloud-gemini-2-5-flash`` — a
     backend on NO routing_tiers tier — so ``tier_for_backend`` returned None and
     ``next_eligible_tier`` could never advance (escalation loop stranded after one
     attempt). Resolving the first tier's backend through the routing authority

@@ -114,7 +114,7 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
-      - backend_id: cloud-gemini-pro
+      - backend_id: cloud-gemini-2-5-flash
         provider: gemini
         endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         model_name: gemini-2.5-flash
@@ -143,7 +143,7 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-gemini-pro]
+        backend_ids: [local-coder, cloud-gemini-2-5-flash]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1

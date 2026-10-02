@@ -1737,7 +1737,7 @@ def first_eligible_tier(
     This lets the initial resolution honor the cheapest-first + closed-set
     tier_order guardrails instead of the untargeted, bifrost-file-order
     ``resolve_delegation_backend(task_type)`` that could land on an off-ladder
-    backend (e.g. the abandoned ``cloud-gemini-pro`` for ``code_generation``,
+    backend (e.g. the abandoned ``cloud-gemini-2-5-flash`` for ``code_generation``,
     OMN-13667) and strand the escalation loop.
 
     When ``roi_overlay`` is provided (OMN-14001 — the first closed platform

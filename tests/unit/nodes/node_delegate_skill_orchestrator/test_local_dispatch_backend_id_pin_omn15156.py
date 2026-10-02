@@ -129,9 +129,9 @@ def test_pinned_backend_id_selects_exactly_that_backend_and_bypasses_tier_order(
         task_type: str, *, backend_id: str | None = None, **_: object
     ) -> ModelResolvedDelegationBackend:
         resolve_calls.append((task_type, backend_id))
-        assert backend_id == "cloud-gemini-pro"
+        assert backend_id == "cloud-gemini-2-5-flash"
         return ModelResolvedDelegationBackend(
-            backend_id="cloud-gemini-pro",
+            backend_id="cloud-gemini-2-5-flash",
             model_id="gemini-2.5-flash",
             endpoint_ref="https://claude.example/v1/chat/completions",
             tier="claude",
@@ -159,17 +159,17 @@ def test_pinned_backend_id_selects_exactly_that_backend_and_bypasses_tier_order(
     result = _dispatch(
         port,
         correlation_id=uuid4(),
-        backend_id="cloud-gemini-pro",
+        backend_id="cloud-gemini-2-5-flash",
         task_type="research",
     )
 
-    assert resolve_calls == [("research", "cloud-gemini-pro")]
+    assert resolve_calls == [("research", "cloud-gemini-2-5-flash")]
     assert result["status"] == "completed"
     assert result["model_name"] == "gemini-2.5-flash"
     assert result["delegated_to"] == "https://claude.example/v1/chat/completions"
     assert len(effect.calls) == 1
     assert effect.calls[0].model_id == "gemini-2.5-flash"
-    assert effect.calls[0].provider == "cloud-gemini-pro"
+    assert effect.calls[0].provider == "cloud-gemini-2-5-flash"
 
 
 def test_backend_id_none_preserves_existing_tier_based_resolution(

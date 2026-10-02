@@ -312,7 +312,7 @@ _BIFROST_TEST = (
     "  # now resolves through the same BIFROST_CONTRACT_PATH binding this fixture\n"
     "  # sets. Before that it escaped the binding and read the packaged contract\n"
     "  # instead -- the seam divergence OMN-18676 closed.\n"
-    "  - backend_id: cloud-glm-judge\n"
+    "  - backend_id: cloud-gemini-judge\n"
     "    provider: gemini\n"
     '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'

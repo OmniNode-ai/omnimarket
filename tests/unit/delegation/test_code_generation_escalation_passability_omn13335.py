@@ -39,7 +39,7 @@ unreachable by config drift.
 
 Related:
     - OMN-13335: escalation up-tier proof-run discriminator (this guard)
-    - OMN-13351: ceiling repointed off dead Anthropic cloud-sonnet → cloud-gemini-pro
+    - OMN-13351: ceiling repointed off dead Anthropic cloud-sonnet → cloud-gemini-2-5-flash
     - OMN-13161: up-tier max_tokens raised to the routing contract (65536)
     - OMN-13470: judge-adequacy combine into the quality gate
     - OMN-13380: cheap_cloud GLM-5.2 primary for code_generation

@@ -591,7 +591,7 @@ class TestDeltaContractRouting:
         the metered cheap_cloud tier. ``test`` was therefore rehomed onto
         local-coder, which also makes routing_tiers.yaml agree with
         bifrost_delegation.yaml's long-standing ``test`` routing_rule
-        (``backend_ids: [local-coder, cloud-gemini-pro]``).
+        (``backend_ids: [local-coder, cloud-gemini-2-5-flash]``).
 
         ``research`` is a different case and the guard still holds for it: two
         LIVE local rungs (local-heavy-reasoning, local-ds-v4-flash) serve it, so
