@@ -26,7 +26,7 @@ MODEL_CLAUDE_OPUS_4_6: str = "claude-opus-4-6"
 MODEL_DS_V4_FLASH: str = "ds-v4-flash"
 # OMN-12937: retargeted from gemini-2.0-flash (free tier 429) to gemini-2.5-flash-lite.
 MODEL_GEMINI_2_5_FLASH_LITE: str = "gemini-2.5-flash-lite"
-MODEL_OPENROUTER_QWEN3_CODER_480B: str = "openrouter-qwen3-coder-480b"
+MODEL_OPENROUTER_NEMOTRON_ULTRA: str = "openrouter-nemotron-ultra"
 # OMN-18626: RENAMED from MODEL_QWEN3_35B_A3B, and the rename is the point. This
 # constant has always meant "whatever id .201:8000 currently serves", and it has
 # been repointed three times -- OMN-16419 (35B -> qwen3.8), OMN-16999 (back to

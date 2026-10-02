@@ -57,6 +57,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _measure_actual_cost,
     _preserve_terminal_failure,
     _stamp_declared_failure_cause,
+    _stamp_terminal_trace_and_routing,
     compute_generation_proof_fields,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
@@ -1519,7 +1520,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         ):
             if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
                 row[key] = existing[key]
-        for key in ("authority_source", "score_source"):
+        # OMN-19448: same trace and routing preservation as the sync writer.
+        for key in (
+            "authority_source",
+            "score_source",
+            "trace_id",
+            "routed_model",
+            "answering_backend",
+        ):
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
                 row[key] = existing[key]
         if bool(existing.get("request_override_applied")):
@@ -1748,6 +1756,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row.update(evidence)
         # OMN-19448: the canonical terminal's own cause, copied unchanged.
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
+        _stamp_terminal_trace_and_routing(row, event)
         await self._preserve_existing_evidence_async(row)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only

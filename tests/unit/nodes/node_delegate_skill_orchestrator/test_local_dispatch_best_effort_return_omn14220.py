@@ -67,6 +67,7 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
         task_type=None,
         roi_overlay=None,
         excluded_backend_refs=frozenset(),
+        correlation_id=None,
     ):
         try:
             idx = _LADDER.index(current)
@@ -77,8 +78,10 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
                 return tier
         return None
 
-    def fake_first_eligible_tier(_task_type, *, roi_overlay=None):
-        del roi_overlay
+    def fake_first_eligible_tier(
+        _task_type, *, roi_overlay=None, correlation_id=None, quota_state=None
+    ):
+        del roi_overlay, correlation_id, quota_state
         return "local"
 
     monkeypatch.setattr(port_mod, "resolve_delegation_backend", fake_resolve)

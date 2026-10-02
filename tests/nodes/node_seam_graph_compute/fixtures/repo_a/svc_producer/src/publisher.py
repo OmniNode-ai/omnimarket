@@ -31,4 +31,4 @@ def consume() -> None:
 
 _EP = os.environ["FIXTURE_ENDPOINT_URL"]  # node-purity-ok: fixture, OMN-15763
 
-# @ref: configs/service_endpoints.yaml#backends.cloud-gemini-pro
+# @ref: configs/service_endpoints.yaml#backends.cloud-gemini-2-5-flash

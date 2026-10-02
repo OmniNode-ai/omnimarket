@@ -132,7 +132,7 @@ _INADEQUATE_RESEARCH = "It works fine."
 
 # code_generation routes (per task_class_contracts.v1.yaml) to the cheap_cloud
 # tier first (tier_order [cheap_cloud, local, claude]) on model gemini-2.5-flash /
-# backend cloud-gemini-pro (OMN-14625: repointed off z.ai GLM, DEAD from the
+# backend cloud-gemini-2-5-flash (OMN-14625: repointed off z.ai GLM, DEAD from the
 # .201 runtime). The self-contained bifrost contract below declares exactly
 # that backend with a COMPLETE verbatim endpoint URL and NO api_key_ref, so
 # routing resolves host-independently (CI has no ~/.omninode overlay and no
@@ -141,7 +141,7 @@ _BIFROST_CODE_GENERATION = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-gemini-pro\n"
+    "  - backend_id: cloud-gemini-2-5-flash\n"
     "    provider: gemini\n"
     '    endpoint_url: "http://test-codegen:8000/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
@@ -157,14 +157,14 @@ _BIFROST_CODE_GENERATION = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-gemini-pro]\n"
+    "    backend_ids: [cloud-gemini-2-5-flash]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"\n'
     "default_backends:\n"
-    "  - cloud-gemini-pro\n"
+    "  - cloud-gemini-2-5-flash\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"

@@ -165,16 +165,16 @@ _CANONICAL_GEMINI_BACKEND_ID = "cloud-gemini-flash"
 _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
 # OMN-13215: the ceiling tier is an HTTP frontier backend (no shelled CLI).
 # OMN-13351: repointed from the dead Anthropic cloud-sonnet (llm.anthropic.api_key
-# resolves to None in every lane) to the resolvable Gemini cloud-gemini-pro
+# resolves to None in every lane) to the resolvable Gemini cloud-gemini-2-5-flash
 # (secret_ref llm.gemini.api_key, model gemini-2.5-flash).
-# OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
+# OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-2-5-flash,
 # 503s on every escalation) to GLM-5.2 z.ai direct (cloud-glm,
 # secret_ref llm.glm.api_key) — the proven backend the judge already runs on.
 # OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
 # (resolve_api_key succeeds but every completion call 401s / loops
-# FAILED-only) — back to cloud-gemini-pro (secret_ref llm.gemini.api_key,
+# FAILED-only) — back to cloud-gemini-2-5-flash (secret_ref llm.gemini.api_key,
 # model gemini-2.5-flash).
-_TERMINAL_CEILING_BACKEND_ID = "cloud-gemini-pro"
+_TERMINAL_CEILING_BACKEND_ID = "cloud-gemini-2-5-flash"
 
 
 @pytest.fixture(autouse=True)
@@ -324,7 +324,7 @@ class TestQualityGateVerdictRecommendsFallback:
         # [local, cheap_frontier, cheap_cloud, claude] (local AI-PC coder is the
         # preferred first hop). A gate failure on local escalates forward to the FREE
         # cheap_frontier tier BEFORE any paid tier — routable in the fixture
-        # (openrouter-qwen3-coder-480b carries a non-empty endpoint_url and no
+        # (openrouter-nemotron-ultra carries a non-empty endpoint_url and no
         # secret_ref requirement there).
         (
             "code_generation",
@@ -555,7 +555,7 @@ class TestCanonicalCloudTargetCapability:
         """OMN-13215/OMN-13351/OMN-13667/OMN-14625: the ceiling tier executes via
         the canonical HTTP path.
 
-        OMN-14625: the claude ceiling tier maps to the HTTP cloud-gemini-pro backend
+        OMN-14625: the claude ceiling tier maps to the HTTP cloud-gemini-2-5-flash backend
         (Gemini, complete verbatim endpoint_url + secret_ref llm.gemini.api_key),
         NOT a shelled CLI and NOT the dead Anthropic cloud-sonnet (llm.anthropic.api_key
         resolves to None in every lane). The prior GLM-5.2 z.ai direct backend

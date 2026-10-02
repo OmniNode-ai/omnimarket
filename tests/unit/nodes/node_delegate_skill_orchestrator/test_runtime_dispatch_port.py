@@ -281,7 +281,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             acceptance_criteria=("exactly_two_sentences",),
             tenant_id=None,
             provenance=provenance,
-            backend_id="cloud-gemini-pro",
+            backend_id="cloud-gemini-2-5-flash",
             response_contract={"type": "object", "required": ["answer"]},
             system_prompt="Return one JSON object.",
             temperature=0.2,
@@ -303,7 +303,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert request.max_tokens == 512
     assert request.quality_contract_mode == "replace_task_class"
     assert request.acceptance_criteria == ("exactly_two_sentences",)
-    assert request.backend_id == "cloud-gemini-pro"
+    assert request.backend_id == "cloud-gemini-2-5-flash"
     assert request.response_contract == {"type": "object", "required": ["answer"]}
     assert request.system_prompt == "Return one JSON object."
     assert request.temperature == 0.2

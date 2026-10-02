@@ -75,7 +75,7 @@ rungs:
     tier_name: cheap_cloud
 
   # PAID-CLOUD FREE-TIER — OpenRouter, FREE models only (backend
-  # openrouter-qwen3-coder-480b; the cheap_frontier tier the product reserves
+  # openrouter-nemotron-ultra; the cheap_frontier tier the product reserves
   # OpenRouter for). secret_ref llm.openrouter.api_key.
   #
   # FALLBACK NOTE (recorded 2026-07-04): the canonical reserved free model
@@ -90,7 +90,7 @@ rungs:
   - rung_id: rung_openrouter_free
     order: 1
     model_name: "poolside/laguna-xs-2.1:free"
-    backend_id: openrouter-qwen3-coder-480b
+    backend_id: openrouter-nemotron-ultra
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     api_key_env: OPEN_ROUTER_API_KEY
     extra_headers:

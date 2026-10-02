@@ -28,7 +28,7 @@ class EnumLogicalModelKey(StrEnum):
     DS_V4_FLASH = "ds-v4-flash"
     GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
-    OPENROUTER_QWEN3_CODER_480B = "openrouter-qwen3-coder-480b"
+    OPENROUTER_NEMOTRON_ULTRA = "openrouter-nemotron-ultra"
     QWEN3_CODER_30B = "qwen3-coder-30b"
     QWEN3_NEXT_80B = "qwen3-next-80b"
     QWEN3_6_35B = "qwen3.6-35b"
