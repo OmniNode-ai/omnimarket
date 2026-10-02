@@ -175,7 +175,13 @@ _S6_DECLARED_MODEL = (
 # `output_model` and `config.name`/`module` are unchanged across the bump
 # (diffed between the commit before OMN-19439 and 99ebf2f57), so the S6 envelope
 # shape these goldens drive is untouched and only the pinned version string moves.
-_EXPECTED_CONTRACT_VERSION = "0.1.7"
+# OMN-19969: 0.1.7 -> 0.1.8, moved by the omnibase-infra floor bump to 0.38.61.
+# The packaged contract's own version moved in infra c6c1c47c8 (PR #4227,
+# OMN-14375), which adds `onex.cmd.github.webhook-delivery.v1` to the governed
+# inbound topics. `input_model`, `output_model` and `config.name`/`module` are
+# unchanged between v0.38.59 and v0.38.61 (diffed), so the S6 envelope shape
+# these goldens drive is untouched and only the pinned version string moves.
+_EXPECTED_CONTRACT_VERSION = "0.1.8"
 
 
 def _contract_declared_input_model() -> type[object]:

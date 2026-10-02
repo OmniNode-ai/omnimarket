@@ -152,17 +152,16 @@ def test_fixed_default_resolves_with_fixture_manifest_and_provenance(
 def test_real_manifest_resolves_fixed_default_from_current_pricing_table() -> None:
     selected = pricing.resolve_baseline_model(overlay={}, store={})
 
+    # The installed manifest prices the default from omnibase-infra 0.38.61
+    # (omnibase_infra#4400), the floor this repo pins; below it this fails.
     assert selected.model == "claude-sonnet-5-5"
-    assert _load_table().get_entry(selected.model) is None
-    assert selected.state == "BASELINE_UNRESOLVED"
-    assert (
-        estimate_baseline_cost_usd(
-            prompt_tokens=100,
-            completion_tokens=50,
-            baseline_model=selected.model,
-        )
-        is None
-    )
+    assert _load_table().get_entry(selected.model) is not None
+    assert selected.state == "RESOLVED"
+    assert estimate_baseline_cost_usd(
+        prompt_tokens=100,
+        completion_tokens=50,
+        baseline_model=selected.model,
+    ) == pytest.approx(0.0007)
 
 
 def test_unresolved_receipt_keeps_null_savings_and_selection_reason() -> None:
@@ -300,6 +299,13 @@ def test_savings_row_persists_manifest_version(
 
     class CaptureDatabase:
         row: dict[str, object] | None = None
+
+        def query(
+            self, _table: str, _filters: dict[str, object]
+        ) -> list[dict[str, object]]:
+            # A fresh session: the writer's run-identity fold (OMN-20303) finds
+            # no stored row for it.
+            return []
 
         def upsert(self, _table: str, _key: str, row: dict[str, object]) -> bool:
             self.row = row

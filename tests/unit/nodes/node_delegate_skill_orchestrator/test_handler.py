@@ -28,6 +28,7 @@ from omnibase_infra.runtime.service_delegation_dispatch_port import (
     _normalize_result_payload,
 )
 
+from omnimarket import pricing
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -480,7 +481,24 @@ async def test_handler_maps_quality_failure_reason() -> None:
 
 
 @pytest.mark.unit
-async def test_handler_maps_internal_delegation_result_fields() -> None:
+async def test_handler_maps_internal_delegation_result_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The baseline assertions below are about an UNPRICED default, so the table
+    # is the installed one with the default removed rather than whatever the
+    # pinned omnibase-infra happens to ship: from 0.38.61 the installed manifest
+    # prices claude-sonnet-5-5, and this test must not depend on that (OMN-19969).
+    installed = pricing._load_table()
+    unpriced_default = installed.model_copy(
+        update={
+            "models": {
+                name: entry
+                for name, entry in installed.models.items()
+                if name != DEFAULT_BASELINE_MODEL
+            }
+        }
+    )
+    monkeypatch.setattr(pricing, "_load_table", lambda: unpriced_default)
     port = AsyncMock()
     port.dispatch.return_value = {
         "status": "completed",
