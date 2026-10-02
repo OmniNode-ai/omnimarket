@@ -171,7 +171,7 @@ async def _drive_to_quality_gate_request(
 
     response = ModelInferenceResponseData(
         correlation_id=correlation_id,
-        content="The deploy succeeded.",
+        content="### ANSWER\nThe deploy succeeded.",
         model_used="glm-5.3-flash",
         llm_call_id="chatcmpl-omn17228",
         latency_ms=14912,

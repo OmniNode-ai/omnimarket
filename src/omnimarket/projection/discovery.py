@@ -479,6 +479,22 @@ def _parse_projection_api_section(
         return None
     page_selection: Literal["cursor", "order_by"] = raw_page_selection
 
+    raw_latest_by = section.get("latest_by")
+    if raw_latest_by is not None and (
+        not isinstance(raw_latest_by, str)
+        or not raw_latest_by
+        or raw_latest_by.strip('"') not in {c.strip('"') for c in columns}
+    ):
+        logger.error(
+            "Contract %r (path: %s): projection_api.latest_by must name one of "
+            "the declared columns when present, got %r — contract excluded",
+            node_name,
+            contract_path,
+            raw_latest_by,
+        )
+        return None
+    latest_by: str | None = raw_latest_by
+
     if bus_backed and not key_columns:
         logger.error(
             "Contract %r (path: %s): projection_api.bus_backed is true but "
@@ -604,6 +620,7 @@ def _parse_projection_api_section(
         backend_readers=backend_readers,
         key_grain=key_grain,
         page_selection=page_selection,
+        latest_by=latest_by,
         tenant_column=tenant_column,
     )
 

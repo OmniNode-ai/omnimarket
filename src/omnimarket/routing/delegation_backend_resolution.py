@@ -590,14 +590,14 @@ def _select_backend(
     backend with any populated ``endpoint_url``.
     """
     for backend in backends:
-        if not backend.get("endpoint_url"):
+        if not backend.get("endpoint_url") or backend.get("explicit_pin_only", False):
             continue
         capabilities = backend.get("capabilities", [])
         use_for = backend.get("use_for", [])
         if task_type in capabilities or task_type in use_for:
             return backend
     for backend in backends:
-        if backend.get("endpoint_url"):
+        if backend.get("endpoint_url") and not backend.get("explicit_pin_only", False):
             return backend
     return None
 

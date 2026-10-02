@@ -34,6 +34,10 @@ from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
     ModelEmitResult,
 )
+from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit_guard import (
+    HandlerWorkLedgerEmitGuard,
+    LedgerTestWriteRefusedError,
+)
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     LedgerRowRefusalError,
     parse_ledger_row,
@@ -57,6 +61,10 @@ class HandlerWorkLedgerEmit:
         self._emitter = emitter
 
     def handle(self, request: ModelWorkLedgerEmitRequest) -> ModelWorkLedgerEmitResult:
+        try:
+            HandlerWorkLedgerEmitGuard.check()
+        except LedgerTestWriteRefusedError as exc:
+            return ModelWorkLedgerEmitResult(accepted=False, refusal=str(exc))
         if request.event is not None:
             return self._emit_typed(request)
         try:
@@ -86,6 +94,7 @@ class HandlerWorkLedgerEmit:
         ``row_id`` is the delivery identity too: a retry of the same row keeps
         the same spool record name, and the fold dedups on it.
         """
+        HandlerWorkLedgerEmitGuard.check()
         emitter = (
             self._emitter if self._emitter is not None else HandlerEventEmitEffect()
         )

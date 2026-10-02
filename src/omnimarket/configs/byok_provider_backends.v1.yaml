@@ -186,6 +186,14 @@ providers:
     # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
     models_url: "https://openrouter.ai/api/v1/models"
     model_preference:
+      # Google-hosted instruction-tuned family first. The nemotron-ultra slug
+      # below answered "Upstream error from Nvidia: Service temporarily
+      # overloaded" (provider code 503) in the 200 body on the C29 scheduled
+      # runs of 2026-09-30 16:55Z, 2026-10-01 04:57Z and 2026-10-01 16:55Z, so a
+      # key that lists both models failed the delegation on that one upstream.
+      # Listed live 2026-10-01: google/gemma-4-31b-it:free.
+      - pattern: 'google/gemma-(?P<generation>[0-9]+)-[0-9]+b(?:-a[0-9]+b)?-it:free'
+        tags: [free, general]
       - pattern: 'nvidia/nemotron-(?P<generation>[0-9]+(?:\.[0-9]+)?)-ultra-[a-z0-9-]+:free'
         tags: [free, cheapest, large_context]
       - pattern: 'qwen/qwen(?P<generation>[0-9]+(?:\.[0-9]+)?)-coder[a-z0-9.-]*:free'

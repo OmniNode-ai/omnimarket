@@ -80,9 +80,9 @@ pytestmark = pytest.mark.unit
 # quietly testing a tier that no longer exists.
 OPENROUTER_REF = "llm.openrouter.api_key"
 GLM_REF = "llm.glm.api_key"
-# Every reference the cheap_cloud tier's backends declare. Withholding one of
-# them proves nothing: the tier declares siblings and stays selectable through
-# another, which is itself pinned below.
+# Every reference the cheap_cloud-labelled backends declare. OMN-17427 made the
+# tier's shipped rungs explicit-pin-only, so withholding these names no ordinary
+# rung; the tests below pin that.
 CHEAP_CLOUD_REFS = frozenset({GLM_REF, "llm.gemini.api_key", "llm.vertex.access_token"})
 
 
@@ -163,13 +163,13 @@ def test_positive_control_nothing_is_withheld_when_every_key_resolves(
 def test_a_tier_with_a_credentialed_sibling_is_not_withheld(
     unresolvable: Callable[[frozenset[str] | set[str]], None],
 ) -> None:
-    """One missing reference does not withhold a tier that declares siblings.
+    """A missing reference no ordinary rung declares withholds nothing.
 
-    ``cheap_cloud`` declares several backends for ``research``. Losing the GLM
-    reference alone leaves the tier selectable through another, so nothing is
-    withheld and nothing is claimed -- the query reports a TIER the ladder
-    cannot reach, never a backend it merely did not pick. Found by this test
-    failing against an earlier revision that asserted the opposite.
+    The GLM reference belongs to backends no ordinary ladder rung selects
+    (``cheap_cloud`` is explicit-pin-only since OMN-17427), so losing it
+    leaves ``research`` exactly as selectable as before and nothing is
+    claimed -- the query reports a TIER the ladder cannot reach, never a
+    backend it merely did not pick.
     """
     unresolvable({GLM_REF})
 
@@ -179,21 +179,27 @@ def test_a_tier_with_a_credentialed_sibling_is_not_withheld(
 def test_the_named_rung_follows_the_references_that_are_actually_missing(
     unresolvable: Callable[[frozenset[str] | set[str]], None],
 ) -> None:
-    """Withholding a DIFFERENT tier's references names that tier instead.
+    """The answer tracks the declared ladder and the missing references.
 
-    The second control on the query: its answer tracks the input rather than
-    being a fixed tier. ``research`` declares no cheap_frontier rung in its
-    closed tier_order at all, so this answer cannot collapse onto the previous
-    test's by accident.
+    The second control on the query: its answer is not a fixed tier. OMN-17427
+    made every ``cheap_cloud`` backend explicit-pin-only (Gemini), so that tier
+    is never an ordinary rung and a missing Gemini/GLM/Vertex key withholds
+    nothing a caller could have been routed to. ``research`` declares no
+    ``cheap_frontier`` rung in its closed tier_order, so the same missing
+    OpenRouter key that withholds a rung from ``code_generation`` withholds
+    none from ``research``.
     """
-    unresolvable(CHEAP_CLOUD_REFS)
-
-    rung = routing.credential_withheld_rung("research")
-
+    unresolvable({OPENROUTER_REF})
+    rung = routing.credential_withheld_rung("code_generation")
     assert rung is not None
-    assert rung.tier == "cheap_cloud"
-    assert rung.tier != "cheap_frontier"
-    assert rung.credential_ref in CHEAP_CLOUD_REFS
+    assert rung.tier == "cheap_frontier"
+    assert rung.credential_ref == OPENROUTER_REF
+    assert routing.credential_withheld_rung("research") is None
+
+    # Missing cheap_cloud references name nothing: its rungs are pin-only.
+    unresolvable(CHEAP_CLOUD_REFS)
+    assert routing.credential_withheld_rung("research") is None
+    assert routing.credential_withheld_rung("code_generation") is None
 
 
 def test_a_rung_declined_for_a_quota_state_is_not_reported_as_a_credential(

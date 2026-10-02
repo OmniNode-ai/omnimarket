@@ -24,6 +24,9 @@ from omnimarket.nodes.node_projection_read_effect.ports.request_tenant import (
     TenantConflictError,
     resolve_request_tenant,
 )
+from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
+    SqliteTableRowSource,
+)
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.read_page import (
@@ -81,7 +84,7 @@ class HandlerProjectionRead:
     ) -> None:
         self._topic_map = topic_map
         self._row_source = row_source
-        self._owned_source: TableRowSource | None = None
+        self._owned_source: TableRowSource | SqliteTableRowSource | None = None
 
     def _topics(self) -> dict[str, ProjectionTableConfig]:
         if self._topic_map is None:
@@ -98,7 +101,8 @@ class HandlerProjectionRead:
     async def close(self) -> None:
         """Close the pools of a row source this handler opened itself."""
         owned, self._owned_source = self._owned_source, None
-        if owned is not None:
+        # A SQLite source holds no connection between reads.
+        if isinstance(owned, TableRowSource):
             await owned.close()
 
     async def handle(

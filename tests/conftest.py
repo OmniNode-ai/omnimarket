@@ -364,6 +364,20 @@ def _isolate_unit_env(
 
 
 @pytest.fixture(autouse=True)
+def _strip_projection_database_bindings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-19513: no test inherits a real projection DSN from the caller's shell.
+
+    The work-ledger projection writer refuses a real DSN under a test runner
+    (``handler_work_ledger_write_guard``); this fixture also keeps the ambient
+    database URL and runtime-binding overlay out of every test, so a writer built
+    without an explicit DSN has none to dial. A test that needs a database sets its own
+    loopback DSN after this fixture's setup.
+    """
+    monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+    monkeypatch.delenv("OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """OMN-14225: run the suite at the production DEFAULT — paid escalation ON.
 

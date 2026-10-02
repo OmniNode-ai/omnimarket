@@ -168,7 +168,15 @@ def _advance_to_gate_evaluated(
     """Drive the FSM RECEIVED -> ... -> INFERENCE_COMPLETED over the real path."""
     handler.handle_delegation_request(_make_request(correlation_id=cid))
     handler.handle_routing_decision(_make_routing_decision(cid, tier_name=tier_name))
-    handler.handle_inference_response(_make_inference_response(cid))
+    # OMN-17427: an unmarked response to a marker-required contract is refused
+    # and floors the gate; open the answer with the class's declared marker so
+    # the gate verdict under test is the one the test hands in.
+    contract = handler.workflows[cid].effective_deliverable_contract
+    assert contract is not None
+    content = "def test_foo():\n    pass"
+    if contract.markers:
+        content = f"{contract.markers[0]}\n{content}"
+    handler.handle_inference_response(_make_inference_response(cid, content=content))
     assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
 
 
