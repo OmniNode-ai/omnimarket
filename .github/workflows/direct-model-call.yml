@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-20295: direct-model-call gate, BLOCKING. A model call must sit inside a
+# sanctioned delegation node package named in omnibase_core's
+# nodes/node_direct_model_call_check_compute/policy.yaml. The gate reads the AST
+# and the import and call graph, not literals. Existing sites live in the
+# shrink-only .onex_ratchets/direct_model_call_baseline.yaml; a new site, an
+# added or widened entry, a stale entry or an expired entry fails. There is no
+# suppression marker. Every run also plants the audit samples S5a, S5c, S5g and
+# S6 and requires each to be refused, and requires a clean sample to pass.
+# Server-side backstop for calls no static gate sees: OMN-20299.
+
+name: Direct Model Call Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CORE_PIN: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@1a03583ee733daa85f2cf11fc84e1967a951623d"
+  GATE: omnibase_core.nodes.node_direct_model_call_check_effect.runtime_direct_model_call
+
+jobs:
+  direct-model-call:
+    name: Direct Model Call Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Scan the repository against the shrink-only baseline
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+        run: |
+          uv run --no-project --with "$CORE_PIN" python -m "$GATE" \
+            --repo omnimarket --baseline .onex_ratchets/direct_model_call_baseline.yaml --base "$BASE_REF"
+
+      - name: Positive control (planted samples refused, clean sample accepted)
+        run: |
+          set -u
+          for sample in s5a s5c s5g s6; do
+            cp "tests/fixtures/direct_model_call/$sample.py.txt" "src/omnimarket/positive_control_$sample.py"
+            git add "src/omnimarket/positive_control_$sample.py"
+            if uv run --no-project --with "$CORE_PIN" python -m "$GATE" \
+                --repo omnimarket --baseline .onex_ratchets/direct_model_call_baseline.yaml; then
+              echo "::error::planted sample $sample was accepted"; exit 1
+            fi
+            echo "planted sample $sample refused"
+            git rm -q -f "src/omnimarket/positive_control_$sample.py"
+          done
+          cp tests/fixtures/direct_model_call/clean.py.txt src/omnimarket/positive_control_clean.py
+          git add src/omnimarket/positive_control_clean.py
+          uv run --no-project --with "$CORE_PIN" python -m "$GATE" \
+            --repo omnimarket --baseline .onex_ratchets/direct_model_call_baseline.yaml
+          echo "clean sample accepted"
+          git rm -q -f src/omnimarket/positive_control_clean.py
