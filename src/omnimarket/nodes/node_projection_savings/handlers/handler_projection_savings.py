@@ -359,6 +359,8 @@ class HandlerProjectionSavings:
             "savings_method": projection.savings_method,
             "usage_source": projection.usage_source,
         }
+        if projection.pricing_manifest_version is not None:
+            row["pricing_manifest_version"] = str(projection.pricing_manifest_version)
         # OMN-15583: ALWAYS named, and resolved through the SAME registry seam
         # the async runner and the delegation writer use -- one authoritative
         # identifier form, the UUID (there is no second form on this surface).
