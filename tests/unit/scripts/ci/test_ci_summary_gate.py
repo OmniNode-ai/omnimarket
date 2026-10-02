@@ -94,10 +94,6 @@ class TestRunningRowsHoldTheVerdictOmn20066:
             in report
         )
 
-    @pytest.mark.skip(reason="In-run evaluate() has no event-specific gate tiers")
-    def test_merge_group_running_unregistered_job_holds_pending(self) -> None:
-        """Merge-group uses the same in-run gates as every other event."""
-
     def test_running_job_then_completed_success_concludes_success(self) -> None:
         jobs = _healthy_jobs()
         jobs.append(_job("Some New Job", status="in_progress", conclusion=None))
