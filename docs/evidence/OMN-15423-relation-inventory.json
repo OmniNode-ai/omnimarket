@@ -4671,6 +4671,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [
+        "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",

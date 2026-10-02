@@ -20,7 +20,9 @@ from omnimarket.models.delegation.wire.model_delegation_request import (
     EnumQualityContractMode,
 )
 
-EnumQualityGateCategory = Literal["pass", "fail_deterministic", "fail_heuristic"]
+EnumQualityGateCategory = Literal[
+    "pass", "fail_deterministic", "fail_heuristic", "rubric_failed"
+]
 
 # Canonical ``score_source`` identifiers recorded on ``ModelQualityGateResult``
 # (OMN-13470/OMN-13959). Kept here on the shared wire model so both the quality
