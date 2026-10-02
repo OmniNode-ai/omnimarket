@@ -22,6 +22,13 @@
 #   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
 #   order is used instead; that file is the source of truth for fallback order.
 #
+# escalation_policy.entry_share: OPTIONAL {tier: cheap_frontier, share: 0.25}.
+#   OMN-20163: a deterministic fraction (0.0..1.0) of correlation ids starts on
+#   this free tier, which must be named in tier_order and must not already be
+#   first. A miss retries tier_order's first tier before any metered tier.
+#   Initial entry draws are disabled while quota blocks every entry-tier backend.
+#   Absent key or share 0.0 preserves the declared order; no class opts in here.
+#
 # default_task_model_ref: model ID used when no per-task override is declared.
 #   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").
 #
