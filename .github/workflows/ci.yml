@@ -745,10 +745,13 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           printf '%s' "$PR_BODY" > /tmp/pr_body.txt
           uv run python scripts/ci/check_branch_identity.py \
-            --mode identity --branch "$HEAD_REF" --body-file /tmp/pr_body.txt
+            --mode identity --branch "$HEAD_REF" --body-file /tmp/pr_body.txt \
+            --commit-range "${BASE_SHA}..${HEAD_SHA}"
 
   typecheck:
     needs: [occ-preflight, zone-filter]
@@ -2722,7 +2725,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.59
+          ref: v0.38.61
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
