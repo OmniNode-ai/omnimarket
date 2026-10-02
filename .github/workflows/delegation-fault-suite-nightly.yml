@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation-fault-suite-nightly.yml -- the five-fault delegation suite, run and
+# published every night (OMN-19450).
+#
+# The suite injects five faults through real HTTP to a loopback provider and
+# asserts a terminal failure cause for each: a wrong key reads `auth_failed`, an
+# HTTP 429 reads `provider_quota_exhausted`, a call past its timeout reads
+# `timeout`, and a gate veto and a truncation both read `quality_gate_refused`,
+# told apart by typed evidence on the deciding attempt. No fault may read
+# `provider_error`. See tests/chains/fault_suite/.
+#
+# WHY THIS RUNS ON A HOSTED RUNNER, unlike delegation-regression-nightly.yml. That
+# job probes a live lab lane and so must sit inside the lab network. This suite is
+# hermetic: its provider is a socket the test opens on the loopback, and it needs
+# no lane address, broker login or secret. It therefore carries none, and a hosted
+# runner is the same placement Nightly Full Suite uses.
+#
+# THE RESULT IS PUBLISHED two ways: the job summary lists every case with its
+# outcome, and the JUnit report is kept as an artifact for 30 days. A nightly that
+# fails reds the run, so the newest run on the workflow's page is the current
+# verdict, and the schedule keeps that run younger than a day.
+#
+# Targets `dev`, not `main`, including on a manual dispatch from another branch:
+# `main` is release-synced, so a nightly there would test the last release rather
+# than current work. Never a required context: no pull_request trigger.
+
+name: Delegation Fault Suite (nightly)
+
+on:
+  schedule:
+    - cron: '45 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delegation-fault-suite-nightly
+  cancel-in-progress: false
+
+jobs:
+  fault-suite:
+    name: Five-fault delegation suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: dev
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run the five-fault suite
+        run: |
+          uv run pytest tests/chains/fault_suite \
+            -q --tb=short -rfE -m "not kafka" \
+            --timeout=300 --timeout-method=thread \
+            --junitxml=delegation_fault_suite_junit.xml
+
+      # An empty report is a failure, not a pass: a suite that collected nothing
+      # would otherwise leave this job green with nothing published.
+      - name: Publish the per-case result
+        if: always()
+        run: |
+          python3 - <<'PY' | tee -a "${GITHUB_STEP_SUMMARY}"
+          import sys
+          import xml.etree.ElementTree as ET
+
+          try:
+              root = ET.parse("delegation_fault_suite_junit.xml").getroot()
+          except (FileNotFoundError, ET.ParseError) as exc:
+              print(f"### Delegation fault suite: no report ({exc})")
+              sys.exit(1)
+          cases = list(root.iter("testcase"))
+          print("### Delegation fault suite (nightly)")
+          print()
+          print("| case | outcome |")
+          print("| -- | -- |")
+          failed = 0
+          for case in cases:
+              bad = case.find("failure") is not None or case.find("error") is not None
+              failed += bad
+              print(f"| `{case.get('name')}` | {'FAILED' if bad else 'passed'} |")
+          print()
+          print(f"{len(cases)} cases, {failed} failed")
+          if not cases:
+              sys.exit(1)
+          PY
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: delegation-fault-suite-junit
+          path: delegation_fault_suite_junit.xml
+          if-no-files-found: warn
+          retention-days: 30
