@@ -244,13 +244,25 @@ def _loose_pattern(old: str) -> re.Pattern[str] | None:
     return re.compile(r"[ \t]*\n".join(parts))
 
 
+def _shift(line: str, by: int) -> str | None:
+    """``line`` moved left by ``by`` spaces (right when negative), or None when
+    it does not start with the blanks to remove."""
+    if not line.strip() or by == 0:
+        return line
+    if by > 0:
+        return line[by:] if line.startswith(" " * by) else None
+    return " " * -by + line
+
+
 def _indent_shift_edit(current: str, old: str, new: str) -> str | None:
     """The file with ``old`` replaced by ``new`` when ``old`` matches exactly one
-    place up to indentation and every non-blank line moved by the same number of
-    spaces (``new`` is moved back by it); otherwise None.
+    place up to indentation, and its lines after the first all moved by the same
+    number of spaces (the first line may have moved on its own); ``new`` is moved
+    back the same way. Otherwise None.
 
     A local model copies view rows ``   96|   text`` with one blank too many or
-    too few; the content is right, only the indentation shifted.
+    too few, on every line or on the first line only; the content is right,
+    only the indentation shifted.
     """
     pattern = _loose_pattern(old)
     if pattern is None:
@@ -262,7 +274,8 @@ def _indent_shift_edit(current: str, old: str, new: str) -> str | None:
     found = current[match.start() : match.end()].split("\n")
     wanted = old.split("\n")
     at_line_start = match.start() == 0 or current[match.start() - 1] == "\n"
-    shifts: set[int] = set()
+    first: int | None = None
+    rest: set[int] = set()
     for number, (have, want) in enumerate(zip(found, wanted, strict=True)):
         if not want.strip() or (number == 0 and not at_line_start):
             continue
@@ -270,21 +283,22 @@ def _indent_shift_edit(current: str, old: str, new: str) -> str | None:
         if "\t" in have_lead + want_lead:
             if have_lead != want_lead:
                 return None
-            shifts.add(0)
-            continue
-        shifts.add(len(want_lead) - len(have_lead))
-    shift = shifts.pop() if len(shifts) == 1 else (0 if not shifts else None)
-    if shift is None:
+            shift = 0
+        else:
+            shift = len(want_lead) - len(have_lead)
+        if number == 0:
+            first = shift
+        else:
+            rest.add(shift)
+    if len(rest) > 1:
         return None
+    later = next(iter(rest)) if rest else (first or 0)
     moved: list[str] = []
-    for line in new.split("\n"):
-        if shift > 0 and line.strip():
-            if not line.startswith(" " * shift):
-                return None
-            line = line[shift:]
-        elif shift < 0 and line.strip():
-            line = " " * -shift + line
-        moved.append(line)
+    for number, line in enumerate(new.split("\n")):
+        shifted = _shift(line, first if number == 0 and first is not None else later)
+        if shifted is None:
+            return None
+        moved.append(shifted)
     replacement = "\n".join(moved)
     if not at_line_start or not old[:1].isspace():
         # The match swallowed the file's own leading blanks of a line old did

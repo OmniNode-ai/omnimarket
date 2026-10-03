@@ -930,3 +930,28 @@ def test_a_paused_turn_that_still_changes_nothing_allows_one_more_read_turn() ->
     turns = cast("list[dict[str, Any]]", receipt["turns"])
     oks = [cast("list[dict[str, Any]]", t["actions"])[0]["ok"] for t in turns]
     assert oks == [True, True, True, False, True, False]
+
+
+def test_an_edit_whose_first_line_alone_carries_an_extra_blank_applies() -> None:
+    """Replay ea3ee264, re-run 2: copying from ``| def f(`` the model kept the
+    separator's blank on the first line only; every other line was exact."""
+    body = "x = 1\n\n\ndef add(a, b):\n    return 0\n"
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string=" def add(a, b):\n    return 0",
+                    new_string=" def add(a, b, c=0):\n    return a + b + c",
+                ),
+            )
+        ],
+        files={"src/m.py": body},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == (
+        "x = 1\n\n\ndef add(a, b, c=0):\n    return a + b + c\n"
+    )
+    assert [c["status"] for c in _calls(ports)] == ["ok"]
