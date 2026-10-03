@@ -262,8 +262,16 @@ class HandlerDelegatedCodeEditOrchestrator:
             status, detail = terminal.status, terminal.detail
         except WorkspacePathError as exc:
             status, detail = EnumCodeEditStatus.INFRA_ERROR, f"workspace: {exc}"
+        except Exception as exc:
+            status = EnumCodeEditStatus.INFRA_ERROR
+            detail = f"unexpected {type(exc).__name__}: {exc}"
 
-        diff = self._ports.diff(request)
+        try:
+            diff = self._ports.diff(request)
+        except Exception as exc:
+            diff = ""
+            if not detail:
+                detail = f"diff failed: {type(exc).__name__}: {exc}"
         changed = tuple(
             sorted(
                 {
@@ -274,7 +282,10 @@ class HandlerDelegatedCodeEditOrchestrator:
             )
         )
         transcript = self._transcript(request, manifest, state, started)
-        verdict = self._ports.score(request, transcript)
+        try:
+            verdict = self._ports.score(request, transcript)
+        except Exception as exc:
+            verdict = {"error": f"{type(exc).__name__}: {exc}"}
         outcome = verdict.get("verdict", {})
         rubric_outcome = (
             str(outcome.get("outcome", "")) if isinstance(outcome, dict) else ""

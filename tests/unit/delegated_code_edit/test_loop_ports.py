@@ -239,6 +239,263 @@ def test_delegate_failure_is_a_failed_reply_not_an_exception(
     assert "exited 3" in reply.invalid_reason
 
 
+def _failed_receipt(run_id: str) -> dict[str, object]:
+    return {
+        "status": "failed",
+        "model": "",
+        "run_id": run_id,
+        "failure_reason": "delegate workflow failed",
+        "terminal_failure_cause": "runtime error",
+        "terminal_failure_reason": None,
+        "receipt": {
+            "status": "failed",
+            "exit_code": 1,
+            "metrics": {},
+            "result": {
+                "error": "",
+                "exit_code": 1,
+                "runtime_error_type": "UndefinedTable",
+                "runtime_error_is_transport": False,
+                "workflow_result": "failed",
+                "terminal_payload": None,
+                "handler_result": None,
+            },
+        },
+    }
+
+
+def test_a_null_terminal_payload_is_a_failed_reply_not_an_exception(
+    tree: Path, tmp_path: Path
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps(_failed_receipt(run_id)))
+        return subprocess.CompletedProcess(
+            argv, 1, json.dumps({"run_id": run_id}) + "\n", "delegate failed"
+        )
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.raw_text == ""
+    assert reply.run_id == run_id
+    assert "exited 1" in reply.invalid_reason
+    assert "UndefinedTable" in reply.invalid_reason
+    assert "terminal_payload is null" in reply.invalid_reason
+    assert "delegate workflow failed" in reply.invalid_reason
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+@pytest.mark.parametrize(
+    "receipt_text",
+    [
+        "null",
+        "[]",
+        '"receipt"',
+        '{"receipt": null}',
+        '{"receipt": "invalid"}',
+        '{"receipt": {"result": null}}',
+        '{"receipt": {"result": []}}',
+        '{"receipt": {"result": {"terminal_payload": null}}}',
+        '{"receipt": {"result": {"terminal_payload": "invalid"}}}',
+        '{"receipt": {"result": {"terminal_payload": {"payload": null}}}}',
+        '{"receipt": {"result": {"terminal_payload": {"payload": "invalid"}}}}',
+        '{"receipt": {"result": {"metrics": null}}}',
+        '{"receipt": {"result": {"metrics": []}}}',
+        '{"receipt": {"result": {"metrics": {"input_tokens": "x", "output_tokens": "x"}}}}',
+        '{"receipt": {"result": {"metrics": {"input_tokens": [], "output_tokens": {}}}}}',
+        "not json",
+    ],
+)
+def test_malformed_receipts_return_failed_replies(
+    tree: Path, tmp_path: Path, receipt_text: str, returncode: int
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(receipt_text)
+        return subprocess.CompletedProcess(
+            argv, returncode, json.dumps({"run_id": run_id}), "stderr\n" + "x" * 310
+        )
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.raw_text == ""
+    assert reply.run_id == run_id
+    assert (reply.tokens_in, reply.tokens_out) == (0, 0)
+    reason = (
+        "onex delegate exited 1: " + "x" * 300
+        if returncode
+        else f"onex delegate run {run_id} returned no result text"
+    )
+    assert reply.invalid_reason.startswith(reason)
+
+
+@pytest.mark.parametrize(
+    ("result_block", "expected_tokens"),
+    [
+        (
+            {
+                "terminal_payload": {
+                    "payload": {"metrics": {"input_tokens": 10, "output_tokens": 4}}
+                }
+            },
+            (10, 4),
+        ),
+        ({"metrics": {"input_tokens": 7, "output_tokens": 3}}, (7, 3)),
+    ],
+    ids=["deployed-lane", "in-process"],
+)
+@pytest.mark.parametrize("has_text", [False, True])
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_delegate_receipt_metrics_are_preserved(
+    tree: Path,
+    tmp_path: Path,
+    result_block: dict[str, object],
+    expected_tokens: tuple[int, int],
+    has_text: bool,
+    returncode: int,
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(
+            json.dumps(
+                {
+                    "status": "success",
+                    "model": "test-model",
+                    "receipt": {"result": result_block},
+                }
+            )
+        )
+        if has_text:
+            (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(
+            argv, returncode, json.dumps({"run_id": run_id}), "stderr"
+        )
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert reply.ok is has_text
+    assert (reply.tokens_in, reply.tokens_out) == expected_tokens
+    assert reply.model == "test-model"
+    if not has_text and returncode == 0:
+        assert (
+            reply.invalid_reason
+            == f"onex delegate run {run_id} returned no result text"
+        )
+    elif not has_text:
+        assert reply.invalid_reason == "onex delegate exited 1: stderr"
+
+
+def test_delegate_failure_details_are_combined_on_one_line(
+    tree: Path, tmp_path: Path
+) -> None:
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "terminal_failure_cause": "runtime failure",
+                    "terminal_failure_reason": "missing\ntable",
+                    "failure_reason": "delegate\r\nfailed",
+                    "receipt": {
+                        "result": {
+                            "error": "query\nfailed",
+                            "runtime_error_type": "UndefinedTable",
+                            "terminal_payload": None,
+                        }
+                    },
+                }
+            )
+        )
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.invalid_reason == (
+        f"onex delegate run {run_id} returned no result text"
+        " | receipt: failed; runtime failure; missing table; delegate failed; "
+        "query failed; UndefinedTable; terminal_payload is null"
+    )
+
+
+def test_unreadable_delegate_receipt_returns_a_failed_reply(
+    tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id = str(uuid.uuid4())
+    read_text = Path.read_text
+
+    def unreadable(
+        path: Path, encoding: str | None = None, errors: str | None = None
+    ) -> str:
+        if path.name == "receipt.json":
+            raise PermissionError("unreadable")
+        return read_text(path, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert not reply.ok
+    assert reply.raw_text == ""
+
+
+def test_a_loop_whose_delegate_receipts_are_null_ends_delegate_failed_with_a_receipt_and_no_claim(
+    tree: Path, tmp_path: Path
+) -> None:
+    ids: list[str] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_id = str(uuid.uuid4())
+        ids.append(run_id)
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps(_failed_receipt(run_id)))
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    request = _request(tree)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert result.delegate_run_ids == tuple(ids)
+    assert len(ids) == 2
+    loop_dir = tmp_path / "state" / "runs" / request.correlation_id
+    assert (loop_dir / "loop_receipt.json").is_file()
+    assert not (loop_dir / "loop_claim").exists()
+    with pytest.raises(
+        LoopReceiptExistsError, match="already claimed and has a receipt"
+    ):
+        HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert len(ids) == 2
+
+
+def test_an_unexpected_port_exception_still_writes_the_receipt_and_releases_the_claim(
+    tree: Path, tmp_path: Path
+) -> None:
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        raise RuntimeError("boom")
+
+    request = _request(tree)
+    result = HandlerDelegatedCodeEditOrchestrator(_ports(tmp_path, runner)).run(request)
+    assert result.status == EnumCodeEditStatus.INFRA_ERROR
+    assert "RuntimeError: boom" in result.detail
+    loop_dir = tmp_path / "state" / "runs" / request.correlation_id
+    assert (loop_dir / "loop_receipt.json").is_file()
+    assert not (loop_dir / "loop_claim").exists()
+
+
 def test_end_to_end_loop_with_a_scripted_model_is_accepted_and_scored(
     tree: Path, tmp_path: Path
 ) -> None:
@@ -359,3 +616,90 @@ def test_claim_is_exclusive_even_before_a_receipt_exists(tmp_path: Path) -> None
     ports.claim_loop_receipt(loop_id)
     with pytest.raises(LoopReceiptExistsError, match="already claimed"):
         ports.claim_loop_receipt(loop_id)
+
+
+def test_claim_is_refused_after_a_receipt_releases_the_claim(tmp_path: Path) -> None:
+    ports = _ports(tmp_path)
+    loop_id = str(uuid.uuid4())
+    ports.claim_loop_receipt(loop_id)
+    ports.write_loop_receipt(loop_id, {"status": "done"})
+    loop_dir = tmp_path / "state" / "runs" / loop_id
+    assert not (loop_dir / "loop_claim").exists()
+    with pytest.raises(
+        LoopReceiptExistsError, match="already claimed and has a receipt"
+    ):
+        ports.claim_loop_receipt(loop_id)
+    assert not (loop_dir / "loop_claim").exists()
+
+
+def test_a_receipt_appearing_during_claim_releases_the_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ports = _ports(tmp_path)
+    loop_id = str(uuid.uuid4())
+    loop_dir = tmp_path / "state" / "runs" / loop_id
+    receipt = loop_dir / "loop_receipt.json"
+    exists = Path.exists
+    checks = 0
+
+    def appears(path: Path) -> bool:
+        nonlocal checks
+        if path == receipt:
+            checks += 1
+            if checks == 2:
+                assert (loop_dir / "loop_claim").is_file()
+                receipt.write_text("{}\n")
+        return exists(path)
+
+    monkeypatch.setattr(Path, "exists", appears)
+    with pytest.raises(
+        LoopReceiptExistsError, match="already claimed and has a receipt"
+    ):
+        ports.claim_loop_receipt(loop_id)
+    assert receipt.is_file()
+    assert not (loop_dir / "loop_claim").exists()
+
+
+def test_loop_receipt_is_published_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ports = _ports(tmp_path)
+    loop_id = str(uuid.uuid4())
+    ports.claim_loop_receipt(loop_id)
+    loop_dir = tmp_path / "state" / "runs" / loop_id
+    receipt = loop_dir / "loop_receipt.json"
+    replace = os.replace
+    replacements: list[Path] = []
+
+    def publish(source: Path, destination: Path) -> None:
+        assert source.parent == receipt.parent
+        assert destination == receipt
+        assert not receipt.exists()
+        assert json.loads(source.read_text()) == {"status": "done"}
+        replacements.append(source)
+        replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", publish)
+    ports.write_loop_receipt(loop_id, {"status": "done"})
+    assert len(replacements) == 1
+    assert json.loads(receipt.read_text()) == {"status": "done"}
+    assert not (loop_dir / "loop_claim").exists()
+    assert not replacements[0].exists()
+
+
+def test_failed_receipt_write_still_releases_the_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ports = _ports(tmp_path)
+    loop_id = str(uuid.uuid4())
+    ports.claim_loop_receipt(loop_id)
+    loop_dir = tmp_path / "state" / "runs" / loop_id
+
+    def fail(source: Path, destination: Path) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(os, "replace", fail)
+    with pytest.raises(OSError, match="replace failed"):
+        ports.write_loop_receipt(loop_id, {"status": "done"})
+    assert not (loop_dir / "loop_claim").exists()
+    assert list(loop_dir.iterdir()) == []
