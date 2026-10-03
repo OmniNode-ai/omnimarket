@@ -2,14 +2,14 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20291"
 title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
-summary: "The OMN-20291 replay of 26 crush tasks found failure classes in the delegated code edit node. This change names the writable files that do not exist yet in the turn prompt, so a model does not view a file it is told to create (replays 0192c135, 8d6e9b45, a0cbacca), reports an edit whose old_string equals its new_string as changing nothing, and says a grep path that does not exist is missing instead of answering no matches (replay ab8d7ef6). Each is bound to the pull request's own tests."
+summary: "The OMN-20291 replay of 26 crush tasks found failure classes in the delegated code edit node. This change names the writable files that do not exist yet in the turn prompt, so a model does not view a file it is told to create (replays 0192c135, 8d6e9b45, a0cbacca), reports an edit whose old_string equals its new_string as changing nothing, says a grep path that does not exist is missing instead of answering no matches, and names the worktree paths that end with a missing view, ls or grep path (replay ab8d7ef6). Each is bound to the pull request's own tests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-code-edit-replay-failure-classes"
     statement: |-
-      The delegated code edit node must tell the model which writable files do not exist yet, must not report an edit that changes nothing as applied before, and must say a grep path that does not exist is missing.
+      The delegated code edit node must tell the model which writable files do not exist yet, must not report an edit that changes nothing as applied before, must say a grep path that does not exist is missing, and must name the worktree paths that end with a missing path.
     acceptance:
       - id: "AC7"
         statement: |-
@@ -19,7 +19,7 @@ requirements:
           AC8: an edit whose old_string equals its new_string writes nothing and says it changes nothing, not that it was applied before -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "changes_nothing or already_applied"
       - id: "AC9"
         statement: |-
-          AC9: grep of a path that is not in the worktree is reported as not existing, not as no matches, and grep of an existing directory or file still searches it -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "grep"
+          AC9: grep of a path that is not in the worktree is reported as not existing, not as no matches; a missing view, ls or grep path names up to three worktree paths that end with it; an existing path is still read and a path nothing ends with gets no hint -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "grep or end_with_it"
 evidence_requirements:
   - kind: "tests"
     description: "The delegated code edit node's handler tests pass."
@@ -46,10 +46,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
   - id: "dod-code-edit-grep-missing-path-ac9"
-    description: "The grep test proves a missing grep path is reported as missing and an existing one is still searched."
+    description: "The grep and path-hint tests prove a missing path is reported as missing with the worktree paths that end with it."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"grep\""
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"grep or end_with_it\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]

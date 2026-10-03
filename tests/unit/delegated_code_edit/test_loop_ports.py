@@ -150,6 +150,43 @@ def test_grep_of_a_path_that_does_not_exist_says_so(tree: Path, tmp_path: Path) 
     assert ports.grep(request, "def add", "src/m.py").startswith("src/m.py:1:")
 
 
+def test_a_missing_path_names_the_worktree_paths_that_end_with_it(
+    tree: Path, tmp_path: Path
+) -> None:
+    """OMN-20291 replay ab8d7ef6 (loop 33cecc23): told 'omnimarket/nodes is
+    not a directory', the model guessed the same src-less path for 20 more
+    turns. A missing view, ls or grep path now names the worktree paths that
+    end with it, so 'src/' is one read away."""
+    ports = _ports(tmp_path)
+    request = _request(tree)
+    (tree / "pkg" / "src").mkdir(parents=True)
+    (tree / "pkg" / "src" / "m.py").write_text("x = 1\n")
+    (tree / "src" / "nodes" / "n1").mkdir(parents=True)
+    (tree / "src" / "nodes" / "n1" / "c.yaml").write_text("a: 1\n")
+    with pytest.raises(WorkspacePathError) as viewed:
+        ports.read_file(request, "m.py")
+    assert str(viewed.value) == (
+        "m.py is not a file; did you mean: src/m.py, pkg/src/m.py?"
+    )
+    with pytest.raises(WorkspacePathError) as listed:
+        ports.list_dir(request, "nodes/n1")
+    assert str(listed.value) == (
+        "nodes/n1 is not a directory; did you mean: src/nodes/n1?"
+    )
+    with pytest.raises(WorkspacePathError) as grepped:
+        ports.grep(request, "a", "./nodes/n1/c.yaml")
+    assert str(grepped.value) == (
+        "./nodes/n1/c.yaml does not exist; did you mean: src/nodes/n1/c.yaml?"
+    )
+    # No hint when nothing ends with the path, or when the path exists.
+    with pytest.raises(WorkspacePathError) as unknown:
+        ports.read_file(request, "zz/none.py")
+    assert str(unknown.value) == "zz/none.py is not a file"
+    with pytest.raises(WorkspacePathError) as wrong_kind:
+        ports.list_dir(request, "src/m.py")
+    assert str(wrong_kind.value) == "src/m.py is not a directory"
+
+
 def test_diff_includes_untracked_files_and_leaves_the_index_alone(
     tree: Path, tmp_path: Path
 ) -> None:
