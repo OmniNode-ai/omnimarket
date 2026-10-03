@@ -36,7 +36,6 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
-from tests.constants import MODEL_CLAUDE_OPUS_4_6
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _live_migration_files as _delegation_migration_files,
 )
@@ -107,9 +106,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
 
 
 def _cf_cost() -> float:
-    cf = build_premium_counterfactual(
-        prompt_tokens=319, completion_tokens=154, premium_model=MODEL_CLAUDE_OPUS_4_6
-    )
+    cf = build_premium_counterfactual(prompt_tokens=319, completion_tokens=154)
     assert cf is not None
     return float(cf.counterfactual_cost_usd)
 

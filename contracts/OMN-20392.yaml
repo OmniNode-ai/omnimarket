@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20392"
+title: "Add the replace_in_files multi-file edit action to the delegated code edit node"
+summary: "The delegated code edit node gains one typed action, replace_in_files, that replaces every occurrence of a string across many files in a single action, with per-file all-or-nothing writes. The rubric counts it as an edit tool and reads list-valued path arguments."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-replace-in-files"
+    statement: |-
+      The delegated code edit node must support a multi-file replace action that stays confined to the worktree and writable globs, and the tool-use rubric must account for it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the replace_in_files action replaces every occurrence across named files or a glob, reports per-file failures and leaves refused files untouched -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k replace_in_files
+      - id: "AC2"
+        statement: |-
+          AC2: the tool-use rubric counts replace_in_files as an edit tool and reads list-valued path arguments in no_phantom_paths -- falsifier: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The replace_in_files handler tests pass."
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k replace_in_files"
+  - kind: "tests"
+    description: "The tool-use rubric tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-replace-in-files-ac1"
+    description: "The handler tests prove multi-file replacement, per-file failure reporting and untouched refused files."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k replace_in_files"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-replace-in-files-ac2"
+    description: "The rubric tests prove replace_in_files is an edit tool and list-valued path arguments are read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
