@@ -78,9 +78,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     TOPIC_QUALITY_GATE_RESULT,
     HandlerQualityGateIntent,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -94,7 +91,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
 )
-from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -468,9 +464,7 @@ class TestCodeGenerationRefusalRealDispatchPath:
         """
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        gate_handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(inference_bridge=RecordedJudgeReplayAdapter())
-        )
+        gate_handler = HandlerQualityGateIntent()
 
         # Hop 1: orchestrator emits routing intent.
         routing_intents = workflow.handle_delegation_request(request)
@@ -497,15 +491,15 @@ class TestCodeGenerationRefusalRealDispatchPath:
         assert len(gate_intents) == 1
         assert isinstance(gate_intents[0], ModelQualityGateIntent)
 
-        # Hop 6: quality gate reducer with the OMN-13470 judge combine ACTIVE.
+        # Hop 6: deterministic quality gate.
         gate_output = await gate_handler.handle_async(gate_intents[0])
         gate_result = next(
             e for e in gate_output.events if isinstance(e, ModelQualityGateResult)
         )
-        # The judge EFFECT must actually have run on the canonical inference path.
-        assert any(
+        # The gate publishes only its deterministic result.
+        assert not any(
             isinstance(e, ModelDelegationJudgeVerdictEvent) for e in gate_output.events
-        ), "the OMN-13470 judge verdict event must be emitted (combine active)"
+        ), "acceptance emits no judge verdict (OMN-20164)"
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
 
         # Hop 7: orchestrator processes the gate result -> terminal events.

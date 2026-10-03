@@ -36,12 +36,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 
 class _StubDispatchPort:
@@ -309,9 +305,6 @@ class TestDelegateSkillGoldenChain:
         port = LocalDelegationDispatchPort(
             evidence_db_path=db_path,
             effect_process_boundary=False,
-            judge=HandlerJudgeAdequacy(
-                inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-            ),
         )
         handler = HandlerDelegateSkill(dispatch_port=port)
         correlation_id = uuid4()

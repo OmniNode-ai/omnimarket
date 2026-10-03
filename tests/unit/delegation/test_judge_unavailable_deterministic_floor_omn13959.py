@@ -55,9 +55,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
     HandlerQualityGateIntent,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -186,15 +183,7 @@ def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
 
 @pytest.mark.unit
 class TestJudgeUnavailableFloorRealDispatchPath:
-    """Drive the FULL chain for ``code_generation`` with an UNAVAILABLE judge.
-
-    The gate hop runs ``handle_async`` over a judge bridge that raises, so the
-    verdict is ``JUDGE_FAILED`` (no score) and the published gate result is
-    ``score_source=deterministic_acceptance``, ``passed=True``, score ~0.733.
-    ``handle_gate_result`` must fall back to the deterministic floor and emit
-    ``delegation-completed`` even though the deterministic-only score is below the
-    0.85 bar.
-    """
+    """Valid code completes through the bus chain on its deterministic floor."""
 
     @pytest.fixture(autouse=True)
     def _bifrost_contract(
@@ -214,9 +203,7 @@ class TestJudgeUnavailableFloorRealDispatchPath:
     ) -> tuple[ModelQualityGateResult, list[BaseModel], _UnavailableJudgeAdapter]:
         routing_handler = HandlerRoutingIntent()
         bridge = _UnavailableJudgeAdapter()
-        gate_handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(inference_bridge=bridge)
-        )
+        gate_handler = HandlerQualityGateIntent()
 
         routing_intents = workflow.handle_delegation_request(request)
         assert isinstance(routing_intents[0], ModelRoutingIntent)
@@ -250,8 +237,8 @@ class TestJudgeUnavailableFloorRealDispatchPath:
             workflow, request
         )
 
-        # The judge was attempted and failed closed -> deterministic-only result.
-        assert bridge.calls == 1
+        # Acceptance never calls the judge (OMN-20164).
+        assert bridge.calls == 0
         assert gate_result.passed is True
         assert gate_result.score_source == "deterministic_acceptance"
         assert gate_result.quality_score < 0.85

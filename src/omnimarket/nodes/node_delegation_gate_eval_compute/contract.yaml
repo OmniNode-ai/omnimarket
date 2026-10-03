@@ -1,6 +1,6 @@
 ---
 name: node_delegation_gate_eval_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
@@ -8,6 +8,9 @@ description: >
   evidence exactly three times, fails on verdict or deciding-check drift, and
   evaluates recorded and replayed arms against labelled adequacy. Reports
   class and stratum range lines, Wilson intervals, and per-check calibration.
+  OMN-20166 adds a rubric arm when the request supplies class acceptance lines;
+  missing or undetermined rubric evidence counts against that measured line.
+  The caller loads those lines from delegation_class_rubrics.v1.yaml.
   No I/O, model calls, judge calls, or code execution.
 
 handler_routing:
@@ -38,7 +41,15 @@ inputs:
   items:
     type: tuple
     required: true
-    description: Nonempty batch of labelled prompts and recorded gate evidence.
+    description: Nonempty batch of labelled prompts, gate evidence and optional recorded rubric verdicts.
+  rubric_false_pass_lines:
+    type: dict
+    required: false
+    description: Typed class false-pass acceptance lines from the rubric contract.
+  rubric_false_refusal_lines:
+    type: dict
+    required: false
+    description: Typed class false-refusal acceptance lines from the rubric contract.
 
 outputs:
   run_id:

@@ -21,6 +21,9 @@ from omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_r
 from omnimarket.nodes.node_projection_consumer_flow.models.model_node_flow_window_wire import (
     ModelNodeFlowWindowWire,
 )
+from omnimarket.nodes.node_projection_consumer_flow.models.model_snapshot_publish_policy import (
+    ModelSnapshotPublishPolicy,
+)
 from omnimarket.nodes.node_projection_consumer_flow.models.model_topic_produce_delta_wire import (
     ModelTopicProduceDeltaWire,
 )
@@ -33,5 +36,6 @@ __all__ = [
     "ModelConsumerFlowProjectionResult",
     "ModelConsumerFlowRow",
     "ModelNodeFlowWindowWire",
+    "ModelSnapshotPublishPolicy",
     "ModelTopicProduceDeltaWire",
 ]
