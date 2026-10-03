@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 import uuid
 from collections.abc import Sequence
 from typing import Any, cast
@@ -11,6 +14,7 @@ from typing import Any, cast
 import pytest
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+    MAX_ERROR_CHARS,
     RESPONSE_CONTRACT,
     EnumCodeEditStatus,
     EnumCodeEditTool,
@@ -21,7 +25,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
     ModelTurnReply,
+    ResumeRefusedError,
     WorkspacePathError,
+    bound_error,
     normalise_path,
     writable,
 )
@@ -66,19 +72,32 @@ class FakePorts:
         self.check_output = check_output
         self.receipts: dict[str, dict[str, object]] = {}
         self.claimed: set[str] = set()
+        self.archived: list[dict[str, object]] = []
+        self.state_root = "/state"
+        self.delegate_turns: list[int] = []
         self.writes: list[str] = []
         self.checks_run: list[str] = []
         self.formatter_argv: list[tuple[str, ...]] = []
         self.prompts: list[str] = []
         self.contracts: list[dict[str, object]] = []
 
-    def claim_loop_receipt(self, loop_run_id: str) -> None:
-        if loop_run_id in self.receipts:
+    def claim_loop_receipt(self, loop_run_id: str, *, resume: bool = False) -> None:
+        if loop_run_id in self.claimed:
+            raise LoopReceiptExistsError("already claimed")
+        if resume:
+            if loop_run_id not in self.receipts:
+                raise ResumeRefusedError("no receipt")
+            self.archived.append(self.receipts.pop(loop_run_id))
+        elif loop_run_id in self.receipts:
             raise LoopReceiptExistsError(loop_run_id)
         self.claimed.add(loop_run_id)
 
+    def load_loop_receipt(self, loop_run_id: str) -> dict[str, object] | None:
+        return self.receipts.get(loop_run_id)
+
     def write_loop_receipt(self, loop_run_id: str, payload: dict[str, object]) -> None:
         self.receipts[loop_run_id] = payload
+        self.claimed.discard(loop_run_id)
 
     def workspace_files(
         self, request: ModelDelegatedCodeEditRequest
@@ -135,6 +154,7 @@ class FakePorts:
         response_contract: dict[str, object],
         turn: int,
     ) -> ModelTurnReply:
+        self.delegate_turns.append(turn)
         self.prompts.append(prompt)
         self.contracts.append(response_contract)
         if not self.turns:
@@ -159,6 +179,44 @@ def _reply(n: int, *actions: ModelCodeEditAction) -> ModelTurnReply:
 
 
 FIX = "def add(a, b):\n    return a + b\n"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "UndefinedTable", "x" * MAX_ERROR_CHARS],
+    ids=["empty", "short", "at-limit"],
+)
+def test_bound_error_leaves_short_text_unchanged(text: str) -> None:
+    assert bound_error(text) == text
+
+
+@pytest.mark.parametrize("limit", [MAX_ERROR_CHARS, 300, 64])
+def test_bound_error_keeps_head_and_tail_with_the_exact_cut_count(limit: int) -> None:
+    head, tail = "HEADMARK", "UndefinedTable"
+    text = head + "x" * (10_000 - len(head) - len(tail)) + tail
+    bounded = bound_error(text, limit)
+    assert len(bounded) <= limit
+    assert bounded.startswith(head)
+    assert bounded.endswith(tail)
+    match = re.fullmatch(
+        r"(.*)\n\.\.\. \[(\d+) characters cut\] \.\.\.\n(.*)",
+        bounded,
+        re.DOTALL,
+    )
+    assert match is not None
+    kept_head, cut, kept_tail = match.groups()
+    assert int(cut) == len(text) - len(kept_head) - len(kept_tail)
+    share = len(kept_head) + len(kept_tail)
+    assert len(kept_head) == (share + 1) // 2
+    assert len(kept_tail) == share // 2
+    assert text.startswith(kept_head)
+    assert text.endswith(kept_tail)
+
+
+@pytest.mark.parametrize("limit", [0, 10, 63])
+def test_bound_error_uses_a_prefix_for_tiny_limits(limit: int) -> None:
+    text = "HEADMARK" + "x" * 100
+    assert bound_error(text, limit) == text[:limit]
 
 
 def test_accepted_when_finish_checks_pass_and_every_turn_has_a_run_id() -> None:
@@ -186,6 +244,7 @@ def test_accepted_when_finish_checks_pass_and_every_turn_has_a_run_id() -> None:
     assert ports.files["src/m.py"] == FIX
     assert result.rubric_outcome == "PASS"
     receipt = ports.receipts[request.correlation_id]
+    assert receipt["error"] is None
     assert receipt["delegate_run_ids"] == ["run-1", "run-2"]
     assert receipt["rubric_verdict"] == {"verdict": {"outcome": "PASS"}}
     assert all(c == RESPONSE_CONTRACT for c in ports.contracts)
@@ -279,6 +338,37 @@ def test_two_failed_delegate_runs_in_a_row_end_delegate_failed() -> None:
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
     assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
     assert ports.checks_run == []
+
+
+def test_failed_delegate_errors_keep_the_head_and_tail_in_the_receipt() -> None:
+    head, tail = "HEADMARK", "UndefinedTable"
+    reason = head + "x" * (6000 - len(head) - len(tail)) + tail
+    ports = FakePorts(
+        [
+            ModelTurnReply(run_id=f"run-{n}", ok=False, invalid_reason=reason)
+            for n in (1, 2)
+        ]
+    )
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert len(result.detail) <= 300
+    assert tail in result.detail
+    receipt = ports.receipts[request.correlation_id]
+    error = cast(dict[str, object], receipt["error"])
+    assert error["status"] == "delegate_failed"
+    assert error["turns"] == 2
+    detail = cast(str, error["detail"])
+    assert detail.startswith("two delegate runs failed in a row: HEADMARK")
+    assert detail.endswith(tail)
+    assert len(detail) <= MAX_ERROR_CHARS
+    turns = cast(list[dict[str, object]], receipt["turns"])
+    assert len(turns) == 2
+    for turn in turns:
+        invalid_reason = cast(str, turn["invalid_reason"])
+        assert invalid_reason.startswith(head)
+        assert invalid_reason.endswith(tail)
+        assert len(invalid_reason) <= MAX_ERROR_CHARS
 
 
 def test_an_unexpected_delegate_exception_still_writes_exactly_one_receipt() -> None:
@@ -608,3 +698,231 @@ def test_format_is_offered_as_a_tool() -> None:
     contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
     tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
     assert "format" in tool_enum
+
+
+def _interrupted_ports() -> FakePorts:
+    dead = ModelTurnReply(run_id="dead", ok=False, invalid_reason="delegate exited 1")
+    return FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")).model_copy(
+                update={"tokens_in": 11, "tokens_out": 3, "model": "test-model"}
+            ),
+            _reply(2, _a("write", file_path="src/m.py", content=FIX)),
+            dead,
+            dead,
+        ]
+    )
+
+
+def test_delegate_failed_receipt_preserves_last_good_history() -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    receipt = ports.receipts[request.correlation_id]
+    block = cast(dict[str, Any], receipt["resume"])
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert result.resumable
+    assert block["resumable"] is True
+    assert block["last_good_turn"] == 2
+    assert block["turns_used"] == 4
+    assert block["max_turns"] == request.max_turns
+    assert block["reason"] == "resumable from turn 3 (4 turns left)"
+    assert len(block["history"]) == 2
+    assert block["history"][0].startswith("TURN 1\n")
+    assert block["history"][1].startswith("TURN 2\n")
+    assert "delegate run failed" not in "".join(block["history"])
+    assert (
+        block["diff_sha256"] == hashlib.sha256(ports.diff(request).encode()).hexdigest()
+    )
+    assert block["command"] == (
+        f"onex code-edit run --resume {request.correlation_id} "
+        "--state-root /state, with the same delegate flags"
+    )
+    assert receipt["superseded_turns"] == []
+    assert receipt["resumes"] == 0
+    turns = cast(list[dict[str, Any]], receipt["turns"])
+    assert [t["turn"] for t in turns] == [1, 2, 3, 4]
+    assert [t["ok"] for t in turns] == [True, True, False, False]
+    assert turns[0]["tokens_in"] == 11
+    assert turns[0]["tokens_out"] == 3
+
+
+def test_resume_restores_history_and_archives_failed_attempts() -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    handler.run(request)
+    prior = ports.receipts[request.correlation_id]
+    history = cast(dict[str, Any], prior["resume"])["history"]
+    ports.turns = [_reply(3, _a("finish", summary="fixed"))]
+    ports.check_passes = [True]
+    result = handler.run(request, resume=True)
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.turns == 3
+    assert result.local_tokens_in == 11
+    assert result.local_tokens_out == 3
+    assert ports.delegate_turns[-1] == 3
+    assert all(block in ports.prompts[-1] for block in history)
+    receipt = ports.receipts[request.correlation_id]
+    assert receipt["resumes"] == 1
+    assert [t["turn"] for t in cast(list[dict[str, Any]], receipt["turns"])] == [
+        1,
+        2,
+        3,
+    ]
+    assert [
+        t["turn"] for t in cast(list[dict[str, Any]], receipt["superseded_turns"])
+    ] == [3, 4]
+    assert ports.archived == [prior]
+    assert cast(dict[str, Any], receipt["resume"])["history"] == []
+    assert not result.resumable
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    assert [c["call_id"] for c in calls] == ["t1a1", "t2a1", "t3a1"]
+    assert json.loads(calls[1]["arguments_json"]) == {"path": "src/m.py"}
+
+
+@pytest.mark.parametrize(
+    ("case", "reason"),
+    [
+        ("missing", "no readable receipt"),
+        ("accepted", "status accepted.*1 turns used of 6"),
+        ("old", "predates resume support"),
+        ("diff", "worktree diff changed"),
+        ("request", "request differs"),
+        ("budget", "status budget_exhausted.*2 turns used of 2"),
+        ("no_progress", "status no_progress.*2 turns used of 6"),
+    ],
+)
+def test_resume_refusals_do_not_claim_or_write(case: str, reason: str) -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    if case == "accepted":
+        ports.turns = [_reply(1, _a("finish"))]
+        ports.check_passes = [True]
+    elif case == "budget":
+        request = _request(max_turns=2)
+    elif case == "no_progress":
+        ports.turns = [_reply(1, _a("finish")), _reply(2, _a("finish"))]
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    if case != "missing":
+        handler.run(request)
+    if case == "old":
+        del ports.receipts[request.correlation_id]["resume"]
+    elif case == "diff":
+        ports.write_file(request, "src/new.py", "changed\n")
+    elif case == "request":
+        request = request.model_copy(update={"task": "different task"})
+    before = dict(ports.receipts)
+    prompts = list(ports.prompts)
+    with pytest.raises(ResumeRefusedError, match=reason):
+        handler.run(request, resume=True)
+    assert not ports.claimed
+    assert ports.receipts == before
+    assert ports.archived == []
+    assert ports.prompts == prompts
+
+
+def test_budget_exhausted_resume_reason_names_turn_count() -> None:
+    ports = FakePorts([])
+    request = _request(max_turns=2)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert not result.resumable
+    assert block["resumable"] is False
+    assert "2 turns used of 2" in block["reason"]
+    assert block["last_good_turn"] == 2
+    assert block["history"] == []
+    assert block["command"] == ""
+
+
+def test_resume_turn_cap_spans_segments() -> None:
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts([_reply(1, _a("view", path="src/m.py")), dead, dead])
+    request = _request(max_turns=3)
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    assert handler.run(request).status == EnumCodeEditStatus.DELEGATE_FAILED
+    ports.turns = [_reply(2, _a("ls")), _reply(3, _a("ls"))]
+    result = handler.run(request, resume=True)
+    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert ports.delegate_turns == [1, 2, 3, 2, 3]
+    assert result.turns == 3
+
+
+def test_unusable_received_reply_is_a_good_resume_turn() -> None:
+    bad = ModelTurnReply(
+        run_id="bad", ok=False, raw_text="not json", invalid_reason="not JSON"
+    )
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts([bad, dead, dead])
+    request = _request()
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert block["last_good_turn"] == 1
+    assert len(block["history"]) == 1
+    assert "your reply was unusable" in block["history"][0]
+
+
+def test_resume_history_keeps_newest_whole_blocks_within_budget() -> None:
+    actions = tuple(_a("view", path="src/m.py") for _ in range(4))
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts(
+        [_reply(n, *actions) for n in range(1, 5)] + [dead, dead],
+        files={"src/m.py": "x" * 10_000},
+    )
+    request = _request(max_turns=10)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert block["last_good_turn"] == 4
+    assert sum(map(len, block["history"])) <= 120_000
+    assert len(block["history"]) == 2
+    assert block["history"][0].startswith("TURN 3\n")
+    assert block["history"][1].startswith("TURN 4\n")
+
+
+def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("write", file_path="README.md", content="refused"),
+                _a("finish", summary="attempted fix"),
+            ),
+            dead,
+            dead,
+        ]
+    )
+    request = _request()
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    first = handler.run(request)
+    prior = ports.receipts[request.correlation_id]
+    prior_block = cast(dict[str, Any], prior["resume"])
+    assert first.refusals == 1
+    assert prior_block["last_failure_key"]
+    # Older turn records may omit metrics; seeding must default them to zero.
+    record = cast(list[dict[str, Any]], prior["turns"])[0]
+    del record["tokens_in"]
+    del record["tokens_out"]
+    ports.turns = [dead, dead]
+    second = handler.run(request, resume=True)
+    second_receipt = ports.receipts[request.correlation_id]
+    second_block = cast(dict[str, Any], second_receipt["resume"])
+    assert second.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert second.refusals == first.refusals
+    assert second.summary == first.summary == "attempted fix"
+    assert second.checks == first.checks
+    assert second.local_tokens_in == second.local_tokens_out == 0
+    assert second_block["history"] == prior_block["history"]
+    assert second_block["last_failure_key"] == prior_block["last_failure_key"]
+    assert second_block["diff_sha256"] == ""
+    assert second_block["last_good_turn"] == 1
+    assert second_receipt["resumes"] == 1
+    ports.turns = [_reply(2, _a("finish"))]
+    third = handler.run(request, resume=True)
+    receipt = ports.receipts[request.correlation_id]
+    assert third.status == EnumCodeEditStatus.NO_PROGRESS
+    assert third.turns == 2
+    assert receipt["resumes"] == 2
+    assert len(cast(list[object], receipt["superseded_turns"])) == 4
+    assert ports.archived == [prior, second_receipt]

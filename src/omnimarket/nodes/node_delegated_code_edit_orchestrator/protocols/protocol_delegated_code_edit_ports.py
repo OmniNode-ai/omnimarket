@@ -29,14 +29,27 @@ class LoopReceiptExistsError(RuntimeError):
     """A loop receipt already exists for this correlation id: a rerun is refused."""
 
 
+class ResumeRefusedError(RuntimeError):
+    """A prior loop cannot safely resume from its receipt."""
+
+
 class WorkspacePathError(ValueError):
     """A path resolves outside the worktree, or names nothing readable."""
 
 
 @runtime_checkable
 class ProtocolDelegatedCodeEditPorts(Protocol):
-    def claim_loop_receipt(self, loop_run_id: str) -> None:
-        """RAISE LoopReceiptExistsError when a receipt for this id exists."""
+    @property
+    def state_root(self) -> str:
+        """The receipt root, used in the resume command."""
+        ...
+
+    def claim_loop_receipt(self, loop_run_id: str, *, resume: bool = False) -> None:
+        """Claim exclusively, archiving the prior receipt when resuming."""
+        ...
+
+    def load_loop_receipt(self, loop_run_id: str) -> dict[str, object] | None:
+        """The current receipt, or None when absent or unreadable."""
         ...
 
     def write_loop_receipt(
@@ -99,5 +112,6 @@ class ProtocolDelegatedCodeEditPorts(Protocol):
 __all__ = [
     "LoopReceiptExistsError",
     "ProtocolDelegatedCodeEditPorts",
+    "ResumeRefusedError",
     "WorkspacePathError",
 ]
