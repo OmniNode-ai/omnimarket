@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20173: env-driven GLM readers skip Coding Plan before any HTTP."""
+"""Direct GLM readers obey the contract and skip parked/Coding Plan endpoints."""
 
 import importlib
 from collections.abc import Callable, Iterator
@@ -24,9 +24,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 pytestmark = pytest.mark.unit
 
 URL_CASES = [
-    ("https://api.z.ai/api/coding/paas/v4", True),
-    ("https://api.z.ai/api/paas/v4", False),
-    ("http://glm.example/v4", False),
+    (None, True),
+    ("https://api.z.ai/api/coding/paas/v4/chat/completions", True),
+    ("http://glm.example/v4/chat/completions", False),
 ]
 
 
@@ -109,16 +109,20 @@ async def test_bridge_glm_env_is_not_an_authority(
 
 @pytest.mark.parametrize(("url", "blocked"), URL_CASES)
 def test_delegation_glm_tiers(
-    monkeypatch: pytest.MonkeyPatch, url: str, blocked: bool
+    monkeypatch: pytest.MonkeyPatch,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+    url: str | None,
+    blocked: bool,
 ) -> None:
-    monkeypatch.setenv("LLM_GLM_URL", url)
+    bind_bifrost_glm_endpoint(url)
+    monkeypatch.setenv("LLM_GLM_URL", "http://legacy.example/chat/completions")
     monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-test")
     monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-review")
     monkeypatch.setattr(delegation, "_resolved_secret", lambda _ref: "test-key")
     configs = delegation.build_endpoint_configs()
     for tier, model in (
-        (delegation.EnumModelTier.FRONTIER_GLM, "glm-test"),
-        (delegation.EnumModelTier.FRONTIER_REVIEW, "glm-review"),
+        (delegation.EnumModelTier.FRONTIER_GLM, "glm-5.3-flash"),
+        (delegation.EnumModelTier.FRONTIER_REVIEW, "glm-5.3-flash"),
     ):
         if blocked:
             assert tier not in configs
@@ -130,20 +134,21 @@ def test_delegation_glm_tiers(
 @pytest.mark.parametrize(("url", "blocked"), URL_CASES)
 @pytest.mark.asyncio
 async def test_live_assembly_glm_tier(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, url: str, blocked: bool
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+    url: str | None,
+    blocked: bool,
 ) -> None:
+    bind_bifrost_glm_endpoint(url)
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
-    monkeypatch.setenv("LLM_GLM_URL", url)
-    with (
-        patch.object(ModelPolicyLoader, "resolve_api_key", return_value="test-key"),
-        patch.object(
-            ModelPolicyLoader, "resolve_model_id_optional", return_value="glm-test"
-        ),
-    ):
+    monkeypatch.setenv("LLM_GLM_URL", "http://legacy.example/chat/completions")
+    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "legacy-glm")
+    with patch.object(ModelPolicyLoader, "resolve_api_key", return_value="test-key"):
         module = importlib.import_module(
             "omnimarket.nodes.node_build_loop_orchestrator.assemble_live"
         )
-        # Reload exercises the actual module-level env/policy reader.
+        # Reload exercises the actual module-level policy reader.
         for name in ("LLM_GLM_URL", "LLM_GLM_API_KEY", "LLM_GLM_MODEL_NAME"):
             monkeypatch.setattr(module, name, getattr(module, name))
         importlib.reload(module)
@@ -165,23 +170,29 @@ async def test_live_assembly_glm_tier(
         assert result is None
         call.assert_not_called()
     else:
-        assert result == ({"src/example.py": "pass"}, "glm-test")
+        assert result == ({"src/example.py": "pass"}, "glm-5.3-flash")
         call.assert_awaited_once()
-        assert call.call_args.kwargs["url"] == f"{url}/chat/completions"
+        assert call.call_args.kwargs["url"] == url
 
 
 @pytest.mark.parametrize(("url", "blocked"), URL_CASES)
 @pytest.mark.asyncio
 async def test_thread_reply_glm_registry(
-    monkeypatch: pytest.MonkeyPatch, url: str, blocked: bool
+    monkeypatch: pytest.MonkeyPatch,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+    url: str | None,
+    blocked: bool,
 ) -> None:
     module = importlib.import_module(
         "omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply"
     )
-    monkeypatch.setenv("LLM_GLM_URL", url)
-    monkeypatch.setattr(module, "_BASE_REGISTRY", module._BASE_REGISTRY)
-    importlib.reload(module)
-    assert module._BASE_REGISTRY["glm-4.5"]["base_url"] == ("" if blocked else url)
+    bind_bifrost_glm_endpoint(url)
+    monkeypatch.setenv("LLM_GLM_URL", "http://legacy.example/chat/completions")
+    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "legacy-glm")
+    from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
+
+    registry = module._build_registry(ModelRoutingPolicy(primary="glm-4.5"))
+    assert registry["glm-4.5"]["base_url"] == ("" if blocked else url)
     policy = {"primary": "glm-4.5", "max_retries": 1}
     with patch.object(
         module.AdapterLlmProviderOpenai, "generate_async", new_callable=AsyncMock
@@ -199,26 +210,20 @@ async def test_thread_reply_glm_registry(
                 False,
             )
             generate.assert_awaited_once()
+            assert generate.call_args.args[0].model_name == "glm-5.3-flash"
 
 
 @pytest.mark.asyncio
-async def test_thread_reply_non_glm_provider_default_is_preserved(
+async def test_thread_reply_unknown_model_cannot_fall_back_to_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # OMN-20173: an unset GLM route must not change other provider defaults.
-    from types import SimpleNamespace
-
     module = importlib.import_module(
         "omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply"
     )
-    monkeypatch.setenv("LLM_CODER_URL", "http://coder.example/v1")
-    with patch.object(
-        module.AdapterLlmProviderOpenai,
-        "generate_async",
-        new_callable=AsyncMock,
-        return_value=SimpleNamespace(generated_text="Local reply"),
-    ) as generate:
-        assert await module._real_llm_call(
-            "Review this", {"primary": "custom-local-model", "max_retries": 1}
-        ) == ("Local reply", False)
-        generate.assert_awaited_once()
+    monkeypatch.setenv("LLM_CODER_URL", "http://legacy.example/v1")
+    with patch.object(module, "AdapterLlmProviderOpenai") as provider:
+        with pytest.raises(RuntimeError, match="endpoint is not configured"):
+            await module._real_llm_call(
+                "Review this", {"primary": "custom-local-model", "max_retries": 1}
+            )
+        provider.assert_not_called()

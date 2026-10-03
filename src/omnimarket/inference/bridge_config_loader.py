@@ -77,6 +77,9 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key,
     resolve_api_key_async,
 )
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelDelegationBackendConfig,
+)
 
 # key -> (url env var, model_id env var)
 # Context windows are resolved from the model registry at load time via
@@ -194,6 +197,38 @@ def _build_static_model_configs(
     return model_configs
 
 
+def resolve_bifrost_backend(backend_id: str) -> ModelDelegationBackendConfig | None:
+    """Load a declared backend, preserving parked endpoints and load errors.
+
+    URLs are complete request URLs. A null endpoint never consults legacy env
+    vars. Model metadata remains available for cost projections when parked.
+    """
+    # Deferred for the same inference-package import cycle as the bridge loader.
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_bifrost_delegation_config,
+    )
+
+    binding = resolve_bifrost_path_binding()
+    config = load_bifrost_delegation_config(
+        config_path=binding.contract_path, overlay_path=binding.overlay_path
+    )
+    for backend in config.backends:
+        if backend.backend_id != backend_id:
+            continue
+        endpoint = (backend.endpoint_url or "").strip()
+        if backend.provider == _GLM_PROVIDER:
+            endpoint = glm_url_or_empty(
+                endpoint, source=f"bridge_config_loader.{backend_id}"
+            )
+        return backend.model_copy(
+            update={
+                "endpoint_url": endpoint or None,
+                "model_name": (backend.model_name or "").strip() or None,
+            }
+        )
+    return None
+
+
 def _register_contract_glm(
     model_configs: dict[str, dict[str, object]],
     glm_key: SecretStr | None,
@@ -291,4 +326,5 @@ def _register_openrouter_models(
 __all__: list[str] = [
     "load_inference_bridge_config_from_env",
     "load_inference_bridge_config_from_env_async",
+    "resolve_bifrost_backend",
 ]

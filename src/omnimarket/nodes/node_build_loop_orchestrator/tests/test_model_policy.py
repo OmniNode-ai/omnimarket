@@ -35,6 +35,14 @@ def _find_model_policy() -> Path:
     raise FileNotFoundError(f"model_policy.yaml not found relative to {__file__}")
 
 
+@pytest.fixture(autouse=True)
+def bind_packaged_bifrost(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Source-tree tests must not inherit the host's deployment overlay."""
+    contract = _find_model_policy().parent / "configs" / "bifrost_delegation.yaml"
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+
+
 class TestModelPolicyFileExists:
     def test_model_policy_yaml_exists(self) -> None:
         """model_policy.yaml must exist at src/omnimarket/model_policy.yaml."""
@@ -89,26 +97,25 @@ class TestModelPolicyFileExists:
             assert "model_id_default" not in policy, (
                 f"{policy_id} must not declare model_id_default"
             )
-            assert "model_id_env_var" in policy, (
-                f"{policy_id} must declare model_id_env_var"
+            assert "model_id_env_var" in policy or "bifrost_backend_id" in policy, (
+                f"{policy_id} must declare a served-model env var or Bifrost backend"
             )
 
 
 class TestModelPolicyLoader:
     """Tests for the ModelPolicyLoader that resolves policy IDs to URLs."""
 
-    def test_loader_resolves_coder_url_from_env(
+    def test_loader_coder_ignores_legacy_url(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Loader must resolve coder URL from env var, not hardcoded IP."""
+        """A legacy URL cannot unpark the canonical local-coder backend."""
         monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
         from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
             ModelPolicyLoader,
         )
 
         loader = ModelPolicyLoader()
-        url = loader.resolve("coder")
-        assert url == "http://test-host:8000"
+        assert loader.resolve_optional("coder") is None
 
     def test_loader_resolves_coder_fast_url_from_env(
         self, monkeypatch: pytest.MonkeyPatch
@@ -149,7 +156,7 @@ class TestModelPolicyLoader:
         with pytest.raises(RuntimeError, match="not configured"):
             loader.resolve("coder")
 
-    def test_loader_resolves_model_id_from_env(
+    def test_loader_coder_ignores_legacy_model_id(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-coder-model")
@@ -159,7 +166,8 @@ class TestModelPolicyLoader:
 
         loader = ModelPolicyLoader()
 
-        assert loader.resolve_model_id("coder") == "test-coder-model"
+        with pytest.raises(RuntimeError, match="Served model ID"):
+            loader.resolve_model_id("coder")
 
     def test_loader_raises_on_missing_model_id_env(
         self, monkeypatch: pytest.MonkeyPatch
@@ -320,7 +328,7 @@ class TestAssembleLiveUsesModelPolicyLoader:
             "openai policy must not add a legacy env_var residue entry"
         )
         assert "api_key_env_var" in policy, "openai policy must declare api_key_env_var"
-        assert "model_id_env_var" in policy, (
+        assert "model_id_env_var" in policy or "bifrost_backend_id" in policy, (
             "openai policy must declare model_id_env_var"
         )
 
@@ -341,7 +349,7 @@ class TestAssembleLiveUsesModelPolicyLoader:
             "google policy must not add a legacy env_var residue entry"
         )
         assert "api_key_env_var" in policy, "google policy must declare api_key_env_var"
-        assert "model_id_env_var" in policy, (
+        assert "model_id_env_var" in policy or "bifrost_backend_id" in policy, (
             "google policy must declare model_id_env_var"
         )
 

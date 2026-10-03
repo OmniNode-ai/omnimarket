@@ -1,7 +1,8 @@
 # model_policy.yaml — OmniNode model tier policy declarations
 #
-# All LLM endpoint URLs are resolved at runtime from environment variables.
-# No hardcoded IPs or hostnames. Absent env var = RuntimeError at startup.
+# Bifrost-backed policies resolve complete endpoint URLs and served models from
+# the canonical routing contract plus its bound overlay. Null endpoints stay parked.
+# Other policies retain their declared environment configuration.
 #
 # Tier values: local | cloud | cloud_glm | cloud_google | cloud_openai
 # env_var: environment variable name that must be set to an OpenAI-compatible base URL
@@ -10,8 +11,7 @@ policies:
   coder:
     tier: local
     fallback_tier: cloud
-    env_var: LLM_CODER_URL
-    model_id_env_var: LLM_CODER_MODEL_NAME
+    bifrost_backend_id: local-coder
     max_tokens: 4096
     context_window: 64000
     timeout_seconds: 120.0
@@ -39,9 +39,8 @@ policies:
 
   delegation:
     tier: cloud_glm
-    env_var: LLM_GLM_URL
+    bifrost_backend_id: cloud-glm
     api_key_env_var: LLM_GLM_API_KEY
-    model_id_env_var: LLM_GLM_MODEL_NAME
     max_tokens: 8192
     context_window: 128000
     timeout_seconds: 120.0
@@ -49,9 +48,8 @@ policies:
 
   delegation_review:
     tier: cloud_glm
-    env_var: LLM_GLM_URL
+    bifrost_backend_id: cloud-glm
     api_key_env_var: LLM_GLM_API_KEY
-    model_id_env_var: LLM_GLM_REVIEW_MODEL_NAME
     max_tokens: 2048
     context_window: 203000
     timeout_seconds: 30.0

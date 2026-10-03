@@ -26,6 +26,7 @@ import click
 import yaml
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
     ModelTaskDelegatedEvent,
@@ -52,8 +53,7 @@ _DEFAULT_PROFILE_SET: dict[str, Any] = {
                 "usage_source": "MEASURED",
             },
             "cloud_baseline": {
-                "model_id": "glm-4.5",
-                "model_env": "LLM_GLM_MODEL_NAME",
+                "bifrost_backend_id": "cloud-glm",
                 "source_label": "cloud/z.ai",
             },
         },
@@ -67,8 +67,7 @@ _DEFAULT_PROFILE_SET: dict[str, Any] = {
                 "usage_source": "MEASURED",
             },
             "cloud_baseline": {
-                "model_id": "glm-4.5",
-                "model_env": "LLM_GLM_MODEL_NAME",
+                "bifrost_backend_id": "cloud-glm",
                 "source_label": "cloud/z.ai",
             },
         },
@@ -208,11 +207,26 @@ def _resolve_model_id(
     if override:
         return override
 
+    backend_id = section.get("bifrost_backend_id")
+    if backend_id:
+        backend = resolve_bifrost_backend(str(backend_id))
+        if backend is None or not backend.model_name:
+            raise click.ClickException(
+                f"{section_name}: Bifrost backend {backend_id!r} has no served model."
+            )
+        # This demo projects costs without issuing inference. Parked backends
+        # can still supply baseline model metadata; their endpoint stays null.
+        return backend.model_name
+
     configured = _string(section.get("model_id"), field_name=f"{section_name}.model_id")
     if configured != "__SET_ON_LAPTOP__":
         return configured
 
     env_name = str(section.get("model_env") or "").strip()
+    if section_name == "cloud_baseline":
+        raise click.ClickException(
+            "cloud_baseline requires a model_id, bifrost_backend_id, or override."
+        )
     env_value = os.environ.get(env_name, "").strip() if env_name else ""
     if env_value:
         return env_value

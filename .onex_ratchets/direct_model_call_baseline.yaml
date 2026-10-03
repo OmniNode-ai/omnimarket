@@ -131,18 +131,6 @@ entries:
     expires: '2026-12-31'
   - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
     kind: http
-    symbol: LiveBuildDispatchHandler._generate_implementation
-    target: http
-    ticket: OMN-20295
-    expires: '2026-12-31'
-  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
-    kind: http
-    symbol: LiveBuildDispatchHandler._generate_implementation
-    target: http
-    ticket: OMN-20295
-    expires: '2026-12-31'
-  - path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
-    kind: http
     symbol: LiveTicketClassifyHandler._classify_one
     target: http
     ticket: OMN-20295
