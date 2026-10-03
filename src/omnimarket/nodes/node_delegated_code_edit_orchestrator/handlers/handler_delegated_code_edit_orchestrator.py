@@ -11,6 +11,10 @@ turns is this orchestrator:
     CLAIM -> [TURN -> APPLY(actions) -> (FINISH -> CHECKS)]* -> DIFF -> SCORE -> RECEIPT
 
 * At most ``max_turns`` turns (the tool_use rubric's budget caps it at 40).
+* One turn's reads (view, grep, ls) show at most ``MAX_READ_CHARS_PER_TURN``
+  characters together: a view is shortened to what is left, and a read with
+  less than ``MIN_READ_CHARS`` left is not run and says so. A turn's reads then
+  fit the history whole (OMN-20291).
 * Writes are confined: a write or edit whose path leaves the worktree (an
   absolute path outside it, or one that climbs out with ``..``), touches
   ``.git``, or matches no writable glob is refused and the refusal is fed back.
@@ -60,9 +64,11 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_OBSERVATION_BYTES,
+    MAX_READ_CHARS_PER_TURN,
     MAX_VIEW_BYTES,
     MAX_VIEW_WINDOW_BYTES,
     MAX_WRITE_BYTES,
+    MIN_READ_CHARS,
     VIEW_WINDOW_LINES,
     WRITING_TOOLS,
     EnumCodeEditStatus,
@@ -172,8 +178,11 @@ def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
 _LINE_PREFIX = re.compile(r"^ *\d+\| ?", re.M)
 
 
-def view_window(text: str, path: str, offset: int) -> str:
-    """One page of a file with line numbers, and how to see the rest."""
+def view_window(
+    text: str, path: str, offset: int, *, limit: int = MAX_VIEW_WINDOW_BYTES
+) -> str:
+    """One page of a file with line numbers, at most ``limit`` characters of
+    rows, and how to see the rest."""
     lines = text.splitlines()
     total = len(lines)
     start = max(offset, 1)
@@ -184,7 +193,7 @@ def view_window(text: str, path: str, offset: int) -> str:
     end = start - 1
     for number in range(start, min(total, start - 1 + VIEW_WINDOW_LINES) + 1):
         row = f"{number:>5}| {lines[number - 1]}"
-        if size + len(row) + 1 > MAX_VIEW_WINDOW_BYTES:
+        if size + len(row) + 1 > min(limit, MAX_VIEW_WINDOW_BYTES):
             break
         shown.append(row)
         size += len(row) + 1
@@ -206,6 +215,11 @@ def _edit_hint(current: str, old: str) -> str:
         f" Its first line occurs at line(s) {', '.join(hits[:5])}; view from there "
         "and copy old_string exactly, without the line-number prefix."
     )
+
+
+_READING_TOOLS = frozenset(
+    {EnumCodeEditTool.VIEW, EnumCodeEditTool.GREP, EnumCodeEditTool.LS}
+)
 
 
 def _lead(text: str) -> str:
@@ -536,16 +550,27 @@ class HandlerDelegatedCodeEditOrchestrator:
         shown: list[HistoryAction] = []
         finished = False
         actions_log: list[dict[str, object]] = []
+        read_left = MAX_READ_CHARS_PER_TURN
         for number, given in enumerate(reply.actions, start=1):
             action = self._rebased(request, given)
+            reads = action.tool in _READING_TOOLS
             if action.tool == EnumCodeEditTool.FINISH:
                 finished = True
                 state.summary = action.summary
                 observation = ModelObservation(
                     ok=True, output="finish: checks run next"
                 )
+            elif reads and read_left < MIN_READ_CHARS:
+                observation = ModelObservation(
+                    ok=False,
+                    output=f"not read: this turn's reads already show "
+                    f"{MAX_READ_CHARS_PER_TURN - read_left} characters, the most one "
+                    "turn may; edit what you have read, then read more next turn",
+                )
             else:
-                observation = self._apply(request, action, state)
+                observation = self._apply(request, action, state, read_left)
+            if reads and observation.ok:
+                read_left -= len(observation.output)
             arguments = {
                 key: value
                 for key, value in action.model_dump(
@@ -619,6 +644,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         request: ModelDelegatedCodeEditRequest,
         action: ModelCodeEditAction,
         state: _State,
+        read_left: int = MAX_READ_CHARS_PER_TURN,
     ) -> ModelObservation:
         tool = action.tool
         if tool == EnumCodeEditTool.RUN_CHECK:
@@ -656,16 +682,24 @@ class HandlerDelegatedCodeEditOrchestrator:
             if tool == EnumCodeEditTool.VIEW:
                 text = self._ports.read_file(request, path)
                 return ModelObservation(
-                    ok=True, output=view_window(text, path, action.offset)
+                    ok=True,
+                    output=view_window(text, path, action.offset, limit=read_left),
                 )
             if tool == EnumCodeEditTool.LS:
                 return ModelObservation(
-                    ok=True, output=_cap(self._ports.list_dir(request, path))
+                    ok=True,
+                    output=_cap(
+                        self._ports.list_dir(request, path),
+                        min(MAX_OBSERVATION_BYTES, read_left),
+                    ),
                 )
             if tool == EnumCodeEditTool.GREP:
                 return ModelObservation(
                     ok=True,
-                    output=_cap(self._ports.grep(request, action.pattern, path)),
+                    output=_cap(
+                        self._ports.grep(request, action.pattern, path),
+                        min(MAX_OBSERVATION_BYTES, read_left),
+                    ),
                 )
             if tool == EnumCodeEditTool.WRITE:
                 if len(action.content.encode()) > MAX_WRITE_BYTES:

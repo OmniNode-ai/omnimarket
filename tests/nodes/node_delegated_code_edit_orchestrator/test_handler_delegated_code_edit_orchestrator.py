@@ -831,7 +831,7 @@ def test_every_earlier_turn_stays_in_the_prompt_when_its_output_cannot() -> None
     assert "[earlier turns cut to fit]" not in last
     # The newest turn's views are shown in full; a window shown again later is
     # not repeated, it points at the later turn.
-    assert last.count("line 999 ") == 1
+    assert last.count("line 250 ") == 1
     assert "shown again in turn 8" in last
 
 
@@ -853,3 +853,38 @@ def test_a_view_of_a_file_changed_later_is_marked_stale() -> None:
     HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
     last = ports.prompts[-1]
     assert "src/m.py changed in turn 2 after this view" in last
+
+
+def test_one_turns_reads_are_bounded_so_the_newest_turn_is_never_cut() -> None:
+    """Replays a16a3138 and e3a2c923 again: a turn read 8 to 12 windows of up to
+    16 KB, more than the whole history budget, so even the newest turn was shown
+    cut and the model re-read what it had just read."""
+    big = "".join(f"line {i} " + "x" * 40 + "\n" for i in range(1, 1001))
+    ports = FakePorts(
+        [_views(1), _views(2)], files={"src/m.py": "x\n", "src/big.py": big}
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    actions = cast("list[dict[str, Any]]", turns[0]["actions"])
+    outputs = [a["output"] for a in actions]
+    oks = [a["ok"] for a in actions]
+    assert oks[:2] == [True, True]
+    assert sum(len(o) for o, ok in zip(outputs, oks, strict=True) if ok) <= 30_000
+    assert not oks[-1]
+    assert "this turn's reads" in outputs[-1]
+    # The newest turn, and the one before it, are shown whole.
+    last = ports.prompts[-1]
+    assert "more characters cut" not in last
+    assert "line 250 " in last
+
+
+def test_a_view_shrinks_to_what_the_turn_can_still_read() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator import (
+        view_window,
+    )
+
+    text = "".join(f"row {i}\n" for i in range(1, 501))
+    shown = view_window(text, "a.py", 1, limit=500)
+    assert len(shown) <= 500 + 200
+    assert "[more: view a.py with offset=" in shown

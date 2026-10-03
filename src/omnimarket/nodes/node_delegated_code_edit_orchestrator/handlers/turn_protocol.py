@@ -27,6 +27,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_ACTIONS_PER_TURN,
+    MAX_READ_CHARS_PER_TURN,
     EnumCodeEditTool,
     ModelCodeEditAction,
     ModelDelegatedCodeEditRequest,
@@ -337,10 +338,11 @@ def build_turn_prompt(
         '{"note": "<one line>", "actions": [{"tool": "<name>", ...}, ...]}\n'
         f"At most {MAX_ACTIONS_PER_TURN} actions per turn. Paths are relative "
         "to the worktree root. Read before you edit. Results come back next turn.\n"
-        "HISTORY keeps every earlier turn, older turns without their output: a "
-        "view whose content is elided there was already read. Do not re-read "
-        "whole files; view the lines you will change and edit them in the same "
-        "or the next turn.\n\n"
+        f"One turn's reads (view, grep, ls) show at most {MAX_READ_CHARS_PER_TURN} "
+        "characters together. HISTORY keeps every earlier turn, older turns "
+        "without their output: a view whose content is elided there was already "
+        "read. Do not re-read whole files; view the lines you will change and "
+        "edit them in the same or the next turn.\n\n"
         f"TOOLS\n{tools}\n\n"
         f"WRITABLE (only these paths may be written): {globs}\n\n"
         f"CHECKS (run_check by name; finish runs all of them)\n{checks}\n\n"

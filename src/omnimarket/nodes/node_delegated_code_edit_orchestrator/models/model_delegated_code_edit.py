@@ -34,6 +34,12 @@ MAX_OBSERVATION_BYTES = 6_000
 VIEW_WINDOW_LINES = 250
 #: Bytes one view window may carry.
 MAX_VIEW_WINDOW_BYTES = 16_000
+#: Characters the reads (view, grep, ls) of one turn may show together. The
+#: history holds about 66,000 characters, so a turn's reads fit it whole with
+#: room for the turn before (OMN-20291).
+MAX_READ_CHARS_PER_TURN = 30_000
+#: Below this many characters left, a turn's further reads are not run.
+MIN_READ_CHARS = 2_000
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 
