@@ -70,6 +70,7 @@ MAX_PROMPT_BYTES = 120_000
 _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
+_MAX_PATH_HINTS = 3
 _OUTPUT_TAIL = 6_000
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 _VOLATILE = re.compile(r"\b\d+(?:\.\d+)?\s?(?:s|ms|sec|seconds)\b|0x[0-9a-fA-F]+")
@@ -330,16 +331,51 @@ class DelegatedCodeEditPorts:
                 break
         return tuple(sorted(rows))
 
+    def _missing(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        path: str,
+        target: Path,
+        what: str,
+    ) -> WorkspacePathError:
+        """``path`` is not usable as asked. When it does not exist, name up to
+        three worktree paths that end with it: a model that guessed
+        'omnimarket/nodes' in a src-layout repo kept guessing it for 20 turns
+        when told only that it was not a directory (OMN-20291, ab8d7ef6)."""
+        message = f"{path} {what}"
+        tail = "/" + path.strip().removeprefix("./").strip("/")
+        if target.exists() or tail == "/":
+            return WorkspacePathError(message)
+        root = self._root(request)
+        listed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
+            capture_output=True,
+            env=_git_env(),
+            check=False,
+            timeout=60,
+        )
+        found: set[str] = set()
+        for raw in listed.stdout.split(b"\0")[:_MAX_MANIFEST_FILES]:
+            parts = raw.decode("utf-8", "replace").split("/")
+            for depth in range(1, len(parts) + 1):
+                prefix = "/".join(parts[:depth])
+                if prefix and ("/" + prefix).endswith(tail):
+                    found.add(prefix)
+        if not found:
+            return WorkspacePathError(message)
+        named = sorted(found, key=lambda rel: (len(rel), rel))[:_MAX_PATH_HINTS]
+        return WorkspacePathError(f"{message}; did you mean: {', '.join(named)}?")
+
     def read_file(self, request: ModelDelegatedCodeEditRequest, path: str) -> str:
         target = self._inside(request, path)
         if not target.is_file():
-            raise WorkspacePathError(f"{path} is not a file")
+            raise self._missing(request, path, target, "is not a file")
         return target.read_text(encoding="utf-8", errors="replace")
 
     def list_dir(self, request: ModelDelegatedCodeEditRequest, path: str) -> str:
         target = self._inside(request, path)
         if not target.is_dir():
-            raise WorkspacePathError(f"{path} is not a directory")
+            raise self._missing(request, path, target, "is not a directory")
         names = sorted(
             entry.name + ("/" if entry.is_dir() else "")
             for entry in target.iterdir()
@@ -351,6 +387,10 @@ class DelegatedCodeEditPorts:
         self, request: ModelDelegatedCodeEditRequest, pattern: str, path: str
     ) -> str:
         target = self._inside(request, path or ".")
+        if not target.exists():
+            # git grep answers a missing pathspec with "no matches", which told a
+            # model searching the wrong layout nothing (OMN-20291, ab8d7ef6).
+            raise self._missing(request, path, target, "does not exist")
         root = self._root(request)
         found = subprocess.run(
             [

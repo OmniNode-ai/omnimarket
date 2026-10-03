@@ -993,6 +993,14 @@ class HandlerDelegatedCodeEditOrchestrator:
                 old_string = _LINE_PREFIX.sub("", old_string)
                 new_string = _LINE_PREFIX.sub("", new_string)
             occurrences = current.count(old_string)
+            if old_string == new_string:
+                # Not a re-sent edit. Replay ab8d7ef6 (OMN-20291) sent this no-op
+                # three times and each time was told it "was applied before".
+                return ModelObservation(
+                    ok=True,
+                    output=f"unchanged {path}: old_string and new_string are the "
+                    "same text, so this edit changes nothing",
+                )
             if (
                 new_string
                 and current.count(new_string) == 1
