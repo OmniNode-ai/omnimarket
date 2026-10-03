@@ -245,7 +245,7 @@ class _ClassifyingRunner(BaseProjectionRunner):
         super().__init__(runtime_binding=binding)
         self._raises = raises
         self.dlq_published: list[tuple[str, bytes]] = []
-        self._consumer = _RecordingConsumer()  # type: ignore[assignment]
+        self._consumer: _RecordingConsumer = _RecordingConsumer()
 
     @property
     def topics(self) -> list[str]:
@@ -282,7 +282,7 @@ class TestHandleMessageClassification:
         runner = _ClassifyingRunner(raises=_validation_error())
         await runner._handle_message(_msg(offset=41))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [42], (
             "a POISON event is durably captured on the DLQ; the offset advances so "
             "it is not retried in a hot loop"
@@ -304,7 +304,7 @@ class TestHandleMessageClassification:
         with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(_msg(offset=41))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert commits == [], (
             "a SCHEMA error must NOT commit the offset — a missing column "
             "requires a forward migration, never quarantine as malformed"
@@ -376,7 +376,7 @@ class TestDelegationRunnerSafetyNet:
             )
         )
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
@@ -391,7 +391,7 @@ class TestDelegationRunnerSafetyNet:
         with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(msg)
 
-        assert runner._consumer.commits == []  # type: ignore[attr-defined]
+        assert runner._consumer.commits == []
         assert [t for t, _ in published if t == DELEGATION_DLQ_TOPIC] == []
 
     @pytest.mark.asyncio
@@ -415,7 +415,7 @@ class TestDelegationRunnerSafetyNet:
             )
         )
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
@@ -429,7 +429,7 @@ class TestDelegationRunnerSafetyNet:
         )
         await runner._handle_message(msg)
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [7], (
             "a POISON DataError must commit the offset (not retried in a hot "
             "loop) -- pre-fix this was RECOVERABLE and never committed"
@@ -469,7 +469,7 @@ class TestDelegationRunnerSafetyNet:
         # classification, not tenant resolution.
         mock_db.fetchval = AsyncMock(return_value=None)
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
@@ -484,7 +484,7 @@ class TestDelegationRunnerSafetyNet:
         )
         await runner._handle_message(msg)
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [9], (
             "a POISON InsufficientPrivilegeError must commit the offset (not "
             "retried in a hot loop) -- pre-fix this was RECOVERABLE and never "

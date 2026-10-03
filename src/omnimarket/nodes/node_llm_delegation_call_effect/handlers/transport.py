@@ -203,6 +203,35 @@ def probe_served_models(
     return frozenset(ids) if ids else None
 
 
+# OMN-16419 / OMN-17098: cache of ``probe_served_models`` results, keyed by
+# endpoint URL and shared by BOTH effect boundaries that run the served-model
+# attribution guard (``HandlerLlmDelegationCall`` and ``HandlerInferenceIntent``),
+# so a hot route is not re-probed on every call. A ``None`` served-id set is
+# cached too (it means "no evidence either way", e.g. a cloud backend without
+# this path), so a backend that never exposes ``/v1/models`` is not re-probed.
+_SERVED_MODELS_CACHE_TTL_SECONDS = 60
+served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
+
+
+def get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
+    """Return cached (or freshly probed) served model ids for ``endpoint_url``.
+
+    The cache wrapper around ``probe_served_models`` that backs the fail-closed
+    model-attribution guard at both effect boundaries (OMN-16419,
+    OMN-17098). ``None`` is "no evidence", never a mismatch.
+    """
+    now = time.monotonic()
+    cached = served_models_cache.get(endpoint_url)
+    if cached is not None:
+        ts, served_ids = cached
+        if now - ts < _SERVED_MODELS_CACHE_TTL_SECONDS:
+            return served_ids
+
+    served_ids = probe_served_models(endpoint_url)
+    served_models_cache[endpoint_url] = (now, served_ids)
+    return served_ids
+
+
 def _httpx_get_json(url: str, *, timeout_seconds: float) -> dict[str, Any] | None:
     with httpx.Client(timeout=timeout_seconds) as client:
         resp = client.get(url, timeout=timeout_seconds)
@@ -449,11 +478,13 @@ def _curl_post(
 __all__ = [
     "ModelTransportResponse",
     "get_provider_json",
+    "get_served_model_ids",
     "health_probe_url",
     "post_chat_completion",
     "probe_health",
     "probe_served_models",
     "resolve_runtime_profile",
+    "served_models_cache",
     "served_models_url",
     "uses_lan_curl_transport",
 ]

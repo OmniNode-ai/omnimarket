@@ -166,7 +166,7 @@ class _RefusingRunner(BaseProjectionRunner):
         )
         self._raises = raises
         self.dlq_published: list[tuple[str, bytes]] = []
-        self._consumer = _RecordingConsumer()  # type: ignore[assignment]
+        self._consumer: _RecordingConsumer = _RecordingConsumer()
 
     @property
     def topics(self) -> list[str]:
@@ -205,7 +205,7 @@ class TestTheWedgedPartitionAdvances:
 
         await runner._handle_message(_live_msg(offset=17))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [18], (
             "the offset must advance -- an unattributable event that no retry can "
             "resolve wedged nine partitions and held three tables at zero rows"
@@ -232,7 +232,7 @@ class TestTheWedgedPartitionAdvances:
         with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(_live_msg(offset=17))
 
-        assert runner._consumer.commits == []  # type: ignore[attr-defined]
+        assert runner._consumer.commits == []
         assert runner.dlq_published == []
 
 
@@ -302,7 +302,7 @@ def _neutralize_io(runner: BaseProjectionRunner, monkeypatch: Any) -> None:
     """Remove every side effect `run()` has other than the retry loop itself."""
     from unittest.mock import AsyncMock
 
-    runner._db = AsyncMock()  # type: ignore[assignment]
+    runner._db = AsyncMock()
     monkeypatch.setattr(runner, "_start_health_server_if_configured", lambda: None)
     monkeypatch.setattr(runner, "_stop_health_server", lambda: None)
 

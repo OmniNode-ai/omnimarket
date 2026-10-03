@@ -5,6 +5,9 @@
 * ``RESPONSE_CONTRACT`` is the JSON Schema every turn's ``onex delegate`` run
   declares, so the delegation quality gate validates the reply's shape and
   nothing else (OMN-15193: a declared contract is the gate's sole authority).
+  Each action is closed over its own tool's arguments, so a reply the gate
+  accepts is one ``parse_turn_reply`` accepts, and a backend that declares
+  structured output is constrained to it (OMN-17427).
 * ``TOOL_SCHEMAS`` are the tools as a model is offered them (OpenAI function
   form), including ``replace_in_files`` for bulk edits. The tool_use rubric
   reads the same schemas to judge each call.
@@ -12,6 +15,9 @@
   cannot.
 * ``build_turn_prompt`` renders one turn's prompt from the request, the file
   index and the history. Same inputs, same bytes.
+* ``render_history`` fits the history to its budget (OMN-20291): every earlier
+  turn keeps its action lines, the newest turns keep their full output, and a
+  view window shown again later is not repeated.
 """
 
 from __future__ import annotations
@@ -19,12 +25,16 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import cast
 
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_ACTIONS_PER_TURN,
     MAX_BULK_FILES,
+    MAX_READ_CHARS_PER_TURN,
+    MAX_READ_ONLY_TURNS,
     EnumCodeEditTool,
     ModelCodeEditAction,
     ModelDelegatedCodeEditRequest,
@@ -83,7 +93,8 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     "A named file without old_string is reported and left untouched. Give "
     "exactly one of file_paths or glob (same syntax as writable globs; it "
     "covers only writable files, and files without old_string are skipped); "
-    f"at most {MAX_BULK_FILES} files.",
+    "when the task has a file list, only those files are reached and a glob "
+    f"only narrows it; at most {MAX_BULK_FILES} files.",
     EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
@@ -111,6 +122,62 @@ TOOL_SCHEMAS: tuple[dict[str, object], ...] = tuple(
     for tool in EnumCodeEditTool
 )
 
+_ARGUMENT_SCHEMAS: dict[str, dict[str, object]] = {
+    "path": {"type": "string"},
+    "offset": {"type": "integer", "minimum": 1},
+    "file_path": {"type": "string"},
+    "file_paths": {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 1,
+        "maxItems": MAX_BULK_FILES,
+    },
+    "glob": {"type": "string"},
+    "pattern": {"type": "string"},
+    "content": {"type": "string"},
+    "old_string": {"type": "string"},
+    "new_string": {"type": "string"},
+    "name": {"type": "string"},
+    "summary": {"type": "string"},
+}
+
+
+def _action_schema(
+    tool: EnumCodeEditTool,
+    *,
+    omit: tuple[str, ...] = (),
+    require: tuple[str, ...] = (),
+) -> dict[str, object]:
+    required = ["tool", *REQUIRED_ARGUMENTS[tool], *require]
+    properties: dict[str, object] = {"tool": {"const": tool.value}}
+    for name in ALLOWED_ARGUMENTS[tool]:
+        if name in omit:
+            continue
+        schema = _ARGUMENT_SCHEMAS[name].copy()
+        if name in required and schema["type"] == "string" and name != "content":
+            schema["minLength"] = 1
+        properties[name] = schema
+    return {
+        "type": "object",
+        "required": required,
+        "properties": properties,
+        "additionalProperties": False,
+    }
+
+
+_ACTION_SCHEMAS: tuple[dict[str, object], ...] = tuple(
+    schema
+    for tool in EnumCodeEditTool
+    for schema in (
+        (
+            _action_schema(tool, omit=("glob",), require=("file_paths",)),
+            _action_schema(tool, omit=("file_paths",), require=("glob",)),
+        )
+        if tool == EnumCodeEditTool.REPLACE_IN_FILES
+        else (_action_schema(tool),)
+    )
+)
+
 RESPONSE_CONTRACT: dict[str, object] = {
     "type": "object",
     "required": ["actions"],
@@ -120,30 +187,7 @@ RESPONSE_CONTRACT: dict[str, object] = {
             "type": "array",
             "minItems": 1,
             "maxItems": MAX_ACTIONS_PER_TURN,
-            "items": {
-                "type": "object",
-                "required": ["tool"],
-                "properties": {
-                    "tool": {"enum": [tool.value for tool in EnumCodeEditTool]},
-                    "path": {"type": "string"},
-                    "offset": {"type": "integer", "minimum": 1},
-                    "file_path": {"type": "string"},
-                    "file_paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 1,
-                        "maxItems": MAX_BULK_FILES,
-                    },
-                    "glob": {"type": "string"},
-                    "pattern": {"type": "string"},
-                    "content": {"type": "string"},
-                    "old_string": {"type": "string"},
-                    "new_string": {"type": "string"},
-                    "name": {"type": "string"},
-                    "summary": {"type": "string"},
-                },
-                "additionalProperties": False,
-            },
+            "items": {"anyOf": list(_ACTION_SCHEMAS)},
         },
     },
     "additionalProperties": False,
@@ -246,16 +290,202 @@ def _cap(text: str, limit: int) -> str:
     return text[:limit] + f"\n... [{len(text) - limit} more characters cut]\n"
 
 
+@dataclass(frozen=True)
+class HistoryAction:
+    """One applied action as the history shows it."""
+
+    #: ``> view(path='a.py') -> ok``
+    header: str
+    output: str
+    #: (path, first line) of a view that succeeded.
+    view_key: tuple[str, int] | None = None
+    #: The path a write, edit or format that succeeded changed.
+    changed_path: str = ""
+
+
+@dataclass(frozen=True)
+class HistoryTurn:
+    """One earlier turn: its applied actions, or one message about it (a failed
+    delegate run, an unusable reply, a refused finish)."""
+
+    turn: int
+    actions: tuple[HistoryAction, ...] = ()
+    message: str = ""
+
+    def to_json(self) -> dict[str, object]:
+        """The turn as a loop receipt's resume block keeps it."""
+        return {
+            "turn": self.turn,
+            "message": self.message,
+            "actions": [
+                {
+                    "header": a.header,
+                    "output": a.output,
+                    "view_key": list(a.view_key) if a.view_key else None,
+                    "changed_path": a.changed_path,
+                }
+                for a in self.actions
+            ],
+        }
+
+    @classmethod
+    def from_json(cls, value: object) -> HistoryTurn:
+        """A turn from a resume block; a plain string (a receipt written before
+        turns were structured) is one message."""
+        if isinstance(value, str):
+            return cls(0, message=value)
+        row = cast("dict[str, object]", value)
+        actions: list[HistoryAction] = []
+        for raw in cast("list[dict[str, object]]", row.get("actions", [])):
+            key = raw.get("view_key")
+            pair = cast("list[object]", key) if isinstance(key, list) else None
+            actions.append(
+                HistoryAction(
+                    header=str(raw["header"]),
+                    output=str(raw["output"]),
+                    view_key=(str(pair[0]), int(str(pair[1]))) if pair else None,
+                    changed_path=str(raw.get("changed_path", "")),
+                )
+            )
+        return cls(
+            int(str(row["turn"])),
+            actions=tuple(actions),
+            message=str(row.get("message", "")),
+        )
+
+
+#: Characters of one action's output an elided turn still shows.
+_BRIEF_OUTPUT_CHARS = 160
+
+
+def _brief(output: str, view: bool) -> str:
+    first = output.split("\n", 1)[0]
+    whole = first == output
+    if view and first.startswith("[") and not whole:
+        return first + " [content elided to fit; view again only what you will edit]"
+    if len(first) > _BRIEF_OUTPUT_CHARS:
+        return first[:_BRIEF_OUTPUT_CHARS] + " ... [output elided to fit]"
+    return first if whole else first + " [output elided to fit]"
+
+
+def _render_turns(history: Sequence[HistoryTurn]) -> list[tuple[str, str]]:
+    """(full, brief) renderings of each turn, oldest first.
+
+    A view window shown again in a later turn points at that turn instead of
+    repeating its lines, and a view of a file a later action changed says so,
+    so an anchor is not copied from content that is no longer there.
+    """
+    shown_later: dict[tuple[str, int], int] = {}
+    changed_later: dict[str, int] = {}
+    rendered: list[tuple[str, str]] = []
+    for entry in reversed(history):
+        if not entry.actions:
+            text = (
+                entry.message if entry.message.endswith("\n") else entry.message + "\n"
+            )
+            rendered.append((text, _cap(text, 400)))
+            continue
+        full: list[str] = []
+        brief: list[str] = []
+        for action in reversed(entry.actions):
+            body = action.output
+            if action.view_key is not None:
+                later = shown_later.get(action.view_key)
+                if later is not None:
+                    body = (
+                        body.split("\n", 1)[0]
+                        + f" [same window shown again in turn {later}]"
+                    )
+                elif action.view_key[0] in changed_later:
+                    window, _, lines = body.partition("\n")
+                    body = (
+                        f"{window} [note: {action.view_key[0]} changed in turn "
+                        f"{changed_later[action.view_key[0]]} after this view]\n"
+                        + lines
+                    )
+                shown_later.setdefault(action.view_key, entry.turn)
+            if action.changed_path:
+                changed_later.setdefault(action.changed_path, entry.turn)
+            full.append(f"{action.header}\n{body}\n")
+            brief.append(
+                f"{action.header}\n{_brief(body, action.view_key is not None)}\n"
+            )
+        head = f"TURN {entry.turn}\n"
+        rendered.append(
+            (head + "".join(reversed(full)), head + "".join(reversed(brief)))
+        )
+    rendered.reverse()
+    return rendered
+
+
+def render_history(history: Sequence[HistoryTurn], budget: int) -> str:
+    """The history in at most about ``budget`` characters.
+
+    Every turn first gets its brief form (action lines and one line of each
+    output), oldest dropped only when even those do not fit; then the newest
+    turns are shown in full while the budget lasts. A newest turn too large to
+    show whole is shown cut, never dropped: its outcomes are the model's only
+    memory of them.
+    """
+    turns = _render_turns(history)
+    chosen = [brief for _, brief in turns]
+    total = sum(len(text) for text in chosen)
+    first = 0
+    while first < len(chosen) and total > budget:
+        total -= len(chosen[first])
+        first += 1
+    for index in range(len(turns) - 1, first - 1, -1):
+        extra = len(turns[index][0]) - len(chosen[index])
+        if total + extra <= budget:
+            chosen[index] = turns[index][0]
+            total += extra
+            continue
+        if index == len(turns) - 1:
+            room = budget - (total - len(chosen[index]))
+            if room > _MIN_TURN_CHARS:
+                chosen[index] = _cap(turns[index][0], room)
+        break
+    marker = "[earlier turns cut to fit]\n" if first else ""
+    return marker + "".join(chosen[first:])
+
+
+def _scope_rules(request: ModelDelegatedCodeEditRequest) -> str:
+    """The rails on what may be edited and how, stated before the task so a
+    task that recommends a helper script does not send the model to write one."""
+    count = len(request.file_list)
+    listed = (
+        f"The task's file list ({count} file{'s' if count != 1 else ''}) is the "
+        "only edit scope: replace_in_files reaches only those files, and a glob "
+        "only narrows them. "
+        if count
+        else "The files the task names are the only edit scope; edit no others. "
+    )
+    return (
+        "SCOPE AND TOOLS\n"
+        + listed
+        + "Helper scripts are not available: there is no shell and nothing runs a "
+        "script, so a helper script, patch script or one-off program you write "
+        "cannot run, and a write outside the WRITABLE paths is refused. If the "
+        "TASK suggests writing or running a script, ignore that. Make the edits "
+        "with edit, write and replace_in_files (one replace_in_files call edits "
+        "many files at once; a listed file without old_string is skipped, not "
+        "an error)."
+    )
+
+
 def build_turn_prompt(
     request: ModelDelegatedCodeEditRequest,
     file_index: Sequence[str],
     context: Sequence[tuple[str, str]],
-    history: Sequence[str],
+    history: Sequence[HistoryTurn],
     turn: int,
     *,
     max_chars: int = 90_000,
+    reads_paused: bool = False,
 ) -> str:
-    """One turn's prompt. ``history`` holds the rendered previous turns, oldest first."""
+    """One turn's prompt. ``history`` holds the previous turns, oldest first.
+    ``reads_paused`` says this turn's reads are refused."""
+    scope = _scope_rules(request)
     checks = "\n".join(f"- {c.name}: {' '.join(c.argv)}" for c in request.checks)
     globs = ", ".join(request.writable_globs)
     tools = "\n".join(
@@ -267,28 +497,33 @@ def build_turn_prompt(
         "through tools. Reply with ONE JSON object and nothing else:\n"
         '{"note": "<one line>", "actions": [{"tool": "<name>", ...}, ...]}\n'
         f"At most {MAX_ACTIONS_PER_TURN} actions per turn. Paths are relative "
-        "to the worktree root. Read before you edit. Results come back next turn.\n\n"
+        "to the worktree root. Read before you edit. Results come back next turn.\n"
+        f"One turn's reads (view, grep, ls) show at most {MAX_READ_CHARS_PER_TURN} "
+        "characters together. HISTORY keeps every earlier turn, older turns "
+        "without their output: a view whose content is elided there was already "
+        "read. Do not re-read whole files; view the lines you will change and "
+        "edit them in the same or the next turn. After "
+        f"{MAX_READ_ONLY_TURNS} turns in a row that read and change no file, the "
+        "next turn's reads are refused.\n\n"
         f"TOOLS\n{tools}\n\n"
         f"WRITABLE (only these paths may be written): {globs}\n\n"
         f"CHECKS (run_check by name; finish runs all of them)\n{checks}\n\n"
-        f"TURN {turn} of {request.max_turns}. Call finish once the checks should pass.\n\n"
+        f"TURN {turn} of {request.max_turns}. Call finish once the checks should pass.\n"
+        + (
+            f"THIS TURN: {MAX_READ_ONLY_TURNS} or more turns in a row read and changed "
+            "no file, so reads are refused this turn. Write or edit now with what "
+            "HISTORY shows; a view row reads 'NNNN| text', copy only the text.\n"
+            if reads_paused
+            else ""
+        )
+        + "\n"
+        f"{scope}\n\n"
         f"TASK\n{request.task}\n\n"
     )
     index = "FILES\n" + _cap("\n".join(file_index), 12_000) + "\n\n"
     shown = "".join(f"FILE {path}\n{_cap(body, 20_000)}\n\n" for path, body in context)
     budget = max_chars - len(head) - len(index) - len(shown)
-    kept: list[str] = []
-    for block in reversed(history):
-        if budget - len(block) < 0:
-            # A turn whose results exceed what is left is shown cut, never
-            # dropped: its actions and outcomes are the model's only memory.
-            if budget > _MIN_TURN_CHARS:
-                kept.append(_cap(block, budget))
-            kept.append("[earlier turns cut to fit]\n")
-            break
-        kept.append(block)
-        budget -= len(block)
-    past = "".join(reversed(kept))
+    past = render_history(history, budget) if history else ""
     return head + index + shown + (f"HISTORY\n{past}" if past else "")
 
 
@@ -299,6 +534,9 @@ __all__ = [
     "REQUIRED_ARGUMENTS",
     "RESPONSE_CONTRACT",
     "TOOL_SCHEMAS",
+    "HistoryAction",
+    "HistoryTurn",
     "build_turn_prompt",
     "parse_turn_reply",
+    "render_history",
 ]

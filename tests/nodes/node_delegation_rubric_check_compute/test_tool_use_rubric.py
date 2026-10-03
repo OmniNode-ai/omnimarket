@@ -50,11 +50,13 @@ def call(
     status="ok",
     output="",
     call_id="call-widget",
+    refused=False,
 ):
     return ModelToolCall(
         call_id=call_id,
         tool_name=name,
         arguments_json=arguments,
+        refused=refused,
         result=None
         if status is None
         else ModelToolCallResult(status=status, output=output),
@@ -646,6 +648,25 @@ def test_tool_use_budget_all_exceeded_fields_named():
     assert (
         row.detail == "turns=41 > 40, tool_calls=81 > 80, wall_time_ms=900001 > 900000"
     )
+
+
+def test_tool_use_budget_counts_refused_calls_separately():
+    refused = tuple(
+        call(call_id=f"refused-{n}", status="error", refused=True) for n in range(30)
+    )
+    worked = tuple(call(call_id=f"call-{n}") for n in range(80))
+    row = criterion("within_budget", run=transcript(calls=refused + worked))
+    assert (row.outcome, row.reason_code) == ("PASS", "within_budget")
+    assert "tool_calls=80" in row.facts
+    assert "refused_calls=30" in row.facts
+
+
+def test_tool_use_budget_still_fails_on_work_calls_beside_refused_ones():
+    refused = (call(call_id="refused", status="error", refused=True),)
+    worked = tuple(call(call_id=f"call-{n}") for n in range(81))
+    row = criterion("within_budget", run=transcript(calls=refused + worked))
+    assert (row.outcome, row.reason_code) == ("FAIL", "budget_exceeded")
+    assert row.detail == "tool_calls=81 > 80"
 
 
 def test_tool_use_budget_absent_wall_time_undetermined():

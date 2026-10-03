@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import ClassVar
+from typing import ClassVar, cast
 from unittest.mock import AsyncMock, Mock
 from urllib.error import HTTPError
 from urllib.request import urlopen
@@ -41,7 +41,7 @@ SCHEMA_MESSAGE = 'column "routed_model" of relation "delegation_events" does not
 
 
 def _schema_exception() -> BaseException:
-    return asyncpg.exceptions.UndefinedColumnError(SCHEMA_MESSAGE)
+    return cast(BaseException, asyncpg.exceptions.UndefinedColumnError(SCHEMA_MESSAGE))
 
 
 @pytest.mark.parametrize(

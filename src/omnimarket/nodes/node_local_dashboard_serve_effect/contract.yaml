@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_local_dashboard_serve_effect"
+# Started by `onex dashboard`, not by a bus command, so it declares no
+# subscribe or publish topics (node liveness gate).
+lifecycle: experimental
+contract_name: node_local_dashboard_serve_effect
+node_name: node_local_dashboard_serve_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT node behind `onex dashboard` (local MVP plan T2.3). Serves this
+  install's contract-declared projection exposures on a loopback port in the
+  shape the OmniDash http data source reads (GET /projections and
+  GET /projection/{topic}). Every read is dispatched to
+  node_projection_read_effect's handler (decision D1 (a), OMN-20159), which owns
+  all SQL, over the store the local writers fill. Tenant-scoped reads are
+  pinned to this install's identity; another tenant answers 422.
+node_type: effect
+input_model:
+  name: ModelLocalDashboardServeRequest
+  module: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard
+output_model:
+  name: ModelLocalDashboardServeResult
+  module: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard
+
+outputs:
+  url:
+    type: str
+    description: The loopback URL the process served on.
+  exposure_count:
+    type: int
+    description: How many declared exposures the catalogue listed.
+  tenant_id:
+    type: str
+    required: false
+    description: The install identity scoped reads were pinned to; absent when none is minted.
+
+handler:
+  name: HandlerLocalDashboardServe
+  module: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve
+  class: HandlerLocalDashboardServe
+  input_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard.ModelLocalDashboardServeRequest

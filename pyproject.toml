@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.282"
+version = "0.4.284"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -402,6 +402,7 @@ node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outc
 node_projection_session_replay = "omnimarket.nodes.node_projection_session_replay"
 node_projection_work_events = "omnimarket.nodes.node_projection_work_events"
 node_projection_read_effect = "omnimarket.nodes.node_projection_read_effect"
+node_local_dashboard_serve_effect = "omnimarket.nodes.node_local_dashboard_serve_effect"
 node_projection_session_content = "omnimarket.nodes.node_projection_session_content"
 node_projection_hook_ledger = "omnimarket.nodes.node_projection_hook_ledger"
 node_projection_open_obligations = "omnimarket.nodes.node_projection_open_obligations"
@@ -774,6 +775,10 @@ local = "omnimarket.cli.cli_local:local_group"
 # same reason as "cloud" and "local": the CLI discovers this group over
 # installed distributions.
 test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
+# OMN-19976: `onex dashboard` -- serve this install's projection exposures to the
+# local dashboard through the read node (plan T2.3). Registered here for the same
+# reason as "cloud" and "local".
+dashboard = "omnimarket.cli.cli_local:dashboard_command"
 # OMN-20290: `onex code-edit` -- run the delegated code edit loop over a git
 # worktree, each model turn one onex delegate run. Discovered over installed
 # distributions like the groups above.

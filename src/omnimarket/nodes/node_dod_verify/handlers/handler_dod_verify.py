@@ -524,7 +524,7 @@ class HandlerDodVerify:
             error_message = (
                 f"AC_BINDING_SELF_ACCEPTED: {len(bindings)} acceptance-criterion "
                 f"binding(s) for {command.ticket_id} were accepted by the lane "
-                f"that authored them ({', '.join(bindings)}). A binding is "
+                f"that authored them, or by no one ({', '.join(bindings)}). A binding is "
                 "accepted by a second lane that re-runs the bound check, never "
                 "by its author; until then the criterion is unproven."
             )
