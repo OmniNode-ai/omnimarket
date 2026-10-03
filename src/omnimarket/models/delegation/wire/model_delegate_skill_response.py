@@ -88,7 +88,14 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # delivering command message the OMN-18887 claim keys on, which the terminal will
 # carry so a served replay and a second command sharing a correlation can be told
 # apart. The second half declares it and the handler stamps it.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"command_id"})
+#
+# OMN-19556: ``response_source_attempt`` names which attempt (index, tier and
+# backend id) a failed terminal's response came from, once the failed terminal
+# keeps the best answered rung's response. The second half declares it, with a
+# validator that refuses a named attempt that has no answer, and stamps it.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
+    {"command_id", "response_source_attempt"}
+)
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:

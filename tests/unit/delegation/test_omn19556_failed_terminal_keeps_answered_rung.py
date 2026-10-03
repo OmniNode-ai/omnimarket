@@ -52,6 +52,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_respon
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.state_codec import decode, encode
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -444,3 +445,34 @@ def test_all_provider_failures_keep_empty_content_and_no_source(
     assert terminal.response == ""
     assert terminal.status == "failed"
     assert terminal.quality_gate_passed is False
+
+
+def test_banked_draft_survives_the_durable_state_roundtrip(
+    ladder: tuple[hw.HandlerDelegationWorkflow, UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workflow is stored between events, so the banked answer must be too."""
+    handler, cid = ladder
+    _assert_reroute(_answer(handler, cid, 0, _DRAFTS[0], 0.567), "local")
+    banked = handler.workflows[cid].best_answered_draft
+    assert banked is not None
+    restored = decode(encode(handler.workflows[cid]))
+    assert restored.best_answered_draft == banked
+    handler.workflows[cid] = restored
+    monkeypatch.setattr(hw, "sibling_backend_available_in_tier", lambda *_a: None)
+    monkeypatch.setattr(
+        handler,
+        "_decide_escalation",
+        lambda *_a, **_kw: ModelEscalationDecisionResult(
+            can_escalate=False, terminal_failure_reason="fixture_ladder_exhausted"
+        ),
+    )
+    events = _provider_failure(handler, cid, "local", "local-backend")
+    failed = [event for event in events if isinstance(event, ModelDelegationFailed)]
+    assert len(failed) == 1
+    payload = failed[0].model_dump(mode="json")
+    assert payload["content"] == _DRAFTS[0]
+    assert _source_attempts(payload) == [
+        (0, "local", payload["escalation_history"][0]["backend_ref"])
+    ]
+    assert "response_source_attempt" not in payload
