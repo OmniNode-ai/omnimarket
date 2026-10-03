@@ -184,10 +184,31 @@ def test_lock_expression_resolves_to_the_lock_version() -> None:
     assert done.stdout == _lock_version("omnibase-core")
 
 
-def test_literal_infra_pin_matches_lock() -> None:
+def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
     pins = {
         str((s.get("with") or {}).get("ref"))
         for _, _, s in _steps()
         if str((s.get("with") or {}).get("repository")) == "OmniNode-ai/omnibase_infra"
     }
-    assert pins == {f"v{_lock_version('omnibase-infra')}"}
+    assert pins == {
+        f"v{_lock_version('omnibase-infra')}",
+        "v${{ steps.pins.outputs.infra_version }}",
+    }
+    pin_step = next(
+        s
+        for wf, job, s in _steps()
+        if wf == "ci.yml" and job == "sibling-release-compat" and s.get("id") == "pins"
+    )
+    output = tmp_path / "pins"
+    subprocess.run(
+        ["bash", "-c", pin_step["run"]],
+        cwd=REPO_ROOT,
+        env={"GITHUB_OUTPUT": str(output)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert output.read_text().splitlines() == [
+        f"infra_version={_lock_version('omnibase-infra')}",
+        f"core_version={_lock_version('omnibase-core')}",
+    ]
