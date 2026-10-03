@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20291"
+title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
+summary: "The OMN-20291 replay of 26 crush tasks left the delegated code edit node failing 8. Four causes were in the node's loop: a history that forgot what the model had read, so it re-read to the turn cap; absolute paths inside the worktree refused as leaving it; edits whose anchor carried the view separator's blank; and a replace_in_files cap that counted every file a glob matched. Each is fixed and bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-code-edit-replay-failure-classes"
+    statement: |-
+      The delegated code edit node must not lose the turns a model has read, must use an absolute path inside its own worktree, must apply an edit whose only difference is the view separator's indentation, and must cap a bulk edit by the files it would change.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every earlier turn stays in the prompt with its action lines, a re-viewed window is not repeated, a view of a file changed later is marked stale, one turn's reads are bounded so the newest turn is never cut, and reads pause after three turns that read and change no file -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "earlier_turn or stale or reads_are_bounded or shrinks or reads_pause or paused_turn or cut_not_dropped or resume"
+      - id: "AC2"
+        statement: |-
+          AC2: an absolute path inside the worktree is applied and recorded as its worktree-relative form, and any other absolute path is still refused -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "absolute_path_inside or normalise_path_maps or path_rules"
+      - id: "AC3"
+        statement: |-
+          AC3: an edit whose old_string matches exactly one place up to a uniform indentation shift, or a shift of its first line alone, is applied with new_string moved back; an ambiguous match still fails; an edit already applied is reported applied and not applied twice -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "indentation or first_line_alone or already_applied or inserted_twice"
+      - id: "AC4"
+        statement: |-
+          AC4: replace_in_files caps a glob by the files that hold old_string, not every file the glob matches -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "replace_in_files"
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegated code edit node's handler tests pass."
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-code-edit-replay-ac1"
+    description: "The history, read-bound and read-pause tests prove the model keeps what it read and is stopped from reading to the turn cap."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"earlier_turn or stale or reads_are_bounded or shrinks or reads_pause or paused_turn or cut_not_dropped or resume\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-code-edit-replay-ac2"
+    description: "The path tests prove an absolute in-worktree path is used as its relative form and any other is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"absolute_path_inside or normalise_path_maps or path_rules\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-code-edit-replay-ac3"
+    description: "The anchor tests prove indentation-shifted and already-applied edits are handled and ambiguous ones still fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"indentation or first_line_alone or already_applied or inserted_twice\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-code-edit-replay-ac4"
+    description: "The replace_in_files tests prove the cap counts the files a glob would edit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"replace_in_files\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

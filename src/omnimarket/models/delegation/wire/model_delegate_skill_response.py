@@ -29,6 +29,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -43,6 +44,7 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
 
 # OMN-19436 first accepted ``finish_reason`` and ``truncated`` on attempts,
 # and those two plus ``reasoning_preamble_rule`` on terminals, consumer-first.
@@ -66,36 +68,21 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 #
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
 #
-# OMN-20168 adds the attempt lineage and placement keys: the attempt's own id,
-# its kind, the parent attempt it came from, the split that produced it, the
-# host that served it and its size band. The producer and the declared fields
-# land in the change after the release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {
-        "attempt_id",
-        "attempt_kind",
-        "parent_attempt_id",
-        "split_id",
-        "host",
-        "size_band",
-    }
-)
+# OMN-20168 declared the attempt lineage and placement fields below.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset()
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
 )
-# OMN-19437 AC4, the consumer-first half: ``command_id`` is the id of the
-# delivering command message the OMN-18887 claim keys on, which the terminal will
-# carry so a served replay and a second command sharing a correlation can be told
-# apart. The second half declares it and the handler stamps it.
+# OMN-20383 declared ``command_id`` as a real terminal field below, so it is no
+# longer listed here: the set holds only terminal keys still awaiting their own
+# declared field.
 #
 # OMN-19556: ``response_source_attempt`` names which attempt (index, tier and
 # backend id) a failed terminal's response came from, once the failed terminal
 # keeps the best answered rung's response. The second half declares it, with a
 # validator that refuses a named attempt that has no answer, and stamps it.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
-    {"command_id", "response_source_attempt"}
-)
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"response_source_attempt"})
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -270,6 +257,56 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "first attempt apart from a real escalation off the pinned rung."
         ),
     )
+
+    # OMN-20168: lineage and placement of this rung within the delegation.
+    attempt_id: UUID | None = Field(
+        default=None, description="Stable identity of this delegation attempt."
+    )
+    attempt_kind: EnumDelegationAttemptKind | None = Field(
+        default=None, description="How this attempt relates to earlier work."
+    )
+    parent_attempt_id: UUID | None = Field(
+        default=None, description="Earlier attempt from which this attempt arose."
+    )
+    split_id: UUID | None = Field(
+        default=None, description="Split that produced the unit or recombine check."
+    )
+    host: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Hostname of the endpoint for this attempt.",
+    )
+    size_band: EnumDelegationSizeBand | None = Field(
+        default=None, description="Size band of the attempted work; not yet produced."
+    )
+
+    @model_validator(mode="after")
+    def refuse_a_lineage_that_contradicts_the_attempt_kind(self) -> Self:
+        """OMN-20168: a declared kind must agree with its lineage."""
+        kind = self.attempt_kind
+        if kind is None:
+            return self
+        if self.attempt_id is None:
+            raise ValueError(f"{kind.value} requires attempt_id")
+        if self.parent_attempt_id == self.attempt_id:
+            raise ValueError(
+                f"{kind.value} forbids parent_attempt_id equal to attempt_id"
+            )
+        if kind is EnumDelegationAttemptKind.FIRST_TRY:
+            if self.parent_attempt_id is not None:
+                raise ValueError(f"{kind.value} forbids parent_attempt_id")
+        elif self.parent_attempt_id is None:
+            raise ValueError(f"{kind.value} requires parent_attempt_id")
+        if kind in (
+            EnumDelegationAttemptKind.FIRST_TRY,
+            EnumDelegationAttemptKind.WHOLE_ESCALATION,
+            EnumDelegationAttemptKind.CONFIG_SWAP,
+        ):
+            if self.split_id is not None:
+                raise ValueError(f"{kind.value} forbids split_id")
+        elif self.split_id is None:
+            raise ValueError(f"{kind.value} requires split_id")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -586,6 +623,20 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Session that issued the delegation, as the caller named it, stored "
             "as a canonical UUID string. Absent means no UUID session was named."
+        ),
+    )
+    # OMN-20383 (OMN-19437 AC4): the id of the delivering command message, the
+    # same id the OMN-18887 claim keys on. Correlation is the retry identity and
+    # callers reuse it, so it cannot tell two commands sharing a correlation
+    # apart, nor a served replay from a second run; this can. Absent means no
+    # delivering command was bound (a direct call), never a substitute id.
+    command_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Id of the delivering command message the terminal answers. A served "
+            "replay keeps the id of the command it replays. Absent means the "
+            "terminal was not produced for a bus delivery."
         ),
     )
 

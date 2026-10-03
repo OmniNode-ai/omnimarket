@@ -38,6 +38,16 @@ MAX_ERROR_CHARS = 4096
 VIEW_WINDOW_LINES = 250
 #: Bytes one view window may carry.
 MAX_VIEW_WINDOW_BYTES = 16_000
+#: Characters the reads (view, grep, ls) of one turn may show together. The
+#: history holds about 66,000 characters, so a turn's reads fit it whole with
+#: room for the turn before (OMN-20291).
+MAX_READ_CHARS_PER_TURN = 30_000
+#: Below this many characters left, a turn's further reads are not run.
+MIN_READ_CHARS = 2_000
+#: Turns in a row that read and change no file before the next turn's reads are
+#: refused, so a model that cannot hold every file it wants to read writes with
+#: what it has instead of reading to the turn cap (OMN-20291).
+MAX_READ_ONLY_TURNS = 3
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 

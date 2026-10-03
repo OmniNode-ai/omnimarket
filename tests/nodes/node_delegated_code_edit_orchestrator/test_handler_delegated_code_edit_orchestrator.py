@@ -648,12 +648,18 @@ def test_offset_must_be_a_positive_integer() -> None:
 
 def test_a_turn_whose_results_exceed_the_history_budget_is_cut_not_dropped() -> None:
     from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+        HistoryAction,
+        HistoryTurn,
         build_turn_prompt,
     )
 
     request = _request()
-    huge = "TURN 2\n> view(path='src/m.py') -> ok\n" + "x" * 50_000 + "\n"
-    history = ["TURN 1\n> ls() -> ok\nsrc\n", huge]
+    history = [
+        HistoryTurn(1, actions=(HistoryAction("> ls() -> ok", "src"),)),
+        HistoryTurn(
+            2, actions=(HistoryAction("> view(path='src/m.py') -> ok", "x" * 50_000),)
+        ),
+    ]
     head_only = build_turn_prompt(request, ["src/m.py"], (), [], 3, max_chars=1)
     prompt = build_turn_prompt(
         request, ["src/m.py"], (), history, 3, max_chars=len(head_only) + 5_000
@@ -737,9 +743,8 @@ def test_delegate_failed_receipt_preserves_last_good_history() -> None:
     assert block["max_turns"] == request.max_turns
     assert block["reason"] == "resumable from turn 3 (4 turns left)"
     assert len(block["history"]) == 2
-    assert block["history"][0].startswith("TURN 1\n")
-    assert block["history"][1].startswith("TURN 2\n")
-    assert "delegate run failed" not in "".join(block["history"])
+    assert [entry["turn"] for entry in block["history"]] == [1, 2]
+    assert "delegate run failed" not in json.dumps(block["history"])
     assert (
         block["diff_sha256"] == hashlib.sha256(ports.diff(request).encode()).hexdigest()
     )
@@ -771,7 +776,13 @@ def test_resume_restores_history_and_archives_failed_attempts() -> None:
     assert result.local_tokens_in == 11
     assert result.local_tokens_out == 3
     assert ports.delegate_turns[-1] == 3
-    assert all(block in ports.prompts[-1] for block in history)
+    assert history
+    assert all(f"TURN {entry['turn']}\n" in ports.prompts[-1] for entry in history)
+    assert all(
+        action["header"] in ports.prompts[-1]
+        for entry in history
+        for action in entry["actions"]
+    )
     receipt = ports.receipts[request.correlation_id]
     assert receipt["resumes"] == 1
     assert [t["turn"] for t in cast(list[dict[str, Any]], receipt["turns"])] == [
@@ -869,24 +880,30 @@ def test_unusable_received_reply_is_a_good_resume_turn() -> None:
     block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
     assert block["last_good_turn"] == 1
     assert len(block["history"]) == 1
-    assert "your reply was unusable" in block["history"][0]
+    assert "your reply was unusable" in block["history"][0]["message"]
 
 
 def test_resume_history_keeps_newest_whole_blocks_within_budget() -> None:
-    actions = tuple(_a("view", path="src/m.py") for _ in range(4))
+    # Each turn changes a file, so its reads are never paused, and reads its
+    # bounded 30,000 characters; eight such turns exceed the 120,000 budget.
+    actions = (
+        _a("write", file_path="src/n.py", content="n = 1\n"),
+        *(_a("view", path="src/m.py") for _ in range(4)),
+    )
     dead = ModelTurnReply(run_id="dead", ok=False)
     ports = FakePorts(
-        [_reply(n, *actions) for n in range(1, 5)] + [dead, dead],
+        [_reply(n, *actions) for n in range(1, 9)] + [dead, dead],
         files={"src/m.py": "x" * 10_000},
     )
-    request = _request(max_turns=10)
+    request = _request(max_turns=12)
     HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
-    assert block["last_good_turn"] == 4
-    assert sum(map(len, block["history"])) <= 120_000
-    assert len(block["history"]) == 2
-    assert block["history"][0].startswith("TURN 3\n")
-    assert block["history"][1].startswith("TURN 4\n")
+    assert block["last_good_turn"] == 8
+    assert sum(len(json.dumps(entry)) for entry in block["history"]) <= 120_000
+    kept = [entry["turn"] for entry in block["history"]]
+    # The newest turns, whole, oldest dropped first.
+    assert kept == list(range(9 - len(kept), 9))
+    assert 1 <= len(kept) < 8
 
 
 def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
@@ -1263,3 +1280,362 @@ def test_replace_in_files_schemas_declare_arrays_and_keep_the_turn_limit() -> No
         "minItems": 1,
         "maxItems": MAX_BULK_FILES,
     }
+
+
+# -- OMN-20291: the replay's node failure classes ------------------------------
+
+
+def _calls(ports: FakePorts) -> list[dict[str, Any]]:
+    return cast("list[dict[str, Any]]", ports.transcript["calls"])
+
+
+def test_an_absolute_path_inside_the_worktree_is_used_as_its_relative_form() -> None:
+    """Replay 58744096: the loop prints check argv with the worktree's absolute
+    PYTHONPATH; the model searched that path and was refused as leaving the
+    worktree, and the rubric scored the absolute path a phantom path."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("view", path="/work/tree/src/m.py"),
+                _a("grep", pattern="add", path="/work/tree/src"),
+                _a(
+                    "edit",
+                    file_path="/work/tree/src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+                _a("view", path="/work/treeX/src/m.py"),
+                _a("finish", summary="s"),
+            )
+        ],
+        check_passes=[True],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == FIX
+    calls = _calls(ports)
+    assert [c["status"] for c in calls] == ["ok", "ok", "ok", "error", "ok"]
+    assert '"path": "src/m.py"' in calls[0]["arguments_json"]
+    assert '"path": "src"' in calls[1]["arguments_json"]
+    assert '"file_path": "src/m.py"' in calls[2]["arguments_json"]
+    # A sibling directory that merely shares the prefix still leaves the worktree.
+    assert "leaves the worktree" in calls[3]["output"]
+    assert result.refusals == 1
+
+
+def test_normalise_path_maps_an_absolute_path_under_the_root() -> None:
+    assert normalise_path("/work/tree/src/m.py", root="/work/tree") == "src/m.py"
+    assert normalise_path("/work/tree", root="/work/tree") == "."
+    assert normalise_path("/work/tree/../x", root="/work/tree") is None
+    assert normalise_path("/tmp/x.py", root="/work/tree") is None
+    assert normalise_path("/abs") is None
+
+
+DOC = (
+    "def f():\n"
+    '    """Docs.\n'
+    "\n"
+    "    * Owned: a CLAIM owns a PR by its ticket\n"
+    "      (OMN-1), and no CLAIM owns a PR by a dispatcher. A later TERMINAL ends it.\n"
+    '    """\n'
+)
+
+
+def test_edit_tolerates_a_uniform_indentation_shift() -> None:
+    """Replay ea3ee264: the view prints ``   96|   text`` and the model copied one
+    space of the ``| `` separator into every line of old_string and new_string."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="       (OMN-1), and no CLAIM owns a PR by a dispatcher. A later TERMINAL",
+                    new_string="       (OMN-1), and no CLAIM owns a PR by a dispatcher,\n"
+                    "       nor by a shared ticket. A later TERMINAL",
+                ),
+            )
+        ],
+        files={"src/m.py": DOC},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == DOC.replace(
+        "a dispatcher. A later",
+        "a dispatcher,\n      nor by a shared ticket. A later",
+    )
+    assert [c["status"] for c in _calls(ports)] == ["ok"]
+
+
+def test_a_multi_line_edit_tolerates_a_uniform_indentation_shift() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="     * Owned: a CLAIM owns a PR by its ticket\n"
+                    "       (OMN-1), and no CLAIM",
+                    new_string="     * Owned: a CLAIM owns a PR by its ticket\n"
+                    "       (OMN-2), and no CLAIM",
+                ),
+            )
+        ],
+        files={"src/m.py": DOC},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == DOC.replace("(OMN-1)", "(OMN-2)")
+
+
+def test_an_indentation_tolerant_match_must_still_be_unique() -> None:
+    body = "def f():\n    x = 1\n\ndef g():\n        x = 1\n"
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="\tx = 1",
+                    new_string="\tx = 2",
+                ),
+            )
+        ],
+        files={"src/m.py": body},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == body
+    assert _calls(ports)[0]["status"] == "error"
+
+
+def test_an_edit_already_applied_is_reported_applied_not_failed() -> None:
+    """Replay ea3ee264 turn 7: the model re-sent an edit it had applied in turn 3."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+        ],
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/m.py"] == FIX
+    calls = _calls(ports)
+    assert [c["status"] for c in calls] == ["ok", "ok"]
+    assert "already" in calls[1]["output"]
+    assert ports.writes == ["src/m.py"]
+
+
+def test_an_insertion_already_applied_is_not_inserted_twice() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="def add(a, b):",
+                    new_string="def add(a, b):\n    # sum",
+                ),
+            ),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="def add(a, b):",
+                    new_string="def add(a, b):\n    # sum",
+                ),
+            ),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/m.py"] == "def add(a, b):\n    # sum\n    return 0\n"
+    assert [c["status"] for c in _calls(ports)] == ["ok", "ok"]
+
+
+def _views(n: int, path: str = "src/big.py") -> ModelTurnReply:
+    return _reply(
+        n, *(_a("view", path=path, offset=str(1 + 250 * k)) for k in range(4))
+    )
+
+
+def test_every_earlier_turn_stays_in_the_prompt_when_its_output_cannot() -> None:
+    """Replays a16a3138 and e3a2c923: from turn 3 the prompt sat at its cap and
+    held only the last one to three turns, so the model forgot what it had read
+    and re-read the same files for 40 turns without editing."""
+    big = "".join(f"line {i} " + "x" * 40 + "\n" for i in range(1, 1001))
+    turns = [
+        _views(1),
+        _reply(2, _a("grep", pattern="line 7", path="src")),
+        *(_views(n) for n in range(3, 9)),
+    ]
+    ports = FakePorts(turns, files={"src/m.py": "x\n", "src/big.py": big})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=9))
+    last = ports.prompts[-1]
+    for n in range(1, 9):
+        assert f"TURN {n}\n" in last, n
+    assert "> grep(path='src', pattern='line 7') -> ok" in last
+    assert "[earlier turns cut to fit]" not in last
+    # The newest turn's views are shown in full; a window shown again later is
+    # not repeated, it points at the later turn.
+    assert last.count("line 250 ") == 1
+    # Turns 4, 6 and 8 have their reads paused (three read-only turns in a
+    # row), so turn 7 holds the last views.
+    assert "shown again in turn 7" in last
+
+
+def test_a_view_of_a_file_changed_later_is_marked_stale() -> None:
+    ports = FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
+    last = ports.prompts[-1]
+    assert "src/m.py changed in turn 2 after this view" in last
+
+
+def test_one_turns_reads_are_bounded_so_the_newest_turn_is_never_cut() -> None:
+    """Replays a16a3138 and e3a2c923 again: a turn read 8 to 12 windows of up to
+    16 KB, more than the whole history budget, so even the newest turn was shown
+    cut and the model re-read what it had just read."""
+    big = "".join(f"line {i} " + "x" * 40 + "\n" for i in range(1, 1001))
+    ports = FakePorts(
+        [_views(1), _views(2)], files={"src/m.py": "x\n", "src/big.py": big}
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    actions = cast("list[dict[str, Any]]", turns[0]["actions"])
+    outputs = [a["output"] for a in actions]
+    oks = [a["ok"] for a in actions]
+    assert oks[:2] == [True, True]
+    assert sum(len(o) for o, ok in zip(outputs, oks, strict=True) if ok) <= 30_000
+    assert not oks[-1]
+    assert "this turn's reads" in outputs[-1]
+    # The newest turn, and the one before it, are shown whole.
+    last = ports.prompts[-1]
+    assert "more characters cut" not in last
+    assert "line 250 " in last
+
+
+def test_a_view_shrinks_to_what_the_turn_can_still_read() -> None:
+    from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator import (
+        view_window,
+    )
+
+    text = "".join(f"row {i}\n" for i in range(1, 501))
+    shown = view_window(text, "a.py", 1, limit=500)
+    assert len(shown) <= 500 + 200
+    assert "[more: view a.py with offset=" in shown
+
+
+def test_reads_pause_after_three_turns_that_read_and_change_nothing() -> None:
+    """Replays a16a3138 and e3a2c923 a third time: with the history fixed and one
+    turn's reads bounded, the model still read for 30 turns without editing."""
+    view = _a("view", path="src/m.py")
+    edit = _a(
+        "edit", file_path="src/m.py", old_string="return 0", new_string="return a + b"
+    )
+    ports = FakePorts(
+        [
+            _reply(1, view),
+            _reply(2, view),
+            _reply(3, view),
+            _reply(4, view, edit),
+            _reply(5, view),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=5))
+    assert "reads are refused this turn" not in ports.prompts[2]
+    assert "reads are refused this turn" in ports.prompts[3]
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    fourth = cast("list[dict[str, Any]]", turns[3]["actions"])
+    assert [a["ok"] for a in fourth] == [False, True]
+    assert "change no file" in fourth[0]["output"]
+    # The edit ended the streak: the next turn reads again.
+    fifth = cast("list[dict[str, Any]]", turns[4]["actions"])
+    assert fifth[0]["ok"]
+    assert ports.files["src/m.py"] == FIX
+
+
+def test_a_paused_turn_that_still_changes_nothing_allows_one_more_read_turn() -> None:
+    view = _a("view", path="src/m.py")
+    ports = FakePorts([_reply(n, view) for n in range(1, 7)])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=6))
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    oks = [cast("list[dict[str, Any]]", t["actions"])[0]["ok"] for t in turns]
+    assert oks == [True, True, True, False, True, False]
+
+
+def test_an_edit_whose_first_line_alone_carries_an_extra_blank_applies() -> None:
+    """Replay ea3ee264, re-run 2: copying from ``| def f(`` the model kept the
+    separator's blank on the first line only; every other line was exact."""
+    body = "x = 1\n\n\ndef add(a, b):\n    return 0\n"
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string=" def add(a, b):\n    return 0",
+                    new_string=" def add(a, b, c=0):\n    return a + b + c",
+                ),
+            )
+        ],
+        files={"src/m.py": body},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == (
+        "x = 1\n\n\ndef add(a, b, c=0):\n    return a + b + c\n"
+    )
+    assert [c["status"] for c in _calls(ports)] == ["ok"]
+
+
+def test_replace_in_files_caps_the_files_holding_old_string_not_the_glob() -> None:
+    """Replay 8e1b5f72 (OMN-20392 AC2, loop 7ea45ffe): the glob
+    ``src/omnimarket/nodes/*/contract.yaml`` matches more node contracts than
+    the cap, though fewer hold old_string, and was refused outright; the model
+    fell back to a /tmp helper script and 117 single edits."""
+    files = {f"src/m{n}.py": "other" for n in range(MAX_BULK_FILES + 50)}
+    files.update({"src/m1.py": "old", "src/m7.py": "old\nold"})
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert sorted(ports.writes) == ["src/m1.py", "src/m7.py"]
+    assert ports.files["src/m7.py"] == "new\nnew"
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert f"2 edited, 0 failed of {MAX_BULK_FILES + 50}" in call["output"]
+    assert f"{MAX_BULK_FILES + 48} without old_string" in call["output"]
