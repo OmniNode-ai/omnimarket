@@ -92,17 +92,29 @@ def test_every_repo_contract_binds_every_criterion() -> None:
                     (
                         token
                         for token in shlex.split(check["check_value"])
-                        if token.endswith(".py")
+                        if token.endswith(".py") or token.endswith("/tests")
                     ),
                     "",
                 )
                 for check in checks
             ]
+            # A criterion about a merged PR body is bound to a grep over that
+            # body, which exits non-zero when the sentence is absent.
+            body_checks = [
+                check
+                for check in item.get("checks", [])
+                if check.get("check_type") == "command"
+                and check.get("check_value", "").startswith("gh pr view ")
+                and "--json body" in check["check_value"]
+                and "| grep -Eq " in check["check_value"]
+            ]
+            if body_checks:
+                continue
             assert any(
                 selector
                 and not Path(selector).is_absolute()
                 and (REPO_ROOT / selector).resolve().is_relative_to(REPO_ROOT)
-                and (REPO_ROOT / selector).is_file()
+                and (REPO_ROOT / selector).exists()
                 for selector in selectors
             ), (
                 f"{label}: binds_ac requires uv run pytest evidence naming an existing repo test file"

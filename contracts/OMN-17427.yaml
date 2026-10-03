@@ -23,7 +23,7 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: |-
-          AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.63 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q
+          AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.63 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired
 evidence_requirements:
   - kind: "tests"
     description: "The row and the receipt state the same saving and the row pins its counterfactual."
@@ -33,7 +33,7 @@ evidence_requirements:
     command: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
   - kind: "tests"
     description: "The omnibase_infra 0.38.63 pin parity tests pass."
-    command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q"
+    command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q"
+        check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
