@@ -150,11 +150,15 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         le=1.0,
         validation_alias=AliasChoices("actual_score", "actualScore"),
     )
+    # The deployed producer names the bar ``required_quality_bar``, inherited
+    # from ModelDelegateSkillResponse; use it as the last alias fallback.
     required_bar: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        validation_alias=AliasChoices("required_bar", "requiredBar"),
+        validation_alias=AliasChoices(
+            "required_bar", "requiredBar", "required_quality_bar"
+        ),
     )
     # OMN-19514 (decision-workflow eval plan, Task 4): the ticket the delegation
     # worked, so the row can be joined to the ticket and to the DoD verdicts for
