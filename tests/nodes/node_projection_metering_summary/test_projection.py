@@ -11,6 +11,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_metering import metering_command
+from omnimarket.local_deployment.tenant_identity import mint_local_tenant_identity
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     EnumBaselineState,
     ModelCounterfactualBaseline,
@@ -68,6 +69,11 @@ def request() -> ModelMeteringSummaryFoldRequest:
             ),
         ),
     )
+
+
+def mint_tenant(path: Path) -> str:
+    """OMN-17427: the CLI keys its rows on the install's own minted identity."""
+    return str(mint_local_tenant_identity(db_path=path).tenant_uuid)
 
 
 def seed(path: Path) -> None:
@@ -166,10 +172,11 @@ def test_refresh_baseline_changes_every_window_and_replaces(
 def test_cli_json_is_stored_content_and_keys(tmp_path: Path) -> None:
     path = tmp_path / "db.sqlite"
     seed(path)
+    tenant = mint_tenant(path)
     result = CliRunner().invoke(metering_command, ["--db", str(path), "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    row = read_summary_row(path, "local", "all", "", payload["baseline_model"])
+    row = read_summary_row(path, tenant, "all", "", payload["baseline_model"])
     assert row is not None
     expected = json.loads(row.summary_json)
     expected.update(
@@ -239,6 +246,7 @@ def test_cli_manifest_change_refreshes_all_days(
 ) -> None:
     path = tmp_path / "db.sqlite"
     seed(path)
+    mint_tenant(path)
     current = baseline()
     monkeypatch.setattr(
         "omnimarket.projection.sqlite_metering_summary.resolve_baseline",
@@ -262,6 +270,7 @@ def test_cli_manifest_change_refreshes_all_days(
 def test_cli_explicit_day_reads_its_stored_row(tmp_path: Path) -> None:
     path = tmp_path / "db.sqlite"
     seed(path)
+    tenant = mint_tenant(path)
     result = CliRunner().invoke(
         metering_command, ["--db", str(path), "--day", "2026-09-27", "--json"]
     )
@@ -270,8 +279,6 @@ def test_cli_explicit_day_reads_its_stored_row(tmp_path: Path) -> None:
     assert payload["window_kind"] == "day"
     assert payload["window_start"] == "2026-09-27"
     assert payload["runs_total"] == 1
-    row = read_summary_row(
-        path, "local", "day", "2026-09-27", payload["baseline_model"]
-    )
+    row = read_summary_row(path, tenant, "day", "2026-09-27", payload["baseline_model"])
     assert row is not None
     assert json.loads(row.summary_json)["runs_total"] == payload["runs_total"]

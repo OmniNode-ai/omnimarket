@@ -229,6 +229,83 @@ def test_fingerprint_ignores_timings() -> None:
     assert check_fingerprint(1, "1 failed") != check_fingerprint(2, "1 failed")
 
 
+def _format_once(
+    tree: Path, tmp_path: Path, formatter: tuple[tuple[str, ...], ...]
+) -> dict[str, object]:
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_id = str(uuid.uuid4())
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "result.txt").write_text(
+            json.dumps({"actions": [{"tool": "format", "file_path": "src/m.py"}]})
+        )
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    request = _request(tree, formatter=formatter, max_turns=1)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    receipt = json.loads(
+        (
+            tmp_path / "state" / "runs" / request.correlation_id / "loop_receipt.json"
+        ).read_text()
+    )
+    return receipt["turns"][0]["actions"][0]
+
+
+def test_formatter_chain_sorts_imports_then_formats(tree: Path, tmp_path: Path) -> None:
+    (tree / "src" / "m.py").write_text(
+        "import sys\nimport os\n\ndef add(a,b):\n return a+b\n"
+    )
+    observation = _format_once(
+        tree,
+        tmp_path,
+        (
+            (sys.executable, "-m", "ruff", "check", "--select", "I", "--fix"),
+            (sys.executable, "-m", "ruff", "format"),
+        ),
+    )
+    assert observation["ok"] is True
+    assert (tree / "src" / "m.py").read_text() == (
+        "import os\nimport sys\n\n\ndef add(a, b):\n    return a + b\n"
+    )
+    output = str(observation["output"])
+    assert output.index("check --select I --fix src/m.py") < output.index(
+        "format src/m.py"
+    )
+
+
+def test_formatter_chain_stops_at_first_failure(tree: Path, tmp_path: Path) -> None:
+    original = (tree / "src" / "m.py").read_text()
+    observation = _format_once(
+        tree,
+        tmp_path,
+        (
+            (
+                sys.executable,
+                "-c",
+                "import sys; print('formatter failed'); sys.exit(7)",
+            ),
+            (
+                sys.executable,
+                "-c",
+                "from pathlib import Path; import sys; "
+                "Path(sys.argv[1]).write_text('unexpected')",
+            ),
+        ),
+    )
+    assert observation["ok"] is False
+    assert "failed (exit 7)\nformatter failed" in str(observation["output"])
+    assert "unexpected" not in str(observation["output"])
+    assert (tree / "src" / "m.py").read_text() == original
+
+
+def test_empty_formatter_refusal_text_is_unchanged(tree: Path, tmp_path: Path) -> None:
+    observation = _format_once(tree, tmp_path, ())
+    assert observation["ok"] is False
+    assert observation["refused"] is True
+    assert observation["output"] == "refused: no formatter is declared for this task"
+
+
 def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(
     tree: Path, tmp_path: Path
 ) -> None:
