@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19556"
+title: "A failed delegation terminal keeps the best answered rung's response"
+summary: "When the delegation ladder ends on a provider failure after earlier rungs answered and were refused by the quality gate, the failed terminal carries the best answered draft instead of an empty response, and the history entry that supplied it is marked. The delegate-skill wire model accepts and drops the forthcoming response_source_attempt key."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-failed-terminal-keeps-answered-rung"
+    statement: |-
+      A failed delegation terminal must carry the best answered rung's response when its own response is empty, and must keep an empty response when no rung answered.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a failed terminal after answered and refused local rungs followed by a provider failure carries the best answered rung's response through the orchestrator and the delegate-skill handler, and a ladder where no rung answered keeps an empty response -- falsifier: uv run pytest tests/unit/delegation/test_omn19556_failed_terminal_keeps_answered_rung.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the delegate-skill terminal wire model accepts and drops the forthcoming response_source_attempt key while a misspelt key is still refused -- falsifier: uv run pytest tests/unit/delegation/test_consumer_first_response_source_attempt_omn19556.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The failed terminal answered rung tests pass."
+    command: "uv run pytest tests/unit/delegation/test_omn19556_failed_terminal_keeps_answered_rung.py -q"
+  - kind: "tests"
+    description: "The consumer-first wire model tests pass."
+    command: "uv run pytest tests/unit/delegation/test_consumer_first_response_source_attempt_omn19556.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-failed-terminal-answered-rung-ac1"
+    description: "The orchestrator and handler tests prove the failed terminal keeps the best answered rung's response and an unanswered ladder stays empty."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn19556_failed_terminal_keeps_answered_rung.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-failed-terminal-answered-rung-ac2"
+    description: "The wire model tests prove the forthcoming key is accepted and dropped and a misspelt key is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_response_source_attempt_omn19556.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
