@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from omnimarket.events.runtime_deployment import (
+    EnumGrantResolution,
     EnumOccGateState,
     EnumProdGateOutcome,
     EnumPromotionClass,
@@ -248,15 +249,30 @@ def test_ac1_a_redelivery_converges_on_one_row_rather_than_two() -> None:
 #: Every refusal the gate can reach through the COMPUTE node, as
 #: (case name, command override, expected typed outcome).
 #:
-#: This is TWELVE branches, not the seven the ticket names. The seven is the
-#: member count of ``EnumProdGrantReason``, which enumerates the authorization
-#: failures only; the gate also refuses on six readiness / digest / evidence
-#: facts that no grant reason describes, and one grant reason
-#: (``self_granted``) has not been produced since OMN-14814 removed
-#: dual-control. Parametrising over the seven would have covered six real
-#: branches and asserted one that cannot fire. See
+#: Cover anchor-resolution and authorization failures as well as readiness /
+#: digest / evidence facts that no grant reason describes. The retained grant
+#: reason ``self_granted`` has not been produced since OMN-14814 removed
+#: dual-control and therefore has no reachable refusal case. See
 #: ``test_the_self_granted_reason_is_retained_for_the_wire_and_not_produced``.
 _REFUSAL_CASES: list[tuple[str, dict[str, Any], EnumProdGateOutcome]] = [
+    (
+        "grant_anchor_unreadable",
+        {
+            "promotion_grant": None,
+            "grant_refusal": EnumGrantResolution.UNREADABLE,
+            "grant_refusal_detail": "anchor read failed: GitHub returned HTTP 404",
+        },
+        EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE,
+    ),
+    (
+        "grant_anchor_unparseable",
+        {
+            "promotion_grant": None,
+            "grant_refusal": EnumGrantResolution.UNPARSEABLE,
+            "grant_refusal_detail": "grant registry unparseable: invalid YAML",
+        },
+        EnumProdGateOutcome.GRANT_ANCHOR_UNPARSEABLE,
+    ),
     (
         "candidate_lineage",
         {

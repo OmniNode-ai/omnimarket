@@ -9,6 +9,12 @@
 # reject-deploy-gate-skip.yml's ?ref=main fetch), parses the YAML directly (ZERO
 # Python import on the repository that holds it), and emits the resolved grant (or None —
 # fail closed) plus durable audit provenance.
+# Every resolve failure (token unresolved or rejected, HTTP error including 404
+# on the private anchor, transport error, unparseable registry) returns a typed
+# UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
+# (reason, anchor repo, path, ref, http status). The orchestrator threads it into
+# a gate BLOCKED decision and redeploy-completed BLOCKED. The failure terminal
+# remains declared only for an envelope the runtime cannot hand to the handler.
 ---
 name: node_prod_promotion_grant_resolver_effect
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -30,6 +36,12 @@ description: >
   fact plus durable audit provenance (source commit SHA, grant file path,
   grant_id, file sha256, CODEOWNERS-match). The GitHub token is resolved at the
   effect boundary from the contract-declared api_key_ref. No subprocess shell-out.
+  Every resolve failure (token unresolved or rejected, HTTP error including 404 on
+  the private anchor, transport error, unparseable registry) is returned as a typed
+  UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
+  (reason, anchor repo, path, ref, http status). The orchestrator threads this into
+  the gate as a BLOCKED decision and a redeploy-completed BLOCKED. The failure
+  terminal remains declared only for an envelope the runtime cannot hand to the handler.
 
 handler_routing:
   routing_strategy: operation_match
@@ -71,7 +83,7 @@ secrets:
   # here — not a bare source literal. Value is resolved at the effect boundary
   # via the canonical secret-store resolver.
   GITHUB_TOKEN:
-    description: "GitHub token for reading the grant file from omninode_infra@main (private repository: the token must have contents read on OmniNode-ai/omninode_infra)."
+    description: "GitHub token for reading the grant file from omninode_infra@main. A fine-grained token needs Contents: Read-only (Metadata read is implied) on OmniNode-ai/omninode_infra; a classic token needs the repo scope."
     required: true
 
 runtime_dispatch:
