@@ -25,6 +25,7 @@ import base64
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
+from urllib.error import HTTPError
 from uuid import uuid4
 
 import pytest
@@ -481,10 +482,63 @@ class TestFetchFromMain:
         assert f"ref={_SOURCE_SHA}" in codeowners_url
         assert commit_url.endswith(f"/commits/{GRANT_FETCH_REF}")
         assert GRANT_REPO in grant_url
+        assert all(
+            url.startswith("https://api.github.com/repos/OmniNode-ai/omninode_infra/")
+            for url in captured
+        )
+
+    @pytest.mark.parametrize("has_grants_rule", [True, False])
+    async def test_omninode_infra_codeowners_grants_rule(
+        self, monkeypatch: pytest.MonkeyPatch, has_grants_rule: bool
+    ) -> None:
+        captured: list[str] = []
+        codeowners = (
+            "* @OmniNode-ai/cloud\n"
+            "/k8s/onex-prod/ @OmniNode-ai/security @OmniNode-ai/cloud\n"
+        )
+        if has_grants_rule:
+            codeowners += (
+                "/grants/prod_promotion_grants.yaml "
+                "@OmniNode-ai/security @OmniNode-ai/cloud\n"
+            )
+
+        def request(url: str) -> bytes:
+            captured.append(url)
+            if "/commits/" in url:
+                return json.dumps({"sha": _SOURCE_SHA}).encode()
+            if GRANT_FILE_PATH in url:
+                content = base64.b64encode(_grant_file(_grant_entry())).decode()
+                return json.dumps({"content": content}).encode()
+            if "/contents/.github/CODEOWNERS?" in url:
+                content = base64.b64encode(codeowners.encode()).decode()
+                return json.dumps({"content": content}).encode()
+            raise HTTPError(url, 404, "Not Found", None, None)
+
+        fetcher = GitHubMainGrantFetcher(token="t")
+        monkeypatch.setattr(fetcher, "_request", request)
+        fetched = await fetcher.fetch()
+
+        assert fetched.source_commit_sha == _SOURCE_SHA
+        assert fetched.codeowners_match is has_grants_rule
+        assert all(
+            url.startswith("https://api.github.com/repos/OmniNode-ai/omninode_infra/")
+            for url in captured
+        )
+        assert [
+            url.split("/contents/")[1] for url in captured if "CODEOWNERS" in url
+        ] == (
+            [f".github/CODEOWNERS?ref={_SOURCE_SHA}"]
+            if has_grants_rule
+            else [
+                f".github/CODEOWNERS?ref={_SOURCE_SHA}",
+                f"CODEOWNERS?ref={_SOURCE_SHA}",
+                f"docs/CODEOWNERS?ref={_SOURCE_SHA}",
+            ]
+        )
 
     def test_grant_fetch_ref_constant_is_main(self) -> None:
         assert GRANT_FETCH_REF == "main"
-        assert GRANT_REPO == "OmniNode-ai/onex_change_control"
+        assert GRANT_REPO == "OmniNode-ai/omninode_infra"
         assert GRANT_FILE_PATH == "grants/prod_promotion_grants.yaml"
 
 

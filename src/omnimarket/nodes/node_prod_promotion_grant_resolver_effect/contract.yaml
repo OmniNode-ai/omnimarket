@@ -5,10 +5,16 @@
 # OMN-13439 / OMN-13418 Phase 2b: the orchestrator fact-gathering EFFECT that
 # resolves the prod promotion grant from the durable trust anchor BEFORE the prod
 # gate evaluates. Reads grants/prod_promotion_grants.yaml from
-# onex_change_control@main (anti-self-approval, OMN-10971 — mirrors
+# omninode_infra@main (anti-self-approval, OMN-10971 — mirrors
 # reject-deploy-gate-skip.yml's ?ref=main fetch), parses the YAML directly (ZERO
-# Python import on onex_change_control), and emits the resolved grant (or None —
+# Python import on the repository that holds it), and emits the resolved grant (or None —
 # fail closed) plus durable audit provenance.
+# Every resolve failure (token unresolved or rejected, HTTP error including 404
+# on the private anchor, transport error, unparseable registry) returns a typed
+# UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
+# (reason, anchor repo, path, ref, http status). The orchestrator threads it into
+# a gate BLOCKED decision and redeploy-completed BLOCKED. The failure terminal
+# remains declared only for an envelope the runtime cannot hand to the handler.
 ---
 name: node_prod_promotion_grant_resolver_effect
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -17,10 +23,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   EFFECT: resolves the prod promotion grant from the durable governance anchor.
-  Fetches grants/prod_promotion_grants.yaml from onex_change_control@main (NOT a
+  Fetches grants/prod_promotion_grants.yaml from omninode_infra@main (NOT a
   PR branch, so a request cannot author the authorization that approves it),
   keyed by (promotion_batch_id, image_digest, lane=prod), and parses the YAML
-  directly without importing anything from onex_change_control. A present,
+  directly without importing anything from the repository that holds it. A present,
   future-expiry, matching entry materializes ModelProdPromotionGrant; a consumed
   entry resolves to ABSENT (no replay); an expired entry to EXPIRED; no match to
   ABSENT — every non-RESOLVED outcome leaves the grant None so the prod gate fails
@@ -30,6 +36,12 @@ description: >
   fact plus durable audit provenance (source commit SHA, grant file path,
   grant_id, file sha256, CODEOWNERS-match). The GitHub token is resolved at the
   effect boundary from the contract-declared api_key_ref. No subprocess shell-out.
+  Every resolve failure (token unresolved or rejected, HTTP error including 404 on
+  the private anchor, transport error, unparseable registry) is returned as a typed
+  UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
+  (reason, anchor repo, path, ref, http status). The orchestrator threads this into
+  the gate as a BLOCKED decision and a redeploy-completed BLOCKED. The failure
+  terminal remains declared only for an envelope the runtime cannot hand to the handler.
 
 handler_routing:
   routing_strategy: operation_match
@@ -38,7 +50,7 @@ handler_routing:
       handler:
         name: HandlerProdPromotionGrantResolver
         module: omnimarket.nodes.node_prod_promotion_grant_resolver_effect.handlers.handler_prod_promotion_grant_resolver
-      description: "Resolve the prod promotion grant from onex_change_control@main."
+      description: "Resolve the prod promotion grant from omninode_infra@main."
       input_model:
         name: ModelProdPromotionGrantResolveCommand
         module: omnimarket.events.runtime_deployment
@@ -71,7 +83,7 @@ secrets:
   # here — not a bare source literal. Value is resolved at the effect boundary
   # via the canonical secret-store resolver.
   GITHUB_TOKEN:
-    description: "GitHub token for reading the grant file from onex_change_control@main."
+    description: "GitHub token for reading the grant file from omninode_infra@main. A fine-grained token needs Contents: Read-only (Metadata read is implied) on OmniNode-ai/omninode_infra; a classic token needs the repo scope."
     required: true
 
 runtime_dispatch:

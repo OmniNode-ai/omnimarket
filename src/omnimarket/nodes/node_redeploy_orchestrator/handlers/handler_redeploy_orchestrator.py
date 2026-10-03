@@ -51,6 +51,7 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    GRANT_REFUSAL_RESOLUTIONS,
     EnumGrantResolution,
     EnumRedeployPhase,
     EnumRuntimeLane,
@@ -65,6 +66,7 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployDeployContext,
     ModelRedeployRolledBackEvent,
     ModelRuntimeImageBuilt,
+    render_grant_refusal,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
@@ -226,7 +228,7 @@ class HandlerRedeployOrchestrator:
 
         Otherwise: prod requests MUST resolve the promotion grant out-of-band
         first (OMN-13439 Phase-2b resolver EFFECT reads the grant from
-        ``onex_change_control@main``), so prod emits the grant-resolve command and
+        ``omninode_infra@main``), so prod emits the grant-resolve command and
         only reaches the gate after the resolved fact rides back. Non-prod lanes
         need no grant — the gate trivially allows them — so they go straight to the
         gate-evaluate command, leaving dev/stability dispatch unchanged.
@@ -251,7 +253,7 @@ class HandlerRedeployOrchestrator:
 
         Prod safety (OMN-13918): a dry-run NEVER reports a fabricated pass for
         the prod lane. A dry-run cannot resolve the out-of-band promotion grant
-        (Phase-2b resolver reads ``onex_change_control@main``), so it has no
+        (Phase-2b resolver reads ``omninode_infra@main``), so it has no
         authority to simulate a passing gate decision — reporting ``BLOCKED``
         proves the gate is not bypassed rather than silently succeeding as if a
         real prod promotion happened. Non-prod lanes carry no promotion
@@ -319,6 +321,8 @@ class HandlerRedeployOrchestrator:
         *,
         grant: ModelProdPromotionGrant | None,
         evaluated_at: datetime | None,
+        grant_refusal: EnumGrantResolution | None = None,
+        grant_refusal_detail: str | None = None,
     ) -> list[ModelEventEnvelope[Any]]:
         """Emit the prod-gate-evaluate command.
 
@@ -345,6 +349,8 @@ class HandlerRedeployOrchestrator:
             previous_image=start.previous_image,
             requested_by=start.requested_by,
             promotion_grant=grant,
+            grant_refusal=grant_refusal,
+            grant_refusal_detail=grant_refusal_detail,
             evaluated_at=evaluated_at,
         )
         return [
@@ -358,13 +364,15 @@ class HandlerRedeployOrchestrator:
     def _on_grant_resolved(
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
-        """Thread the out-of-band resolved grant into the gate-evaluate command.
+        """Thread the resolved grant or audited refusal into the gate command.
 
         The resolver EFFECT emits ``ModelProdPromotionGrantResolvedEvent`` plus the
         echoed original start request. The orchestrator stamps the RESOLVED grant
         (``None`` for every non-RESOLVED outcome, so the gate fails closed) and the
         resolver's deterministic ``evaluated_at`` onto the gate command. The grant
         is NEVER taken from ``start.promotion_grant``.
+        UNREADABLE / UNPARSEABLE refusals carry rendered provenance so the gate
+        decision and BLOCKED redeploy completion preserve the anchor-read failure.
         """
         resolved, start = _coerce_grant_resolved(envelope.payload, correlation_id)
         grant = (
@@ -373,7 +381,19 @@ class HandlerRedeployOrchestrator:
             else None
         )
         return self._emit_gate_evaluate(
-            start, grant=grant, evaluated_at=resolved.evaluated_at
+            start,
+            grant=grant,
+            evaluated_at=resolved.evaluated_at,
+            grant_refusal=(
+                resolved.resolution
+                if resolved.resolution in GRANT_REFUSAL_RESOLUTIONS
+                else None
+            ),
+            grant_refusal_detail=(
+                render_grant_refusal(resolved.provenance)
+                if resolved.resolution in GRANT_REFUSAL_RESOLUTIONS
+                else None
+            ),
         )
 
     def _on_gate_evaluated(
