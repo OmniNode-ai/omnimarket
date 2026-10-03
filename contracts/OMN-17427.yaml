@@ -14,10 +14,20 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: exit status 4 with gh's missing-credential message is recorded as PENDING with exit_code null and reported under not_run; exit 4 alone, or the message with another exit code, stays FAIL; the workflow sets GH_TOKEN on both runner steps -- falsifier: uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q
+  - id: "req-schema-fault"
+    statement: |-
+      A projection writer that meets a missing column or table must not retry without bound while reporting ready.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: UndefinedColumnError and UndefinedTableError classify as SCHEMA, /ready answers 503 while a fault is open, and run() raises ProjectionSchemaError after SCHEMA_FAULT_MAX_ATTEMPTS -- falsifier: uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The receipt runner GH_TOKEN tests pass."
     command: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q"
+  - kind: "tests"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    command: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-schema-fault-readiness"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
