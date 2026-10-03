@@ -67,6 +67,7 @@ from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
+from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
     resolve_path_config,
@@ -80,7 +81,10 @@ from omnimarket.inference.requested_response_shape import (
     resolve_requested_response_shape,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
-from omnimarket.inference.task_class_authority import withheld_delegation_refusal
+from omnimarket.inference.task_class_authority import (
+    resolve_size_band_thresholds,
+    withheld_delegation_refusal,
+)
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
@@ -93,6 +97,7 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_from_contract_entry,
     validate_entry_share,
 )
+from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
@@ -289,23 +294,50 @@ def _estimate_prompt_tokens(prompt: str) -> int:
     return len(prompt) // 4
 
 
+def _measure_request_size_band(
+    request: ModelDelegationRequest, task_type: str
+) -> ModelSizeBand | None:
+    """Measure the request's band from its text and the class contract (OMN-20167).
+
+    The request carries no band or feature value, so nothing a caller sends can
+    move it. ``None`` means the contract declares no thresholds for the class,
+    and the decision then carries no band rather than a guessed one.
+    """
+    resolved = resolve_size_band_thresholds(task_type)
+    if resolved is None:
+        return None
+    thresholds, reference = resolved
+    return measure_size_band(
+        task_class=task_type,
+        prompt=request.prompt,
+        context_pack=request.context_pack,
+        sources=(),
+        acceptance_criteria=request.acceptance_criteria,
+        thresholds=thresholds,
+        thresholds_reference=reference,
+    )
+
+
 def _backend_id_for_model(model_id: str) -> UUID:
     """Generate a stable UUID for a model ID."""
     return uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{model_id}")
 
 
 def _backend_secret_available(backend: BifrostBackendRef) -> bool:
-    """Return whether the runtime can resolve the backend's declared secret ref.
+    """Return whether the runtime can resolve the ref the decision will carry.
 
-    OMN-13943: also checks the backend's contract-declared ``api_key_env`` as a
-    fallback, mirroring the effect boundary (``handler_llm_delegation_call``)
-    so tier eligibility here agrees with what the effect can actually resolve
-    at call time — a backend is not reported unroutable due to secret-ref
-    convention drift when its own literal env var IS set.
+    OMN-17096: mirrors the dispatched path. The routing decision carries only
+    ``api_key_ref`` on the wire, and ``HandlerInferenceIntent`` resolves exactly
+    ``resolve_api_key(api_key_ref)`` with no ``api_key_env`` fallback. A backend
+    is therefore eligible here only when that same resolution returns a value.
+    Crediting ``api_key_env`` beside a declared ref (OMN-13943) admitted a
+    backend whose ref resolved to nothing and then failed it at dispatch with an
+    unresolved credential. A backend that declares only ``api_key_env`` is
+    unaffected: the loader folds the name into ``api_key_ref``
+    (``resolved_secret_ref``), so the decision carries it and dispatch resolves
+    it literally.
     """
-    return api_key_ref_available(
-        backend.api_key_ref, env_var_fallback=backend.api_key_env
-    )
+    return api_key_ref_available(backend.api_key_ref)
 
 
 def _quota_block(
@@ -754,8 +786,9 @@ class BifrostBackendRef:
         self.extra_headers = extra_headers
         # OMN-13943: the backend's own contract-declared literal env-var name
         # (e.g. "GEMINI_API_KEY"), distinct from api_key_ref's dotted
-        # secret_ref convention. Used as a fallback when the dotted ref's
-        # convention-mapped env var is unset — see _backend_secret_available.
+        # secret_ref convention. Carried for the bus-less local dispatch path,
+        # whose effect resolves it as a fallback. Routing eligibility does not
+        # credit it (OMN-17096): the dispatched intent carries api_key_ref only.
         self.api_key_env = api_key_env
 
 
@@ -2267,6 +2300,7 @@ def _decision_from_tenant_overlay(
     overlay: ModelTenantRoutingOverlayBackend,
     estimated_tokens: int,
     dod_resolution: ModelDodResolution,
+    size_band: ModelSizeBand | None = None,
 ) -> ModelRoutingDecision:
     """Build a ``ModelRoutingDecision`` directly from a tenant overlay row.
 
@@ -2376,6 +2410,8 @@ def _decision_from_tenant_overlay(
         requested_shape=dod_resolution.requested_shape,
         dod_deterministic_source=dod_resolution.deterministic_source,
         dod_heuristic_source=dod_resolution.heuristic_source,
+        # OMN-20167: measured once in ``delta`` from the text, like the DoD bands.
+        size_band=size_band,
     )
 
 
@@ -2711,6 +2747,10 @@ def delta(
         raise ProtocolConfigurationError(refusal)
 
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
+    # OMN-20167: the band replaces the estimate above as the routing size input.
+    # It is measured here, from the text, so it rides on whichever decision this
+    # call returns; the estimate keeps only the context-fit tests.
+    size_band = _measure_request_size_band(request, task_type)
 
     # OMN-16932: a prompt that declares its own answer shape ("Reply with
     # exactly the word: alive") overrides the CLASS rubric for this request.
@@ -2813,6 +2853,7 @@ def delta(
             overlay=tenant_overlay,
             estimated_tokens=estimated_tokens,
             dod_resolution=dod_resolution,
+            size_band=size_band,
         )
         # OMN-17082. The overlay table is writable DATA: a row whose
         # ``secret_ref`` names a platform credential is house pooling by
@@ -3097,6 +3138,7 @@ def delta(
                 selected_backend_ref=selected.backend_ref,
                 route=selected.backend_ref,
                 provider=backend.provider,
+                size_band=size_band,
             )
         return None
 

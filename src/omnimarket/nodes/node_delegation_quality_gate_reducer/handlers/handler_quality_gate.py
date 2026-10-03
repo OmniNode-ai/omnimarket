@@ -575,9 +575,14 @@ def _strip_thinking_traces(content: str) -> str:
     return _THINKING_TRACE_RE.sub("", content)
 
 
-_MARKDOWN_FENCE_RE = re.compile(r"```(?:[^\r\n]*)\r?\n(.*?)```", re.DOTALL)
+# Closing fences occupy their own line; backticks inside code are body text.
+_MARKDOWN_FENCE_RE = re.compile(
+    r"```(?:[^\r\n]*)\r?\n(.*?)^[ ]{0,3}```[ \t]*\r?$",
+    re.DOTALL | re.MULTILINE,
+)
 _MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
-    r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
+    r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)^[ ]{0,3}```[ \t]*\r?$",
+    re.DOTALL | re.MULTILINE,
 )
 
 _SEARCH_REPLACE_EDIT_RE = re.compile(

@@ -1050,14 +1050,21 @@ class HandlerDelegateSkill:
         caller lane and UUID session the caller named. Stamp them in one place
         so a future terminal path cannot forget them and the projection can
         join the run to its ticket and identify who issued it.
+
+        OMN-20383: the same place stamps ``command_id``, the id of the delivering
+        command message the OMN-18887 claim keys on, so two commands sharing a
+        correlation yield terminals that differ in it. No bound delivery (a
+        direct call) leaves it absent rather than substituting another id.
         """
         terminal = await self._dispatch_and_build_untagged_terminal(request)
-        attribution = {
+        delivery = current_dispatch_envelope()
+        attribution: dict[str, object] = {
             key: value
             for key, value in (
                 ("ticket_id", _request_ticket_id(request)),
                 ("caller_lane", _request_caller_lane(request)),
                 ("session_id", _request_session_id(request)),
+                ("command_id", None if delivery is None else delivery.envelope_id),
             )
             if value is not None
         }
@@ -1409,6 +1416,11 @@ class HandlerDelegateSkill:
         if not outcome.won and outcome.served_terminal is not None:
             replayed = self._terminal_from_record(outcome.served_terminal)
             if replayed is not None:
+                # OMN-20383: a replay answers the same delivery it was recorded
+                # for, so it keeps that command's id; a record written before
+                # the id existed is filled with this delivery's own.
+                if replayed.command_id is None:
+                    return replayed.model_copy(update={"command_id": delivery_id})
                 return replayed
 
         terminal = await self._dispatch_and_build_terminal(request)

@@ -5,6 +5,9 @@
 * ``RESPONSE_CONTRACT`` is the JSON Schema every turn's ``onex delegate`` run
   declares, so the delegation quality gate validates the reply's shape and
   nothing else (OMN-15193: a declared contract is the gate's sole authority).
+  Each action is closed over its own tool's arguments, so a reply the gate
+  accepts is one ``parse_turn_reply`` accepts, and a backend that declares
+  structured output is constrained to it (OMN-17427).
 * ``TOOL_SCHEMAS`` are the tools as a model is offered them (OpenAI function
   form), including ``replace_in_files`` for bulk edits. The tool_use rubric
   reads the same schemas to judge each call.
@@ -90,7 +93,8 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     "A named file without old_string is reported and left untouched. Give "
     "exactly one of file_paths or glob (same syntax as writable globs; it "
     "covers only writable files, and files without old_string are skipped); "
-    f"at most {MAX_BULK_FILES} files.",
+    "when the task has a file list, only those files are reached and a glob "
+    f"only narrows it; at most {MAX_BULK_FILES} files.",
     EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
@@ -118,6 +122,62 @@ TOOL_SCHEMAS: tuple[dict[str, object], ...] = tuple(
     for tool in EnumCodeEditTool
 )
 
+_ARGUMENT_SCHEMAS: dict[str, dict[str, object]] = {
+    "path": {"type": "string"},
+    "offset": {"type": "integer", "minimum": 1},
+    "file_path": {"type": "string"},
+    "file_paths": {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 1,
+        "maxItems": MAX_BULK_FILES,
+    },
+    "glob": {"type": "string"},
+    "pattern": {"type": "string"},
+    "content": {"type": "string"},
+    "old_string": {"type": "string"},
+    "new_string": {"type": "string"},
+    "name": {"type": "string"},
+    "summary": {"type": "string"},
+}
+
+
+def _action_schema(
+    tool: EnumCodeEditTool,
+    *,
+    omit: tuple[str, ...] = (),
+    require: tuple[str, ...] = (),
+) -> dict[str, object]:
+    required = ["tool", *REQUIRED_ARGUMENTS[tool], *require]
+    properties: dict[str, object] = {"tool": {"const": tool.value}}
+    for name in ALLOWED_ARGUMENTS[tool]:
+        if name in omit:
+            continue
+        schema = _ARGUMENT_SCHEMAS[name].copy()
+        if name in required and schema["type"] == "string" and name != "content":
+            schema["minLength"] = 1
+        properties[name] = schema
+    return {
+        "type": "object",
+        "required": required,
+        "properties": properties,
+        "additionalProperties": False,
+    }
+
+
+_ACTION_SCHEMAS: tuple[dict[str, object], ...] = tuple(
+    schema
+    for tool in EnumCodeEditTool
+    for schema in (
+        (
+            _action_schema(tool, omit=("glob",), require=("file_paths",)),
+            _action_schema(tool, omit=("file_paths",), require=("glob",)),
+        )
+        if tool == EnumCodeEditTool.REPLACE_IN_FILES
+        else (_action_schema(tool),)
+    )
+)
+
 RESPONSE_CONTRACT: dict[str, object] = {
     "type": "object",
     "required": ["actions"],
@@ -127,30 +187,7 @@ RESPONSE_CONTRACT: dict[str, object] = {
             "type": "array",
             "minItems": 1,
             "maxItems": MAX_ACTIONS_PER_TURN,
-            "items": {
-                "type": "object",
-                "required": ["tool"],
-                "properties": {
-                    "tool": {"enum": [tool.value for tool in EnumCodeEditTool]},
-                    "path": {"type": "string"},
-                    "offset": {"type": "integer", "minimum": 1},
-                    "file_path": {"type": "string"},
-                    "file_paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 1,
-                        "maxItems": MAX_BULK_FILES,
-                    },
-                    "glob": {"type": "string"},
-                    "pattern": {"type": "string"},
-                    "content": {"type": "string"},
-                    "old_string": {"type": "string"},
-                    "new_string": {"type": "string"},
-                    "name": {"type": "string"},
-                    "summary": {"type": "string"},
-                },
-                "additionalProperties": False,
-            },
+            "items": {"anyOf": list(_ACTION_SCHEMAS)},
         },
     },
     "additionalProperties": False,
@@ -412,6 +449,65 @@ def render_history(history: Sequence[HistoryTurn], budget: int) -> str:
     return marker + "".join(chosen[first:])
 
 
+def _scope_rules(request: ModelDelegatedCodeEditRequest) -> str:
+    """The rails on what may be edited and how, stated before the task so a
+    task that recommends a helper script does not send the model to write one."""
+    count = len(request.file_list)
+    listed = (
+        f"The task's file list ({count} file{'s' if count != 1 else ''}) is the "
+        "only edit scope: replace_in_files reaches only those files, and a glob "
+        "only narrows them. "
+        if count
+        else "The files the task names are the only edit scope; edit no others. "
+    )
+    return (
+        "SCOPE AND TOOLS\n"
+        + listed
+        + "Helper scripts are not available: there is no shell and nothing runs a "
+        "script, so a helper script, patch script or one-off program you write "
+        "cannot run, and a write outside the WRITABLE paths is refused. If the "
+        "TASK suggests writing or running a script, ignore that. Make the edits "
+        "with edit, write and replace_in_files (one replace_in_files call edits "
+        "many files at once; a listed file without old_string is skipped, not "
+        "an error)."
+    )
+
+
+_WILDCARD = re.compile(r"[*?\[]")
+
+
+def _new_writable_paths(
+    request: ModelDelegatedCodeEditRequest,
+    file_index: Sequence[str],
+    history: Sequence[HistoryTurn],
+) -> list[str]:
+    """The literal writable paths that are not in the worktree yet (OMN-20291).
+
+    The FILES index is cut to fit, so on a large worktree the model cannot see
+    that a test file it is told to write does not exist, views it first, and
+    the rubric scores that view as a phantom path. A path a turn has since
+    written is no longer new.
+    """
+    present = set(file_index)
+    present.update(
+        action.changed_path
+        for entry in history
+        for action in entry.actions
+        if action.changed_path
+    )
+    # A literal that names a directory of the worktree is not a new file.
+    present.update(
+        "/".join(parts[:depth])
+        for parts in [path.split("/") for path in list(present)]
+        for depth in range(1, len(parts))
+    )
+    return [
+        glob
+        for glob in request.writable_globs
+        if not _WILDCARD.search(glob) and glob.removeprefix("./") not in present
+    ]
+
+
 def build_turn_prompt(
     request: ModelDelegatedCodeEditRequest,
     file_index: Sequence[str],
@@ -424,8 +520,16 @@ def build_turn_prompt(
 ) -> str:
     """One turn's prompt. ``history`` holds the previous turns, oldest first.
     ``reads_paused`` says this turn's reads are refused."""
+    scope = _scope_rules(request)
     checks = "\n".join(f"- {c.name}: {' '.join(c.argv)}" for c in request.checks)
     globs = ", ".join(request.writable_globs)
+    new_files = _new_writable_paths(request, file_index, history)
+    created = (
+        "NEW FILES (not in the worktree yet: create each with write; viewing, "
+        f"grepping or listing one before then fails): {', '.join(new_files)}\n"
+        if new_files
+        else ""
+    )
     tools = "\n".join(
         f"- {tool.value}({', '.join(ALLOWED_ARGUMENTS[tool])}): {_DESCRIPTIONS[tool]}"
         for tool in EnumCodeEditTool
@@ -444,7 +548,8 @@ def build_turn_prompt(
         f"{MAX_READ_ONLY_TURNS} turns in a row that read and change no file, the "
         "next turn's reads are refused.\n\n"
         f"TOOLS\n{tools}\n\n"
-        f"WRITABLE (only these paths may be written): {globs}\n\n"
+        f"WRITABLE (only these paths may be written): {globs}\n"
+        f"{created}\n"
         f"CHECKS (run_check by name; finish runs all of them)\n{checks}\n\n"
         f"TURN {turn} of {request.max_turns}. Call finish once the checks should pass.\n"
         + (
@@ -455,6 +560,7 @@ def build_turn_prompt(
             else ""
         )
         + "\n"
+        f"{scope}\n\n"
         f"TASK\n{request.task}\n\n"
     )
     index = "FILES\n" + _cap("\n".join(file_index), 12_000) + "\n\n"

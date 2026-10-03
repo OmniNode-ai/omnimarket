@@ -1946,6 +1946,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # Same rule as the sync builder: a terminal that was never scored names
+        # neither column, so the row stores NULL on insert, never zero.
+        for column, value in (
+            ("actual_score", event.actual_score),
+            ("required_bar", event.required_bar),
+        ):
+            if value is not None:
+                row[column] = value
         # OMN-18930 (K3 of OMN-18925): same fold, same columns, as
         # HandlerProjectionDelegation.project_delegate_skill_terminal.
         row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())

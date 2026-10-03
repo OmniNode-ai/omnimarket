@@ -24,12 +24,12 @@ handler:
   input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelThreadReplyCommand
 
 env_dependencies:
-  LLM_CODER_URL:
+  BIFROST_CONTRACT_PATH:
     required: false
-    description: "Primary thread-reply endpoint URL supplied by runtime overlay"
-  LLM_GLM_URL:
+    description: "Canonical Bifrost routing contract path (packaged default when unset)"
+  BIFROST_OVERLAY_PATH:
     required: false
-    description: "Fallback thread-reply endpoint URL supplied by runtime overlay"
+    description: "Endpoint/model overlay bound to the Bifrost contract"
   LLM_CODER_FAST_URL:
     required: false
     description: "vLLM fast model endpoint URL (secondary local option)"
@@ -123,12 +123,12 @@ metadata:
   transport_type: kafka
 
 config:
-  LLM_CODER_URL:
-    description: "Primary thread-reply endpoint URL."
+  BIFROST_CONTRACT_PATH:
     required: false
-  LLM_GLM_URL:
-    description: "Fallback thread-reply endpoint URL."
+    description: "Canonical Bifrost routing contract path (packaged default when unset)"
+  BIFROST_OVERLAY_PATH:
     required: false
+    description: "Endpoint/model overlay bound to the Bifrost contract"
   LLM_CODER_FAST_URL:
     description: "Fast model endpoint URL."
     required: false

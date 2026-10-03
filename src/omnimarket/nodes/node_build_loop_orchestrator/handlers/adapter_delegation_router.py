@@ -28,7 +28,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 
 logger = logging.getLogger(__name__)
 
@@ -255,10 +255,10 @@ _OPENAI_CONTEXT_WINDOW: int = 128_000  # GPT-4.1
 
 
 def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
-    """Build endpoint configurations from environment variables.
+    """Build endpoint configurations from Bifrost and declared env settings.
 
-    Endpoint URLs and served model IDs must both be supplied by runtime
-    overlays. Missing values skip the tier instead of silently substituting a
+    GLM and local-coder URLs and served model IDs come from Bifrost.
+    Missing values skip the tier instead of silently substituting a
     hardcoded provider default.
     Context windows for local tiers are resolved from the model registry via
     get_context_window_for_endpoint_env (OMN-11856). Frontier cloud tiers
@@ -271,57 +271,25 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
 
-    # Frontier GLM (primary code gen) — endpoint/model from env, CREDENTIAL
-    # from the secret store.
-    # OMN-17372: the key was a bare ``os.environ.get("LLM_GLM_API_KEY")``. That
-    # is a raw ambient house credential: no store in the path, so it honoured
-    # neither the lane secret mapping nor any per-tenant scoping. Resolving the
-    # ``llm.glm.api_key`` ref instead keeps a developer's own key working
-    # locally (the local store maps that ref onto the same variable) while a
-    # deployed lane now resolves it through the lane mapping, where the house
-    # entry was deleted.
+    # Frontier generation and review share the contract's cloud-glm backend.
+    # Credentials still resolve through the tenant-aware secret store.
     glm_key = _resolved_secret("llm.glm.api_key")
-    glm_url = glm_url_or_empty(
-        os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
-        source="adapter_delegation_router.glm_url",
-    )
-    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if glm_key and glm_url:
-        _add_endpoint_config(
-            configs,
-            tier=EnumModelTier.FRONTIER_GLM,
-            base_url=glm_url,
-            model_id=glm_model,
-            api_key=glm_key,
-            max_tokens=8192,
-            context_window=_GLM_CONTEXT_WINDOW,
-            timeout_seconds=120.0,
-        )
-        logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
-
-    # Frontier review — explicit served model ID required.
-    glm_review_key = _resolved_secret("llm.glm.api_key")  # OMN-17372: store, not env
-    glm_review_url = glm_url_or_empty(
-        os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
-        source="adapter_delegation_router.glm_review_url",
-    )
-    glm_review_model = os.environ.get("LLM_GLM_REVIEW_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if glm_review_key and glm_review_url:
-        _add_endpoint_config(
-            configs,
-            tier=EnumModelTier.FRONTIER_REVIEW,
-            base_url=glm_review_url,
-            model_id=glm_review_model,
-            api_key=glm_review_key,
-            max_tokens=2048,
-            context_window=_GLM_REVIEW_CONTEXT_WINDOW,
-            timeout_seconds=30.0,
-        )
-        logger.info(
-            "GLM reviewer configured: %s (model=%s)",
-            glm_review_url,
-            glm_review_model,
-        )
+    glm = resolve_bifrost_backend("cloud-glm")
+    if glm_key and glm is not None and glm.endpoint_url and glm.model_name:
+        for tier, max_tokens, context_window, timeout in (
+            (EnumModelTier.FRONTIER_GLM, 8192, _GLM_CONTEXT_WINDOW, 120.0),
+            (EnumModelTier.FRONTIER_REVIEW, 2048, _GLM_REVIEW_CONTEXT_WINDOW, 30.0),
+        ):
+            _add_endpoint_config(
+                configs,
+                tier=tier,
+                base_url=glm.endpoint_url,
+                model_id=glm.model_name,
+                api_key=glm_key,
+                max_tokens=max_tokens,
+                context_window=context_window,
+                timeout_seconds=timeout,
+            )
 
     # Local fast — endpoint and served model are overlay-owned.
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
@@ -339,15 +307,14 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             timeout_seconds=60.0,
         )
 
-    # Local coder — endpoint and served model are overlay-owned.
-    local_coder_url = os.environ.get("LLM_CODER_URL", "")  # contract-config-ok: config  # fmt: skip
-    local_coder_model = os.environ.get("LLM_CODER_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if local_coder_url or local_coder_model:
+    # Local coder is configured by the same Bifrost contract/overlay.
+    coder = resolve_bifrost_backend("local-coder")
+    if coder is not None and coder.endpoint_url and coder.model_name:
         _add_endpoint_config(
             configs,
             tier=EnumModelTier.LOCAL_CODER,
-            base_url=local_coder_url,
-            model_id=local_coder_model,
+            base_url=coder.endpoint_url,
+            model_id=coder.model_name,
             max_tokens=4096,
             context_window=get_context_window_for_endpoint_env(
                 "LLM_CODER_URL", fallback=114_688

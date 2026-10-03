@@ -146,6 +146,12 @@ class ModelDelegatedCodeEditRequest(BaseModel):
     context_paths: tuple[str, ...] = Field(
         default=(), description="Worktree-relative files shown in the first turn."
     )
+    file_list: tuple[str, ...] = Field(
+        default=(),
+        description="Worktree-relative files the task names. When given, "
+        "replace_in_files reaches only these (a glob narrows the list, never "
+        "widens it); the writable globs still apply. Empty: no list.",
+    )
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
     formatter: tuple[str, ...] = Field(
         default=(),
@@ -173,7 +179,7 @@ class ModelDelegatedCodeEditRequest(BaseModel):
             raise ValueError("workspace_root must be an absolute path")
         return value.rstrip("/") or "/"
 
-    @field_validator("writable_globs", "context_paths")
+    @field_validator("writable_globs", "context_paths", "file_list")
     @classmethod
     def _relative(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for item in value:
@@ -240,6 +246,12 @@ class ModelObservation(BaseModel):
 
     ok: bool
     output: str = Field(default="", max_length=MAX_VIEW_WINDOW_BYTES + 400)
+    refused: bool = Field(
+        default=False,
+        description="The loop did not run the action (a write outside the "
+        "writable scope, a read while reads are paused): it changed and showed "
+        "nothing, so the tool_use budget counts it apart from work.",
+    )
 
 
 class ModelCheckResult(BaseModel):
