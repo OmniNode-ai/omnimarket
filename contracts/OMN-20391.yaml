@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20391
+title: A delegate_failed code-edit loop can be resumed and keeps its failure cause
+summary: A code-edit loop that ended delegate_failed resumes from its last completed turn under a new loop run id whose receipt names the loop it resumes, and the loop receipt keeps the head and tail of each failed delegate error within a declared bound.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20391
+  statement: A delegate outage must not lose a whole code-edit loop or cut the failure cause out of its receipt.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a loop that ended delegate_failed can be resumed from its last completed turn, with its worktree state and turn history, under a new loop run id whose receipt names the prior loop run id -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k resume'
+  - id: AC2
+    statement: 'AC2: the loop receipt keeps each failed delegate turn''s error whole at its head and tail, not a 200 or 300 character tail, so the cause near the start survives -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py tests/unit/delegated_code_edit/test_loop_ports.py -q -k "bound_error or keep_the_head_and_tail"'
+evidence_requirements:
+- kind: tests
+  description: The handler and CLI tests restore history from the failed receipt, archive the failed attempts, refuse unresumable receipts without claiming, and run the CLI resume path.
+  command: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py tests/unit/cli/test_cli_code_edit.py -q -k resume
+- kind: tests
+  description: The tests feed a 6000 character failure with a head marker and UndefinedTable at the tail and assert both survive in the terminal detail and in every turn record, and the loop-port stderr tests assert head and tail survive.
+  command: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py tests/unit/delegated_code_edit/test_loop_ports.py -q -k "bound_error or keep_the_head_and_tail"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20391-ac1
+  description: The handler and CLI tests restore history from the failed receipt, archive the failed attempts, refuse unresumable receipts without claiming, and run the CLI resume path.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py tests/unit/cli/test_cli_code_edit.py -q -k resume
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20391-ac2
+  description: The tests feed a 6000 character failure with a head marker and UndefinedTable at the tail and assert both survive in the terminal detail and in every turn record, and the loop-port stderr tests assert head and tail survive.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py tests/unit/delegated_code_edit/test_loop_ports.py -q -k "bound_error or keep_the_head_and_tail"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19797
+title: Routing learns from a task class only while its eval false-pass line is MET
+summary: The outcome overlay yields unknown for every backend of a task class whose latest eval row is MISSED, REFUSED, missing, unreadable or has no reader, and gives the normal verdict when the line is MET.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19797
+  statement: The routing outcome overlay must fail open to the static tiers whenever a class's eval false-pass line is not demonstrably met.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a class whose latest eval is MISSED or REFUSED yields unknown and never suppresses a tier -- falsifier: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k eval_not_met_is_unknown'
+  - id: AC2
+    statement: 'AC2: a class whose line is MET gets the normal verdict, and an unreadable eval table yields unknown, never failing -- falsifier: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k "eval_met_normal or eval_unreadable_unknown"'
+evidence_requirements:
+- kind: tests
+  description: The gate tests cover MISSED and REFUSED in both casings.
+  command: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k eval_not_met_is_unknown
+- kind: tests
+  description: The gate tests cover the MET pass-through and the unreadable-table fail-open.
+  command: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k "eval_met_normal or eval_unreadable_unknown"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-19797-ac1
+  description: The gate tests cover MISSED and REFUSED in both casings.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k eval_not_met_is_unknown
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-19797-ac2
+  description: The gate tests cover the MET pass-through and the unreadable-table fail-open.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -q -k "eval_met_normal or eval_unreadable_unknown"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

@@ -95,7 +95,7 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     "covers only writable files, and files without old_string are skipped); "
     "when the task has a file list, only those files are reached and a glob "
     f"only narrows it; at most {MAX_BULK_FILES} files.",
-    EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
+    EnumCodeEditTool.FORMAT: "Run the declared formatter chain over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
     EnumCodeEditTool.FINISH: "Declare the task done; every declared check then runs.",
