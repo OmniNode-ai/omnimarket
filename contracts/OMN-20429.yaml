@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20429
+title: A versioned blind acceptance rubric and a pure judge node produce the model by task type true-accept matrix
+summary: The acceptance rubric for judging delegated output is data beside the other delegation rubrics, and a pure compute node renders the judge prompt, checks a judge reply, gates a run on two-judge agreement and builds the matrix of true accept rate beside terminal_ok.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20429
+  statement: Judged acceptance of delegated output is repeatable from a versioned rubric and a node, not re-invented per run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a versioned rubric file lists per task class the accept criteria, the permitted-reply rule, invented facts as an automatic reject, probes excluded, and records the calibration numbers and label-noise cases as provenance -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k rubric -q loads the file and fails when a class, the refusal rule, the fabrication rule, the probe rule or a provenance number is missing'
+  - id: AC2
+    statement: 'AC2: the compute node validates a judge reply and refuses it when an item id is missing, duplicated or unknown, a failure class is outside the vocabulary, an accept carries quality below 2, or a reject carries failure class none -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k check -q'
+  - id: AC3
+    statement: 'AC3: the compute node scores a run from two judges and fails when Cohen kappa on the double-judged sample is under 0.6 or the sample is under 10 percent of the corpus, and builds the matrix of true accept rate with a Wilson interval beside terminal_ok -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k score -q'
+evidence_requirements:
+- kind: tests
+  description: The rubric, check and score tests of the acceptance judge node pass.
+  command: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20429-ac1
+  description: The rubric tests load the packaged v1 file and check every class, rule and provenance number.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k rubric -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20429-ac2
+  description: The check tests refuse each unsound judge reply.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k check -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-20429-ac3
+  description: The score tests gate on kappa and sample size and build the matrix beside terminal_ok.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k score -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
