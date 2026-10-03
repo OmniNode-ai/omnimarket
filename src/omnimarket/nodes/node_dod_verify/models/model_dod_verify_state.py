@@ -462,21 +462,21 @@ class ModelEvidenceCheckResult(BaseModel):
     # record with no acceptance is a DRAFT: a machine may propose a binding, it
     # may not decide one, because a passing check whose name resembles a
     # criterion is not proof of the criterion it names.
+    # OMN-17427: a record whose accepted_by is its own proposer is also a proposal.
     #
     # This is a strict subset of `binds_ac` above -- it NARROWS the claim and
     # can never add to it. The consumer subtracts these labels from the
     # discharge set, so a criterion whose only declaration is a proposal stays
     # unbound until a person accepts it.
     #
-    # EMPTY is the corpus default and means "nothing here is a proposal", which
-    # is exactly what every hand-authored binding is: written by the evidence
-    # author, which IS the acceptance the rule asks for.
+    # EMPTY is the corpus default and means "nothing here is a proposal".
     draft_binds_ac: tuple[str, ...] = Field(
         default=(),
         description=(
             "The subset of `binds_ac` that is a PROPOSAL rather than an "
             "accepted binding -- a record carrying a criterion hash and no "
-            "acceptance. Empty means none of the claims is a proposal."
+            "independent acceptance, including acceptance by its own proposer "
+            "(OMN-17427). Empty means none of the claims is a proposal."
         ),
     )
 
@@ -648,6 +648,8 @@ class ModelDodVerifyState(BaseModel):
     acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
     acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
     acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
+    # OMN-17427: self-accepted bindings still awaiting acceptance by a second lane.
+    acceptance_self_accepted_bindings: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was
