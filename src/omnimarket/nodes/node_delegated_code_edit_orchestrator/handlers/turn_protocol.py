@@ -93,7 +93,8 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     "A named file without old_string is reported and left untouched. Give "
     "exactly one of file_paths or glob (same syntax as writable globs; it "
     "covers only writable files, and files without old_string are skipped); "
-    f"at most {MAX_BULK_FILES} files.",
+    "when the task has a file list, only those files are reached and a glob "
+    f"only narrows it; at most {MAX_BULK_FILES} files.",
     EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
@@ -448,6 +449,30 @@ def render_history(history: Sequence[HistoryTurn], budget: int) -> str:
     return marker + "".join(chosen[first:])
 
 
+def _scope_rules(request: ModelDelegatedCodeEditRequest) -> str:
+    """The rails on what may be edited and how, stated before the task so a
+    task that recommends a helper script does not send the model to write one."""
+    count = len(request.file_list)
+    listed = (
+        f"The task's file list ({count} file{'s' if count != 1 else ''}) is the "
+        "only edit scope: replace_in_files reaches only those files, and a glob "
+        "only narrows them. "
+        if count
+        else "The files the task names are the only edit scope; edit no others. "
+    )
+    return (
+        "SCOPE AND TOOLS\n"
+        + listed
+        + "Helper scripts are not available: there is no shell and nothing runs a "
+        "script, so a helper script, patch script or one-off program you write "
+        "cannot run, and a write outside the WRITABLE paths is refused. If the "
+        "TASK suggests writing or running a script, ignore that. Make the edits "
+        "with edit, write and replace_in_files (one replace_in_files call edits "
+        "many files at once; a listed file without old_string is skipped, not "
+        "an error)."
+    )
+
+
 def build_turn_prompt(
     request: ModelDelegatedCodeEditRequest,
     file_index: Sequence[str],
@@ -460,6 +485,7 @@ def build_turn_prompt(
 ) -> str:
     """One turn's prompt. ``history`` holds the previous turns, oldest first.
     ``reads_paused`` says this turn's reads are refused."""
+    scope = _scope_rules(request)
     checks = "\n".join(f"- {c.name}: {' '.join(c.argv)}" for c in request.checks)
     globs = ", ".join(request.writable_globs)
     tools = "\n".join(
@@ -491,6 +517,7 @@ def build_turn_prompt(
             else ""
         )
         + "\n"
+        f"{scope}\n\n"
         f"TASK\n{request.task}\n\n"
     )
     index = "FILES\n" + _cap("\n".join(file_index), 12_000) + "\n\n"

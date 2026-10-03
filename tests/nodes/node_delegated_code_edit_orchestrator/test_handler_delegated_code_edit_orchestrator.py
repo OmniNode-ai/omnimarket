@@ -1097,13 +1097,12 @@ def test_replace_in_files_partial_failure_is_one_error_call_and_feedback() -> No
     )
     ports = FakePorts(
         [_reply(1, action), _reply(2, _a("finish"))],
-        files={"src/a.py": "old", "src/missing.py": "different", "src/z.py": "old"},
+        files={"src/a.py": "old", "src/z.py": "old"},
         check_passes=[True],
     )
     request = _request()
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     assert ports.writes == ["src/a.py", "src/z.py"]
-    assert ports.files["src/missing.py"] == "different"
     assert result.refusals == 0
     calls = cast(list[dict[str, Any]], ports.transcript["calls"])
     bulk_calls = [call for call in calls if call["tool_name"] == "replace_in_files"]
@@ -1112,7 +1111,7 @@ def test_replace_in_files_partial_failure_is_one_error_call_and_feedback() -> No
     output = bulk_calls[0]["output"]
     assert output == (
         "replace_in_files: 2 edited, 1 failed of 3\n"
-        "FAILED src/missing.py: no match\n"
+        "FAILED src/missing.py: src/missing.py is not a file\n"
         "edited src/a.py (1x)\nedited src/z.py (1x)"
     )
     assert output in ports.prompts[1]
@@ -1214,10 +1213,9 @@ def test_replace_in_files_normalises_deduplicates_and_replaces_every_occurrence(
 
 def test_replace_in_files_feedback_keeps_failures_before_capped_successes() -> None:
     files = {f"src/{'a' * 210}{n}.py": "old" for n in range(40)}
-    files["src/missing.py"] = "different"
     action = ModelCodeEditAction(
         tool=EnumCodeEditTool.REPLACE_IN_FILES,
-        file_paths=tuple(files),
+        file_paths=(*files, "src/missing.py"),
         old_string="old",
         new_string="new",
     )
@@ -1226,7 +1224,9 @@ def test_replace_in_files_feedback_keeps_failures_before_capped_successes() -> N
     )
     HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
     output = cast(list[dict[str, Any]], ports.transcript["calls"])[0]["output"]
-    assert output.splitlines()[1] == "FAILED src/missing.py: no match"
+    assert (
+        output.splitlines()[1] == "FAILED src/missing.py: src/missing.py is not a file"
+    )
     assert output.index("FAILED") < output.index("\nedited")
     assert "more characters cut" in output
     assert len(output) <= MAX_OBSERVATION_BYTES + 100
@@ -1727,3 +1727,226 @@ def test_replace_in_files_caps_the_files_holding_old_string_not_the_glob() -> No
     assert call["status"] == "ok"
     assert f"2 edited, 0 failed of {MAX_BULK_FILES + 50}" in call["output"]
     assert f"{MAX_BULK_FILES + 48} without old_string" in call["output"]
+
+
+def test_the_prompt_names_the_file_list_as_the_only_scope_and_says_no_scripts() -> None:
+    """Replay 8e1b5f72 and f76301f0: the task text recommends a helper script,
+    the model wrote one first, the write was refused, and the refusal cost
+    budget. The prompt says up front that there is no script tool."""
+    ports = FakePorts([_reply(1, _a("ls"))])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(max_turns=1, file_list=("src/m.py",))
+    )
+    prompt = ports.prompts[0]
+    assert "only edit scope" in prompt
+    assert "helper script" in prompt
+    assert "not available" in prompt
+    assert "1 file" in prompt
+
+
+def test_the_prompt_rails_hold_without_a_declared_file_list() -> None:
+    ports = FakePorts([_reply(1, _a("ls"))])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert "helper script" in ports.prompts[0]
+    assert "only edit scope" in ports.prompts[0]
+
+
+def test_replace_in_files_glob_only_narrows_the_declared_file_list() -> None:
+    """Replay f76301f0 run 2 and 8e1b5f72 run 2: a glob over every node contract
+    changed files outside the task's named list (5 and 27)."""
+    files = {f"src/m{n}.py": "old" for n in range(5)}
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(max_turns=1, file_list=("src/m1.py", "src/m3.py"))
+    )
+    assert sorted(ports.writes) == ["src/m1.py", "src/m3.py"]
+    assert ports.files["src/m0.py"] == ports.files["src/m4.py"] == "old"
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert "2 edited, 0 failed of 2" in call["output"]
+    assert "3 matched outside the task's file list" in call["output"]
+
+
+def test_replace_in_files_names_outside_the_file_list_are_refused() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/m1.py", "src/m2.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={"src/m1.py": "old", "src/m2.py": "old"},
+        check_passes=[True],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(max_turns=1, file_list=("src/m1.py",))
+    )
+    assert ports.writes == ["src/m1.py"]
+    assert ports.files["src/m2.py"] == "old"
+    call = _calls(ports)[0]
+    assert call["status"] == "error"
+    assert "FAILED src/m2.py: not in the task's file list" in call["output"]
+    assert result.refusals == 1
+
+
+def test_replace_in_files_without_a_file_list_keeps_the_writable_scope() -> None:
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={"src/a.py": "old", "src/b.py": "old"},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert sorted(ports.writes) == ["src/a.py", "src/b.py"]
+    assert "matched outside the task's file list" not in _calls(ports)[0]["output"]
+
+
+def test_a_file_list_entry_must_be_a_worktree_relative_path() -> None:
+    assert _request(file_list=("src/m.py",)).file_list == ("src/m.py",)
+    for bad in ("/etc/passwd", "../x.py", "src/../../x.py", ""):
+        with pytest.raises(ValueError, match="not a worktree-relative path"):
+            _request(file_list=(bad,))
+
+
+def test_replace_in_files_skips_a_listed_file_without_old_string() -> None:
+    """Replay 8e1b5f72 run 1 ``t4a1``: the model repeated the call over the full
+    list once per variant, and every file lacking that variant's old_string
+    failed the call."""
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/b.py", "src/c.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={"src/a.py": "old", "src/b.py": "different", "src/c.py": "old"},
+        check_passes=[True],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/a.py", "src/c.py"]
+    assert ports.files["src/b.py"] == "different"
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert "2 edited, 0 failed of 3" in call["output"]
+    assert "1 skipped without old_string" in call["output"]
+    assert "src/b.py" in call["output"]
+    assert result.refusals == 0
+
+
+def test_replace_in_files_over_a_list_where_none_holds_old_string_is_an_error() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/b.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts([_reply(1, action)], files={"src/a.py": "x", "src/b.py": "y"})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == []
+    call = _calls(ports)[0]
+    assert call["status"] == "error"
+    assert "no listed file contains old_string" in call["output"]
+
+
+def test_replace_in_files_still_fails_a_listed_file_that_is_missing() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/gone.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts([_reply(1, action)], files={"src/a.py": "old"})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    call = _calls(ports)[0]
+    assert call["status"] == "error"
+    assert "FAILED src/gone.py" in call["output"]
+    assert "1 edited, 1 failed of 2" in call["output"]
+
+
+def test_refused_calls_are_marked_so_the_budget_counts_them_separately() -> None:
+    """Replay 8e1b5f72, 4 refused writes and 7 refused reads: a call the loop
+    refused changed and showed nothing; it is recorded and marked, never
+    counted as work against the tool-call budget."""
+    view = _a("view", path="src/m.py")
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("write", file_path="/tmp/helper.py", content="x"),
+                _a("write", file_path="scripts/helper.py", content="x"),
+                _a("edit", file_path="src/m.py", old_string="nope", new_string="x"),
+            ),
+            _reply(2, view),
+            _reply(3, view),
+            _reply(4, view),
+            _reply(5, view),
+        ]
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=5))
+    by_id = {c["call_id"]: c for c in _calls(ports)}
+    assert by_id["t1a1"]["refused"] is True
+    assert by_id["t1a2"]["refused"] is True
+    # An edit that ran and failed is work, not a refusal.
+    assert by_id["t1a3"]["status"] == "error"
+    assert by_id["t1a3"]["refused"] is False
+    # Turns 2 to 4 read and change nothing, so turn 5's view is refused.
+    assert by_id["t5a1"]["refused"] is True
+    assert by_id["t4a1"]["refused"] is False
+
+
+def test_replace_in_files_does_not_apply_an_insertion_twice() -> None:
+    """Replay 8e1b5f72 (attempt 2 of the lab re-run): the model sent the same
+    insertion over the whole list in turns 1, 3, 9, 11 and 12, and each repeat
+    inserted the line again in files that already had it; 31 turns went on
+    cleaning up. A file whose old_string occurs only inside an earlier result
+    is already done: skipped and reported, as a single edit reports it."""
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/b.py"),
+        old_string="node_type: X\n",
+        new_string="node_type: X\nprofiles: [main]\n",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, action)],
+        files={
+            "src/a.py": "node_type: X\n",
+            "src/b.py": "node_type: X\nprofiles: [main]\n",
+        },
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/a.py"] == ports.files["src/b.py"]
+    assert ports.files["src/a.py"] == "node_type: X\nprofiles: [main]\n"
+    first, second = _calls(ports)
+    assert first["status"] == "ok"
+    assert "1 edited, 0 failed of 2" in first["output"]
+    assert "skipped (already applied): src/b.py" in first["output"]
+    # The repeat changes nothing, and is reported applied, not failed.
+    assert second["status"] == "ok"
+    assert second["output"].startswith("unchanged replace_in_files: 0 edited")
+    assert ports.writes == ["src/a.py"]
+
+
+def test_replace_in_files_glob_counts_files_already_done() -> None:
+    action = _a(
+        "replace_in_files",
+        glob="src/*.py",
+        old_string="node_type: X\n",
+        new_string="node_type: X\nprofiles: [main]\n",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={
+            "src/a.py": "node_type: X\n",
+            "src/b.py": "node_type: X\nprofiles: [main]\n",
+            "src/c.py": "other\n",
+        },
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/a.py"]
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert "1 without old_string" in call["output"]
+    assert "1 already applied" in call["output"]
