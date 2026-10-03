@@ -96,7 +96,7 @@ class TestExplicitClasses:
     def test_every_routable_public_class_is_admitted_by_name(
         self, live: ModelTaskClassAuthority
     ) -> None:
-        # OMN-17427: a public class can be declared withheld from delegation.
+        # Every public class is routable; unavailable classes are internal.
         for name in live.public_task_classes - live.unroutable_task_classes.keys():
             resolution = live.resolve_task_type("anything", explicit=name)
             assert resolution.task_type == name

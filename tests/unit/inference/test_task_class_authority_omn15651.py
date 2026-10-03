@@ -35,7 +35,6 @@ _ORCHESTRATOR_REQUEST_CONTRACT = (
 _EXPECTED_PUBLIC = frozenset(
     {
         "code_generation",
-        "code_review",
         "complex_reasoning",
         "document",
         "planning",
@@ -48,7 +47,13 @@ _EXPECTED_PUBLIC = frozenset(
     }
 )
 _EXPECTED_INTERNAL = frozenset(
-    {"agent_delegation", "documentation", "escalation", "validator_generation"}
+    {
+        "agent_delegation",
+        "code_review",
+        "documentation",
+        "escalation",
+        "validator_generation",
+    }
 )
 
 
