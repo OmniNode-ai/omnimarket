@@ -72,6 +72,14 @@ backends:
       - code_generation
       - refactoring
       - documentation
+    # OMN-17427 -- LIVE-PROBED 2026-10-03 on the same endpoint
+    # local-heavy-reasoning reads (BIFROST_LOCAL_CODER_ENDPOINT_URL,
+    # Qwen3.8-27B). Without the directive the code-edit loop's turns were
+    # refused no_schema_conforming_json on 234 of 747 local-coder attempts
+    # in 24 h (prose or empty content instead of the JSON object); with the
+    # json_schema directive 20 of 20 replayed failing turns extracted.
+    # Re-probe after an endpoint redeploy.
+    supports_response_format_json_schema: true
   # OMN-16442: the `local-reasoner` backend (model_name
   # Qwen3.6-27B-MTP-IQ4_XS.gguf, endpoint_url_env
   # BIFROST_LOCAL_REASONER_ENDPOINT_URL → .201:8001) was DELETED. OMN-16419
