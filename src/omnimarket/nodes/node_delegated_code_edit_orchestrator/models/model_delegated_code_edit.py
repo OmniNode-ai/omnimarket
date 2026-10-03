@@ -40,6 +40,10 @@ MAX_VIEW_WINDOW_BYTES = 16_000
 MAX_READ_CHARS_PER_TURN = 30_000
 #: Below this many characters left, a turn's further reads are not run.
 MIN_READ_CHARS = 2_000
+#: Turns in a row that read and change no file before the next turn's reads are
+#: refused, so a model that cannot hold every file it wants to read writes with
+#: what it has instead of reading to the turn cap (OMN-20291).
+MAX_READ_ONLY_TURNS = 3
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 

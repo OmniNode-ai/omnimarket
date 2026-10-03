@@ -832,7 +832,9 @@ def test_every_earlier_turn_stays_in_the_prompt_when_its_output_cannot() -> None
     # The newest turn's views are shown in full; a window shown again later is
     # not repeated, it points at the later turn.
     assert last.count("line 250 ") == 1
-    assert "shown again in turn 8" in last
+    # Turns 4, 6 and 8 have their reads paused (three read-only turns in a
+    # row), so turn 7 holds the last views.
+    assert "shown again in turn 7" in last
 
 
 def test_a_view_of_a_file_changed_later_is_marked_stale() -> None:
@@ -888,3 +890,43 @@ def test_a_view_shrinks_to_what_the_turn_can_still_read() -> None:
     shown = view_window(text, "a.py", 1, limit=500)
     assert len(shown) <= 500 + 200
     assert "[more: view a.py with offset=" in shown
+
+
+def test_reads_pause_after_three_turns_that_read_and_change_nothing() -> None:
+    """Replays a16a3138 and e3a2c923 a third time: with the history fixed and one
+    turn's reads bounded, the model still read for 30 turns without editing."""
+    view = _a("view", path="src/m.py")
+    edit = _a(
+        "edit", file_path="src/m.py", old_string="return 0", new_string="return a + b"
+    )
+    ports = FakePorts(
+        [
+            _reply(1, view),
+            _reply(2, view),
+            _reply(3, view),
+            _reply(4, view, edit),
+            _reply(5, view),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=5))
+    assert "reads are refused this turn" not in ports.prompts[2]
+    assert "reads are refused this turn" in ports.prompts[3]
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    fourth = cast("list[dict[str, Any]]", turns[3]["actions"])
+    assert [a["ok"] for a in fourth] == [False, True]
+    assert "change no file" in fourth[0]["output"]
+    # The edit ended the streak: the next turn reads again.
+    fifth = cast("list[dict[str, Any]]", turns[4]["actions"])
+    assert fifth[0]["ok"]
+    assert ports.files["src/m.py"] == FIX
+
+
+def test_a_paused_turn_that_still_changes_nothing_allows_one_more_read_turn() -> None:
+    view = _a("view", path="src/m.py")
+    ports = FakePorts([_reply(n, view) for n in range(1, 7)])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=6))
+    receipt = next(iter(ports.receipts.values()))
+    turns = cast("list[dict[str, Any]]", receipt["turns"])
+    oks = [cast("list[dict[str, Any]]", t["actions"])[0]["ok"] for t in turns]
+    assert oks == [True, True, True, False, True, False]

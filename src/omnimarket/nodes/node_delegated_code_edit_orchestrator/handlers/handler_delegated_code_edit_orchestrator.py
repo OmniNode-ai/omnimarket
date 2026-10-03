@@ -15,6 +15,10 @@ turns is this orchestrator:
   characters together: a view is shortened to what is left, and a read with
   less than ``MIN_READ_CHARS`` left is not run and says so. A turn's reads then
   fit the history whole (OMN-20291).
+* After ``MAX_READ_ONLY_TURNS`` turns in a row that read and change no file,
+  the next turn's prompt says its reads are refused, and they are: it may
+  write, edit, format, run checks or finish. A file change ends the streak; a
+  refused turn that still changes nothing allows one more reading turn.
 * Writes are confined: a write or edit whose path leaves the worktree (an
   absolute path outside it, or one that climbs out with ``..``), touches
   ``.git``, or matches no writable glob is refused and the refusal is fed back.
@@ -65,6 +69,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_OBSERVATION_BYTES,
     MAX_READ_CHARS_PER_TURN,
+    MAX_READ_ONLY_TURNS,
     MAX_VIEW_BYTES,
     MAX_VIEW_WINDOW_BYTES,
     MAX_WRITE_BYTES,
@@ -309,6 +314,7 @@ class _State:
     last_checks: tuple[ModelCheckResult, ...] = ()
     last_failure_key: str = ""
     summary: str = ""
+    read_only_streak: int = 0
 
 
 class _TerminalError(Exception):
@@ -451,7 +457,14 @@ class HandlerDelegatedCodeEditOrchestrator:
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
         for turn in range(1, request.max_turns + 1):
-            prompt = self._prompt(request, index, context, state, turn)
+            prompt = self._prompt(
+                request,
+                index,
+                context,
+                state,
+                turn,
+                reads_paused=state.read_only_streak >= MAX_READ_ONLY_TURNS,
+            )
             reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
             state.replies.append(reply)
             record: dict[str, object] = {
@@ -523,6 +536,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         context: tuple[tuple[str, str], ...],
         state: _State,
         turn: int,
+        *,
+        reads_paused: bool = False,
     ) -> str:
         """The turn prompt, shrunk until it fits one argv word."""
         limit = PROMPT_CHARS
@@ -534,6 +549,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 state.history,
                 turn,
                 max_chars=limit,
+                reads_paused=reads_paused,
             )
             if len(prompt.encode("utf-8")) <= PROMPT_BYTES or limit <= 20_000:
                 return prompt
@@ -551,6 +567,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         finished = False
         actions_log: list[dict[str, object]] = []
         read_left = MAX_READ_CHARS_PER_TURN
+        paused = state.read_only_streak >= MAX_READ_ONLY_TURNS
+        read_any = changed_any = False
         for number, given in enumerate(reply.actions, start=1):
             action = self._rebased(request, given)
             reads = action.tool in _READING_TOOLS
@@ -559,6 +577,13 @@ class HandlerDelegatedCodeEditOrchestrator:
                 state.summary = action.summary
                 observation = ModelObservation(
                     ok=True, output="finish: checks run next"
+                )
+            elif reads and paused:
+                observation = ModelObservation(
+                    ok=False,
+                    output=f"not read: {state.read_only_streak} turns in a row read "
+                    "and change no file, so this turn's reads are refused; write or "
+                    "edit with what HISTORY shows",
                 )
             elif reads and read_left < MIN_READ_CHARS:
                 observation = ModelObservation(
@@ -571,6 +596,12 @@ class HandlerDelegatedCodeEditOrchestrator:
                 observation = self._apply(request, action, state, read_left)
             if reads and observation.ok:
                 read_left -= len(observation.output)
+            read_any = read_any or reads
+            changed_any = changed_any or (
+                observation.ok
+                and action.tool in WRITING_TOOLS
+                and not observation.output.startswith("unchanged")
+            )
             arguments = {
                 key: value
                 for key, value in action.model_dump(
@@ -622,6 +653,13 @@ class HandlerDelegatedCodeEditOrchestrator:
             )
         record["actions"] = actions_log
         state.history.append(HistoryTurn(turn, actions=tuple(shown)))
+        if changed_any:
+            state.read_only_streak = 0
+        elif paused:
+            # One more reading turn, then the pause again.
+            state.read_only_streak = MAX_READ_ONLY_TURNS - 1
+        elif read_any:
+            state.read_only_streak += 1
         return finished
 
     @staticmethod
