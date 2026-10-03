@@ -229,7 +229,7 @@ def test_fingerprint_ignores_timings() -> None:
     assert check_fingerprint(1, "1 failed") != check_fingerprint(2, "1 failed")
 
 
-def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(
+def test_delegate_passes_the_prompt_by_file_and_carries_the_contract_lane_ticket_and_flags(
     tree: Path, tmp_path: Path
 ) -> None:
     seen: list[list[str]] = []
