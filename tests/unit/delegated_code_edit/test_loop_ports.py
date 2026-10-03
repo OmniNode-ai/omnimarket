@@ -229,14 +229,16 @@ def test_fingerprint_ignores_timings() -> None:
     assert check_fingerprint(1, "1 failed") != check_fingerprint(2, "1 failed")
 
 
-def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(
+def test_delegate_passes_the_prompt_by_file_and_carries_the_contract_lane_ticket_and_flags(
     tree: Path, tmp_path: Path
 ) -> None:
     seen: list[list[str]] = []
+    prompts: list[str] = []
     run_id = str(uuid.uuid4())
 
     def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
         seen.append(argv)
+        prompts.append(Path(argv[argv.index("--prompt-file") + 1]).read_text())
         run_dir = tmp_path / "state" / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "result.txt").write_text(
@@ -265,7 +267,10 @@ def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(
     ports = _ports(tmp_path, runner)
     reply = ports.delegate(_request(tree), "PROMPT", RESPONSE_CONTRACT, 1)
     argv = seen[0]
-    assert argv[:3] == ["/bin/onex", "delegate", "PROMPT"]
+    assert argv[:3] == ["/bin/onex", "delegate", "--prompt-file"]
+    assert "PROMPT" not in argv
+    assert prompts == ["PROMPT"]
+    assert not Path(argv[3]).exists()
     assert argv[argv.index("--task-type") + 1] == "code_generation"
     assert json.loads(argv[argv.index("--response-contract") + 1]) == RESPONSE_CONTRACT
     assert argv[argv.index("--caller-lane") + 1] == "lane-x"
@@ -277,6 +282,28 @@ def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(
     assert reply.tokens_in == 10
     assert reply.tokens_out == 4
     assert reply.actions[0].path == "src/m.py"
+
+
+def test_a_prompt_over_one_argv_word_reaches_delegate_by_file_intact(
+    tree: Path, tmp_path: Path
+) -> None:
+    long_prompt = "history line — é\n" * 20_000
+    assert len(long_prompt.encode("utf-8")) > 200 * 1024
+    seen: list[tuple[list[str], str]] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append((argv, Path(argv[argv.index("--prompt-file") + 1]).read_text()))
+        return subprocess.CompletedProcess(argv, 3, "", "TRANSPORT FAILURE")
+
+    reply = _ports(tmp_path, runner).delegate(
+        _request(tree), long_prompt, RESPONSE_CONTRACT, 1
+    )
+    assert len(seen) == 1
+    argv, delivered = seen[0]
+    assert delivered == long_prompt
+    assert all(len(word.encode("utf-8")) < 128 * 1024 for word in argv)
+    assert "over" not in reply.invalid_reason
+    assert not Path(argv[argv.index("--prompt-file") + 1]).exists()
 
 
 def test_delegate_failure_is_a_failed_reply_not_an_exception(
