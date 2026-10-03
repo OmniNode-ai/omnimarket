@@ -4,8 +4,8 @@
 
 Every run substitutes a registered customer key for the house OpenRouter rung.
 The ladder has no successors; any same-backend retries hit the same faulty
-loopback provider. The judge always scores 0.95, so gate refusals must name a
-blocking rule rather than attribute the decision to a weak judge score.
+loopback provider. No model judge scores an answer (OMN-20164), so gate
+refusals must name a blocking rule of the deterministic gate.
 """
 
 from __future__ import annotations
@@ -110,8 +110,7 @@ async def _run_fault(
             stub.completion_delay_seconds = 5.0
         elif fault == "gate_veto":
             # A refusal is not an answer: ``document`` carries ``no_refusal``
-            # as a BLOCKING heuristic, so this answer is vetoed by a named rule
-            # while the judge (canned at 0.95) would have passed it.
+            # as a BLOCKING heuristic, so this answer is vetoed by a named rule.
             stub.content = "### ANSWER\nI cannot help with that request."
         elif fault == "truncation":
             stub.finish_reason = "length"
@@ -146,7 +145,6 @@ async def _run_fault(
                 task_type=_VETO_TASK_TYPE if fault == "gate_veto" else TASK_TYPE,
                 db_path=db_path,
                 correlation_id=uuid4(),
-                adequacy_score=0.95,
             )
             # Retain evidence before assertions so a RED run remains readable.
             record_property(

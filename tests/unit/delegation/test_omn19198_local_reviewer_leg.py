@@ -24,14 +24,14 @@ import pytest
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
+    HandlerJudgeAdequacy,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
     adapter_routing_resolved_judge as judge_mod,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.adapter_routing_resolved_judge import (
     JudgeReviewerUnboundError,
     RoutingResolvedJudgeInferenceAdapter,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
 )
 
 pytestmark = pytest.mark.unit

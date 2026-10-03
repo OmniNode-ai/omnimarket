@@ -214,7 +214,7 @@ def test_calibration_corpus_declares_expected_ordering_and_marker_controls() -> 
 
 
 @pytest.mark.unit
-def test_contracts_declare_judge_verdict_event_and_non_verifiable_authority() -> None:
+def test_gate_contracts_remove_judge_event_and_rubric_binding() -> None:
     rubric = yaml.safe_load(_RUBRIC_PATH.read_text())
     task_contract = yaml.safe_load(_TASK_CONTRACT_PATH.read_text())
     qg_contract = yaml.safe_load(_QUALITY_GATE_CONTRACT_PATH.read_text())
@@ -223,25 +223,15 @@ def test_contracts_declare_judge_verdict_event_and_non_verifiable_authority() ->
     assert rubric_def["score_source"] == "reproducible_judge"
 
     topic = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
-    assert topic in qg_contract["event_bus"]["publish_topics"]
-    event_decl = next(
-        e
+    assert topic not in qg_contract["event_bus"]["publish_topics"]
+    assert all(
+        e["event_type"] != "DelegationJudgeVerdictEvent"
         for e in qg_contract["published_events"]
-        if e["event_type"] == "DelegationJudgeVerdictEvent"
     )
-    assert event_decl["topic"] == topic
-    assert (
-        set(qg_contract["metadata"]["judge_verdict_event"]["identity_bundle_fields"])
-        >= _IDENTITY_FIELDS
-    )
-    assert "deterministic judge" not in qg_contract["description"].lower()
+    assert "judge_verdict_event" not in qg_contract["metadata"]
 
     for task_class in rubric_def["applies_to_task_classes"]:
-        authority = task_contract["task_classes"][task_class]["adequacy_authority"]
-        assert authority["score_source"] == "reproducible_judge"
-        assert authority["rubric_id"] == "delegation_non_verifiable_v1"
-        assert authority["rubric_hash"] == rubric_def["rubric_hash"]
-        assert authority["event_topic_ref"] == "delegation_judge_verdict_v1"
+        assert "adequacy_authority" not in task_contract["task_classes"][task_class]
 
 
 @pytest.mark.unit
@@ -250,7 +240,7 @@ def test_projection_contract_and_migration_materialize_judge_verdict_rows() -> N
     topic = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
     snapshot = "onex.snapshot.projection.delegation.judge-verdicts.v1"
 
-    assert topic in projection["event_bus"]["subscribe_topics"]
+    assert topic not in projection["event_bus"]["subscribe_topics"]
     assert snapshot in projection["event_bus"]["publish_topics"]
     assert any(
         table["name"] == JUDGE_VERDICT_TABLE

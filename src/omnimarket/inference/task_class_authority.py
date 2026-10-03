@@ -8,6 +8,7 @@ import re
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
 from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
@@ -29,6 +30,21 @@ from omnimarket.inference.request_instruction import (
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
 )
+
+
+TASK_COMPLEXITY_RUBRIC_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml"
+)
+
+
+@lru_cache(maxsize=1)
+def load_task_complexity_rubric(path: str | None = None) -> dict[str, Any]:
+    """Composition-time rubric loading; also serves the benchmark API."""
+    target = Path(path) if path else TASK_COMPLEXITY_RUBRIC_PATH
+    with target.open(encoding="utf-8") as handle:
+        loaded: dict[str, Any] = yaml.safe_load(handle)
+    return loaded
 
 
 class EnumGatewayExposure(StrEnum):
@@ -381,6 +397,16 @@ class ModelTaskClassOutputContract(BaseModel):
         return self
 
 
+class ModelTaskClassComplexityContract(BaseModel):
+    """Catalogue-owned complexity features; never request overrides (OMN-18341)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    output_kind: Literal["prose", "structured", "code", "patch"]
+    verification: Literal["grounding", "exact_match", "test_run", "patch_and_test"]
+    execution_required: bool
+
+
 class ModelDelegationOutputAuthority(BaseModel):
     """Declared extraction floors and markers shared by delegated task classes."""
 
@@ -688,6 +714,7 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     gateway_exposure: EnumGatewayExposure
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
+    complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
         description=(
@@ -1096,6 +1123,7 @@ __all__ = [
     "ModelShortPromptSelection",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
+    "ModelTaskClassComplexityContract",
     "ModelTaskClassExecutionBudget",
     "ModelTaskClassOutputContract",
     "ModelTaskClassSelection",

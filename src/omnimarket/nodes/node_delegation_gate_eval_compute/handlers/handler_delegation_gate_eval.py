@@ -56,7 +56,7 @@ from omnimarket.models.ranges import (
 from omnimarket.ranges import evaluate_range_line
 
 GateReplay = Callable[[ModelGateEvalItem], ModelGateReplayVerdict]
-_Arm = Literal["recorded", "replayed"]
+_Arm = Literal["recorded", "replayed", "rubric"]
 _ARMS: tuple[_Arm, ...] = ("recorded", "replayed")
 _Replay = tuple[ModelGateEvalItem, ModelGateReplayVerdict]
 _REPLAYS = 3
@@ -100,7 +100,19 @@ def wilson_interval(errors: int, n: int) -> ModelWilsonInterval:
     )
 
 
+def _rubric_gate_verdict(item: ModelGateEvalItem) -> EnumGateVerdict:
+    if item.rubric_verdict is None or item.rubric_verdict.outcome == "UNDETERMINED":
+        return EnumGateVerdict.UNDETERMINED
+    return (
+        EnumGateVerdict.ACCEPTED
+        if item.rubric_verdict.outcome == "PASS"
+        else EnumGateVerdict.REFUSED
+    )
+
+
 def _undecidable(item: ModelGateEvalItem, arm: _Arm) -> bool:
+    if arm == "rubric":
+        return item.rubric_verdict is None
     return (item.requires_execution and item.execution_result is None) or (
         arm == "recorded" and item.recorded_verdict is None
     )
@@ -113,9 +125,10 @@ def _evaluate_line(
     arm: _Arm,
     line_name: Literal["false_pass", "false_refusal"],
     samples: list[ModelRangeSample],
+    declared_line: ModelRangeAcceptanceLine | None = None,
 ) -> ModelRangeEvaluation:
     false_pass = line_name == "false_pass"
-    line = ModelRangeAcceptanceLine(
+    line = declared_line or ModelRangeAcceptanceLine(
         check_id=f"{task_class}:{stratum}:{arm}:{line_name}",
         statistic="pass_rate",
         case_set=f"{task_class} / {stratum} / {arm} / {line_name}",
@@ -145,6 +158,8 @@ def _rate_row(
     stratum: str,
     arm: _Arm,
     replays: Sequence[_Replay],
+    false_pass_line: ModelRangeAcceptanceLine | None = None,
+    false_refusal_line: ModelRangeAcceptanceLine | None = None,
 ) -> ModelGateRateRow:
     false_pass_samples: list[ModelRangeSample] = []
     false_refusal_samples: list[ModelRangeSample] = []
@@ -162,7 +177,13 @@ def _rate_row(
                 )
             )
             continue
-        verdict = replay.verdict if arm == "replayed" else item.recorded_verdict
+        verdict = (
+            _rubric_gate_verdict(item)
+            if arm == "rubric"
+            else replay.verdict
+            if arm == "replayed"
+            else item.recorded_verdict
+        )
         adequate = item.label == EnumGateEvalLabel.ADEQUATE
         if verdict == EnumGateVerdict.ACCEPTED:
             accepted += 1
@@ -188,6 +209,12 @@ def _rate_row(
             )
         else:
             undetermined += 1
+            if arm == "rubric":
+                false_pass_samples.append(
+                    ModelRangeSample(
+                        case_id=item.item_id, outcome=EnumRangeSampleOutcome.INCOMPLETE
+                    )
+                )
     decidable_n = total - incomplete
     return ModelGateRateRow(
         task_class=task_class,
@@ -202,14 +229,27 @@ def _rate_row(
         undetermined_share=undetermined / decidable_n if decidable_n else 0.0,
         # The interval follows the line's population and incomplete-as-failure rule.
         false_pass_wilson=wilson_interval(
-            false_pass_count + incomplete, len(false_pass_samples)
+            false_pass_count + incomplete + (undetermined if arm == "rubric" else 0),
+            len(false_pass_samples),
         ),
         false_refusal_wilson=wilson_interval(false_refusal_count, refused),
         false_pass_evaluation=_evaluate_line(
-            run_id, task_class, stratum, arm, "false_pass", false_pass_samples
+            run_id,
+            task_class,
+            stratum,
+            arm,
+            "false_pass",
+            false_pass_samples,
+            false_pass_line,
         ),
         false_refusal_evaluation=_evaluate_line(
-            run_id, task_class, stratum, arm, "false_refusal", false_refusal_samples
+            run_id,
+            task_class,
+            stratum,
+            arm,
+            "false_refusal",
+            false_refusal_samples,
+            false_refusal_line,
         ),
     )
 
@@ -241,6 +281,21 @@ def _check_records(replays: Sequence[_Replay]) -> tuple[ModelGateCheckRecord, ..
                     key = (skip.check_id, arm)
                     counts[key]["skips"] += 1
                     reasons[key][skip.reason] += 1
+    for item, _ in replays:
+        verdict = item.rubric_verdict
+        if verdict is None:
+            continue
+        for criterion in verdict.failed_criteria:
+            key = (criterion, "rubric")
+            counts[key]
+            if item.label == EnumGateEvalLabel.INADEQUATE:
+                counts[key]["catches"] += 1
+            elif item.label == EnumGateEvalLabel.ADEQUATE:
+                counts[key]["wrong_refusals"] += 1
+        for criterion in verdict.undetermined_criteria:
+            key = (criterion, "rubric")
+            counts[key]["skips"] += 1
+            reasons[key]["rubric_undetermined"] += 1
     return tuple(
         ModelGateCheckRecord(
             check_id=check_id,
@@ -255,7 +310,7 @@ def _check_records(replays: Sequence[_Replay]) -> tuple[ModelGateCheckRecord, ..
 
 
 class HandlerDelegationGateEval:
-    """Replay every item three times before producing either arm's calibration."""
+    """Replay each gate three times; calibrate supplied class rubric evidence."""
 
     def __init__(self, gate: GateReplay | None = None) -> None:
         self._gate = _default_gate if gate is None else gate
@@ -305,12 +360,26 @@ class HandlerDelegationGateEval:
                 groups[(item.task_class, stratum)].append((item, replay))
         rows = tuple(
             _rate_row(
-                request.run_id, task_class, stratum, arm, groups[(task_class, stratum)]
+                request.run_id,
+                task_class,
+                stratum,
+                arm,
+                groups[(task_class, stratum)],
+                request.rubric_false_pass_lines.get(task_class)
+                if arm == "rubric"
+                else None,
+                request.rubric_false_refusal_lines.get(task_class)
+                if arm == "rubric"
+                else None,
             )
             for task_class, stratum in sorted(
                 groups, key=lambda key: (key[0], key[1] != "all", key[1])
             )
-            for arm in _ARMS
+            for arm in (
+                (*_ARMS, "rubric")
+                if task_class in request.rubric_false_pass_lines
+                else _ARMS
+            )
         )
         return ModelDelegationGateEvalResult(
             run_id=request.run_id,
@@ -329,6 +398,7 @@ class HandlerDelegationGateEval:
                     recorded_deciding_check=item.recorded_deciding_check,
                     replayed=replay,
                     replay_count=_REPLAYS,
+                    rubric_verdict=item.rubric_verdict,
                 )
                 for item, replay in sorted(replays, key=lambda pair: pair[0].item_id)
             ),

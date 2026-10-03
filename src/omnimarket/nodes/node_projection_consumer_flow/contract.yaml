@@ -44,7 +44,7 @@ golden_path:
   - "This reducer upserts topic_produce_windows (the upstream-production evidence) first"
   - "A window_sequence gap for a node materializes UNKNOWN rows with NULL counters — never zero"
   - "Each consumer delta upserts consumer_flow_windows with the derived flow_state"
-  - "Each written row is published as a snapshot delta to onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
+  - "Publish a snapshot delta on first sighting, verdict change, or refresh interval to onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
   - "Emit projection-applied event to onex.evt.omnimarket.projection-consumer-flow-applied.v1"
 
 dod_evidence:
@@ -184,15 +184,22 @@ projection_api:
   # consumer groups and topics, carrying no tenant-scoped data, so
   # publish_snapshot_delta's default tenant_id leaks nothing.
   bus_backed: true
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact,delete"
+      "retention.ms": "604800000"
+      "retention.bytes": "67108864"
+      "segment.bytes": "16777216"
   # The snapshot key is (consumer_group, topic), deliberately NOT the table's
   # primary key. This exposure answers what each group is doing now, so a new
   # window replaces the pair's previous row: the cache holds one row per pair,
   # bounded by the consumer population instead of by traffic, and the
   # retention trim (limit * 4 rows) cannot reach a live pair while the pair
-  # population stays under it. The snapshot topic is NOT compacted: it retains
-  # records by time (cleanup.policy=delete, 7-day retention), so records keyed
-  # consumer_group|topic|window_start stay on it until they age out, and a
-  # replay delivers them; the cache's key-arity guard ignores them. With
+  # population stays under it. The snapshot topic is compacted by the
+  # (consumer_group, topic) key with delete as well, a 64 MiB per-partition cap
+  # and 7-day retention, declared here. The config applies when the topic is
+  # created; an existing topic keeps its broker config until a provisioner
+  # reconciles it (no hand change on the broker). With
   # window_start in the key every window minted a new key, the cache filled
   # with window history it never served, and a quiet pair's current window
   # was evicted. The table keeps the full window history either way. Do not
@@ -207,6 +214,13 @@ projection_api:
   # one index probe; projection_cursor has no index under a key prefix and
   # would sort every window of every pair.
   latest_by: "window_start"
+
+# Publish verdict changes immediately and bound unchanged refreshes by event time.
+snapshot_publish_policy:
+  verdict_columns:
+    - "flow_state"
+    - "upstream_evidence"
+  refresh_interval_seconds: 600
 
 metadata:
   transport_type: kafka
