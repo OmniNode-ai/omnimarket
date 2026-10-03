@@ -9,6 +9,11 @@ Usage:
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --contract-path /path/to/contract.yaml
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --dry-run
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --output-path /abs/path/dod_report.json
+    python -m omnimarket.nodes.node_dod_verify occ-difference --dod-dir /path/to/dod --tickets-file /path/to/tickets.txt --occ-check-run /path/to/occ.json [--negative-control]
+
+OCC retirement S5 (OMN-20072):
+    ``occ-difference`` compares same-head receipt-gate and OCC verdict artifacts,
+    printing JSON and exiting 0 only when the difference check passes.
 
 Receipt persistence (OMN-10046, OMN-12403):
     When ``ONEX_EVIDENCE_ROOT`` is set in the environment, the node writes a
@@ -60,6 +65,11 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelDodVerifyState,
+)
+from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
+    classify,
+    load_new_verdict,
+    load_occ_verdict,
 )
 from omnimarket.protocols.protocol_dod_verify_retry_ledger import (
     FilesystemDodVerifyRetryLedger,
@@ -342,7 +352,38 @@ def _close_attempt(
     )
 
 
+def _occ_difference_main() -> None:
+    """Compare caller-supplied same-head verdict files (OMN-20072)."""
+    parser = argparse.ArgumentParser(
+        prog=f"{sys.argv[0]} occ-difference",
+        description="Classify receipt-gate versus OCC verdict differences.",
+    )
+    parser.add_argument("--dod-dir", type=Path, required=True)
+    parser.add_argument("--tickets-file", type=Path, required=True)
+    parser.add_argument("--occ-check-run", type=Path, required=True)
+    parser.add_argument("--negative-control", action="store_true")
+    args = parser.parse_args(sys.argv[2:])
+    tickets = [
+        line.strip()
+        for line in args.tickets_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    result = classify(
+        load_occ_verdict(args.occ_check_run),
+        load_new_verdict(args.dod_dir, tickets),
+        negative_control=args.negative_control,
+    )
+    sys.stdout.write(result.model_dump_json() + "\n")
+    if not result.passed:
+        sys.stderr.write(f"::error::{result.message}\n")
+    sys.exit(0 if result.passed else 1)
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "occ-difference":
+        _occ_difference_main()
+        return
+
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
