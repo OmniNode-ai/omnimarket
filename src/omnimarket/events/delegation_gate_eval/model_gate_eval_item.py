@@ -18,6 +18,9 @@ from omnimarket.events.delegation_gate_eval.model_gate_check_skip import (
 from omnimarket.events.delegation_gate_eval.model_gate_execution_result import (
     ModelGateExecutionResult,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 
 class ModelGateEvalItem(BaseModel):
@@ -38,3 +41,5 @@ class ModelGateEvalItem(BaseModel):
     checks_declared: tuple[str, ...] = ()
     recorded_checks_refused: tuple[str, ...] = ()
     recorded_checks_skipped: tuple[ModelGateCheckSkip, ...] = ()
+
+    rubric_verdict: ModelAttemptRubricVerdict | None = None

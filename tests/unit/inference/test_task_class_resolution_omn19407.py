@@ -93,10 +93,11 @@ class TestTheRegistryEntry:
 
 
 class TestExplicitClasses:
-    def test_every_public_class_is_admitted_by_name(
+    def test_every_routable_public_class_is_admitted_by_name(
         self, live: ModelTaskClassAuthority
     ) -> None:
-        for name in live.public_task_classes:
+        # OMN-17427: a public class can be declared withheld from delegation.
+        for name in live.public_task_classes - live.unroutable_task_classes.keys():
             resolution = live.resolve_task_type("anything", explicit=name)
             assert resolution.task_type == name
             assert resolution.resolution is EnumTaskTypeResolution.EXPLICIT
@@ -163,6 +164,30 @@ class TestTheMechanism:
         assert (
             authority.resolve_task_type("a widget", explicit=None).task_type == "open"
         )
+
+    @pytest.mark.parametrize("status", ["pending_capability", "withheld"])
+    @pytest.mark.parametrize("prompt", ["a widget", "unclaimed request"])
+    def test_an_unroutable_prompt_match_or_fallback_is_never_selected_silently(
+        self, tmp_path: Path, status: str, prompt: str
+    ) -> None:
+        # OMN-17427: refusal is generic, for both selection paths and statuses.
+        entry = _public(10, ["widget"])
+        entry["routing_availability"] = {
+            "status": status,
+            "missing_capability": "measured_requirement",
+            "tracking": "OMN-17427 RULING test",
+            "reason": "The caller does the work itself.",
+        }
+        authority = _authority(
+            tmp_path,
+            {
+                "task_classes": {"unavailable": entry},
+                "selection_fallback": {"task_class": "unavailable", "rationale": "r"},
+            },
+        )
+        with pytest.raises(TaskClassSelectionError) as refused:
+            authority.resolve_task_type(prompt, explicit=None)
+        assert str(refused.value) == authority.unroutable_refusal("unavailable")
 
     def test_word_boundaries(self, tmp_path: Path) -> None:
         """OMN-18305: "latest" contains "test" and must not match it."""

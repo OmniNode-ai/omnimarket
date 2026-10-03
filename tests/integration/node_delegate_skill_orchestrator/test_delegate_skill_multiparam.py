@@ -129,7 +129,8 @@ CASES = [
         id="escalation-up-tier",
     ),
     pytest.param(
-        "code_review",
+        # OMN-17427: exercise task-type threading with a routable review class.
+        "review",
         500,
         _cheap_success(),
         {

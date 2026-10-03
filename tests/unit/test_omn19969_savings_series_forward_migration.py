@@ -9,7 +9,7 @@ MIGRATIONS = (
 # 093, not 092: omnibase_infra already vendors an infra-side
 # 092_restore_savings_views_security_invoker.sql into the same node folder, and the
 # vendored copy of this migration must apply after it.
-SERIES_MIGRATION = MIGRATIONS / "093_savings_series_persisted_baseline.sql"
+SERIES_MIGRATION = MIGRATIONS / "093_savings_series_recorded_model.sql"
 SERIES_VIEW = "public.projection_delegation_savings_series"
 
 

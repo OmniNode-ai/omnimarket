@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_routing_complexity_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic trusted-input complexity classification (OMN-18341).
+  Workflow identifies a catalogue task class. Composition loads its Market
+  authority and the packaged task_complexity_rubric.v1.yaml once; handle reads
+  no files and mutates no state. Refuse request-supplied rubric fields by name.
+  Refusals may carry trusted diagnostic classifications that do not authorize
+  routing. Every feature carries contract or text-measurement provenance.
+input_model:
+  name: ModelRoutingRequest
+  module: omnimarket.nodes.node_routing_complexity_compute.models.model_routing_complexity
+output_model:
+  name: ModelRoutingResult
+  module: omnimarket.nodes.node_routing_complexity_compute.models.model_routing_complexity
+handler:
+  module: omnimarket.nodes.node_routing_complexity_compute.handlers.handler_routing_complexity
+  class: HandlerRoutingComplexity
+  input_model: omnimarket.nodes.node_routing_complexity_compute.models.model_routing_complexity.ModelRoutingRequest
+  output_model: omnimarket.nodes.node_routing_complexity_compute.models.model_routing_complexity.ModelRoutingResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_routing_complexity_compute.handlers.handler_routing_complexity:HandlerRoutingComplexity
+  handlers:
+    - operation: classify_complexity
+      handler:
+        name: HandlerRoutingComplexity
+        module: omnimarket.nodes.node_routing_complexity_compute.handlers.handler_routing_complexity
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  prompt: {type: str, required: true}
+  workflow: {type: str, required: true}
+outputs:
+  status: {type: str}
+  classification: {type: object}
+  reason: {type: str}
+  fields: {type: array}
+# The node is callable directly and through run-node dispatch. Both accepted
+# classifications and typed refusals are returned compute results; the runtime
+# publishes them on the single declared terminal event. The handler publishes
+# no events itself. Tier selection integration is a separate change.
+terminal_event: onex.evt.omnimarket.routing-complexity-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.routing-complexity-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.routing-complexity-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.routing-complexity-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.routing-complexity-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Trusted-input routing complexity compute
+  author: OmniNode Team
+  created: "2026-10-02"
+  related_tickets: [OMN-18341]

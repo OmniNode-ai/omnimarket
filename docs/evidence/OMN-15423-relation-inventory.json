@@ -4671,6 +4671,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [
+        "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
@@ -8570,7 +8571,7 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/079_add_savings_series_tier_mix.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/093_savings_series_persisted_baseline.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/093_savings_series_recorded_model.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",

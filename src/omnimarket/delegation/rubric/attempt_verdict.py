@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Record the class rubric verdict on a delegation attempt; never decide with it.
+"""Record class rubric evidence and apply configured measured-class refusals.
 
 The I/O boundary around node_delegation_rubric_check_compute for the two
 producers of attempt records: the bus workflow and the bus-less local port.
-Both call this after their accept or climb decision is settled. Nothing here
-may raise into a delegation: any failure is itself recorded, as an
+Recording faults are themselves recorded, as an
 UNDETERMINED verdict naming ``rubric_check_error``.
 """
 
@@ -16,6 +15,8 @@ from omnimarket.delegation.rubric.contract_loader import load_delegation_class_r
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.ranges import EnumRangeVerdict
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
     HandlerDelegationRubricCheck,
 )
@@ -83,3 +84,43 @@ def record_attempt_rubric_verdict(
         # The type only: the prompt and answer never reach a log line.
         logger.warning("Rubric check failed: %s", type(exc).__name__)
         return rubric_check_error_verdict(task_class, rubric_version)
+
+
+def apply_measured_rubric(
+    result: ModelQualityGateResult,
+    verdict: ModelAttemptRubricVerdict,
+    *,
+    task_class: str,
+) -> ModelQualityGateResult:
+    """Only a configured MET class can turn recorded rubric evidence into refusal.
+
+    Preserve an existing floor refusal. An undetermined rubric on a measured
+    class cannot establish a pass and names its unavailable criteria too.
+    """
+    if not result.passed:
+        return result
+    try:
+        contract = _load_contract()
+    except Exception as exc:
+        # An unavailable config establishes no measured class. Recording above
+        # still carries the error verdict; dev acceptance retains its floor.
+        logger.warning("Rubric acceptance config unavailable: %s", type(exc).__name__)
+        return result
+    if (
+        contract.false_pass_status.get(task_class) is not EnumRangeVerdict.MET
+        or verdict.task_class != task_class
+        or verdict.rubric_version != contract.rubric_version
+        or verdict.outcome == "PASS"
+    ):
+        return result
+    criteria = verdict.failed_criteria + verdict.undetermined_criteria
+    return result.model_copy(
+        update={
+            "passed": False,
+            "fail_category": "rubric_failed",
+            "failure_reasons": tuple(
+                f"rubric_failed: {criterion}" for criterion in criteria
+            ),
+            "fallback_recommended": True,
+        }
+    )

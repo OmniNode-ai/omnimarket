@@ -51,6 +51,9 @@ class EnumDelegationAcceptanceReason(StrEnum):
     a free rung was abandoned.
     """
 
+    RUBRIC_FAILED = "rubric_failed"
+    """A class with a measured false-pass line refused named rubric criteria."""
+
     QUALITY_BAR_MET = "quality_bar_met"
     """The gate passed the response and its score was at or above the bar."""
 

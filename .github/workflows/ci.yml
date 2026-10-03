@@ -2004,6 +2004,261 @@ jobs:
             --onex "$RUNNER_TEMP/customer-venv/bin/onex"
 
   # ============================================================================
+  # SIBLING RELEASE COMPATIBILITY GATE (OMN-20381)
+  # Twice a merge needed unreleased infra: node_projection_delegation/0052
+  # columns were written before their migration shipped, and dev changes broke
+  # `onex delegate` for a new developer installing released packages. Test THIS
+  # head against its uv.lock releases, never a sibling's live dev. Refuse with
+  # the missing release named; no breaking change without downstream notice.
+  # Required via the ci-summary aggregator.
+  # ============================================================================
+  sibling-release-compat:
+    needs: occ-preflight
+    if: always()
+    name: Sibling Release Compatibility Gate (OMN-20381)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout this head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.12
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import tomllib
+
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
+          PY
+      - name: Checkout the pinned omnibase_infra release
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: v${{ steps.pins.outputs.infra_version }}
+          path: .sibling/omnibase_infra
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          fetch-depth: 0
+          fetch-tags: true
+          filter: blob:none
+          persist-credentials: false
+          sparse-checkout: docker/migrations/forward/nodes
+          sparse-checkout-cone-mode: false
+      - name: Every node migration this change adds is in the pinned omnibase_infra release
+        shell: bash
+        env:
+          INFRA_DIR: .sibling/omnibase_infra
+          INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "::notice::No base to diff for $EVENT_NAME; no node migration comparison."
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          files=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- 'src/omnimarket/nodes/*/migrations/*.sql')
+          if [[ -z "$files" ]]; then
+            echo "::notice::No added or changed node migrations."
+            exit 0
+          fi
+          tags=$(git -C "$INFRA_DIR" tag --list 'v[0-9]*' --sort=v:refname)
+          {
+            echo "| file | pinned v$INFRA_VERSION | first release carrying it |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          while IFS= read -r file; do
+            node=${file#src/omnimarket/nodes/}
+            node=${node%%/*}
+            name=${file##*/}
+            vendored="docker/migrations/forward/nodes/$node/$name"
+            want=$(git show "$HEAD_SHA:$file" | git hash-object --stdin)
+            have=$(git -C "$INFRA_DIR" ls-tree "v$INFRA_VERSION" -- "$vendored" | awk '{print $3}')
+            if [[ "$have" == "$want" ]]; then
+              echo "OK: $file is byte-identical in omnibase_infra v$INFRA_VERSION"
+              echo "| $file | byte-identical | v$INFRA_VERSION (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            first_release=""
+            while IFS= read -r tag; do
+              [[ -n "$tag" && "$tag" != "v$INFRA_VERSION" ]] || continue
+              oldest=$(printf '%s\n' "v$INFRA_VERSION" "$tag" | sort -V | head -n 1)
+              [[ "$oldest" == "v$INFRA_VERSION" ]] || continue
+              blob=$(git -C "$INFRA_DIR" ls-tree "$tag" -- "$vendored" | awk '{print $3}')
+              if [[ "$blob" == "$want" ]]; then
+                first_release=$tag
+                break
+              fi
+            done <<< "$tags"
+            relation="is not in"
+            status="missing"
+            if [[ -n "$have" ]]; then
+              relation="differs from"
+              status="different bytes"
+            fi
+            if [[ -n "$first_release" ]]; then
+              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."
+            else
+              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."
+            fi
+            echo "| $file | $status | ${first_release:-not released} |" >> "$GITHUB_STEP_SUMMARY"
+            failed=1
+          done <<< "$files"
+          exit "$failed"
+      # The checks below still run when the migration check refuses, so one
+      # red names every missing sibling release at once.
+      - name: Build this head's wheel
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+      - id: install
+        name: Install the wheel against the pinned sibling releases
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        shell: bash
+        env:
+          INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          CORE_VERSION: ${{ steps.pins.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          # Outside the checkout and with --no-config: this repo's [tool.uv]
+          # override-dependencies (omnibase-infra>=...,<...) would otherwise
+          # REPLACE the exact pins below and resolve the newest release instead.
+          wheel=$(ls "$RUNNER_TEMP"/dist/omnimarket-*.whl)
+          cd "$RUNNER_TEMP"
+          uv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"
+          if ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \
+            "$wheel" "omnibase-infra==$INFRA_VERSION" "omnibase-core==$CORE_VERSION"; then
+            echo "::error::this head does not install against the released omnibase-infra==$INFRA_VERSION and omnibase-core==$CORE_VERSION its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
+            exit 1
+          fi
+          "$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'
+          import importlib.metadata
+          import os
+          from pathlib import Path
+          import sysconfig
+
+          import omnimarket
+
+          for package, key in (("omnibase-infra", "INFRA_VERSION"), ("omnibase-core", "CORE_VERSION")):
+              installed = importlib.metadata.version(package)
+              assert installed == os.environ[key], f"{package}: installed {installed}, pinned {os.environ[key]}"
+              print(f"OK: {package}=={installed}")
+          location = Path(omnimarket.__file__).resolve()
+          site_packages = Path(sysconfig.get_path("purelib")).resolve()
+          venv = (Path(os.environ["RUNNER_TEMP"]) / "pinned-venv").resolve()
+          assert site_packages.is_relative_to(venv), f"site-packages outside pinned venv: {site_packages}"
+          assert location.is_relative_to(site_packages), f"omnimarket imported outside venv site-packages: {location}"
+          print(f"OK: omnimarket imported from {location}")
+          PY
+      - name: Every omnimarket module imports against the pinned sibling releases
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: bash
+        env:
+          INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          CORE_VERSION: ${{ steps.pins.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          # Some node modules read OMNI_HOME at import and refuse a silent
+          # default (OMN-16856); a developer's install has it set, so give the
+          # import an explicit, empty one rather than letting it KeyError.
+          export OMNI_HOME="$RUNNER_TEMP/omni_home"
+          mkdir -p "$OMNI_HOME"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'
+          import importlib
+          import os
+          import pkgutil
+          import sys
+
+          import omnimarket
+
+          failures = []
+          count = 0
+
+          def record_failure(name, error):
+              failures.append(f"{name}: {type(error).__name__}: {str(error)[:300]}")
+
+          def discovery_error(name):
+              record_failure(name, sys.exc_info()[1])
+
+          try:
+              for module in pkgutil.walk_packages(omnimarket.__path__, "omnimarket.", onerror=discovery_error):
+                  name = module.name
+                  if ".tests" in name or ".test_" in name or name.endswith("__main__"):
+                      continue
+                  count += 1
+                  try:
+                      importlib.import_module(name)
+                  except BaseException as error:
+                      record_failure(name, error)
+          except BaseException as error:
+              record_failure("omnimarket (package discovery)", error)
+          print(f"Imported {count} omnimarket modules; {len(failures)} failures")
+          if failures:
+              for failure in failures:
+                  print(failure)
+              message = (
+                  f"{len(failures)} omnimarket modules do not import against the released "
+                  f"omnibase-infra=={os.environ['INFRA_VERSION']} / omnibase-core=={os.environ['CORE_VERSION']}. "
+                  "This head needs a sibling release newer than its pins (missing sibling release): "
+                  "land and release the sibling change, then bump the pin in pyproject.toml and uv.lock. "
+                  f"First failure: {failures[0]}"
+              )
+              message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error::{message}")
+              raise SystemExit(1)
+          PY
+      - name: In-process onex delegate smoke on the pinned sibling releases
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: bash
+        env:
+          INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          CORE_VERSION: ${{ steps.pins.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          if ! python3 scripts/ci/customer_clean_install_delegate_probe.py --onex "$RUNNER_TEMP/pinned-venv/bin/onex"; then
+            echo "::error::onex delegate does not complete in-process on the released omnibase-infra==$INFRA_VERSION / omnibase-core==$CORE_VERSION this head pins; this head needs a sibling release newer than its pins, or it broke delegate for a new developer."
+            exit 1
+          fi
+
+  # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)
   # Proves the deterministic node platform works end-to-end on every PR:
   #   - onex node CLI loads a real workflow contract
@@ -3166,6 +3421,144 @@ jobs:
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
+
+  # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
+  # option (b) of the addendum's section 11 question 2 (B3): enforce release
+  # debt only on the repository it measures, under its required CI Summary.
+  # Unconditional: no `if:`, no `needs:`. Controls prove stale source is refused
+  # and old docs are accepted before measuring origin/dev, never the PR head.
+  # When red, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).
+  release-staleness:
+    name: Release Staleness (OMN-18010)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch dev
+        run: |
+          git fetch --no-tags origin '+refs/heads/dev:refs/remotes/origin/dev'
+          git fetch --tags origin
+      - name: Measure dev-vs-tag release staleness (OMN-18010)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          measurement_error() {
+            printf 'release-staleness: ERROR base=- unreleased=- unreleased_packaged=- oldest=- age_hours=0.0 limit=24\n'
+          }
+
+          measure() {
+            local repo="$1" tags tag commits commit paths timestamp now age_seconds
+            local unreleased=0 packaged=0 oldest_epoch='' oldest='-' age_hours=0.0
+            local verdict=FRESH result=0
+            # Every git read checks its exit status explicitly: measure is called
+            # in conditionals, where bash's errexit alone cannot fail closed.
+            git -C "$repo" rev-parse --verify 'refs/remotes/origin/dev^{commit}' > /dev/null || {
+              measurement_error; return 2;
+            }
+            tags=$(git -C "$repo" tag --list) || { measurement_error; return 2; }
+            tag=$(printf '%s\n' "$tags" |
+              awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ {print substr($0, 2)}' |
+              LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1) || {
+              measurement_error; return 2;
+            }
+            if [ -z "$tag" ]; then
+              echo 'Cannot measure release staleness: no vX.Y.Z release tag' >&2
+              measurement_error
+              return 2
+            fi
+            tag="v$tag"
+            commits=$(git -C "$repo" rev-list "$tag..refs/remotes/origin/dev") || {
+              measurement_error; return 2;
+            }
+            # Inspect each reachable commit, including merged branch commits;
+            # neither the range's net diff nor traversal order gives its age.
+            for commit in $commits; do
+              unreleased=$((unreleased + 1))
+              paths=$(git -C "$repo" diff-tree --root -m --no-commit-id --name-only -r \
+                "$commit" -- src pyproject.toml uv.lock) || {
+                measurement_error; return 2;
+              }
+              if [ -n "$paths" ]; then
+                packaged=$((packaged + 1))
+                timestamp=$(git -C "$repo" log -1 --format=%ct "$commit") || {
+                  measurement_error; return 2;
+                }
+                if [[ ! "$timestamp" =~ ^[0-9]+$ ]]; then
+                  measurement_error
+                  return 2
+                fi
+                if [ -z "$oldest_epoch" ] || [ "$timestamp" -lt "$oldest_epoch" ]; then
+                  oldest_epoch="$timestamp"
+                fi
+              fi
+            done
+            if [ -n "$oldest_epoch" ]; then
+              now=$(date +%s) || { measurement_error; return 2; }
+              oldest=$(date -u -d "@$oldest_epoch" +%Y-%m-%dT%H:%M:%SZ) || {
+                measurement_error; return 2;
+              }
+              age_seconds=$((now - oldest_epoch))
+              age_hours=$(awk -v seconds="$age_seconds" 'BEGIN {printf "%.1f", seconds / 3600}') || {
+                measurement_error; return 2;
+              }
+              if (( age_seconds > 24 * 3600 )); then
+                verdict=STALE
+                result=1
+              fi
+            fi
+            printf 'release-staleness: %s base=%s unreleased=%s unreleased_packaged=%s oldest=%s age_hours=%s limit=24\n' \
+              "$verdict" "$tag" "$unreleased" "$packaged" "$oldest" "$age_hours"
+            return "$result"
+          }
+
+          controls=$(mktemp -d)
+          trap 'rm -rf "$controls"' EXIT
+          control_now=$(date +%s)
+          for kind in src docs; do
+            repo="$controls/$kind"
+            git init -q "$repo"
+            mkdir -p "$repo/src" "$repo/docs"
+            printf 'base\n' > "$repo/src/x.py"
+            git -C "$repo" add src/x.py
+            GIT_AUTHOR_DATE="@$((control_now - 96 * 3600)) +0000" \
+              GIT_COMMITTER_DATE="@$((control_now - 96 * 3600)) +0000" \
+              git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
+                -c commit.gpgsign=false commit -qm base
+            git -C "$repo" -c tag.gpgsign=false tag v0.0.1
+            if [ "$kind" = src ]; then
+              path=src/x.py
+            else
+              path=docs/x.md
+            fi
+            printf 'unreleased\n' >> "$repo/$path"
+            git -C "$repo" add "$path"
+            GIT_AUTHOR_DATE="@$((control_now - 72 * 3600)) +0000" \
+              GIT_COMMITTER_DATE="@$((control_now - 72 * 3600)) +0000" \
+              git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
+                -c commit.gpgsign=false commit -qm unreleased
+            git -C "$repo" update-ref refs/remotes/origin/dev "$(git -C "$repo" rev-parse HEAD)"
+            status=0
+            measure "$repo" || status=$?
+            expected=0
+            if [ "$kind" = src ]; then expected=1; fi
+            if [ "$status" -ne "$expected" ]; then
+              echo "POSITIVE CONTROL FAILED: $kind returned $status, expected $expected"
+              exit 1
+            fi
+          done
+
+          status=0
+          measure . || status=$?
+          if [ "$status" -eq 1 ]; then
+            echo 'Release debt is stale: dispatch the Release Cut workflow (.github/workflows/release-cut.yml).'
+          fi
+          if [ "$status" -ne 0 ]; then exit 1; fi
 
   ci-summary:
     name: CI Summary

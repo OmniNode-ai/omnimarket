@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_hook_followup_compute
+node_type: COMPUTE_GENERIC
+lifecycle: experimental
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Pure definition-B receipt-to-hook follow-up computation. Joins supplied
+  receipt digests to captured Bash tool-input digests, falling back to unique
+  agent attribution in the receipt window. Emits observed activity through
+  the next lane TERMINAL, never correctness judgements. No I/O.
+input_model:
+  name: ModelHookFollowupRequest
+  module: omnimarket.nodes.node_delegation_hook_followup_compute.models.model_hook_followup_request
+output_model:
+  name: ModelHookFollowupResult
+  module: omnimarket.nodes.node_delegation_hook_followup_compute.models.model_hook_followup_result
+handler:
+  module: omnimarket.nodes.node_delegation_hook_followup_compute.handlers.handler_delegation_hook_followup
+  class: HandlerDelegationHookFollowup
+  input_model: omnimarket.nodes.node_delegation_hook_followup_compute.models.model_hook_followup_request.ModelHookFollowupRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_hook_followup
+      handler:
+        name: HandlerDelegationHookFollowup
+        module: omnimarket.nodes.node_delegation_hook_followup_compute.handlers.handler_delegation_hook_followup
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  receipts: {type: tuple, required: true}
+  hook_events: {type: tuple, required: true}
+  lane_rows: {type: tuple, required: true}
+  window_start_ms: {type: int, required: true}
+  window_end_ms: {type: int, required: true}
+outputs:
+  followups: {type: tuple}
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-hook-followup-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-hook-followup-completed.v1
+    failure: onex.evt.omnimarket.delegation-hook-followup-failed.v1
+metadata:
+  transport_type: inmemory

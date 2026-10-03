@@ -34,16 +34,12 @@ from omnimarket.local_deployment.tenant_identity import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
 from omnimarket.routing import delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 pytestmark = pytest.mark.unit
 
@@ -136,9 +132,6 @@ def _port(db_path: Path) -> LocalDelegationDispatchPort:
     return LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
 
 
