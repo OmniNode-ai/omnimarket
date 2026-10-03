@@ -8,6 +8,11 @@ the worker result files, the producer's acknowledgements and failures, and the
 controller's own state as it last wrote it. The decision itself does no I/O
 and reads no clock: ``observed_at`` is the moment the snapshot describes, and
 deadlines and grace periods are compared against it.
+
+The shared-cause inputs (each red check's failure annotation, when a gate
+began, the fixer HOLD rows, the floor alarm's breach set, the CLAIMs that name
+a cause, RELEASE rows naming a parked cause) are all optional with empty
+defaults, so a snapshot without them decides exactly as before.
 """
 
 from __future__ import annotations
@@ -30,13 +35,17 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingSuspension,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+    CAUSE_KEY_PATTERN,
     KEY_PATTERN,
     PR_KEY_PATTERN,
     REPO_PATTERN,
     SHA_PATTERN,
+    SUBJECT_PATTERN,
     ModelLandingControllerState,
     ModelLandingMemberRef,
 )
+
+FIXER_HOLD_ALL = "all"
 
 
 class ModelLandingBlockerRef(BaseModel):
@@ -125,6 +134,17 @@ class ModelLandingPrFacts(BaseModel):
         pattern=SHA_PATTERN,
         description="The head auto-merge is armed on, if armed.",
     )
+    red_annotations: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Red check name -> its failure annotation text on this head; a red "
+            "check absent here is unread and never clusters."
+        ),
+    )
+    gate_since: datetime | None = Field(
+        default=None,
+        description="When the current gate suspension began on this head.",
+    )
 
     @model_validator(mode="after")
     def _red_needs_class(self) -> ModelLandingPrFacts:
@@ -187,7 +207,9 @@ class ModelLandingWorkerResult(BaseModel):
 
     lease_id: int = Field(..., ge=1)
     pr: str = Field(
-        ..., pattern=PR_KEY_PATTERN, description="The PR the worker was sent to."
+        ...,
+        pattern=SUBJECT_PATTERN,
+        description="The PR, or the cause key, the worker was sent to.",
     )
     kind: EnumLandingResultKind
     head_sha: str | None = Field(default=None, pattern=SHA_PATTERN)
@@ -195,6 +217,54 @@ class ModelLandingWorkerResult(BaseModel):
     rerun_run_id: int | None = Field(default=None, ge=1)
     blocker_kind: EnumLandingExternalBlockerKind | None = None
     blocker_ref: str | None = None
+    fix_ref: str | None = Field(
+        default=None,
+        pattern=PR_KEY_PATTERN,
+        description="cause_fix_submitted: the one fix PR at the source.",
+    )
+    fix_head: str | None = Field(
+        default=None, pattern=SHA_PATTERN, description="cause_fix_submitted: its head."
+    )
+    reason: str | None = Field(default=None, description="cause_not_shared: why.")
+
+
+class ModelLandingCauseOwner(BaseModel):
+    """A live CLAIM that names a cause (never a per-PR CLAIM).
+
+    It owns the cause whose key is ``cause``, or, with no key, the cause in
+    ``repo`` that carries ``check``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str = Field(..., min_length=1)
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    check: str | None = Field(default=None, min_length=1)
+    cause: str | None = Field(default=None, pattern=CAUSE_KEY_PATTERN)
+
+    @model_validator(mode="after")
+    def _names_a_cause(self) -> ModelLandingCauseOwner:
+        if self.check is None and self.cause is None:
+            raise ValueError("a cause owner names the cause key or its check")
+        return self
+
+
+class ModelLandingCauseRelease(BaseModel):
+    """A RELEASE row naming a parked cause; it ends a park that began before it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cause: str = Field(..., pattern=CAUSE_KEY_PATTERN)
+    at: datetime
+
+
+class ModelLandingRepoChecks(BaseModel):
+    """The checks red on one repo's base head."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    checks: tuple[str, ...] = ()
 
 
 class ModelLandingRebuildAck(BaseModel):
@@ -241,6 +311,51 @@ class ModelLandingPolicy(BaseModel):
         ),
         min_length=1,
     )
+    cluster_min_members: int = Field(
+        default=3, ge=2, description="PRs sharing one (check, signature) to cluster."
+    )
+    cluster_min_members_floor: int = Field(
+        default=2, ge=2, description="The same, in a repo under its landing floor."
+    )
+    wait_stall_minutes: int = Field(
+        default=60, ge=0, description="A gate older than this joins clusters."
+    )
+    cluster_absorb_ratio: float = Field(
+        default=0.8,
+        gt=0,
+        le=1,
+        description="A cluster this much inside a chosen cause is absorbed into it.",
+    )
+    cluster_excluded_checks: tuple[str, ...] = Field(
+        default=(
+            "CI Summary",
+            "Hostile Reviewer (adversarial gate)",
+            "Hostile Review Gate",
+        ),
+        description="Follower checks and the reviewer pool: never clustered.",
+    )
+    max_cause_workers: int = Field(default=4, ge=0, description="Fleet-wide.")
+    max_cause_workers_per_repo: int = Field(default=2, ge=0)
+    max_workers_per_repo: int = Field(
+        default=6, ge=0, description="Workers of any kind in one repo."
+    )
+    cause_attempt_budget: int = Field(
+        default=2, ge=1, description="Attempts per cause per park episode."
+    )
+    cause_spawn_failure_budget: int = Field(
+        default=3, ge=1, description="Exits with no result that park the cause."
+    )
+    cause_spawn_failure_seconds: int = Field(
+        default=600,
+        ge=0,
+        description="An exit with no result this soon after dispatch is not an attempt.",
+    )
+    cause_lease_seconds: int = Field(default=5400, ge=1)
+    cause_park_hours: int = Field(default=12, ge=1)
+    cause_engine_ladder: tuple[EnumLandingEngine, ...] = Field(
+        default=(EnumLandingEngine.CLAUDE_OPUS, EnumLandingEngine.CLAUDE_OPUS),
+        min_length=1,
+    )
 
 
 class ModelLandingFacts(BaseModel):
@@ -276,6 +391,21 @@ class ModelLandingFacts(BaseModel):
         EnumLandingEngine.CLAUDE_OPUS,
         EnumLandingEngine.CODEX_HIGH,
     )
+    fixer_hold: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Repos under a fixer HOLD row, or 'all': no worker is dispatched "
+            "there and every live lease there is revoked."
+        ),
+    )
+    floor_breached_repos: tuple[str, ...] = Field(
+        default=(), description="Repos under their landing floor (the floor alarm)."
+    )
+    cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
+    cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
+    base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
+        default=(), description="Checks red on each repo's base head."
+    )
 
     @model_validator(mode="after")
     def _keys_unique(self) -> ModelLandingFacts:
@@ -290,6 +420,14 @@ class ModelLandingFacts(BaseModel):
         for repo in self.drain_requested:
             if not _is_repo(repo):
                 raise ValueError(f"drain_requested entry {repo!r} is not owner/name")
+        for repo in self.floor_breached_repos:
+            if not _is_repo(repo):
+                raise ValueError(
+                    f"floor_breached_repos entry {repo!r} is not owner/name"
+                )
+        for scope in self.fixer_hold:
+            if scope != FIXER_HOLD_ALL and not _is_repo(scope):
+                raise ValueError(f"fixer_hold entry {scope!r} is not owner/name or all")
         return self
 
 
@@ -298,7 +436,10 @@ def _is_repo(value: str) -> bool:
 
 
 __all__: list[str] = [
+    "FIXER_HOLD_ALL",
     "ModelLandingBlockerRef",
+    "ModelLandingCauseOwner",
+    "ModelLandingCauseRelease",
     "ModelLandingCompanionFacts",
     "ModelLandingFacts",
     "ModelLandingPolicy",
@@ -306,6 +447,7 @@ __all__: list[str] = [
     "ModelLandingPushEvidence",
     "ModelLandingRebuildAck",
     "ModelLandingRefUpdate",
+    "ModelLandingRepoChecks",
     "ModelLandingRerunRun",
     "ModelLandingWorkerProbe",
     "ModelLandingWorkerResult",
