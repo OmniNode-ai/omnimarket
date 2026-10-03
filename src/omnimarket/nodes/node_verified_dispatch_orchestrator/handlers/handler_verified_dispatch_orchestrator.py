@@ -56,8 +56,13 @@ class HandlerVerifiedDispatchOrchestrator:
 
     The handler is designed to be driven by the ONEX runtime via the contract-
     declared command topic. In non-runtime (test) contexts, call ``dispatch``
-    directly.
+    directly;
+    ``handle`` is the entrypoint the runtime binds.
     """
+
+    def handle(self, request: ModelDispatchRequest) -> dict[str, Any]:
+        """Dispatch entrypoint for the contract input model; runs ``dispatch``."""
+        return self.dispatch(request)
 
     def dispatch(self, request: ModelDispatchRequest) -> dict[str, Any]:
         """Run the verified dispatch loop and return the final outcome.
