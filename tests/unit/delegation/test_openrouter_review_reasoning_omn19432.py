@@ -75,6 +75,7 @@ def test_a_class_this_change_did_not_touch_keeps_its_ladder() -> None:
 
 
 _SIBLING = "openrouter-nemotron-super"
+_PEER = "openrouter-north-mini-code"
 
 
 def _bifrost_backends() -> dict[str, Any]:
@@ -87,7 +88,7 @@ def _bifrost_backends() -> dict[str, Any]:
 def test_the_second_free_model_follows_the_first_inside_the_free_tier() -> None:
     """A refused call on the ultra rung retries its sibling before any metered tier."""
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
-    assert refs == [_FREE_RUNG, _SIBLING, "openrouter-north-mini-code"]
+    assert refs == [_FREE_RUNG, _SIBLING]
 
 
 def test_the_sibling_serves_the_classes_the_rung_serves() -> None:
@@ -98,15 +99,26 @@ def test_the_sibling_serves_the_classes_the_rung_serves() -> None:
 def test_the_third_free_model_leaves_out_the_class_it_measured_weak_on() -> None:
     """north-mini-code passed 2 of 5 code_review tasks, so that class is not offered to it."""
     models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
-    assert "code_review" not in models["openrouter-north-mini-code"]["use_for"]
-    assert "review" in models["openrouter-north-mini-code"]["use_for"]
+    assert _PEER not in models
+    backend = _bifrost_backends()[_PEER]
+    assert backend["tier"] == "cheap_frontier"
+    placement = backend["placement"]
+    assert placement["mode"] == "spread"
+    assert placement["fallback_for"] == [_FREE_RUNG]
+    assert placement["tier"] == "cheap_frontier"
+    assert "use_for" not in placement  # The mirror carries ultra's whole use_for.
+    assert "code_review" not in models[_FREE_RUNG]["use_for"]
+    assert "review" in models[_FREE_RUNG]["use_for"]
 
 
 def test_only_free_slugs_are_named_on_the_free_tier() -> None:
     """CONTROL: a paid slug on this tier would spend money under a zero-cost label."""
     backends = _bifrost_backends()
-    for model in _tiers()["cheap_frontier"]["models"]:
-        backend = backends[model["backend_id"]]
+    refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
+    assert _PEER not in refs
+    for ref in [*refs, _PEER]:
+        backend = backends[ref]
+        assert backend["tier"] == "cheap_frontier"
         assert backend["provider"] == "openrouter"
         assert backend["model_name"].endswith(":free"), backend["model_name"]
         assert backend["secret_ref"] == "llm.openrouter.api_key"
