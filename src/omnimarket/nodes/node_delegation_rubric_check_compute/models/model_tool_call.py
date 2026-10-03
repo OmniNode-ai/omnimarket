@@ -16,3 +16,8 @@ class ModelToolCall(BaseModel):
     tool_name: str = Field(min_length=1)
     arguments_json: str
     result: ModelToolCallResult | None = None
+    refused: bool = Field(
+        default=False,
+        description="The environment did not run the call. It is still recorded "
+        "and scored, but the budget counts it apart from the calls that ran.",
+    )
