@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20187"
+title: "The AB-compare reducer and verified-dispatch orchestrator expose handle entrypoints"
+summary: "HandlerAbCompareReducer and HandlerVerifiedDispatchOrchestrator each expose a handle entrypoint, so the shared auto-wiring dispatches to them instead of raising on every dispatch. Their rows leave the frozen entrypoint baseline and the two verified-dispatch topic lines leave the state-coverage baseline. Each acceptance criterion is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-handle-entrypoints"
+    statement: |-
+      The AB-compare reducer and the verified-dispatch orchestrator must be dispatchable through their declared handler entrypoint.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: dispatching a ModelAbCompareState to the reducer's declared entrypoint materializes the completed state -- falsifier: uv run pytest tests/test_delegation_dispatch_entrypoints.py -q -k "ab_compare_reducer_dispatch"
+      - id: "AC2"
+        statement: |-
+          AC2: dispatching a ModelDispatchRequest to the verified-dispatch orchestrator's declared entrypoint runs the dispatch loop -- falsifier: uv run pytest tests/test_delegation_dispatch_entrypoints.py -q -k "verified_dispatch_orchestrator_dispatch"
+evidence_requirements:
+  - kind: "tests"
+    description: "The dispatch entrypoint, validator and state-coverage tests."
+    command: "uv run pytest tests/test_delegation_dispatch_entrypoints.py tests/validators/test_handler_dispatch_entrypoint.py tests/unit/scripts/test_validate_state_coverage.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-handle-entrypoints-ac1"
+    description: "Dispatching a ModelAbCompareState to the reducer's declared entrypoint materializes the completed state."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_delegation_dispatch_entrypoints.py -q -k \"ab_compare_reducer_dispatch\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-handle-entrypoints-ac2"
+    description: "Dispatching a ModelDispatchRequest to the verified-dispatch orchestrator's declared entrypoint runs the dispatch loop."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_delegation_dispatch_entrypoints.py -q -k \"verified_dispatch_orchestrator_dispatch\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

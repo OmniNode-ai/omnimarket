@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20072"
+title: "Pin the S5 constructed cases to the real DoD verifier output"
+summary: "A test-only change that runs constructed pilot cases through the real HandlerDodVerify and classifies the written verdicts and control lines with the OCC difference classifier."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-s5-case-list"
+    statement: |-
+      The S5 constructed cases must be pinned to the real verifier output so a renamed verdict field or reworded refusal moves a reason code in a test.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the nine constructed S5 cases, run through the real HandlerDodVerify, classify as documented, and every refused case also gives negative_control_refused -- falsifier: uv run pytest tests/test_dod_verify_s5_case_list.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The nine S5 constructed cases classify as documented."
+    command: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-s5-case-list"
+    description: "The S5 case-list test passes against the real verifier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

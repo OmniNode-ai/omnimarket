@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19560"
+title: "Delegation inference attempt IDs are replayable"
+summary: "The delegation orchestrator derives each inference attempt ID as UUID5 from the workflow correlation ID and a persisted monotonic attempt ordinal instead of minting uuid4, so a recorded inference response replays into a fresh handler and is accepted, while a response for a superseded attempt is still rejected."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-replayable-inference-attempt-ids"
+    statement: |-
+      Replaying a completed delegation workflow's recorded inputs into a fresh handler must reproduce the same inference attempt IDs and the same terminal, and a response for a superseded attempt must still be rejected.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: captured workflow inputs replay into two fresh handlers that accept the recorded response, reach COMPLETED and emit byte-identical normalised outputs; escalation and compliance repair rotate the ID and reject the prior attempt's response; the attempt ordinal survives the state codec and defaults to zero for old rows -- falsifier: uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegation workflow replay tests pass."
+    command: "uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-replayable-inference-attempt-ids-ac1"
+    description: "The replay tests prove recorded inputs replay to the same attempt IDs and terminal, and superseded responses are rejected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

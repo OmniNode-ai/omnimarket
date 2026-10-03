@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
     ModelGateEvalItem,
 )
+from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+    ModelGenerationStabilityRequest,
+)
 from omnimarket.models.ranges import ModelRangeAcceptanceLine
 
 
@@ -21,6 +24,7 @@ class ModelDelegationGateEvalRequest(BaseModel):
 
     run_id: str = Field(min_length=1)
     items: tuple[ModelGateEvalItem, ...] = Field(min_length=1)
+    generation_stability: ModelGenerationStabilityRequest | None = None
 
     rubric_false_pass_lines: dict[str, ModelRangeAcceptanceLine] = Field(
         default_factory=dict

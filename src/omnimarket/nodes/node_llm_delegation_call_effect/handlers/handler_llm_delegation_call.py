@@ -156,12 +156,10 @@ _HEALTH_CACHE_TTL_SECONDS = 60
 # (endpoint_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
-# OMN-16419: cache of GET /v1/models results, same TTL/shape as the health
-# cache — avoids hitting the served-models endpoint on every single call. A
-# ``None`` served-id set is cached too (means "no evidence either way", e.g. a
-# cloud backend without this path), so a backend that never exposes
-# /v1/models is not re-probed every call either.
-_served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
+# OMN-16419: the GET /v1/models cache lives in ``transport`` (OMN-17098: shared
+# with ``HandlerInferenceIntent``); this alias keeps one cache object so a
+# ``.clear()`` here clears the one both handlers read.
+_served_models_cache = transport.served_models_cache
 
 
 def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
@@ -172,16 +170,7 @@ def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
     ``/v1/models`` rather than trusting the chat-completion response's echoed
     ``model`` field.
     """
-    now = time.monotonic()
-    cached = _served_models_cache.get(endpoint_url)
-    if cached is not None:
-        ts, served_ids = cached
-        if now - ts < _HEALTH_CACHE_TTL_SECONDS:
-            return served_ids
-
-    served_ids = transport.probe_served_models(endpoint_url)
-    _served_models_cache[endpoint_url] = (now, served_ids)
-    return served_ids
+    return transport.get_served_model_ids(endpoint_url)
 
 
 # Pricing is expressed as cost per 1M tokens in USD.
@@ -811,6 +800,7 @@ class HandlerLlmDelegationCall:
                 )
             served_model_id = request.model_id
 
+        secret_source: EnumSecretSource | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
             # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
@@ -846,6 +836,7 @@ class HandlerLlmDelegationCall:
                 EnumDelegationFailureClass.TIMEOUT,
                 "request timed out",
                 quota_observation=observation,
+                secret_source=secret_source,
             )
         except httpx.HTTPStatusError as exc:
             # OMN-18696: classified by the SAME function the 200-body path uses
@@ -944,6 +935,7 @@ class HandlerLlmDelegationCall:
                     request,
                     EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
                     detail_text=detail,
+                    secret_source=secret_source,
                 )
             if failure_class in (
                 EnumDelegationFailureClass.PROVIDER_BILLING,
@@ -968,6 +960,7 @@ class HandlerLlmDelegationCall:
                     if verdict is not None
                     else None,
                     quota_observation=observation,
+                    secret_source=secret_source,
                 )
             return self._failure_result(
                 request,
@@ -976,6 +969,7 @@ class HandlerLlmDelegationCall:
                 http_status=exc.response.status_code,
                 provider_code=verdict.provider_code if verdict is not None else None,
                 quota_observation=observation,
+                secret_source=secret_source,
             )
         except SecretResolutionError as exc:
             # OMN-18696 AC1: the backend DECLARES a credential and nothing
@@ -1001,6 +995,7 @@ class HandlerLlmDelegationCall:
                 EnumDelegationFailureClass.UNKNOWN,
                 str(exc),
                 quota_observation=observation,
+                secret_source=secret_source,
             )
 
         # OMN-18265: a top-level ``error`` object inside a 2xx body is the
@@ -1034,6 +1029,7 @@ class HandlerLlmDelegationCall:
                 provider_error.failure_class,
                 provider_error.as_error_message(),
                 quota_observation=observation,
+                secret_source=secret_source,
             )
 
         choices = response_json.get("choices") or []
@@ -1042,6 +1038,7 @@ class HandlerLlmDelegationCall:
                 request,
                 EnumDelegationFailureClass.INVALID_JSON,
                 "API returned empty choices array",
+                secret_source=secret_source,
             )
 
         # OMN-18278: read the provider's own stop reason off the SAME choice the
@@ -1293,6 +1290,7 @@ class HandlerLlmDelegationCall:
         reason: EnumLocalCredentialRefusalReason,
         *,
         detail_text: str,
+        secret_source: EnumSecretSource | None = None,
     ) -> ModelLlmDelegationCallResult:
         """Build the typed, non-retryable credential refusal (OMN-18696).
 
@@ -1323,6 +1321,8 @@ class HandlerLlmDelegationCall:
             request_id=request.request_id,
             success=False,
             failure_class=refusal.failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
             error_message=refusal.message,
             credential_refusal=refusal,
             endpoint_healthy=True,
@@ -1338,11 +1338,14 @@ class HandlerLlmDelegationCall:
         http_status: int | None = None,
         provider_code: str | None = None,
         quota_observation: ModelProviderQuotaObserved | None = None,
+        secret_source: EnumSecretSource | None = None,
     ) -> ModelLlmDelegationCallResult:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=False,
             failure_class=failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
             error_message=error_message,
             endpoint_healthy=endpoint_healthy,
             http_status=http_status,

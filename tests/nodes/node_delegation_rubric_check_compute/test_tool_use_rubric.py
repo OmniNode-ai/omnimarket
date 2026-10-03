@@ -7,7 +7,11 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.delegated_code_edit.loop_ports import score_transcript
 from omnimarket.delegation.rubric.contract_loader import load_delegation_class_rubrics
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
+    TOOL_SCHEMAS,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
     HandlerDelegationRubricCheck,
 )
@@ -46,11 +50,13 @@ def call(
     status="ok",
     output="",
     call_id="call-widget",
+    refused=False,
 ):
     return ModelToolCall(
         call_id=call_id,
         tool_name=name,
         arguments_json=arguments,
+        refused=refused,
         result=None
         if status is None
         else ModelToolCallResult(status=status, output=output),
@@ -644,6 +650,25 @@ def test_tool_use_budget_all_exceeded_fields_named():
     )
 
 
+def test_tool_use_budget_counts_refused_calls_separately():
+    refused = tuple(
+        call(call_id=f"refused-{n}", status="error", refused=True) for n in range(30)
+    )
+    worked = tuple(call(call_id=f"call-{n}") for n in range(80))
+    row = criterion("within_budget", run=transcript(calls=refused + worked))
+    assert (row.outcome, row.reason_code) == ("PASS", "within_budget")
+    assert "tool_calls=80" in row.facts
+    assert "refused_calls=30" in row.facts
+
+
+def test_tool_use_budget_still_fails_on_work_calls_beside_refused_ones():
+    refused = (call(call_id="refused", status="error", refused=True),)
+    worked = tuple(call(call_id=f"call-{n}") for n in range(81))
+    row = criterion("within_budget", run=transcript(calls=refused + worked))
+    assert (row.outcome, row.reason_code) == ("FAIL", "budget_exceeded")
+    assert row.detail == "tool_calls=81 > 80"
+
+
 def test_tool_use_budget_absent_wall_time_undetermined():
     row = criterion("within_budget", run=transcript(wall_time=None))
     assert (row.outcome, row.reason_code) == ("UNDETERMINED", "no_wall_time")
@@ -955,3 +980,55 @@ def test_tool_use_answer_traceable_status_row_needs_a_printed_row():
     assert traceable(
         "git status showed `M src/widget.py`.", calls=(status,)
     ).outcome == ("PASS")
+
+
+@pytest.mark.parametrize(
+    ("status", "paths", "edit_outcome", "path_outcome"),
+    [
+        ("ok", ["src/widget.py", "src/other.py"], "PASS", "PASS"),
+        ("error", ["src/widget.py", "src/other.py"], "FAIL", "PASS"),
+        ("ok", ["src/widget.py", "src/phantom.py"], "PASS", "FAIL"),
+    ],
+)
+def test_replace_in_files_through_real_score_path(
+    status, paths, edit_outcome, path_outcome
+):
+    record = score_transcript(
+        {
+            "request_text": "replace old with new in the synthetic files",
+            "answer_text": "updated the synthetic files",
+            "tool_schemas": list(TOOL_SCHEMAS),
+            "calls": [
+                {
+                    "call_id": "t1a1",
+                    "tool_name": "replace_in_files",
+                    "arguments_json": json.dumps(
+                        {"file_paths": paths, "old_string": "old", "new_string": "new"}
+                    ),
+                    "status": status,
+                    "output": "FAILED src/other.py: no match"
+                    if status == "error"
+                    else "edited src/widget.py (1x)",
+                }
+            ],
+            "turn_count": 1,
+            "wall_time_ms": 100,
+            "workspace_files": [["src/widget.py", 1], ["src/other.py", 1]],
+            "execution_results": [],
+        },
+        run_ref="bulk-synthetic",
+    )
+    rows = {row["criterion_id"]: row for row in record["verdict"]["criteria"]}
+    assert rows["tool_calls_wellformed"]["outcome"] == "PASS"
+    assert rows["edits_apply"]["outcome"] == edit_outcome
+    assert rows["no_phantom_paths"]["outcome"] == path_outcome
+    if status == "error":
+        assert rows["edits_apply"]["reason_code"] == "edit_failed"
+    if path_outcome == "FAIL":
+        assert rows["no_phantom_paths"]["reason_code"] == "phantom_path"
+        assert rows["no_phantom_paths"]["facts"] == ["t1a1:src/phantom.py"]
+    else:
+        assert rows["no_phantom_paths"]["facts"] == [
+            "t1a1:src/widget.py",
+            "t1a1:src/other.py",
+        ]

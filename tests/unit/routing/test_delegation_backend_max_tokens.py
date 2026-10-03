@@ -79,7 +79,11 @@ def test_every_committed_backend_declares_max_tokens() -> None:
     """Every backend in the committed contract carries an explicit max_tokens."""
     raw = yaml.safe_load(_BIFROST_CONFIG_PATH.read_text(encoding="utf-8"))
     for backend in raw["backends"]:
-        config = ModelDelegationBackendConfig.model_validate(backend)
+        # The bifrost loader lifts a tier placement off the entry before the wire
+        # model validates the rest (OMN-19215), so this read does the same.
+        config = ModelDelegationBackendConfig.model_validate(
+            {key: value for key, value in backend.items() if key != "placement"}
+        )
         assert config.max_tokens >= 1, backend["backend_id"]
 
 

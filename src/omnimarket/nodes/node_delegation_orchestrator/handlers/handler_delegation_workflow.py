@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
 from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import yaml
 from omnibase_core.enums.enum_agent_task_lifecycle_type import (
@@ -143,6 +143,7 @@ from omnimarket.inference.provider_quota_state import (
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
+from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
@@ -161,6 +162,9 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import (
 )
 from omnimarket.nodes.node_delegation_orchestrator.lifecycle_reactor import (
     next_state_from_lifecycle,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_answered_draft import (
+    ModelAnsweredDraft,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
@@ -1409,7 +1413,11 @@ def _evaluate_compliance(
     workflow.inference_intent_in_flight = True
     # OMN-15542: the repair self-loop is a NEW attempt on the same route — mint a
     # fresh identity so the superseded attempt's response cannot be re-accepted.
-    workflow.current_inference_attempt_id = uuid4()
+    workflow.inference_attempt_ordinal += 1
+    workflow.current_inference_attempt_id = uuid5(
+        workflow.correlation_id,
+        f"inference-attempt:{workflow.inference_attempt_ordinal}",
+    )
     temperature = _resolve_call_temperature(
         request_temperature=workflow.request.temperature,
         model=workflow.routing_decision.selected_model,
@@ -1603,6 +1611,52 @@ class TerminalEmissionInputs:
     backend_ref: str | None = None
     pricing_manifest_version: int | None = None
     unrouted_reason: EnumDelegationUnroutedReason | None = None
+
+
+def _mark_response_source(
+    history: tuple[dict[str, object], ...],
+    attempt_index: int | None,
+) -> tuple[dict[str, object], ...]:
+    """Mark only the history entry that supplied the terminal's answer."""
+    history_dicts = tuple(dict(attempt) for attempt in history)
+    for index, attempt in enumerate(history_dicts):
+        attempt.pop("supplied_response", None)
+        if index == attempt_index:
+            attempt["supplied_response"] = True
+    return history_dicts
+
+
+def _retained_response_fields(
+    content: str,
+    history: tuple[dict[str, object], ...],
+    best_answered_draft: ModelAnsweredDraft | None,
+) -> tuple[str, tuple[dict[str, object], ...]]:
+    """Use the banked answer only when the terminal has no current text."""
+    if content or best_answered_draft is None:
+        return content, history
+    return best_answered_draft.content, _mark_response_source(
+        history, best_answered_draft.attempt_index
+    )
+
+
+def _terminal_response_fields(
+    workflow: DelegationWorkflowState,
+    content: str,
+    *,
+    current_answer_recorded: bool = False,
+    retain_best: bool = True,
+) -> tuple[str, tuple[dict[str, object], ...]]:
+    """Serialize answer provenance without changing the attempt wire model."""
+    history = tuple(
+        attempt.model_dump(mode="json") for attempt in workflow.escalation_history
+    )
+    source_index = (
+        len(history) - 1 if content and current_answer_recorded and history else None
+    )
+    history = _mark_response_source(history, source_index)
+    return _retained_response_fields(
+        content, history, workflow.best_answered_draft if retain_best else None
+    )
 
 
 @dataclass(frozen=True)
@@ -2047,6 +2101,7 @@ class _AttemptProviderFacts:
     """Provider facts of one attempt (OMN-20154)."""
 
     provider_id: str | None
+    host: str | None
     http_status: int | None
     provider_code: str | None
     failure_class: str | None
@@ -2138,6 +2193,11 @@ class DelegationWorkflowState:
     # the rest of the workflow state so the binding survives a leg replayed in a
     # different process.
     current_inference_attempt_id: UUID | None = None
+    # Monotonic across all inference attempts, including same-tier retries and
+    # compliance repairs. Persisted so a resumed workflow continues the sequence;
+    # the default lets older rows decode. Together with correlation_id this makes
+    # attempt identity deterministic when recorded inputs are replayed (OMN-19560).
+    inference_attempt_ordinal: int = 0
     # OMN-15542: typed, durable evidence for every response rejected as
     # superseded. A silent drop would leave the route-honesty guard unfalsifiable
     # from the control plane — this list is what proves a stale response was
@@ -2159,6 +2219,7 @@ class DelegationWorkflowState:
     escalation_history: list[ModelDelegationEscalationAttempt] = field(
         default_factory=list
     )
+    best_answered_draft: ModelAnsweredDraft | None = None
     # OMN-13535: cumulative metered spend across ALL attempted tiers (not just the
     # final accepted one). Each attempt recorded into ``escalation_history`` adds
     # its served tokens + measured metered cost here BEFORE the inference state is
@@ -2589,7 +2650,11 @@ class HandlerDelegationWorkflow:
         # a NEW inference attempt. Minting the identity here (immediately after the
         # in-flight dedup guard, so a deduped duplicate decision cannot rotate it)
         # is what makes the previous attempt's late response identifiable as stale.
-        workflow.current_inference_attempt_id = uuid4()
+        workflow.inference_attempt_ordinal += 1
+        workflow.current_inference_attempt_id = uuid5(
+            workflow.correlation_id,
+            f"inference-attempt:{workflow.inference_attempt_ordinal}",
+        )
 
         assert workflow.request is not None
         temperature = _resolve_call_temperature(
@@ -2765,6 +2830,7 @@ class HandlerDelegationWorkflow:
         # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
         elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         model_used, endpoint_url, content = self._terminal_failed_fields(workflow)
+        content, history_dicts = _terminal_response_fields(workflow, content)
         prompt_tokens = (
             workflow.inference_prompt_tokens if leg.reports_recorded_inference else 0
         )
@@ -2852,10 +2918,7 @@ class HandlerDelegationWorkflow:
             # Serialized the same way every other terminal site serializes it —
             # the audit copy of the tiers already attempted, which a failure on
             # a RE-ROUTE still has to carry.
-            escalation_history=tuple(
-                attempt.model_dump(mode="json")
-                for attempt in workflow.escalation_history
-            ),
+            escalation_history=history_dicts,
             terminal_failure_reason=terminal_failure_reason,
             routing_tiers_hash=None,
             escalation_config_hash=None,
@@ -2967,6 +3030,7 @@ class HandlerDelegationWorkflow:
                 )
                 facts = _AttemptProviderFacts(
                     provider_id=quota_domain_for_endpoint(endpoint),
+                    host=endpoint_host(endpoint),
                     http_status=parsed.http_status,
                     provider_code=verdict.provider_code if verdict else None,
                     failure_class=_inference_error_failure_class(
@@ -2988,6 +3052,7 @@ class HandlerDelegationWorkflow:
                 )
                 facts = _AttemptProviderFacts(
                     provider_id=quota_domain_for_endpoint(endpoint),
+                    host=endpoint_host(endpoint),
                     http_status=200,
                     provider_code=None,
                     failure_class=None,
@@ -3265,13 +3330,18 @@ class HandlerDelegationWorkflow:
             # crash the wire DTO with no terminal emitted). The single terminal
             # builder then reads those reconciled token counts once.
             _record_inference_response(workflow, response)
+            # A failed call answered nothing: its own text (an error body) is
+            # never named as an answer source. The best earlier graded draft is,
+            # and with none the failure text stays unattributed.
+            content, history_dicts = _terminal_response_fields(workflow, "")
+            content = content or response.content
             terminal_inputs = TerminalEmissionInputs(
                 completed=False,
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
                 model_used=model_used,
                 endpoint_url=workflow.routing_decision.endpoint_url,
-                content=response.content,
+                content=content,
                 quality_passed=False,
                 # OMN-18928 (K1): the provider call failed, so there is no final
                 # response to grade. The failure class says why, operationally.
@@ -3295,10 +3365,7 @@ class HandlerDelegationWorkflow:
                 cost_tier_name=workflow.current_tier_name or "",
                 premium_counterfactual=None,
                 escalation_count=workflow.escalation_count,
-                escalation_history=tuple(
-                    attempt.model_dump(mode="json")
-                    for attempt in workflow.escalation_history
-                ),
+                escalation_history=history_dicts,
                 terminal_failure_reason=terminal_failure_reason,
                 terminal_failure_cause=_inference_failure_cause(
                     workflow, failure_class
@@ -3598,6 +3665,7 @@ class HandlerDelegationWorkflow:
                     rubric_verdict=rubric_verdict,
                 ),
             )
+            self._bank_answered_draft(workflow)
             # --- PASSED: complete as before ---
             terminal_inputs = self._gate_terminal_inputs(
                 workflow,
@@ -3675,6 +3743,8 @@ class HandlerDelegationWorkflow:
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
         )
+
+        self._bank_answered_draft(workflow)
 
         # OMN-14234 (retry-local / best-of-N): before escalating off a FREE tier,
         # retry the SAME tier up to its contract-declared ``max_retries`` budget.
@@ -4125,6 +4195,24 @@ class HandlerDelegationWorkflow:
         )
 
     @staticmethod
+    def _bank_answered_draft(workflow: DelegationWorkflowState) -> None:
+        """Retain the highest gate score; the earliest rung wins equal scores."""
+        attempt = workflow.escalation_history[-1]
+        content = workflow.inference_content
+        if not content or attempt.truncated:
+            return
+        best = workflow.best_answered_draft
+        if best is not None and attempt.quality_score <= best.gate_score:
+            return
+        workflow.best_answered_draft = ModelAnsweredDraft(
+            content=content,
+            gate_score=attempt.quality_score,
+            attempt_index=len(workflow.escalation_history) - 1,
+            tier=attempt.tier_name,
+            backend_ref=attempt.backend_ref,
+        )
+
+    @staticmethod
     def _record_accepted_attempt(
         workflow: DelegationWorkflowState,
         attempt: ModelDelegationEscalationAttempt,
@@ -4178,6 +4266,7 @@ class HandlerDelegationWorkflow:
         return attempt.model_copy(
             update={
                 "provider_id": attempt.provider_id or facts.provider_id,
+                "host": attempt.host or facts.host,
                 "http_status": attempt.http_status or facts.http_status,
                 "provider_code": attempt.provider_code or facts.provider_code,
                 "failure_class": attempt.failure_class or failure_class,
@@ -4930,8 +5019,13 @@ class HandlerDelegationWorkflow:
             else None
         )
 
-        history_dicts = tuple(
-            attempt.model_dump(mode="json") for attempt in workflow.escalation_history
+        content, history_dicts = _terminal_response_fields(
+            workflow,
+            workflow.inference_content or "",
+            current_answer_recorded=(
+                not completed and required_bar_authority is not None
+            ),
+            retain_best=not completed,
         )
         # OMN-15539: a judge-unavailable deterministic-floor completion does not
         # apply the combined score bar. The judge contribution required to make
@@ -4976,7 +5070,7 @@ class HandlerDelegationWorkflow:
             task_type=workflow.request.task_type,
             model_used=workflow.inference_model_used,
             endpoint_url=workflow.routing_decision.endpoint_url,
-            content=workflow.inference_content or "",
+            content=content,
             quality_passed=completed,
             quality_score=result.quality_score,
             operational_outcome=outcome_pair[0],

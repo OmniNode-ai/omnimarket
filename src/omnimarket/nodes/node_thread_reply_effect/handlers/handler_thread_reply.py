@@ -30,7 +30,7 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
 from omnimarket.github_api import GitHubApiError, rest_json
-from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
@@ -79,21 +79,8 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Minimal registry entries for commonly declared model keys.
+# The unchanged fast-model entry retains its declared environment configuration.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
-    "qwen3-coder-30b": {
-        "base_url": os.environ.get(  # contract-config-ok: config
-            "LLM_CODER_URL", ""
-        ),
-        "health_path": "/health",
-    },
-    "glm-4.5": {
-        "base_url": glm_url_or_empty(
-            os.environ.get("LLM_GLM_URL", ""),  # contract-config-ok: config
-            source="handler_thread_reply.glm-4.5",
-        ),
-        "health_path": "",
-    },
     "deepseek-r1-14b": {
         "base_url": os.environ.get(  # contract-config-ok: config
             "LLM_CODER_FAST_URL", ""
@@ -101,6 +88,9 @@ _BASE_REGISTRY: dict[str, dict[str, str]] = {
         "health_path": "/health",
     },
 }
+
+# Legacy policy keys remain aliases; the contract owns URLs and served models.
+_CONTRACT_BACKENDS = {"qwen3-coder-30b": "local-coder", "glm-4.5": "cloud-glm"}
 
 _THREAD_REPLY_SYSTEM_PROMPT = (
     "You are a helpful code-review assistant. Given a PR review thread, "
@@ -118,6 +108,18 @@ def _sanitize(text: str) -> str:
 
 def _build_registry(policy: ModelRoutingPolicy) -> dict[str, dict[str, str]]:
     registry: dict[str, dict[str, str]] = dict(_BASE_REGISTRY)
+    for alias, backend_id in _CONTRACT_BACKENDS.items():
+        backend = resolve_bifrost_backend(backend_id)
+        entry = {
+            "base_url": (backend.endpoint_url or "")
+            if backend and backend.model_name
+            else "",
+            "model_id": (backend.model_name or "") if backend else "",
+            "health_path": "",
+        }
+        registry[alias] = entry
+        if entry["model_id"]:
+            registry[entry["model_id"]] = entry
     for key in (policy.primary, policy.fallback):
         if key and key not in registry:
             registry[key] = {"base_url": "", "health_path": ""}
@@ -148,12 +150,15 @@ async def _real_llm_call(
         )
     )
 
-    if routing_result.model_key == "glm-4.5" and not routing_result.endpoint_url:
-        raise RuntimeError("Thread reply GLM endpoint is not configured")
+    if not routing_result.endpoint_url:
+        raise RuntimeError("Thread reply endpoint is not configured")
+    model_id = (
+        registry[routing_result.model_key].get("model_id") or routing_result.model_key
+    )
 
     provider = AdapterLlmProviderOpenai(
         base_url=routing_result.endpoint_url,
-        default_model=routing_result.model_key,
+        default_model=model_id,
         provider_name="thread-reply",
         provider_type="local",
         max_timeout_seconds=policy.timeout_per_attempt_s,
@@ -164,7 +169,7 @@ async def _real_llm_call(
 
     request = ModelLlmAdapterRequest(
         prompt=full_prompt,
-        model_name=routing_result.model_key,
+        model_name=model_id,
         max_tokens=policy.max_tokens,
         temperature=policy.temperature,
     )

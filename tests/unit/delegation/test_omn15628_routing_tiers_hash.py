@@ -33,6 +33,10 @@ import pytest
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
+from omnimarket.routing.backend_placement import (
+    load_bound_bifrost_placements,
+    placement_digest,
+)
 from omnimarket.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     resolve_routing_tiers_path,
@@ -42,7 +46,17 @@ pytestmark = pytest.mark.unit
 
 
 def _sha256_of(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """The tiers file's sha256, plus the committed placements' digest when any.
+
+    With no backend placement in the bound contract this is the file's own
+    sha256, byte for byte. The committed contract places north-mini-code as a
+    spread peer (OMN-17427), so the hash also covers that placement.
+    """
+    content = path.read_bytes()
+    placements = placement_digest(load_bound_bifrost_placements())
+    if placements is not None:
+        content += b"\0backend-placements\0" + placements.encode()
+    return hashlib.sha256(content).hexdigest()
 
 
 class TestRoutingTiersHashResolvesRealBytes:

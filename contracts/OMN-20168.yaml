@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20168"
+title: "Every delegation attempt records its kind, lineage, host and size band"
+summary: "omnimarket stamps each delegation attempt with attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id on the durable attempt row and the bus attempt record, and the wire consumer declares and retains those six keys. size_band is a present null until the size band node feeds it. Each acceptance criterion is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-attempt-lineage"
+    statement: |-
+      Every delegation attempt must record what kind it was, which attempt it followed, which host ran it and its size band, and the consumer must decode those keys.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every durable attempt row carries attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id, linked to the previous attempt by default, with size_band a present null -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "writes_a_row_with_the_lineage_fields or lineage_defaults_link or size_band_is_a_present_null"
+      - id: "AC2"
+        statement: |-
+          AC2: the lineage record validates itself: each kind needs an attempt id, no kind is its own parent, later kinds need a parent, first_try forbids one, and split kinds require a split -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "each_kind or first_try_forbids or whole_request_kinds or split_kinds or later_kinds"
+      - id: "AC3"
+        statement: |-
+          AC3: stamping is pure and idempotent, keeps explicit values and nulls, serializes ids and kind, and a pre-lineage record decodes with all six fields None -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "stamping or predating or attempt_ids_use"
+      - id: "AC4"
+        statement: |-
+          AC4: bus attempt records keep hosts and stamp the escalation history, and an unparseable correlation or invalid lineage falls back without losing the terminal -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "endpoint_host or bus_attempt or unparseable or invalid_lineage or lineage_fields_type"
+      - id: "AC5"
+        statement: |-
+          AC5: the consumer declares and retains the six attempt lineage keys, still refuses any other unknown key, and so decodes against the released consumer -- falsifier: uv run pytest tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py -q
+      - id: "AC6"
+        statement: |-
+          AC6: a real escalating local dispatch writes one lineage entry per attempt, and the row and the typed terminal name the same attempts -- falsifier: uv run pytest tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The attempt lineage, consumer-first and local dispatch seam tests."
+    command: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-attempt-lineage-ac1"
+    description: "Every durable attempt row carries attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id, linked to the previous attempt by default, with size_band a present null."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k \"writes_a_row_with_the_lineage_fields or lineage_defaults_link or size_band_is_a_present_null\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-attempt-lineage-ac2"
+    description: "The lineage record validates itself: each kind needs an attempt id, no kind is its own parent, later kinds need a parent, first_try forbids one, and split kinds require a split."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k \"each_kind or first_try_forbids or whole_request_kinds or split_kinds or later_kinds\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-attempt-lineage-ac3"
+    description: "Stamping is pure and idempotent, keeps explicit values and nulls, serializes ids and kind, and a pre-lineage record decodes with all six fields None."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k \"stamping or predating or attempt_ids_use\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-attempt-lineage-ac4"
+    description: "Bus attempt records keep hosts and stamp the escalation history, and an unparseable correlation or invalid lineage falls back without losing the terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k \"endpoint_host or bus_attempt or unparseable or invalid_lineage or lineage_fields_type\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-attempt-lineage-ac5"
+    description: "The consumer declares and retains the six attempt lineage keys, still refuses any other unknown key, and so decodes against the released consumer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-attempt-lineage-ac6"
+    description: "A real escalating local dispatch writes one lineage entry per attempt, and the row and the typed terminal name the same attempts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

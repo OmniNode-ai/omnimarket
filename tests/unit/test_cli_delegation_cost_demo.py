@@ -47,7 +47,7 @@ def test_cli_default_profile_prints_joined_projection_table(
     assert "task=Route one ticket-classification task" in result.output
     assert "local-qwen" in result.output
     assert "qwen3-coder-30b" in result.output
-    assert "glm-4.5" in result.output
+    assert "glm-5.3-flash" in result.output
     assert "$   0.000084" in result.output
     assert "delegation_events:1" in result.output
     assert "llm_call_metrics:1" in result.output
@@ -70,7 +70,9 @@ def test_cli_json_output_contains_projected_rows_and_join(
     assert payload["profile"]["local_model_id"] == "qwen3-coder-30b"
     assert payload["rows"]["delegation_events"]["delegated_to"] == "local-qwen"
     assert payload["rows"]["llm_call_metrics"]["model_id"] == "qwen3-coder-30b"
-    assert payload["rows"]["savings_estimates"]["model_cloud_baseline"] == "glm-4.5"
+    assert (
+        payload["rows"]["savings_estimates"]["model_cloud_baseline"] == "glm-5.3-flash"
+    )
     assert payload["joined"]["correlation_id"] == "demo-2026-05-03-cost-routing-001"
     assert payload["joined"]["tokens"] == 123
     assert payload["joined"]["local_cost_usd"] == "0.000000"

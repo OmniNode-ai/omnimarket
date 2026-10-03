@@ -371,6 +371,8 @@ jobs:
         id: runner
         if: steps.occ-app-token.outputs.token != ''
         env:
+          # Job token grants read-only contents/PR access for declared checks' gh reads.
+          GH_TOKEN: ${{ github.token }}
           TICKETS: ${{ steps.tickets.outputs.tickets }}
           PR_NUMBER: ${{ steps.ctx.outputs.number }}
           REPO: ${{ github.repository }}
@@ -442,6 +444,8 @@ jobs:
           steps.occ-app-token.outputs.token != '' &&
           steps.window-quiet.outputs.window_gone != 'true'
         env:
+          # Retries need the job token's read-only contents/PR access for checks' gh reads.
+          GH_TOKEN: ${{ github.token }}
           OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
           OCC_BRANCH: ${{ steps.companion.outputs.occ_branch }}
           OCC_PR: ${{ steps.companion.outputs.occ_pr }}
@@ -461,6 +465,12 @@ jobs:
           cd "${RUNNER_TEMP}/occ"
 
           summary="${RUNNER_TEMP}/runner_summary.json"
+          warn_not_run() {
+            not_run="$(jq -r '(.not_run // []) | length' "$summary" 2>/dev/null || echo 0)"
+            if [ "$not_run" -gt 0 ]; then
+              echo "::warning::${not_run} declared check(s) were NOT RUN because a credential was missing in the runner environment; their receipts record PENDING, not FAIL."
+            fi
+          }
           # OMN-19050: a check declared for another repository's checkout is
           # skipped, not executed, so no receipt is written for it here. Say
           # so, or a key left PENDING or FAIL reads as this run's verdict.
@@ -470,6 +480,7 @@ jobs:
           fi
 
           if [ -z "$(git status --porcelain)" ]; then
+            warn_not_run
             # OMN-19050: report what the runner actually computed, never a
             # standing claim about it. This line used to read "every
             # runner-covered check already resolves PASS" unconditionally, and
@@ -550,6 +561,7 @@ jobs:
                 --json-out "${RUNNER_TEMP}/runner_summary.json" )
             cd "${RUNNER_TEMP}/occ"
             if [ -z "$(git status --porcelain)" ]; then
+              warn_not_run
               echo "::notice::Nothing left to push after re-running on the moved tip."
               echo "pushed=false" >> "$GITHUB_OUTPUT"
               exit 0
@@ -571,6 +583,7 @@ jobs:
           done
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Pushed executed receipts to OCC#${OCC_PR} (${OCC_BRANCH})."
+          warn_not_run
 
       - name: Heal the stale occ-preflight
         if: steps.push.outputs.pushed == 'true'

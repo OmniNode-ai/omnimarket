@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19969"
+title: "The savings baseline model is one configured string, and an unresolvable baseline shows BASELINE_UNRESOLVED instead of a number"
+summary: "The savings baseline is the developer's session model when known, else pricing.baseline_model from the overlay or store, else the fixed default claude-sonnet-5-5 (never claude-opus-4-6). An unpriced baseline gives a null figure and BASELINE_UNRESOLVED, and every savings row names the baseline model and the pricing manifest version. With omnibase-infra 0.38.61 the installed manifest prices the default; the real-manifest test pins the exact figure."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-single-baseline"
+    statement: |-
+      The savings baseline is one configured string, recorded with its provenance, and an unpriced baseline is never reported as a number.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: An unresolvable baseline gives a null savings figure and the BASELINE_UNRESOLVED state -- falsifier: the omnimarket pricing test run with uv run pytest returns a number
+      - id: "AC2"
+        statement: |-
+          AC2: Every savings row names the baseline model and the pricing manifest version -- falsifier: the same pytest finds a row without either
+      - id: "AC3"
+        statement: |-
+          AC3: With a known session model the baseline equals it, and with none known the baseline is the fixed current default, which is not claude-opus-4-6, and the receipt states which case applied -- falsifier: the same pytest finds a known session model ignored, claude-opus-4-6 as the default, or a receipt that does not name the case
+evidence_requirements:
+  - kind: "tests"
+    description: "An unpriced or unreadable baseline yields BASELINE_UNRESOLVED and a null savings figure."
+    command: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'unresolved or absent_from_manifest'"
+  - kind: "tests"
+    description: "The savings projection and the persisted row carry the baseline model and the pricing manifest version."
+    command: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'manifest_version or provenance'"
+  - kind: "tests"
+    description: "Resolution order session model, overlay, store, fixed default; the fixed default is never claude-opus-4-6 and the selection names its case."
+    command: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'baseline_model or session_model or fixed_default'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19969-ac1-unresolved"
+    description: "Unknown, absent and unreadable baselines resolve to BASELINE_UNRESOLVED with no numeric savings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'unresolved or absent_from_manifest'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19969-ac2-row-provenance"
+    description: "The savings projection and row persist the baseline model and the manifest version, including version 0 when the manifest cannot be read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'manifest_version or provenance'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19969-ac3-resolution-order"
+    description: "Session model wins, then overlay, then store, then the fixed default claude-sonnet-5-5; each selection names its case."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_baseline_pricing_omn19969.py -q -k 'baseline_model or session_model or fixed_default'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

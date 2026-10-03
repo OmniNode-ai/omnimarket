@@ -706,6 +706,31 @@ class ModelTaskTypeResolution(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class ModelBandEdges(BaseModel):
+    """Inclusive upper edges of the small and medium size bands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    s_max: int = Field(ge=0)
+    m_max: int
+
+    @model_validator(mode="after")
+    def _validate_edges(self) -> ModelBandEdges:
+        if self.m_max <= self.s_max:
+            raise ValueError("m_max must be greater than s_max")
+        return self
+
+
+class ModelSizeBandThresholds(BaseModel):
+    """Contract-owned size edges for each measured feature."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tokens: ModelBandEdges
+    units: ModelBandEdges
+    steps: ModelBandEdges
+
+
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
 
@@ -715,6 +740,7 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
     complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
         description=(
@@ -750,6 +776,7 @@ class ModelTaskClassAuthority(BaseModel):
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     selection_fallback: ModelSelectionFallback | None = Field(
         default=None,
         description=(
@@ -798,6 +825,17 @@ class ModelTaskClassAuthority(BaseModel):
         return self._classes_with_exposure(EnumGatewayExposure.INTERNAL)
 
     @property
+    def _selectable_task_classes(self) -> frozenset[str]:
+        """Include withheld classes so their phrases still claim a refusal."""
+        return self.public_task_classes | frozenset(
+            name
+            for name, entry in self.task_classes.items()
+            if entry.routing_availability is not None
+            and entry.routing_availability.status
+            is EnumRoutingAvailabilityStatus.WITHHELD
+        )
+
+    @property
     def unroutable_task_classes(self) -> dict[str, ModelRoutingAvailability]:
         """Return every declared class unavailable for delegation, with its declaration."""
         return {
@@ -815,6 +853,20 @@ class ModelTaskClassAuthority(BaseModel):
             for name, entry in self.task_classes.items()
             if entry.gateway_exposure is exposure
         )
+
+    def size_band_thresholds_for(
+        self, task_class: str
+    ) -> tuple[ModelSizeBandThresholds, str] | None:
+        """Return a class override or the inherited default with its contract path."""
+        entry = self.task_classes.get(task_class)
+        if entry is not None and entry.size_band_thresholds is not None:
+            return (
+                entry.size_band_thresholds,
+                f"task_classes.{task_class}.size_band_thresholds",
+            )
+        if self.size_band_thresholds is not None:
+            return self.size_band_thresholds, "size_band_thresholds"
+        return None
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
         """Return the declared handler budget for ``task_class``, or refuse."""
@@ -844,16 +896,17 @@ class ModelTaskClassAuthority(BaseModel):
         """Resolve a delegation's task class and record how it was decided.
 
         An explicit class may name any class this authority declares, public
-        or internal: ``gateway_exposure`` governs the public Gateway and
-        auto-selection, not a caller who names a class (OMN-13966). A class
-        declared unroutable is refused in its own declaration's words, and a
-        class not declared at all is refused naming every class that is.
+        or internal: ``gateway_exposure`` governs the public Gateway, not a
+        caller who names a class (OMN-13966). A class declared unroutable is
+        refused in its own declaration's words, and a class not declared at
+        all is refused naming every class that is.
 
-        Without an explicit class only public classes are eligible. Shape
-        gates the phrase, phrases match on word boundaries by presence only,
-        and ties go to the higher priority and then the class name, so the
-        answer is total and deterministic. An unclaimed prompt resolves to the
-        declared ``selection_fallback``.
+        Without an explicit class, public and withheld classes are eligible;
+        a withheld class still claims its phrases so the prompt is refused.
+        Shape gates the phrase, phrases match on word boundaries by presence
+        only, and ties go to the higher priority and then the class name, so
+        the answer is total and deterministic. An unclaimed prompt resolves
+        to the declared ``selection_fallback``.
 
         Raises:
             TaskClassSelectionError: the class cannot be resolved.
@@ -896,7 +949,7 @@ class ModelTaskClassAuthority(BaseModel):
         opening_word = opening.split()[0] if opening.split() else ""
         opens_with = any(
             opening_word in self.task_classes[name].selection.opening_words()
-            for name in self.public_task_classes
+            for name in self._selectable_task_classes
         )
         eligible: list[tuple[int, str, str, bool]] = []
         vetoed: list[str] = []
@@ -957,7 +1010,7 @@ class ModelTaskClassAuthority(BaseModel):
     def _eligible(
         self, scope: str, instruction: str, word_count: int
     ) -> tuple[list[tuple[int, str, str, bool]], list[str]]:
-        """Match public classes in scope, applying vetoes across the request.
+        """Match public and withheld classes, applying vetoes across the request.
 
         A prose output named after the opening sentence still vetoes its
         match. Below the class floor, only a declared opening phrase admits
@@ -965,7 +1018,7 @@ class ModelTaskClassAuthority(BaseModel):
         """
         eligible: list[tuple[int, str, str, bool]] = []
         vetoed: list[str] = []
-        for name in sorted(self.public_task_classes):
+        for name in sorted(self._selectable_task_classes):
             selection = self.task_classes[name].selection
             if selection.shape_admits(word_count):
                 phrase = selection.matching_phrase(scope)
@@ -1024,6 +1077,39 @@ def withheld_delegation_refusal(task_class: str) -> str | None:
     ):
         return None
     return authority.unroutable_refusal(task_class)
+
+
+@lru_cache(maxsize=1)
+def _loaded_size_band_authority() -> ModelTaskClassAuthority:
+    """Load the size-band authority once; a raised read is never cached."""
+    return load_task_class_authority()
+
+
+def _size_band_authority() -> ModelTaskClassAuthority | None:
+    """The size-band authority, or ``None`` while it is unreadable.
+
+    Only a successful load is cached, so a transient read failure yields no
+    band for that decision and the next decision reads the file again.
+    """
+    try:
+        return _loaded_size_band_authority()
+    except (OSError, ValueError, yaml.YAMLError):
+        return None
+
+
+def resolve_size_band_thresholds(
+    task_class: str,
+) -> tuple[ModelSizeBandThresholds, str] | None:
+    """Return the declared size thresholds and their contract path, or ``None``.
+
+    ``None`` is a real answer: the authority is unreadable or declares no
+    thresholds for the class, and routing then carries no band rather than a
+    guessed one.
+    """
+    authority = _size_band_authority()
+    if authority is None:
+        return None
+    return authority.size_band_thresholds_for(task_class)
 
 
 @lru_cache(maxsize=1)
@@ -1113,6 +1199,7 @@ __all__ = [
     "EnumQualityRuleEnforcement",
     "EnumRoutingAvailabilityStatus",
     "EnumTaskTypeResolution",
+    "ModelBandEdges",
     "ModelDelegationOutputAuthority",
     "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
@@ -1121,6 +1208,7 @@ __all__ = [
     "ModelRoutingAvailability",
     "ModelSelectionFallback",
     "ModelShortPromptSelection",
+    "ModelSizeBandThresholds",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "ModelTaskClassComplexityContract",
@@ -1133,6 +1221,7 @@ __all__ = [
     "resolve_delegation_output_authority",
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
+    "resolve_size_band_thresholds",
     "resolve_task_class_execution_budget",
     "resolve_task_class_output_contract",
     "withheld_delegation_refusal",

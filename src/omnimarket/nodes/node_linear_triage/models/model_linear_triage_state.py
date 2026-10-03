@@ -47,6 +47,9 @@ class EnumTriageAction(str):
     # OMN-13039: epic auto-start ratchet
     MARK_IN_PROGRESS = "marked_in_progress"
     FLAG_STALE = "flag_stale"
+    # OMN-20368: a Done candidate whose acceptance criteria no PASS dod_verify
+    # receipt binds. The ticket is left as it is; the evidence says why.
+    HELD_NO_BOUND_RECEIPT = "held_no_bound_receipt"
     NO_CHANGE = "no_change"
     WOULD_MARK_DONE = "would_mark_done"
     WOULD_MARK_DONE_SUPERSEDED = "would_mark_done_superseded"

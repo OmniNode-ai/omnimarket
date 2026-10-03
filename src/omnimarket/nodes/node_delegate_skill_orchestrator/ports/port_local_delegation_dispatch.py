@@ -134,6 +134,10 @@ from omnimarket.local_deployment.tenant_identity import (
     ensure_install_identity_mirrored,
     resolve_or_mint_local_deployment_tenant_id,
 )
+from omnimarket.models.delegation.delegation_attempt_lineage import (
+    endpoint_host,
+    stamp_attempt_lineage,
+)
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
@@ -1291,6 +1295,7 @@ class LocalDelegationDispatchPort:
                             EnumDelegationFailureClass.CONTEXT_TOO_LARGE.value
                         ),
                         "error_message": over_budget_message,
+                        "host": endpoint_host(backend.endpoint_ref),
                         "acceptance_decision": (
                             EnumDelegationAcceptanceDecision.CLIMB.value
                         ),
@@ -1504,6 +1509,7 @@ class LocalDelegationDispatchPort:
                         # OMN-20154: which provider this rung called and what
                         # it answered, the same facts the bus path records.
                         "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                        "host": endpoint_host(backend.endpoint_ref),
                         "http_status": transport_result.http_status,
                         "provider_code": transport_result.provider_code,
                         # OMN-14063: surface WHY this tier was skipped (e.g. "endpoint
@@ -1638,6 +1644,12 @@ class LocalDelegationDispatchPort:
                     ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
+                    "secret_source": (
+                        transport_result.secret_source.value
+                        if transport_result.secret_source is not None
+                        else None
+                    ),
+                    "secret_ref": transport_result.secret_ref,
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "escalation_count": escalation_count,
@@ -1756,6 +1768,7 @@ class LocalDelegationDispatchPort:
                         "cost_usd": 0.0,
                         "failure_class": earlier.failure_class.value,
                         "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                        "host": endpoint_host(backend.endpoint_ref),
                         "http_status": earlier.http_status,
                         "error_message": earlier.error_message,
                         "acceptance_decision": (
@@ -1778,6 +1791,7 @@ class LocalDelegationDispatchPort:
                     # OMN-20154: the provider answered; a rung the gate did not
                     # accept is a quality-gate failure, typed as one.
                     "provider_id": _attempt_provider_id(backend.endpoint_ref),
+                    "host": endpoint_host(backend.endpoint_ref),
                     "http_status": result.http_status,
                     "failure_class": (
                         None
@@ -1881,10 +1895,10 @@ class LocalDelegationDispatchPort:
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
-                    # result, which observed the resolution; absent on the
-                    # budget and transport-failure terminals above because no
-                    # credential was resolved on those paths, and recording a
-                    # source there would be a claim rather than an observation.
+                    # result; absent on the budget terminal and on transport
+                    # failures before the credential resolved. Any terminal
+                    # whose attempt resolved it records the source, including
+                    # a failed one, because that is an observation.
                     "secret_source": (
                         result.secret_source.value
                         if result.secret_source is not None
@@ -2110,10 +2124,10 @@ class LocalDelegationDispatchPort:
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
-                    # result, which observed the resolution; absent on the
-                    # budget and transport-failure terminals above because no
-                    # credential was resolved on those paths, and recording a
-                    # source there would be a claim rather than an observation.
+                    # result; absent on the budget terminal and on transport
+                    # failures before the credential resolved. Any terminal
+                    # whose attempt resolved it records the source, including
+                    # a failed one, because that is an observation.
                     "secret_source": (
                         result.secret_source.value
                         if result.secret_source is not None
@@ -3161,7 +3175,7 @@ class LocalDelegationDispatchPort:
             "quality_gates_failed": [] if quality_passed else [failure_message],
             "error_message": failure_message,
             "escalation_count": escalation_count,
-            "attempts": list(attempts),
+            "attempts": stamp_attempt_lineage(attempts, correlation_id=correlation_id),
             # OMN-18889 (score half, plan row G2): the terminal attempt's graded
             # score and the class's declared bar. Keyword-only with no default,
             # so every call site states whether its terminal was scored; the

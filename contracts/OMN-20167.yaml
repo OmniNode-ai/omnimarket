@@ -1,0 +1,106 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20167"
+title: "Stateless size-band compute node for delegation requests"
+summary: "omnimarket carries node_delegation_size_band_compute, a stateless node that measures a request's input tokens, units and steps from the request itself and returns a ModelSizeBand or a typed refusal. Thresholds come from the task class contract, a caller that supplies a size input is refused, and ModelRoutingDecision accepts and discards a forthcoming size_band key so the released consumer can decode it. Each acceptance criterion is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-size-band-compute"
+    statement: |-
+      omnimarket must measure the size of a delegation request on its own and return a banded result, with no size input accepted from the caller.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the node measures input tokens (characters divided by four, rounded up), units and steps from the prompt, context pack and attached sources, assigns each an S, M or L band at the declared edges, and the request band is the largest feature band -- falsifier: uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k edges
+      - id: "AC2"
+        statement: |-
+          AC2: thresholds are declared in task_class_contracts.v1.yaml with an optional per-class override, a changed contract changes the band without a code change, and no threshold or measurement literal sits in code -- falsifier: uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k no_threshold_or_measurement_literal
+      - id: "AC3"
+        statement: |-
+          AC3: a request carrying size_band, band, input_tokens, units or steps is refused with reason size_input_supplied naming the field, free-form caller_metadata is ignored, and a refusal never carries a band -- falsifier: uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k caller_band_refused
+      - id: "AC4"
+        statement: |-
+          AC4: every feature carries its source and the contract threshold it was measured against, using ModelFeatureProvenance from omnimarket.models.delegation.model_feature_provenance -- falsifier: uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k every_feature_carries
+      - id: "AC5"
+        statement: |-
+          AC5: ModelRoutingDecision declares size_band, the routing reducer fills it with what the node measures, and it survives the wire round trip (the released consumer already accepts the key) -- falsifier: uv run pytest tests/unit/delegation/test_band_on_routing_decision_omn20167.py -q
+      - id: "AC6"
+        statement: |-
+          AC6: the node is bound to its models, handler and entry point by its contract, round-trips through JSON, and is deterministic and stateless -- falsifier: uv run pytest tests/nodes/node_delegation_size_band_compute/test_golden_chain_delegation_size_band_compute.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The node's measurement, threshold, refusal and provenance tests."
+    command: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q"
+  - kind: "tests"
+    description: "The node's contract binding and golden chain, and the consumer-first decode of the routing decision."
+    command: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_golden_chain_delegation_size_band_compute.py tests/unit/delegation/test_band_on_routing_decision_omn20167.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-size-band-ac1"
+    description: "The edge tests prove the token, unit and step bands at each declared edge, and the largest-feature rule picks the request band."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k edges"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k largest_feature_band"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-size-band-ac2"
+    description: "The threshold tests prove the contract declares them, a changed contract changes the band, a class may override them, and no literal sits in code."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k thresholds_are_declared"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k changed_contract"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k no_threshold_or_measurement_literal"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-size-band-ac3"
+    description: "The refusal tests prove every caller-supplied size field is refused by name, caller_metadata is ignored, and a refusal carries no band."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k caller_band_refused"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k caller_metadata_ignored"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-size-band-ac4"
+    description: "The provenance test proves every feature carries its source and its contract threshold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k every_feature_carries"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-size-band-ac5"
+    description: "The routing decision tests prove the decision carries the measured size_band and that it survives escalation and the wire."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_band_on_routing_decision_omn20167.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-size-band-ac6"
+    description: "The golden chain proves the contract binding and the JSON round trip, and the determinism test proves repeated measurement returns the same result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_golden_chain_delegation_size_band_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py -q -k deterministic_and_stateless"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
