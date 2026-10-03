@@ -1,0 +1,22 @@
+{
+  "base_ref": "0c3748bb3c194ebe386cd9576b2c152bf6eab8c5",
+  "canonical_handler_module": "omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer",
+  "legacy_handler_module": "omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer",
+  "node_id": "omnimarket.nodes.node_ab_compare_reducer",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:895f45eb4e626cda8816e28daef682a076f684b0e8c14c4230645de8539dc28e",
+      "sha256:84c34f58c91413d1707fc3812e48592cfd34e8ed474c514ce12ef585317f34b8"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/test_delegation_dispatch_entrypoints.py::test_ab_compare_reducer_handle_matches_materialize_corpus"
+    ]
+  },
+  "preserved_symbols": [
+    "HandlerAbCompareReducer._build_row",
+    "HandlerAbCompareReducer.accumulate",
+    "HandlerAbCompareReducer.materialize"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

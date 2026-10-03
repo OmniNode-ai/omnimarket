@@ -284,8 +284,6 @@ node_tool_reuse_matcher_compute failure_reason
 node_tool_reuse_matcher_compute match_strategy_used
 node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-matched.v1
 node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-no-match.v1
-node_verified_dispatch_orchestrator onex.cmd.omnimarket.verified-dispatch-escalate.v1
-node_verified_dispatch_orchestrator onex.evt.omnimarket.verified-dispatch-completed.v1
 node_version_skew_detector detected_at
 node_version_skew_detector incompatible_nodes
 node_version_skew_detector onex.evt.omniclaude.version-skew-detected.v1

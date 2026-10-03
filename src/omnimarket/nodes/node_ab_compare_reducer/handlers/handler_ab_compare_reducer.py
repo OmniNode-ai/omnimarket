@@ -56,6 +56,18 @@ class HandlerAbCompareReducer:
     handler_type: Literal["node_handler"] = "node_handler"
     handler_category: Literal["reducer"] = "reducer"
 
+    def __init__(self, pricing: PricingMap | None = None) -> None:
+        self._pricing: PricingMap = pricing if pricing is not None else {}
+
+    def handle(self, request: ModelAbCompareState) -> ModelAbCompareCompleted | None:
+        """Dispatch entrypoint for the contract input model.
+
+        Materializes the comparison from the supplied state. Pricing comes from
+        the constructor, since the contract state carries none: a model absent
+        from it is costed at 0.0, as in ``materialize``.
+        """
+        return self.materialize(request, self._pricing)
+
     def accumulate(
         self,
         state: ModelAbCompareState,
