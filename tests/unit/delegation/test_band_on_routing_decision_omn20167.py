@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.inference import task_class_authority
 from omnimarket.models.delegation.model_size_band import (
     EnumSizeBand,
     ModelSizeBand,
@@ -194,6 +195,27 @@ def test_band_on_routing_decision_is_none_when_the_contract_is_unreadable(
 
     assert decision.size_band is None
     assert "size_band" not in decision.model_dump(mode="json")
+
+
+def test_band_on_routing_decision_rereads_the_contract_after_a_failed_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_load = task_class_authority.load_task_class_authority
+    reads = iter([OSError("transient"), None])
+
+    def flaky_load() -> task_class_authority.ModelTaskClassAuthority:
+        failure = next(reads)
+        if failure is not None:
+            raise failure
+        return real_load()
+
+    task_class_authority._loaded_size_band_authority.cache_clear()
+    monkeypatch.setattr(task_class_authority, "load_task_class_authority", flaky_load)
+    try:
+        assert task_class_authority.resolve_size_band_thresholds("document") is None
+        assert task_class_authority.resolve_size_band_thresholds("document") is not None
+    finally:
+        task_class_authority._loaded_size_band_authority.cache_clear()
 
 
 def test_the_request_gains_no_size_field() -> None:

@@ -1068,10 +1068,19 @@ def withheld_delegation_refusal(task_class: str) -> str | None:
 
 
 @lru_cache(maxsize=1)
+def _loaded_size_band_authority() -> ModelTaskClassAuthority:
+    """Load the size-band authority once; a raised read is never cached."""
+    return load_task_class_authority()
+
+
 def _size_band_authority() -> ModelTaskClassAuthority | None:
-    """Load the size-band authority once, or ``None`` when it is unreadable."""
+    """The size-band authority, or ``None`` while it is unreadable.
+
+    Only a successful load is cached, so a transient read failure yields no
+    band for that decision and the next decision reads the file again.
+    """
     try:
-        return load_task_class_authority()
+        return _loaded_size_band_authority()
     except (OSError, ValueError, yaml.YAMLError):
         return None
 
