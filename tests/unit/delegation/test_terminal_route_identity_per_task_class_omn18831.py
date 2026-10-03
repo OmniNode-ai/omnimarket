@@ -95,12 +95,14 @@ _UNROUTABLE_ENDPOINT = "http://local-tier.invalid:8000/v1/chat/completions"
 
 
 def _accepted_task_classes() -> list[str]:
-    """The classes the gateway accepts: every ``gateway_exposure: public`` class."""
+    """The classes the gateway accepts: every routable ``gateway_exposure: public`` class."""
     authority = load_task_class_authority()
     return sorted(
         name
         for name, entry in authority.task_classes.items()
         if entry.gateway_exposure is EnumGatewayExposure.PUBLIC
+        # OMN-17427: withheld classes are refused before a route exists.
+        and entry.routing_availability is None
     )
 
 
@@ -270,11 +272,11 @@ def _route_identity_violations(
     return problems
 
 
-def test_the_accepted_classes_are_the_eleven_public_classes() -> None:
+def test_the_accepted_classes_are_the_ten_routable_public_classes() -> None:
     """Pinned so the sweep below cannot shrink silently."""
     assert _ACCEPTED == [
         "code_generation",
-        "code_review",
+        # OMN-17427: code_review remains public but is withheld from delegation.
         "complex_reasoning",
         "document",
         "planning",

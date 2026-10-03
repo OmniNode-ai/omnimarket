@@ -103,9 +103,8 @@ task_model_overrides:
   # correctly has no model ref anywhere and fails closed
   # (no_routable_backend_for_task) until the real coding-agent producer is
   # wired (WS-4/C6).
-  # OMN-13541: code_review is its own task class (distinct from the generic
-  # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
-  code_review: "Qwen3.8-27B"
+  # OMN-17427: code_review override REMOVED; see its withheld
+  # routing_availability declaration below. An explicit pin bypasses use_for.
   research: "Qwen3.8-27B"
 # ── OMN-16932: request-scoped response shape ──────────────────────────────────
 #
@@ -1655,10 +1654,36 @@ task_classes:
   # adapter) but had no task-class contract here and only the local-coder tier in
   # routing_tiers.yaml `use_for`, so a missing local backend stranded it and the
   # quality gate's required-bar authority had nothing to resolve. Mirrors `review`
-  # but with code-review-specific DoD heuristics and a cloud fallback ladder.
+  # but with code-review-specific DoD heuristics and a declared fallback ladder.
+  # OMN-17427: the class stays declared; delegation is withheld below.
   code_review:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
+    # OMN-17427: operator RULING 2026-10-02T19:33:51Z, lane orchestrator-2a21.
+    # Order: gpt-oss-120b (local, lab), then GLM glm-5.3 through Claude Code;
+    # if neither is adequate, code_review is not delegated and stays with Claude.
+    # Each rung measured on the same 28-prompt set before adoption: 14 held-out
+    # real code_review prompts x 2 draws, blind opus rater ev4-blind-v1,
+    # adequate bar 21 of 28 with no invented lines.
+    # Qwen3.8-27B (local-coder, shipped first rung): 0/28 adequate
+    # (lane deleg-quality-low-2a21, 2026-10-02).
+    # gpt-oss-120b (.200, backend local-studio-planner): 0/28 adequate;
+    # 22 answers delivered, all inadequate, 14 for wrong/invented line citations;
+    # 5 runs exceeded the 240 s class budget; 1 gate-refused three times and
+    # fell to Qwen. glm-5.3 through Claude Code (harness claude-glm): 13/28
+    # adequate; 8 of the 15 inadequate had misattributed line citations.
+    # Neither rung reached 21/28, so code_review is withheld from delegation.
+    # Delete this block, and restore the use_for entries, in the same change
+    # that adopts a rung that measured adequate on the same 28-prompt set.
+    routing_availability:
+      status: withheld
+      missing_capability: measured_adequacy
+      tracking: "OMN-17427 RULING 2026-10-02T19:33:51Z"
+      reason: >-
+        No delegation rung reached the 21-of-28 adequacy bar on the held-out
+        code_review set (Qwen3.8-27B 0/28, gpt-oss-120b 0/28, glm-5.3 via
+        Claude Code 13/28). Therefore code_review is not delegated and stays
+        with the calling Claude session.
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 72

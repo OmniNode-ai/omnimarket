@@ -129,6 +129,7 @@ from omnimarket.inference.provider_quota_state import (
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
+from omnimarket.inference.task_class_authority import withheld_delegation_refusal
 from omnimarket.local_deployment.tenant_identity import (
     ensure_install_identity_mirrored,
     resolve_or_mint_local_deployment_tenant_id,
@@ -877,6 +878,11 @@ def resolve_delegation_backend(
     Errors propagate verbatim: ``resolve_delegation_backend``'s fail-closed
     ``RuntimeError`` is what the pin/tier branches above are written against.
     """
+    # OMN-17427: a withheld class is refused before every backend or overlay override.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        raise RuntimeError(refusal)
+
     # OMN-17373: a pinned ``byok-<provider>`` id names a catalogue backend, which
     # the bifrost config never declares. Resolve it from the catalogue and the
     # customer's own registered key; any other id resolves as before.
