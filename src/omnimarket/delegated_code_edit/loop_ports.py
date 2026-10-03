@@ -351,6 +351,10 @@ class DelegatedCodeEditPorts:
         self, request: ModelDelegatedCodeEditRequest, pattern: str, path: str
     ) -> str:
         target = self._inside(request, path or ".")
+        if not target.exists():
+            # git grep answers a missing pathspec with "no matches", which told a
+            # model searching the wrong layout nothing (OMN-20291, ab8d7ef6).
+            raise WorkspacePathError(f"{path} does not exist")
         root = self._root(request)
         found = subprocess.run(
             [

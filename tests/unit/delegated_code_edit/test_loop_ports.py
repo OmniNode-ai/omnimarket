@@ -136,6 +136,20 @@ def test_grep_and_ls(tree: Path, tmp_path: Path) -> None:
     assert ports.list_dir(request, ".").splitlines() == ["src/", "tests/"]
 
 
+def test_grep_of_a_path_that_does_not_exist_says_so(tree: Path, tmp_path: Path) -> None:
+    """OMN-20291 replay ab8d7ef6 (loops 1c966a4a and f7c345be on omnimarket
+    dev 32b6f90ce): the model grepped 'omnimarket/nodes/...' in a src-layout
+    repo and was told 'no matches' eight times, so it never learned the path
+    was wrong and never read the contract its tests assert on. view and ls
+    already say a missing path is missing; grep now does too."""
+    ports = _ports(tmp_path)
+    request = _request(tree)
+    with pytest.raises(WorkspacePathError, match="m/nodes does not exist"):
+        ports.grep(request, "def add", "m/nodes")
+    assert "src/m.py:1:def add(a, b):" in ports.grep(request, "def add", "src")
+    assert ports.grep(request, "def add", "src/m.py").startswith("src/m.py:1:")
+
+
 def test_diff_includes_untracked_files_and_leaves_the_index_alone(
     tree: Path, tmp_path: Path
 ) -> None:
