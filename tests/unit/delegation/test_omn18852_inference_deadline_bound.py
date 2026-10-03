@@ -263,7 +263,12 @@ def test_loader_refuses_a_ceiling_that_cannot_bind(tmp_path: Path) -> None:
 
 
 @contextmanager
-def _chunked_inference_server(*, keep_alive_seconds: float) -> Iterator[str]:
+def _chunked_inference_server(
+    *,
+    keep_alive_seconds: float,
+    first_chunk_delay_seconds: float = 0.0,
+    chunk_interval_seconds: float = 0.2,
+) -> Iterator[str]:
     stop = Event()
     body = json.dumps(
         {
@@ -289,11 +294,13 @@ def _chunked_inference_server(*, keep_alive_seconds: float) -> Iterator[str]:
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
             try:
+                if stop.wait(first_chunk_delay_seconds):
+                    return
                 deadline = time.monotonic() + keep_alive_seconds
                 while time.monotonic() < deadline:
                     self.wfile.write(b"1\r\n \r\n")
                     self.wfile.flush()
-                    if stop.wait(0.2):
+                    if stop.wait(chunk_interval_seconds):
                         return
                 self.wfile.write(
                     f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
@@ -342,6 +349,30 @@ def test_keep_alive_body_cannot_extend_the_total_inference_deadline(
     ]
     assert len(timeout_lines) == 1, caplog.text
     assert "elapsed_seconds=" in timeout_lines[0]
+
+
+@pytest.mark.unit
+def test_silence_after_a_chunk_cannot_extend_the_total_inference_deadline(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        _chunked_inference_server(
+            keep_alive_seconds=10.0,
+            first_chunk_delay_seconds=0.6,
+            chunk_interval_seconds=10.0,
+        ) as base_url,
+        caplog.at_level(logging.WARNING),
+    ):
+        started = time.monotonic()
+        result = HandlerInferenceIntent().handle(
+            _intent(base_url=base_url, timeout_seconds=1.0, model="Qwen3.8-27B")
+        )
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 1.5
+    assert result.content == ""
+    assert "timed out" in result.error_message
+    assert INFERENCE_TIMEOUT_LOG_TOKEN in caplog.text
 
 
 @pytest.mark.unit

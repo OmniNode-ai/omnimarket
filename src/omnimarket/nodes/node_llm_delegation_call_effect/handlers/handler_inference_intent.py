@@ -26,6 +26,8 @@ import ipaddress
 import logging
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Any, Final, Literal
 from urllib.parse import urlparse
@@ -964,20 +966,37 @@ class HandlerInferenceIntent:
         # On 2026-10-03 OpenRouter's nvidia/nemotron-3-ultra-550b-a55b:free calls
         # took 359/502/600/958 s against the 120 s ceiling. Bound headers plus
         # body by the same absolute deadline so the next rung can run.
-        hook = _deadline_response_hook(deadline=started + timeout)
+        deadline = started + timeout
+        hook = _deadline_response_hook(deadline=deadline)
         with httpx.Client(
             timeout=timeout, params=params, event_hooks={"response": [hook]}
         ) as client:
             # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
             # resolved by the routing authority; post it VERBATIM — no path
             # append, no construction.
+            # The hook above fires only when a chunk arrives, so a silent
+            # upstream could still hold the call for another per-phase
+            # ``timeout`` past the deadline. Wait on the call for the time left
+            # and abandon it there; leaving the ``with`` closes the client, and
+            # the hook ends the abandoned worker at its next chunk.
+            executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="inference-call"
+            )
             try:
-                response = client.post(
+                response = executor.submit(
+                    client.post,
                     intent.base_url,
                     json=payload,
                     headers=headers or None,
                     timeout=timeout,
-                )
+                ).result(timeout=max(deadline - time.monotonic(), 0.0))
+            except FutureTimeoutError as exc:
+                raise _inference_timeout_error(
+                    intent,
+                    httpx.ReadTimeout("Inference call exceeded its total deadline"),
+                    elapsed_seconds=time.monotonic() - started,
+                    resolved_timeout=timeout,
+                ) from exc
             except httpx.TimeoutException as exc:
                 raise _inference_timeout_error(
                     intent,
@@ -985,6 +1004,8 @@ class HandlerInferenceIntent:
                     elapsed_seconds=time.monotonic() - started,
                     resolved_timeout=timeout,
                 ) from exc
+            finally:
+                executor.shutdown(wait=False)
             response_contract_evidence = _response_contract_evidence_from_sent_payload(
                 intent, payload
             )
