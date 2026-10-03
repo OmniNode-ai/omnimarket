@@ -324,17 +324,20 @@ def _backend_id_for_model(model_id: str) -> UUID:
 
 
 def _backend_secret_available(backend: BifrostBackendRef) -> bool:
-    """Return whether the runtime can resolve the backend's declared secret ref.
+    """Return whether the runtime can resolve the ref the decision will carry.
 
-    OMN-13943: also checks the backend's contract-declared ``api_key_env`` as a
-    fallback, mirroring the effect boundary (``handler_llm_delegation_call``)
-    so tier eligibility here agrees with what the effect can actually resolve
-    at call time — a backend is not reported unroutable due to secret-ref
-    convention drift when its own literal env var IS set.
+    OMN-17096: mirrors the dispatched path. The routing decision carries only
+    ``api_key_ref`` on the wire, and ``HandlerInferenceIntent`` resolves exactly
+    ``resolve_api_key(api_key_ref)`` with no ``api_key_env`` fallback. A backend
+    is therefore eligible here only when that same resolution returns a value.
+    Crediting ``api_key_env`` beside a declared ref (OMN-13943) admitted a
+    backend whose ref resolved to nothing and then failed it at dispatch with an
+    unresolved credential. A backend that declares only ``api_key_env`` is
+    unaffected: the loader folds the name into ``api_key_ref``
+    (``resolved_secret_ref``), so the decision carries it and dispatch resolves
+    it literally.
     """
-    return api_key_ref_available(
-        backend.api_key_ref, env_var_fallback=backend.api_key_env
-    )
+    return api_key_ref_available(backend.api_key_ref)
 
 
 def _quota_block(
@@ -783,8 +786,9 @@ class BifrostBackendRef:
         self.extra_headers = extra_headers
         # OMN-13943: the backend's own contract-declared literal env-var name
         # (e.g. "GEMINI_API_KEY"), distinct from api_key_ref's dotted
-        # secret_ref convention. Used as a fallback when the dotted ref's
-        # convention-mapped env var is unset — see _backend_secret_available.
+        # secret_ref convention. Carried for the bus-less local dispatch path,
+        # whose effect resolves it as a fallback. Routing eligibility does not
+        # credit it (OMN-17096): the dispatched intent carries api_key_ref only.
         self.api_key_env = api_key_env
 
 

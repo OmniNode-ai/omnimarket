@@ -156,12 +156,10 @@ _HEALTH_CACHE_TTL_SECONDS = 60
 # (endpoint_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
-# OMN-16419: cache of GET /v1/models results, same TTL/shape as the health
-# cache — avoids hitting the served-models endpoint on every single call. A
-# ``None`` served-id set is cached too (means "no evidence either way", e.g. a
-# cloud backend without this path), so a backend that never exposes
-# /v1/models is not re-probed every call either.
-_served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
+# OMN-16419: the GET /v1/models cache lives in ``transport`` (OMN-17098: shared
+# with ``HandlerInferenceIntent``); this alias keeps one cache object so a
+# ``.clear()`` here clears the one both handlers read.
+_served_models_cache = transport.served_models_cache
 
 
 def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
@@ -172,16 +170,7 @@ def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
     ``/v1/models`` rather than trusting the chat-completion response's echoed
     ``model`` field.
     """
-    now = time.monotonic()
-    cached = _served_models_cache.get(endpoint_url)
-    if cached is not None:
-        ts, served_ids = cached
-        if now - ts < _HEALTH_CACHE_TTL_SECONDS:
-            return served_ids
-
-    served_ids = transport.probe_served_models(endpoint_url)
-    _served_models_cache[endpoint_url] = (now, served_ids)
-    return served_ids
+    return transport.get_served_model_ids(endpoint_url)
 
 
 # Pricing is expressed as cost per 1M tokens in USD.
