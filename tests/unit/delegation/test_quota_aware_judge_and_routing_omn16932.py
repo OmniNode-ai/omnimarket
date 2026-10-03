@@ -183,7 +183,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
         into a ``JUDGE_FAILED`` verdict — and then the next delegation did it
         again. Twelve such calls were counted in an 8h window on the dev lane.
         """
-        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
             HandlerJudgeAdequacy,
         )
 
@@ -232,7 +232,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
     @pytest.mark.asyncio
     async def test_judge_still_runs_when_the_provider_is_healthy(self) -> None:
         """The skip is conditional, not a disablement of the judge."""
-        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
             HandlerJudgeAdequacy,
         )
 

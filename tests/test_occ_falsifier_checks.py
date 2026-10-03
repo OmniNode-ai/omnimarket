@@ -20,17 +20,23 @@ from typing import Any
 import pytest
 
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
+    actor_identities,
     derive_falsifier_items,
+    is_accepted_binding,
     parse_falsifier_command,
+    self_accepted_bindings,
+    self_accepting_actor,
 )
 
 pytestmark = pytest.mark.unit
 
-_ACCEPTED = {"accepted_by": "author-uuid", "accepted_at": "2026-09-30T01:00:00Z"}
-
 
 def _contract(
-    criteria: dict[str, str], *, accepted: tuple[str, ...] | None = None
+    criteria: dict[str, str],
+    *,
+    accepted: tuple[str, ...] | None = None,
+    proposed_by: str = "occ-autobind",
+    accepted_by: str = "author-uuid",
 ) -> dict[str, Any]:
     """A contract in the shape occ-autobind mints: requirements + ac_bindings."""
     labels = tuple(criteria) if accepted is None else accepted
@@ -55,8 +61,9 @@ def _contract(
                     {
                         "label": label,
                         "criterion_hash": "a" * 64,
-                        "proposed_by": "occ-autobind",
-                        **_ACCEPTED,
+                        "proposed_by": proposed_by,
+                        "accepted_by": accepted_by,
+                        "accepted_at": "2026-09-30T01:00:00Z",
                     }
                     for label in labels
                 ],
@@ -265,3 +272,129 @@ def test_no_candidate_repository_is_unrunnable_not_guessed() -> None:
     items, summary = _derive(contract, repos=())
     assert items == []
     assert summary.unrunnable_labels == ("AC1",)
+
+
+def test_self_accepted_binding_is_not_derived() -> None:
+    """OMN-17427: the binding's author cannot accept its own proposal."""
+    contract = _contract(
+        {"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"},
+        proposed_by="evid-B13-2a21",
+        accepted_by="evid-B13-2a21",
+    )
+    items, summary = _derive(contract)
+    assert items == []
+    assert summary.declared_falsifier_count == 0
+    assert summary.self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=evid-B13-2a21",
+    )
+
+
+def test_self_acceptance_matches_across_host_suffix_and_lane_token() -> None:
+    contract = _contract(
+        {"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"},
+        proposed_by="claude:opus5:subagent lane=mac-occ-contracts",
+        accepted_by="mac-occ-contracts@mac",
+    )
+    items, summary = _derive(contract)
+    assert items == []
+    assert summary.self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=mac-occ-contracts@mac",
+    )
+
+
+def test_binding_accepted_by_a_different_lane_is_admitted() -> None:
+    contract = _contract(
+        {"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"},
+        proposed_by="evid-B13-2a21",
+        accepted_by="verify-B13-2a21",
+    )
+    items, summary = _derive(contract)
+    assert [item["binds_ac"] for item in items] == [["AC1"]]
+    assert summary.declared_falsifier_count == 1
+    assert summary.self_accepted_bindings == ()
+
+
+def test_missing_acceptance_is_unchanged() -> None:
+    contract = _contract({"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"})
+    record = contract["dod_evidence"][0]["ac_bindings"][0]
+    del record["accepted_by"]
+    del record["accepted_at"]
+    items, summary = _derive(contract)
+    assert items == []
+    assert summary.declared_falsifier_count == 0
+    assert summary.self_accepted_bindings == ()
+
+
+@pytest.mark.parametrize("label", ["AC1", " ac-1 ", "ac_1"])
+def test_independent_acceptance_elsewhere_clears_the_self_accepted_label(
+    label: str,
+) -> None:
+    contract = _contract(
+        {"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"},
+        proposed_by="evid-B13-2a21",
+        accepted_by="evid-B13-2a21",
+    )
+    contract["dod_evidence"][0]["ac_bindings"][0]["label"] = label
+    independent = _contract(
+        {"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"},
+        proposed_by="evid-B13-2a21",
+        accepted_by="verify-B13-2a21",
+    )["dod_evidence"][0]
+    independent["id"] = "second-item"
+    contract["dod_evidence"].append(independent)
+    items, summary = _derive(contract)
+    assert summary.self_accepted_bindings == ()
+    assert [item["binds_ac"] for item in items] == [["AC1"]]
+
+
+@pytest.mark.parametrize(
+    ("actor", "expected"),
+    [
+        ("   ", frozenset()),
+        (" User@Bridge@Host ", frozenset({"user@bridge@host", "user@bridge"})),
+        (
+            "Claude lane=Build-0923; lane=VERIFY-0923.)",
+            frozenset(
+                {
+                    "claude lane=build-0923; lane=verify-0923.)",
+                    "build-0923",
+                    "verify-0923",
+                }
+            ),
+        ),
+    ],
+)
+def test_actor_identities_normalize_names_and_every_lane_token(
+    actor: str, expected: frozenset[str]
+) -> None:
+    """OMN-17427: spelling and actor decorations cannot hide self-acceptance."""
+    assert actor_identities(actor) == expected
+
+
+@pytest.mark.parametrize("proposed_by", [None, "", "   "])
+def test_acceptance_with_unknown_author_is_unchanged(proposed_by: str | None) -> None:
+    record = {"accepted_by": "actor", "proposed_by": proposed_by}
+    assert self_accepting_actor(record) is None
+    assert is_accepted_binding(record)
+
+
+def test_self_accepted_records_keep_contract_order_and_fallback_item_ids() -> None:
+    items = [
+        {
+            "id": "first",
+            "ac_bindings": [
+                {"label": "AC2", "proposed_by": "Lane", "accepted_by": " lane "},
+                {"label": "AC1", "proposed_by": "Lane", "accepted_by": "LANE@host"},
+            ],
+        },
+        {
+            "ac_bindings": [
+                {"label": "AC2", "proposed_by": "lane", "accepted_by": "lane"}
+            ]
+        },
+    ]
+    assert self_accepted_bindings(items) == (
+        "first:AC2 accepted_by=lane",
+        "first:AC1 accepted_by=LANE@host",
+        "dod_evidence[1]:AC2 accepted_by=lane",
+    )

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Escalation-loop + judge-combine tests for LocalDelegationDispatchPort (OMN-13849).
+"""Escalation-loop tests for LocalDelegationDispatchPort (OMN-13849).
 
 The bus-less local CLI delegation path was single-shot: one backend resolution,
 one inference call, one quality-gate evaluation, terminal. OMN-13849 adds:
@@ -9,10 +9,7 @@ one inference call, one quality-gate evaluation, terminal. OMN-13849 adds:
      (``handler_delegation_workflow.handle_gate_result`` :1343-1400): on a
      quality-gate FAIL the port re-dispatches to the next eligible tier, bounded
      by ``escalation_policy.max_escalations`` from ``task_class_contracts.v1.yaml``.
-  2. Judge-combine on the local path for ``JUDGE_COMBINABLE_TASK_TYPES``
-     (``handler_quality_gate_intent.handle_async`` :127-155), reusing
-     ``HandlerJudgeAdequacy`` so a good code answer clears the 0.85 bar.
-  3. Cumulative metered cost across every attempt banked onto the evidence row.
+  2. Cumulative metered cost across every attempt banked onto the evidence row.
 
 The escalation ladder is driven through the routing-authority functions the port
 imports (``resolve_delegation_backend`` / ``next_eligible_tier`` /

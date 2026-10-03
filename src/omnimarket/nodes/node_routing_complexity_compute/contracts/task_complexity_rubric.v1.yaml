@@ -185,3 +185,22 @@ routing_integration:
   binding: >-
     A rung plus the measured pass rate per path at that rung selects the tier,
     replacing the caller-declared task_type as the routing key.
+
+# OMN-18341: trusted-input path alongside the unchanged benchmark API.
+# The catalogue task-class authority declares output_kind, verification and
+# execution_required directly, not through a scorer map. Other features use
+# their text measurements above. This lexical dependency count is a reproducible
+# proxy, not a claim to infer hidden reasoning: quoted/source text may also
+# contain markers. The score's existing per-step weight and cap still apply.
+routing_measurement:
+  dependent_reasoning_steps:
+    how: >-
+      Count non-overlapping case-insensitive occurrences of the explicit
+      dependency markers "then", "after that", or "using the result" / "using
+      that result" anywhere in the fed text, on word boundaries, and add the
+      base step for the answer itself. This measures stated sequential
+      dependencies, including markers in source text; no caller declaration or
+      inferred hidden intermediate result contributes. Absence of a marker
+      means only the base step. Existing per-step points and cap apply.
+    pattern: '(?i)\b(?:then|after\s+that|using\s+(?:the|that)\s+result)\b'
+    base_steps: 1

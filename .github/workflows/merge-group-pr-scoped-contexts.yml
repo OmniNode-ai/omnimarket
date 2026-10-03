@@ -1,0 +1,952 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Merge-group PR-scoped contexts (OMN-20375).
+#
+# `dev` here is queue-controlled. A queue commit must carry every context that
+# branch protection requires and every external
+# context the required CI Summary asserts on merge_group too
+# (scripts/ci/ci_summary_gate.py EXPECTED_EXTERNAL_CONTEXTS), or the entry waits until the queue's check
+# timeout and is ejected. The contexts below come from workflows that run on
+# `pull_request` only: they read the pull request itself (title, body, review,
+# diff against its base) or call a cross-repo reusable that refuses a non-PR
+# event, so they cannot run on a queue commit.
+#
+# Each job below reports one of them on the queue commit from the verdict the
+# SAME context already reached on the queued pull request's head, the way
+# omnibase_infra's merge_group short-circuits ("proven on the PR run") do, with
+# one difference: it does not assume the verdict, it reads it. The job reads
+# the pull request named by the queue ref, lists that context's check-runs on
+# the pull request's head sha and takes the newest. It passes only when that
+# run concluded success, neutral or skipped, the set branch protection accepts.
+# No run on the head, a run still in progress, a red run, an unreadable ref or
+# a failed API read fails the job, so nothing here can pass a head the
+# pull-request run did not pass.
+#
+# It runs on `merge_group` ONLY. On a pull request it never runs, so it can
+# never stand in for, shadow or race the real producer of any context.
+#
+# One job per context, each named exactly as its context and each carrying the
+# same step: a required context is a job name, so the names cannot come from a
+# matrix the advisory-job gate could not read. Keep the list exact: a context
+# missing here, whose producer has no merge_group trigger, stalls the queue; a
+# name that drifts from its producer fails its job on the first queue entry.
+#
+# One name is spelled with a YAML \u escape, which parses to the exact
+# context name: the work-marker pre-commit hook reads the plain spelling of
+# that gate's name as an agent-left marker.
+
+name: Merge Group PR-Scoped Contexts
+
+on:
+  merge_group:
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  # Each queue entry has its own ref, so entries never cancel one another.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ctx-call-validate-docs:
+    name: "call / validate-docs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "call / validate-docs"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-canonical-inference-gate:
+    name: "Canonical Inference Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Canonical Inference Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-hostile-review-gate:
+    name: "Hostile Review Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Hostile Review Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-hostile-reviewer-adversarial-gate:
+    name: "Hostile Reviewer (adversarial gate)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Hostile Reviewer (adversarial gate)"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-imperative-contract-guard-imperative-contract-guard:
+    name: "imperative-contract-guard / Imperative Contract Guard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "imperative-contract-guard / Imperative Contract Guard"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-omni-standards-gate:
+    name: "Omni Standards Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Omni Standards Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-onex-change-control-schema-compatibility:
+    name: "ONEX Change Control Schema Compatibility"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "ONEX Change Control Schema Compatibility"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-pr-arch-review-gate:
+    name: "PR Arch Review Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "PR Arch Review Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-resolve-bot-token:
+    name: "Resolve Bot Token"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Resolve Bot Token"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-architectural-compliance-lint:
+    name: "Architectural Compliance Lint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Architectural Compliance Lint"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-ci-naming-convention:
+    name: "CI Naming Convention"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "CI Naming Convention"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-legacy-compatibility-check:
+    name: "Legacy Compatibility Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Legacy Compatibility Check"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-ecosystem-integration-validation:
+    name: "Ecosystem Integration Validation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Ecosystem Integration Validation"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-repository-structure-validation:
+    name: "Repository Structure Validation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Repository Structure Validation"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-pr-title-check-title:
+    name: "pr-title / check-title"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "pr-title / check-title"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-precommit-fail-loud-gate:
+    name: "Precommit Fail-Loud Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Precommit Fail-Loud Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-stale-todo-gate:
+    name: "Stale \u0054ODO Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Stale \u0054ODO Gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-enforce-validator-requirements-yaml-omn-13291:
+    name: "Enforce validator-requirements.yaml (OMN-13291)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Enforce validator-requirements.yaml (OMN-13291)"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-main-target-guard:
+    name: "main-target-guard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "main-target-guard"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-non-dev-base-guard:
+    name: "non-dev-base-guard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "non-dev-base-guard"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-git-env-scrub-gate:
+    name: "Git env scrub gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Git env scrub gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-advisory-job-gate-advisory-job-gate:
+    name: "advisory-job-gate / advisory-job-gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "advisory-job-gate / advisory-job-gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-byok-catalogue-no-house-entry:
+    name: "BYOK Catalogue No House Entry"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "BYOK Catalogue No House Entry"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-no-coding-plan-endpoint:
+    name: "No Coding Plan Endpoint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "No Coding Plan Endpoint"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-routing-tier-bindability:
+    name: "Routing Tier Bindability"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "Routing Tier Bindability"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-fsm-handler-drift:
+    name: "fsm-handler-drift"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "fsm-handler-drift"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-node-migration-vendor-parity-gate:
+    name: "node-migration-vendor-parity-gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "node-migration-vendor-parity-gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-skill-mapping-input-coverage-gate:
+    name: "skill-mapping-input-coverage-gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "skill-mapping-input-coverage-gate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac
+
+  ctx-validate:
+    name: "validate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the queued pull request head verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          CONTEXT: "validate"
+        run: |
+          set -euo pipefail
+          if [[ ! "$QUEUE_REF" =~ /pr-([1-9][0-9]*)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge-queue ref '${QUEUE_REF}' names no pull request"
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
+          newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
+            -f check_name="$CONTEXT" -f per_page=100 \
+            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+          echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
+          read -r _ status conclusion <<<"${newest:-0 absent none}"
+          case "${status}:${conclusion}" in
+            completed:success | completed:neutral | completed:skipped) ;;
+            *)
+              echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
+              exit 1
+              ;;
+          esac

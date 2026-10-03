@@ -1,6 +1,9 @@
 name: node_dod_verify
 version: "1.0.0"
-description: "DoD evidence verification — contract-driven evidence checks"
+# OMN-20072: occ-difference is a standalone CLI comparison of same-head artifacts.
+description: >-
+  DoD evidence verification — contract-driven evidence checks and OCC retirement
+  verdict difference classification via the occ-difference CLI mode
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -17,7 +20,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["dod", "evidence", "verification", "contracts", "quality"]
+tags: ["dod", "evidence", "verification", "contracts", "quality", "occ-difference"]
 pack: "dod"
 display_name: "DoD Verify"
 node_role: "probe"

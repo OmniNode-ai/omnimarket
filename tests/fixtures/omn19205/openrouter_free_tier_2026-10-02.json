@@ -1,0 +1,118 @@
+{
+  "recorded_by": "lane m4-c29-c30-exec-0c2f (OMN-17427), POST https://openrouter.ai/api/v1/chat/completions with the C29 customer key (key not recorded), max_tokens 400 (2048 for nemotron-3-super, the CLI default budget), prompt 'Summarize in one sentence what a unit test is.'",
+  "responses": [
+    {
+      "model": "google/gemma-4-31b-it:free",
+      "recorded_at": "2026-10-02T15:08:05Z",
+      "http_status": 429,
+      "body": {
+        "error": {
+          "message": "Provider returned error",
+          "code": 429,
+          "metadata": {
+            "raw": "google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations",
+            "provider_name": "Google AI Studio",
+            "is_byok": false,
+            "provider_error_code": "429",
+            "limit_source": "upstream_provider_shared_pool",
+            "remedy_hint": "Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing"
+          }
+        },
+        "user_id": "user_3C4UDFb1yONQUFKMFLVmpkFlzTO"
+      }
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "recorded_at": "2026-10-02T15:08:06Z",
+      "http_status": 429,
+      "body": {
+        "error": {
+          "message": "Provider returned error",
+          "code": 429,
+          "metadata": {
+            "raw": "google/gemma-4-26b-a4b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations",
+            "provider_name": "Google AI Studio",
+            "is_byok": false,
+            "provider_error_code": "429",
+            "limit_source": "upstream_provider_shared_pool",
+            "remedy_hint": "Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing"
+          }
+        },
+        "user_id": "user_3C4UDFb1yONQUFKMFLVmpkFlzTO"
+      }
+    },
+    {
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "recorded_at": "2026-10-02T15:08:06Z",
+      "http_status": 200,
+      "body": {
+        "error": {
+          "message": "Upstream error from Nvidia: Service temporarily overloaded",
+          "code": 503,
+          "metadata": {
+            "error_type": "provider_overloaded"
+          }
+        }
+      }
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "recorded_at": "2026-10-02T15:08:38Z",
+      "http_status": 200,
+      "body": {
+        "object": "chat.completion",
+        "created": 1790953716,
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "provider": "Nvidia",
+        "system_fingerprint": null,
+        "service_tier": null,
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "stop",
+            "native_finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "A unit test is an automated, isolated test that verifies the correctness of a single function or method by checking its expected behavior against a set of inputs.",
+              "refusal": null,
+              "reasoning": "We need to provide a one-sentence summary of what a unit test is. Keep it concise. Provide one sentence.",
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "text": "We need to provide a one-sentence summary of what a unit test is. Keep it concise. Provide one sentence.",
+                  "format": "unknown",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 28,
+          "completion_tokens": 59,
+          "total_tokens": 87,
+          "cost": 0,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 25,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "max_tokens": 2048
+    }
+  ]
+}

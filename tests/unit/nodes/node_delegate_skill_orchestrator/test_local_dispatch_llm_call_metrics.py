@@ -22,15 +22,11 @@ import pytest
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
 from omnimarket.routing import delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 _BACKENDS: list[dict[str, object]] = [
     {
@@ -91,9 +87,6 @@ def test_local_dispatch_materializes_llm_call_metrics_row(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
     correlation_id = uuid4()
     result = asyncio.run(
@@ -146,9 +139,6 @@ def test_two_local_runs_with_equal_tokens_are_two_rows(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
     ids = [uuid4(), uuid4()]
     for cid in ids:

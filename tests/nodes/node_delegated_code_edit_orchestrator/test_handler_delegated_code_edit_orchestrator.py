@@ -281,6 +281,66 @@ def test_two_failed_delegate_runs_in_a_row_end_delegate_failed() -> None:
     assert ports.checks_run == []
 
 
+def test_an_unexpected_delegate_exception_still_writes_exactly_one_receipt() -> None:
+    class BrokenPorts(FakePorts):
+        receipt_writes = 0
+
+        def delegate(
+            self,
+            request: ModelDelegatedCodeEditRequest,
+            prompt: str,
+            response_contract: dict[str, object],
+            turn: int,
+        ) -> ModelTurnReply:
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+
+        def write_loop_receipt(
+            self, loop_run_id: str, payload: dict[str, object]
+        ) -> None:
+            self.receipt_writes += 1
+            super().write_loop_receipt(loop_run_id, payload)
+
+    ports = BrokenPorts([])
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.INFRA_ERROR
+    assert (
+        result.detail
+        == "unexpected AttributeError: 'NoneType' object has no attribute 'get'"
+    )
+    assert ports.receipt_writes == 1
+    assert list(ports.receipts) == [request.correlation_id]
+
+
+@pytest.mark.parametrize("failed_port", ["diff", "score"])
+def test_diff_and_score_exceptions_still_write_a_receipt(failed_port: str) -> None:
+    class BrokenPorts(FakePorts):
+        def diff(self, request: ModelDelegatedCodeEditRequest) -> str:
+            if failed_port == "diff":
+                raise RuntimeError("boom")
+            return super().diff(request)
+
+        def score(
+            self, request: ModelDelegatedCodeEditRequest, transcript: dict[str, object]
+        ) -> dict[str, object]:
+            if failed_port == "score":
+                raise RuntimeError("boom")
+            return super().score(request, transcript)
+
+    ports = BrokenPorts([_reply(1, _a("finish"))], check_passes=[True])
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert list(ports.receipts) == [request.correlation_id]
+    receipt = ports.receipts[request.correlation_id]
+    if failed_port == "diff":
+        assert result.detail == "diff failed: RuntimeError: boom"
+        assert receipt["diff"] == ""
+    else:
+        assert result.detail == ""
+        assert receipt["rubric_verdict"] == {"error": "RuntimeError: boom"}
+
+
 def test_an_unusable_reply_is_fed_back_not_terminal() -> None:
     bad = ModelTurnReply(
         run_id="run-1", ok=False, invalid_reason="not JSON", raw_text="hello"
