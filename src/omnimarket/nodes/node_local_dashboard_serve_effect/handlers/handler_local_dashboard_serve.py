@@ -42,16 +42,16 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
+from omnimarket.models.model_projection_read import (
+    ModelProjectionReadRequest,
+    ModelProjectionReadResult,
+)
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     ModelLocalDashboardServeResult,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
-)
-from omnimarket.nodes.node_projection_read_effect.models import (
-    ModelProjectionReadRequest,
-    ModelProjectionReadResult,
 )
 from omnimarket.nodes.node_projection_read_effect.ports.read_source_resolution import (
     resolve_projection_read_source,
