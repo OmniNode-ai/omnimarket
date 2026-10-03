@@ -173,7 +173,7 @@ async def _drive_dispatch(
         assert isinstance(resolve_command, ModelProdPromotionGrantResolveCommand)
 
         # Resolver boundary (Phase-2b, simulated): the resolver reads the grant
-        # from onex_change_control@main and emits the resolved fact. ``grant``
+        # from omninode_infra@main and emits the resolved fact. ``grant``
         # stands in for what the durable anchor yields; ``None`` simulates an
         # absent/rejected grant.
         resolved_event = ModelProdPromotionGrantResolvedEvent(

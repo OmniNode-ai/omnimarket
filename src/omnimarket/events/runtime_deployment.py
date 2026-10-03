@@ -712,7 +712,7 @@ class ModelProdPromotionGrant(BaseModel):
     Dual-control is intentionally NOT enforced (OMN-14814): with a single
     CODEOWNER, requiring ``approved_by != requested_by`` would permanently wedge
     prod promotion. The anti-self-*issuance* guarantee is instead that the grant
-    is fetched from ``onex_change_control@main`` (a request cannot author the
+    is fetched from ``omninode_infra@main`` (a request cannot author the
     authorization that approves it), not an approver-identity comparison.
     """
 
@@ -1358,7 +1358,7 @@ def _evaluate_promotion_grant(
     boundary). Dual-control (``approved_by != requested_by``) is intentionally NOT
     enforced (OMN-14814): with a single CODEOWNER a second-approver requirement
     would permanently wedge prod promotion. The anti-self-issuance guarantee is
-    that the grant is fetched from ``onex_change_control@main`` upstream, not an
+    that the grant is fetched from ``omninode_infra@main`` upstream, not an
     approver-identity comparison here.
     """
     grant = inputs.promotion_grant
@@ -2014,11 +2014,11 @@ class ModelDeployPublishCommand(BaseModel):
 
 
 # Canonical durable anchor the resolver reads the grant from. The grant is
-# fetched from onex_change_control@main (NOT the PR branch) so a redeploy request
+# fetched from omninode_infra@main (NOT the PR branch) so a redeploy request
 # cannot author the authorization that approves it (anti-self-approval, OMN-10971;
 # mirrors reject-deploy-gate-skip.yml's `?ref=main` fetch). The file path inside
 # that repo is fixed by the OMN-13437 schema.
-GRANT_REPO = "OmniNode-ai/onex_change_control"
+GRANT_REPO = "OmniNode-ai/omninode_infra"
 GRANT_FILE_PATH = "grants/prod_promotion_grants.yaml"
 GRANT_FETCH_REF = "main"
 
@@ -2046,7 +2046,7 @@ class ModelProdPromotionGrantResolveCommand(BaseModel):
     Carries the request key ``(promotion_batch_id, image_digest, lane=prod)`` plus
     the requester identity and the deterministic ``evaluated_at`` the resolver
     stamps so the gate compute never calls ``datetime.now()``. The resolver reads
-    the grant from ``onex_change_control@main`` — the command does NOT carry a
+    the grant from ``omninode_infra@main`` — the command does NOT carry a
     caller-supplied grant (a request cannot author its own authorization).
 
     The redeploy ORCHESTRATOR builds this command and the grant resolver EFFECT
@@ -2089,7 +2089,7 @@ class ModelGrantProvenance(BaseModel):
     ``ModelProdPromotionGrant`` DTO (which is approver-authored truth, not
     resolver-observed metadata). Records exactly which durable bytes the resolver
     read so a promotion decision is reproducible from the anchor: the
-    ``onex_change_control@main`` source commit, the grant file path, the matched
+    ``omninode_infra@main`` source commit, the grant file path, the matched
     ``grant_id``, the sha256 of the fetched file content, and whether the grant
     file is CODEOWNERS-protected (the un-forgeable trust property).
     """
@@ -2099,12 +2099,12 @@ class ModelGrantProvenance(BaseModel):
     source_commit_sha: str = Field(
         ...,
         min_length=1,
-        description="onex_change_control@main commit the grant file was read at.",
+        description="omninode_infra@main commit the grant file was read at.",
     )
     grant_file_path: str = Field(
         default=GRANT_FILE_PATH,
         min_length=1,
-        description="Path of the grant file inside onex_change_control.",
+        description="Path of the grant file inside omninode_infra.",
     )
     grant_id: str | None = Field(
         default=None,

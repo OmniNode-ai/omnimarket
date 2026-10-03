@@ -6,7 +6,7 @@ EFFECT node. The orchestrator fact-gathering boundary that resolves the prod
 promotion grant from the durable trust anchor BEFORE the prod gate evaluates.
 
 Anti-self-approval (OMN-10971): the grant is fetched from
-``onex_change_control@main`` — NOT a PR branch — exactly as
+``omninode_infra@main`` — NOT a PR branch — exactly as
 ``reject-deploy-gate-skip.yml`` fetches its skip-token allowlist
 (``contents/<path>?ref=main``). A redeploy request therefore cannot author the
 authorization that approves it, even by editing the grant file in the same change.
@@ -16,7 +16,7 @@ The handler:
      boundary (no bare ``os.environ`` read, no subprocess shell-out);
   2. fetches the grant file bytes + source commit SHA from ``main`` and probes
      whether the file is CODEOWNERS-protected on that ref;
-  3. parses the YAML directly (ZERO Python import on onex_change_control) and
+  3. parses the YAML directly (ZERO Python import on the repository that holds it) and
      resolves it against the request key via the pure ``grant_resolver``;
   4. returns ``ModelProdPromotionGrantResolvedEvent`` carrying the resolved
      grant (or ``None`` — fail closed) plus durable audit provenance. The
@@ -58,7 +58,7 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 # GitHub API host for the grant-anchor read. This is the public api.github.com
 # control-plane host (no per-model routing authority applies to a VCS read of the
 # governance anchor), matching node_github_review_effect's identical I/O boundary.
-_GITHUB_API_BASE = "https://api.github.com"  # url-authority-ok: GitHub control-plane host for the onex_change_control@main grant read; no model routing authority
+_GITHUB_API_BASE = "https://api.github.com"  # url-authority-ok: GitHub control-plane host for the omninode_infra@main grant read; no model routing authority
 _GITHUB_API_VERSION = "2022-11-28"
 _REQUEST_TIMEOUT = 30.0
 _CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
@@ -75,7 +75,7 @@ class ModelGrantFetch(BaseModel):
 
     raw: bytes = Field(..., description="Exact grant-file bytes fetched from main.")
     source_commit_sha: str = Field(
-        ..., min_length=1, description="onex_change_control@main commit of the file."
+        ..., min_length=1, description="omninode_infra@main commit of the file."
     )
     codeowners_match: bool = Field(
         ..., description="Whether the grant file is CODEOWNERS-protected on main."
@@ -87,7 +87,7 @@ class ProtocolGrantFetcher(Protocol):
 
     Injected so the EFFECT is testable without network: tests supply a fetcher
     returning fixed bytes; the deployed boundary fetches from
-    ``onex_change_control@main`` via the GitHub contents API.
+    ``omninode_infra@main`` via the GitHub contents API.
     """
 
     async def fetch(self) -> ModelGrantFetch:
@@ -96,7 +96,7 @@ class ProtocolGrantFetcher(Protocol):
 
 
 class GitHubMainGrantFetcher:
-    """Default fetcher: reads the grant file from onex_change_control@main.
+    """Default fetcher: reads the grant file from omninode_infra@main.
 
     Mirrors ``reject-deploy-gate-skip.yml`` — the file is fetched at
     ``?ref=main`` (anti-self-approval), never from the request's branch. Uses the
@@ -160,7 +160,7 @@ class GitHubMainGrantFetcher:
 
 
 class HandlerProdPromotionGrantResolver:
-    """EFFECT: resolve the prod promotion grant from onex_change_control@main.
+    """EFFECT: resolve the prod promotion grant from omninode_infra@main.
 
     A fetcher may be injected for tests; otherwise the GitHub-main fetcher is
     composed at ``handle()`` time with the token resolved from the contract
