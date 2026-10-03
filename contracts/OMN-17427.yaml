@@ -17,6 +17,13 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: onex metering keys metering_summary on the minted tenant id and refuses when none exists -- falsifier: the focused pytest finds a summary row keyed on the literal local, or a run with no identity that does not refuse
+  - id: "req-infra-pin-0-38-63"
+    statement: |-
+      The omnibase-infra dependency floors and every literal CI sibling checkout of omnibase_infra must name the 0.38.63 release.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.63 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q
 evidence_requirements:
   - kind: "tests"
     description: "The row and the receipt state the same saving and the row pins its counterfactual."
@@ -24,6 +31,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Metering reads the minted tenant identity and refuses without one."
     command: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
+  - kind: "tests"
+    description: "The omnibase_infra 0.38.63 pin parity tests pass."
+    command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +55,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-infra-pin-0-38-63"
+    description: "The omnibase_infra 0.38.63 pin parity tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py::TestParityWorkflowIsWired -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
