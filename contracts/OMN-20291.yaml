@@ -11,18 +11,15 @@ requirements:
     statement: |-
       The delegated code edit node must not lose the turns a model has read, must use an absolute path inside its own worktree, must apply an edit whose only difference is the view separator's indentation, and must cap a bulk edit by the files it would change.
     acceptance:
-      - id: "AC1"
-        statement: |-
-          AC1: every earlier turn stays in the prompt with its action lines, a re-viewed window is not repeated, a view of a file changed later is marked stale, one turn's reads are bounded so the newest turn is never cut, and reads pause after three turns that read and change no file -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "earlier_turn or stale or reads_are_bounded or shrinks or reads_pause or paused_turn or cut_not_dropped or resume"
-      - id: "AC2"
-        statement: |-
-          AC2: an absolute path inside the worktree is applied and recorded as its worktree-relative form, and any other absolute path is still refused -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "absolute_path_inside or normalise_path_maps or path_rules"
-      - id: "AC3"
-        statement: |-
-          AC3: an edit whose old_string matches exactly one place up to a uniform indentation shift, or a shift of its first line alone, is applied with new_string moved back; an ambiguous match still fails; an edit already applied is reported applied and not applied twice -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "indentation or first_line_alone or already_applied or inserted_twice"
       - id: "AC4"
         statement: |-
           AC4: replace_in_files caps a glob by the files that hold old_string, not every file the glob matches -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "replace_in_files"
+      - id: "AC5"
+        statement: |-
+          AC5: a task's file list is the only edit scope of replace_in_files (a glob narrows it, a named file outside it is refused, no list changes nothing), a listed file without old_string is skipped and reported, and the prompt says helper scripts are not available -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "file_list or without_old_string or names_the_file_list or rails_hold or does_not_apply_an_insertion_twice or already_done"
+      - id: "AC6"
+        statement: |-
+          AC6: a refused action is recorded as refused and is counted separately from the budget -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "refused_calls_are_marked"
 evidence_requirements:
   - kind: "tests"
     description: "The delegated code edit node's handler tests pass."
@@ -32,30 +29,6 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-code-edit-replay-ac1"
-    description: "The history, read-bound and read-pause tests prove the model keeps what it read and is stopped from reading to the turn cap."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"earlier_turn or stale or reads_are_bounded or shrinks or reads_pause or paused_turn or cut_not_dropped or resume\""
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
-  - id: "dod-code-edit-replay-ac2"
-    description: "The path tests prove an absolute in-worktree path is used as its relative form and any other is refused."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"absolute_path_inside or normalise_path_maps or path_rules\""
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
-  - id: "dod-code-edit-replay-ac3"
-    description: "The anchor tests prove indentation-shifted and already-applied edits are handled and ambiguous ones still fail."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"indentation or first_line_alone or already_applied or inserted_twice\""
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
   - id: "dod-code-edit-replay-ac4"
     description: "The replace_in_files tests prove the cap counts the files a glob would edit."
     source: "manual"
@@ -64,3 +37,19 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"replace_in_files\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-code-edit-file-list-ac5"
+    description: "The file list, skip and prompt tests prove a bulk edit stays inside the task's file list and skips files without old_string."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"file_list or without_old_string or names_the_file_list or rails_hold or does_not_apply_an_insertion_twice or already_done\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-code-edit-refused-ac6"
+    description: "The refused-call test proves a refused action is marked and counted separately from the budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"refused_calls_are_marked\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
