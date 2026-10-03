@@ -25,9 +25,6 @@
 # Burn-down tracked under OMN-14617. End state is an empty list.
 
 known_entrypointless:
-  - contract: ab_compare_reducer
-    handler: HandlerAbCompareReducer
-    module: omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer
   - contract: baseline_capture
     handler: ProbeDbRowCounts
     module: omnimarket.nodes.node_baseline_capture.handlers.probes.probe_db_row_counts
@@ -103,6 +100,3 @@ known_entrypointless:
   - contract: ticket_pipeline
     handler: HandlerReportPoster
     module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_report_poster
-  - contract: verified_dispatch_orchestrator
-    handler: HandlerVerifiedDispatchOrchestrator
-    module: omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator

@@ -21,11 +21,16 @@ same policy. An error is classified into exactly one of:
   route to the poison DLQ and COMMIT the offset so it is not retried in a hot
   loop. Captured durably on the DLQ, recoverable by correlation_id.
 * :attr:`ProjectionErrorClass.RECOVERABLE` — the event is fine but the
-  infrastructure is transiently unable to project it (a missing column from a
-  not-yet-applied migration, a server error, a dropped connection). Policy: do
-  NOT commit the offset and surface a loud failure; the message is re-read and
-  retried until the infra catches up. A migration gap MUST land here, never in
-  POISON.
+  infrastructure is transiently unable to project it (a server error, a
+  dropped connection). Policy: do NOT commit the offset and surface a loud
+  failure; the message is re-read and retried until the infra catches up.
+* :attr:`ProjectionErrorClass.SCHEMA` — the event is fine but the database is
+  behind this code: an undefined column or table (SQLSTATE 42703 / 42P01), i.e.
+  a migration that has not been applied. Policy: do NOT commit the offset, fail
+  the runner's readiness, retry within a short bounded budget (a migration may
+  be applying right now) and then exit non-zero naming the missing identifier
+  and the migration that adds it. A migration gap lands here, never in POISON
+  and never in the unbounded RECOVERABLE retry.
 
 The default for an unrecognised error is RECOVERABLE — the safe direction. A
 poison-misclassification drops a real event forever; a recoverable-
@@ -39,11 +44,12 @@ violation for a required column the EVENT PAYLOAD failed to supply) are both
 POISON, not RECOVERABLE: they describe a property of the event's data, not
 of the infrastructure, and retrying the identical payload can never succeed.
 ``UndefinedColumnError`` (a class-42 syntax/access error — this module's own
-canonical "not-yet-applied migration" example above) stays RECOVERABLE on
-purpose: the schema self-heals when the migration lands, and the event
-itself was fine. Do not fold ``UndefinedColumnError`` (or its
-``SyntaxOrAccessError`` siblings) into POISON without re-deriving that
-tradeoff — see ``test_undefined_column_is_still_recoverable_after_data_error_fix``.
+canonical "not-yet-applied migration" example) is NOT POISON: the event itself
+was fine and the schema heals when the migration lands. It is SCHEMA (see the
+2026-10-02 addendum below), not RECOVERABLE either. Do not fold
+``UndefinedColumnError`` (or its ``SyntaxOrAccessError`` siblings) into POISON
+without re-deriving that tradeoff — see
+``test_undefined_column_is_schema_after_data_error_fix``.
 
 OMN-15919 addendum: ``asyncpg.exceptions.InsufficientPrivilegeError``
 (SQLSTATE 42501) is ALSO POISON. Postgres raises this exact SQLSTATE/class for
@@ -96,11 +102,25 @@ which is exactly what the refusal text tells the reader to do.
 side, raised when the ``app.tenant_id`` GUC is unset -- a configuration fault
 that self-heals when the seam is set, and therefore infrastructure, not the
 event. See ``test_read_side_tenant_context_missing_stays_recoverable``.
+
+2026-10-02 addendum (SCHEMA): an undefined column or table used to be
+RECOVERABLE, and RECOVERABLE means "retry until the infra catches up". The
+dev-lane delegation writer needed ``routed_model`` and ``trace_id`` from
+migration ``0052_delegation_events_trace_and_routing.sql`` while the lane
+database lacked them. It stayed Docker-healthy and committed nothing for about
+2h10m: every retry logged ``column "routed_model" does not exist`` and the
+runner's readiness never moved, because ``/ready`` only tested that the consumer
+had started. Its general retry budget was also reset every time a healthy
+partition projected a message. A missing schema identifier is a lane-database
+fault that no amount of re-reading cures, so it is its own class with its own
+budget and it gates readiness; see ``BaseProjectionRunner``.
 """
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
+from pathlib import Path
 
 import asyncpg
 from asyncpg.exceptions import (
@@ -125,6 +145,7 @@ class ProjectionErrorClass(StrEnum):
     """Classification of a projection-handler failure (OMN-13634)."""
 
     POISON = "poison"
+    SCHEMA = "schema"
     RECOVERABLE = "recoverable"
 
 
@@ -139,10 +160,76 @@ class PoisonEventError(Exception):
     """
 
 
+class ProjectionSchemaError(RuntimeError):
+    """The lane database is behind this code: a column or table is missing.
+
+    Raised by ``BaseProjectionRunner`` for a SCHEMA-class failure. The message
+    names the SQLSTATE, the missing identifier and the migration files (when the
+    install carries them) that mention it, so the line a reader finds in the
+    log, the ``/ready`` body and the process's own traceback all say what to
+    apply.
+    """
+
+    sqlstate: str
+    identifier: str
+    migrations: tuple[str, ...]
+
+    def __init__(
+        self, sqlstate: str, identifier: str, migrations: tuple[str, ...]
+    ) -> None:
+        self.sqlstate = sqlstate
+        self.identifier = identifier
+        self.migrations = migrations
+        migration_hint = (
+            f"migration files: {', '.join(migrations)}"
+            if migrations
+            else "no migration file naming it was found in this install"
+        )
+        super().__init__(
+            f'SQLSTATE {sqlstate}: missing identifier "{identifier}"; '
+            f"{migration_hint}. The lane database is behind this code; "
+            "apply the forward migration, then restart."
+        )
+
+
+def schema_error_from(
+    exc: BaseException, migrations_dir: Path | None
+) -> ProjectionSchemaError:
+    """Name the missing identifier and the migration files that mention it.
+
+    asyncpg does not fill ``column_name`` for an undefined column, so the
+    identifier is the first double-quoted token of the server's message
+    (``column "routed_model" of relation ... does not exist``,
+    ``relation "x" does not exist``).
+    """
+    sqlstate = str(getattr(exc, "sqlstate", "unknown"))
+    match = re.search(r'"([^"]+)"', str(exc))
+    identifier = match.group(1) if match is not None else "unknown"
+    migrations: tuple[str, ...] = ()
+    if migrations_dir is not None and migrations_dir.is_dir() and match is not None:
+        pattern = re.compile(rf"\b{re.escape(identifier)}\b")
+        migrations = tuple(
+            path.name
+            for path in sorted(migrations_dir.glob("*.sql"))
+            if pattern.search(path.read_text(encoding="utf-8")) is not None
+        )
+    return ProjectionSchemaError(sqlstate, identifier, migrations)
+
+
+# Exception types that are always SCHEMA: the database lacks a column or table
+# this code needs. Both are PostgresError subclasses (also in _RECOVERABLE_TYPES
+# below); classify_projection_error() checks SCHEMA before RECOVERABLE so the
+# specific class wins without touching PostgresError's default for every other
+# server error.
+_SCHEMA_TYPES: tuple[type[BaseException], ...] = (
+    asyncpg.exceptions.UndefinedColumnError,
+    asyncpg.exceptions.UndefinedTableError,
+)
+
 # Exception types that are always RECOVERABLE: an infra/transport/server signal,
 # not a property of the event. ``PostgresError`` is the base of every server-side
-# SQL error (``UndefinedColumnError``, the OperationalError-equivalent server
-# errors, connection errors) and asyncpg ``InterfaceError`` covers pool/driver
+# SQL error (the OperationalError-equivalent server errors, connection errors)
+# and asyncpg ``InterfaceError`` covers pool/driver
 # state. ``OSError`` (and its ``ConnectionError`` / ``TimeoutError`` subclasses)
 # covers socket-level broker/DB failures.
 _RECOVERABLE_TYPES: tuple[type[BaseException], ...] = (
@@ -193,7 +280,7 @@ _POISON_TYPES: tuple[type[BaseException], ...] = (
 
 
 def classify_projection_error(exc: BaseException) -> ProjectionErrorClass:
-    """Classify a projection-handler failure as POISON or RECOVERABLE.
+    """Classify a projection-handler failure as POISON, SCHEMA or RECOVERABLE.
 
     POISON wins over RECOVERABLE when an exception somehow matches both (it
     cannot today, but the precedence is explicit): a bad payload is bad
@@ -202,6 +289,8 @@ def classify_projection_error(exc: BaseException) -> ProjectionErrorClass:
     """
     if isinstance(exc, _POISON_TYPES):
         return ProjectionErrorClass.POISON
+    if isinstance(exc, _SCHEMA_TYPES):
+        return ProjectionErrorClass.SCHEMA
     if isinstance(exc, _RECOVERABLE_TYPES):
         return ProjectionErrorClass.RECOVERABLE
     return ProjectionErrorClass.RECOVERABLE
@@ -210,5 +299,7 @@ def classify_projection_error(exc: BaseException) -> ProjectionErrorClass:
 __all__ = [
     "PoisonEventError",
     "ProjectionErrorClass",
+    "ProjectionSchemaError",
     "classify_projection_error",
+    "schema_error_from",
 ]

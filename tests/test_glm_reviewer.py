@@ -107,6 +107,26 @@ def test_frontier_review_tier_exists() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _declare_glm_backend(
+    monkeypatch: pytest.MonkeyPatch, url: str | None, model: str | None
+) -> None:
+    """Serve the cloud-glm Bifrost backend with the given endpoint and model.
+
+    The router reads GLM endpoint and served model from Bifrost, not env vars.
+    """
+    from omnimarket.inference import bridge_config_loader
+    from omnimarket.nodes.node_build_loop_orchestrator.handlers import (
+        adapter_delegation_router,
+    )
+
+    backend = bridge_config_loader.resolve_bifrost_backend("cloud-glm")
+    assert backend is not None
+    declared = backend.model_copy(update={"endpoint_url": url, "model_name": model})
+    monkeypatch.setattr(
+        adapter_delegation_router, "resolve_bifrost_backend", lambda _id: declared
+    )
+
+
 def test_build_endpoint_configs_registers_glm_reviewer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -114,8 +134,9 @@ def test_build_endpoint_configs_registers_glm_reviewer(
     # OMN-18695: the CREDENTIAL is registered in the local secret store; the
     # endpoint and model name stay config and stay in the environment.
     _register_local_secret("llm.glm.api_key", "test-api-key")
-    monkeypatch.setenv("LLM_GLM_URL", "https://open.bigmodel.cn/api/paas/v4")
-    monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-4.7-flash")
+    _declare_glm_backend(
+        monkeypatch, "https://open.bigmodel.cn/api/paas/v4", "glm-4.7-flash"
+    )
 
     configs = build_endpoint_configs()
 
@@ -156,8 +177,7 @@ def test_build_endpoint_configs_glm_review_url_from_env(
     # OMN-18695: the CREDENTIAL is registered in the local secret store; the
     # endpoint and model name stay config and stay in the environment.
     _register_local_secret("llm.glm.api_key", "key")
-    monkeypatch.setenv("LLM_GLM_URL", "https://custom.endpoint/api")
-    monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-4.7-flash")
+    _declare_glm_backend(monkeypatch, "https://custom.endpoint/api", "glm-4.7-flash")
 
     configs = build_endpoint_configs()
     assert (
@@ -172,8 +192,7 @@ def test_build_endpoint_configs_no_reviewer_without_model(
     # OMN-18695: the CREDENTIAL is registered in the local secret store; the
     # endpoint and model name stay config and stay in the environment.
     _register_local_secret("llm.glm.api_key", "key")
-    monkeypatch.setenv("LLM_GLM_URL", "https://custom.endpoint/api")
-    monkeypatch.delenv("LLM_GLM_REVIEW_MODEL_NAME", raising=False)
+    _declare_glm_backend(monkeypatch, "https://custom.endpoint/api", None)
 
     configs = build_endpoint_configs()
     assert EnumModelTier.FRONTIER_REVIEW not in configs

@@ -1,0 +1,23 @@
+{
+  "branch_coverage_pct": 68.92,
+  "candidate_count": 4,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator",
+  "handler_module_sha256": "sha256:613a3427be56efd5c2c7d7dde819447bf4b6f0c87095d7ad633c7b3c76917e0b",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_verified_dispatch_orchestrator",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-10-03T08:09:06.320184+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 3,
+  "selected_input_hashes": [
+    "sha256:509483795a1c25b9afc6a8421184ccc5752ea2dd72980d6003e186de222345d9",
+    "sha256:da174cf36aa8271863c629e7072665913e6043aa820d1c7d2b68f712723693d0",
+    "sha256:08cf002600eaf1f9e6c38d9ec5b01f510764e2fbd1508b0ed87cdc4e0ce0e3af"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-20187 pure adapter-boundary hand-flip: handle(request) delegates to the preserved dispatch(request). No business-logic method changed. Preserved symbols are re-derived from git at base_ref by the hand-flip gate. build_receipt measures branch-inclusive statement/branch coverage after imports, scoped to this handler file: 68.92% with 1 uncovered branch exits and 22 uncovered statement lines. Import-time def/class/import statements count as uncovered. The corpus executes the real dispatch, worker, verifier, surface-query and escalation methods, with injected probe rejection outcomes for retry and exhaustion (linear_ticket and human_review), plus the default passing probes. Every invocation creates fresh probe state. UUIDs and timestamps are frozen solely for deterministic parity. All requests use zero cooldown, so the sleep branch is uncovered. Contract max_attempts >= 1 prevents the no-bundle exhaustion branch. Production DI probes and tracker I/O are not measured: the preserved base handler implementations are stubs. This waiver acknowledges the measured gap; it does not claim full business-logic coverage. The declared parity test asserts the new handle entrypoint exists (RED on its own assertion at base_ref) and compares its complete output with the preserved entrypoint over every corpus candidate.",
+    "uncovered_branch_count": 1
+  },
+  "volatile_mask": []
+}

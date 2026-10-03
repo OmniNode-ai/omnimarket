@@ -76,8 +76,13 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 )
 # OMN-20383 declared ``command_id`` as a real terminal field below, so it is no
 # longer listed here: the set holds only terminal keys still awaiting their own
-# declared field, and is empty until the next consumer-first key is announced.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
+# declared field.
+#
+# OMN-19556: ``response_source_attempt`` names which attempt (index, tier and
+# backend id) a failed terminal's response came from, once the failed terminal
+# keeps the best answered rung's response. The second half declares it, with a
+# validator that refuses a named attempt that has no answer, and stamps it.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"response_source_attempt"})
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:

@@ -1,0 +1,80 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17427"
+title: "A declared check that cannot reach gh for want of GH_TOKEN is recorded as not run, not FAIL"
+summary: "The OCC receipt runner ran declared checks without GH_TOKEN, so a check starting with gh api exited 4 and was filed as a FAIL receipt though the behaviour never ran. Both runner steps now carry the job's own token, and exit 4 together with gh's missing-credential message is recorded as PENDING with exit_code null and listed under not_run, never failures."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-receipt-runner-gh-token"
+    statement: |-
+      The receipt runner must give declared checks the job's GH_TOKEN, and must record a check that failed only for want of that credential as not run rather than FAIL.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: exit status 4 with gh's missing-credential message is recorded as PENDING with exit_code null and reported under not_run; exit 4 alone, or the message with another exit code, stays FAIL; the workflow sets GH_TOKEN on both runner steps -- falsifier: uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q
+  - id: "req-schema-fault"
+    statement: |-
+      A projection writer that meets a missing column or table must not retry without bound while reporting ready.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: UndefinedColumnError and UndefinedTableError classify as SCHEMA, /ready answers 503 while a fault is open, and run() raises ProjectionSchemaError after SCHEMA_FAULT_MAX_ATTEMPTS -- falsifier: uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q
+  - id: "req-terminal-required-bar-projection"
+    statement: |-
+      A delegate-skill terminal that declares required_quality_bar must store that value in delegation_events.required_bar, and a terminal that declares no bar must still store NULL.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the terminal projection accepts required_quality_bar as an alias of required_bar, and the async writer row names actual_score and required_bar only when they are not None -- falsifier: uv run pytest tests/test_omn17427_terminal_required_bar_projection.py -q
+      - id: "AC4"
+        statement: |-
+          AC4: against a real PostgreSQL 16 delegation_events table the declared bar lands in required_bar as NUMERIC(5,3) and an unscored terminal stores NULL, never zero -- falsifier: uv run pytest tests/test_omn17427_required_bar_real_postgres.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The receipt runner GH_TOKEN tests pass."
+    command: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q"
+  - kind: "tests"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    command: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
+  - kind: "tests"
+    description: "The unit and real-Postgres tests for the terminal required bar projection pass."
+    command: "uv run pytest tests/test_omn17427_terminal_required_bar_projection.py tests/test_omn17427_required_bar_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-receipt-runner-gh-token-ac1"
+    description: "The GH_TOKEN tests prove a missing credential is recorded as not run and a real exit 4 stays FAIL."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_gh_token_omn_17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-schema-fault-readiness"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-required-bar-ac3"
+    description: "The unit tests prove the alias is accepted and the writer binds the bar only when reported."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_terminal_required_bar_projection.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-required-bar-ac4"
+    description: "The real-Postgres tests prove the declared bar is stored and an unscored terminal stores NULL."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_required_bar_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

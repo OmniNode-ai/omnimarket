@@ -286,6 +286,7 @@ def test_resume_delegate_failed_loop_accepts(
         "--task-file",
         "--writable",
         "--context",
+        "--file-list",
         "--check",
         "--formatter",
         "--new-correlation",
@@ -298,7 +299,7 @@ def test_resume_refuses_conflicting_flags(tmp_path: Path, flag: str) -> None:
         str(tmp_path)
         if flag == "--worktree"
         else str(file)
-        if flag in ("--request", "--task-file")
+        if flag in ("--request", "--task-file", "--file-list")
         else "x"
     )
     args = ["run", "--resume", str(uuid.uuid4()), flag]
@@ -336,3 +337,77 @@ def test_resume_requires_uuid() -> None:
     )
     assert result.exit_code == 2
     assert "UUID" in result.output
+
+
+def test_file_list_flag_reads_one_path_per_line(tmp_path: Path) -> None:
+    listing = tmp_path / "files.txt"
+    listing.write_text("# the task's files\nsrc/a.py\n\n  src/b.py  \nsrc/a.py\n")
+    assert cli_code_edit.read_file_list(listing) == ("src/a.py", "src/b.py")
+    assert cli_code_edit.read_file_list(None) == ()
+
+
+def test_run_carries_the_file_list_into_the_request_and_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tree = _tree(tmp_path)
+    task = tmp_path / "task.md"
+    task.write_text("set VALUE to 1")
+    listing = tmp_path / "files.txt"
+    listing.write_text("src/m.py\n")
+    state = tmp_path / "state"
+    seen: list[list[str]] = []
+    replies: list[dict[str, object]] = [{"actions": [{"tool": "finish"}]}]
+    monkeypatch.setattr(
+        cli_code_edit, "delegate_runner", lambda: _scripted(state, replies, seen)
+    )
+    result = CliRunner().invoke(
+        cli_code_edit.code_edit_group,
+        [
+            "run",
+            "--worktree",
+            str(tree),
+            "--task-file",
+            str(task),
+            "--writable",
+            "src/*.py",
+            "--file-list",
+            str(listing),
+            "--check",
+            "true=true",
+            "--state-root",
+            str(state),
+            "--onex",
+            "/bin/onex",
+        ],
+    )
+    line = json.loads(result.output.strip().splitlines()[-1])
+    receipt = json.loads(
+        (state / "runs" / line["loop_run_id"] / "loop_receipt.json").read_text()
+    )
+    assert receipt["request"]["file_list"] == ["src/m.py"]
+
+
+def test_run_refuses_a_file_list_that_leaves_the_worktree(tmp_path: Path) -> None:
+    tree = _tree(tmp_path)
+    task = tmp_path / "task.md"
+    task.write_text("x")
+    listing = tmp_path / "files.txt"
+    listing.write_text("../outside.py\n")
+    result = CliRunner().invoke(
+        cli_code_edit.code_edit_group,
+        [
+            "run",
+            "--worktree",
+            str(tree),
+            "--task-file",
+            str(task),
+            "--writable",
+            "src/*.py",
+            "--file-list",
+            str(listing),
+            "--check",
+            "true=true",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "invalid request" in result.output
