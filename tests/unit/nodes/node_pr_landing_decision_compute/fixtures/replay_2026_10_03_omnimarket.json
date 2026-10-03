@@ -1,0 +1,1752 @@
+{
+ "facts": {
+  "available_engines": [
+   "claude_sonnet",
+   "claude_opus"
+  ],
+  "companions": [],
+  "drain_requested": [],
+  "load1": 9.669921875,
+  "observed_at": "2026-10-03T21:00:21Z",
+  "policy": {
+   "engine_ladder": [
+    "claude_sonnet",
+    "claude_opus",
+    "claude_opus"
+   ],
+   "lease_seconds": 2700,
+   "load_pause_threshold": 1000000.0,
+   "max_workers": 18
+  },
+  "probes": [
+   {
+    "group_alive": true,
+    "lease_id": 2251,
+    "tagged_alive": true
+   },
+   {
+    "group_alive": true,
+    "lease_id": 2252,
+    "tagged_alive": true
+   },
+   {
+    "group_alive": true,
+    "lease_id": 2253,
+    "tagged_alive": true
+   },
+   {
+    "group_alive": true,
+    "lease_id": 2246,
+    "tagged_alive": true
+   },
+   {
+    "group_alive": true,
+    "lease_id": 2250,
+    "tagged_alive": true
+   }
+  ],
+  "producer_failures": [],
+  "producer_release": "none",
+  "prs": [
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [
+     {
+      "head_sha": "3a1beb08992004c653336cbb4bf8039d20364b58",
+      "ref": "self:omnimarket#3183",
+      "state": "head"
+     }
+    ],
+    "ci": "red",
+    "collaborator": true,
+    "created_at": "2026-10-01T12:17:37Z",
+    "head_sha": "3a1beb08992004c653336cbb4bf8039d20364b58",
+    "merge_state": "clean",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3183",
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [
+     "occ-autobind / outcome"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": []
+   },
+   {
+    "auto_merge_head": "886f28a1a28cbfa211ebb43ccb98a9b33eb1c070",
+    "blocker_refs": [
+     {
+      "head_sha": "886f28a1a28cbfa211ebb43ccb98a9b33eb1c070",
+      "ref": "self:omnimarket#3293",
+      "state": "head"
+     },
+     {
+      "head_sha": null,
+      "ref": "hold:b9845bbcf08de9f9",
+      "state": "active"
+     },
+     {
+      "head_sha": null,
+      "ref": "external:no-open-pr: omnibase_infra dev vendors node_projection_delegation migrations only through 0052; no open omnibase_infra PR vendors 0053_delegation_events_finish_reason_truncated.sql",
+      "state": "named"
+     },
+     {
+      "head_sha": null,
+      "ref": "external:omnimarket delegation-regression-nightly run 37107272993",
+      "state": "named"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T06:42:19Z",
+    "head_sha": "886f28a1a28cbfa211ebb43ccb98a9b33eb1c070",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3293",
+    "process_fix": false,
+    "red_annotations": {
+     "Release Identity Gate": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Release Identity Gate",
+     "Sibling Release Compatibility Gate (OMN-20381)",
+     "lint"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "hold"
+    ]
+   },
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [
+     {
+      "head_sha": "aff62b7b217dcaa35dade0c68eb415d1f742c8e5",
+      "ref": "self:omnimarket#3303",
+      "state": "head"
+     },
+     {
+      "head_sha": null,
+      "ref": "hold:02042a47327db4eb",
+      "state": "active"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T07:43:09Z",
+    "head_sha": "aff62b7b217dcaa35dade0c68eb415d1f742c8e5",
+    "merge_state": "conflicting",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3303",
+    "process_fix": false,
+    "red_annotations": {
+     "Publish occ-autobind command": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Publish occ-autobind command"
+    ],
+    "red_class": "cascade",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "hold"
+    ]
+   },
+   {
+    "auto_merge_head": "0ad953a750020a549bfd791f8d1f45da5ae82cc1",
+    "blocker_refs": [
+     {
+      "head_sha": "0ad953a750020a549bfd791f8d1f45da5ae82cc1",
+      "ref": "self:omnimarket#3308",
+      "state": "head"
+     },
+     {
+      "head_sha": "6e765a62ef3d3967f684d409565acb882ce4bad4",
+      "ref": "OmniNode-ai/onex_change_control#12574",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T10:36:46Z",
+    "gate_since": "2026-10-03T14:51:14Z",
+    "head_sha": "0ad953a750020a549bfd791f8d1f45da5ae82cc1",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3308",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Merged Gate (OMN-15214)": "Process completed with exit code 1.\nocc-companion-merged gate: poll deadline (1500s) reached while still PENDING \u2014 failing closed. Last state: companion OCC#12574 is still OPEN \u2014 the companion must MERGE before this product PR may merge (OMN-15214). Land the companion on onex_change_control, then re-run this job.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12574 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1517s; failing closed",
+     "deploy-gate / deploy-gate": "Process completed with exit code 1.\nDEPLOY GATE FAILED: PR body has Evidence-Source but is missing Evidence-Ticket: OMN-XXXX. Add Evidence-Ticket so deploy-gate can validate the contract at the pinned OCC source.",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12574 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1508s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1.\nRECEIPT GATE FAILED: PR body contains 'Evidence-Source' but is missing an 'Evidence-Ticket: OMN-XXXX' line. Every PR with Evidence-Source must also declare Evidence-Ticket so the gate can verify the evidence is for the same ticket as the PR. Add 'Evidence-Ticket: OMN-XXXX' to the PR body."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "deploy-gate / deploy-gate",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "928df65150a8ffe0e2b61c637f502b6532b6c897",
+    "blocker_refs": [
+     {
+      "head_sha": "928df65150a8ffe0e2b61c637f502b6532b6c897",
+      "ref": "self:omnimarket#3309",
+      "state": "head"
+     },
+     {
+      "head_sha": "9eaa8f1a541139ffbaa336b0d215dbefc8852be7",
+      "ref": "OmniNode-ai/onex_change_control#12584",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T10:43:58Z",
+    "gate_since": "2026-10-03T18:18:33Z",
+    "head_sha": "928df65150a8ffe0e2b61c637f502b6532b6c897",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3309",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Attestation Observe (report-only, non-blocking)": "Process completed with exit code 1.",
+     "OCC Companion Merged Gate (OMN-15214)": "Process completed with exit code 1.\nocc-companion-merged gate: poll deadline (1500s) reached while still PENDING \u2014 failing closed. Last state: companion OCC#12584 is still OPEN \u2014 the companion must MERGE before this product PR may merge (OMN-15214). Land the companion on onex_change_control, then re-run this job.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12584 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1526s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12584 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1518s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Attestation Observe (report-only, non-blocking)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [
+     {
+      "head_sha": "67043097374f2c97f24c89c0d99021324157bfea",
+      "ref": "self:omnimarket#3319",
+      "state": "head"
+     }
+    ],
+    "ci": "green",
+    "collaborator": true,
+    "created_at": "2026-10-03T17:03:11Z",
+    "head_sha": "67043097374f2c97f24c89c0d99021324157bfea",
+    "merge_state": "clean",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3319",
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [],
+    "red_class": null,
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "1e178ee1290dd1043d39215cb0b9778a092b976b",
+    "blocker_refs": [
+     {
+      "head_sha": "1e178ee1290dd1043d39215cb0b9778a092b976b",
+      "ref": "self:omnimarket#3320",
+      "state": "head"
+     },
+     {
+      "head_sha": "2144ba6333816fd8946f4b0e20366f69cebd4fec",
+      "ref": "OmniNode-ai/onex_change_control#12616",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T17:08:47Z",
+    "gate_since": "2026-10-03T17:34:38Z",
+    "head_sha": "1e178ee1290dd1043d39215cb0b9778a092b976b",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3320",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "Publish occ-autobind command": "Process completed with exit code 1.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12616 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1516s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12616 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1515s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "Publish occ-autobind command",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "db37112647d10deaf290860aa68e0269fe912e20",
+    "blocker_refs": [
+     {
+      "head_sha": "db37112647d10deaf290860aa68e0269fe912e20",
+      "ref": "self:omnimarket#3321",
+      "state": "head"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T17:28:51Z",
+    "head_sha": "db37112647d10deaf290860aa68e0269fe912e20",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3321",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\nPR body has no evidence-source stamp line yet (the occ-autobind mint may still be in flight) -- poll deadline (1500s) reached after 1506s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\nthe occ-autobind producer TERMINALLY declined to mint a companion for this head SHA: skip:DEFER_HAND_AUTHORED \u2014 OmniNode-ai/omnimarket#3321: OCC#12592 (hand_authored, operator/omn-17427-occ-companion-omnibase-infra-4516) carries evidence for OMN-17427; OCC#12611 (hand_authored, evidence/omn-17427-omnibase-infra-4519) carries evidence for OMN-17427; OCC#12624 (hand_authored, evidence/OMN-17427-omnimarket-3324) carries evidence for OMN-17427; OCC#12623 (hand_authored, evidence/OMN-17427-omnibase_infra-4523) carries evidence for OMN-17427; OCC#12574 (hand_authored, evidence/OMN-17427-omnimarket-3308) carries evidence for OMN-17427; OCC#12595 (hand_authored, operator/omn-17427-companion-core-1869) carries evidence for OMN-17427; OCC#12584 (hand_authored, operator/omn-17427-occ-companion-omnimarket-3309) carries evidence for OMN-17427; OCC#12622 (hand_authored, evidence/OMN-17427-omnibase_infra-4524) carries evidence for OMN-17427; OCC#12616 (hand_authored, evidence/OMN-17427-omnimarket-3320) carries evidence for OMN-17427 (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed). No later poll changes this verdict, so this gate stops now rather than spending its remaining budget. A hand-authored OCC companion on the OMN-15247 path is the designed remedy and is SAFE to author now -- the producer has stood down for this head SHA, so there is no in-flight mint to collide with (contrast OMN-18881). It must be signed by a different lane than the one that authored the ticket, and a new commit re-opens this gate with a fresh verdict (OMN-18647)",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1.\nRECEIPT GATE FAILED: PR body is missing required 'Evidence-Source:' line (OMN-10419). Add one of: 'Evidence-Source: OCC#<PR-number>' or 'Evidence-Source: <occ-sha>'"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": []
+   },
+   {
+    "auto_merge_head": "3e6f0721e1ecf94f2704e5c0e80d77080dc86f19",
+    "blocker_refs": [
+     {
+      "head_sha": "3e6f0721e1ecf94f2704e5c0e80d77080dc86f19",
+      "ref": "self:omnimarket#3322",
+      "state": "head"
+     },
+     {
+      "head_sha": "de8c7741df8a1d014a58f0f7adfabf7307081b7c",
+      "ref": "OmniNode-ai/onex_change_control#12630",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T17:55:28Z",
+    "gate_since": "2026-10-03T18:20:55Z",
+    "head_sha": "3e6f0721e1ecf94f2704e5c0e80d77080dc86f19",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3322",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12630 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1507s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12630 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1515s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1.\nIDENTITY BINDING FAILED: neither the branch name nor any commit message references OMN-17427. branch='test/p6-task8-delegation-handler-coverage', Evidence-Ticket='OMN-17427', commit messages checked=1. Name the branch for the ticket cited in Evidence-Ticket, or \u2014 when the ticket was filed after the branch already existed \u2014 add a commit to this PR whose commit message references that ticket."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "969ce712802ed459170847351d8174890555ae78",
+    "blocker_refs": [
+     {
+      "head_sha": "969ce712802ed459170847351d8174890555ae78",
+      "ref": "self:omnimarket#3323",
+      "state": "head"
+     },
+     {
+      "head_sha": "f23b5434be2a25d407a2ed4c7df980fc60831f70",
+      "ref": "OmniNode-ai/onex_change_control#12625",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T17:57:59Z",
+    "gate_since": "2026-10-03T17:59:04Z",
+    "head_sha": "969ce712802ed459170847351d8174890555ae78",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3323",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12625 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1518s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12625 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1523s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "15739a17a384af08087861824b9990514d64cd1e",
+    "blocker_refs": [
+     {
+      "head_sha": "15739a17a384af08087861824b9990514d64cd1e",
+      "ref": "self:omnimarket#3324",
+      "state": "head"
+     },
+     {
+      "head_sha": "ae8d86ff3fef4551a0133a5fd4ec37f57a8b6bec",
+      "ref": "OmniNode-ai/onex_change_control#12624",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:01:38Z",
+    "gate_since": "2026-10-03T18:02:37Z",
+    "head_sha": "15739a17a384af08087861824b9990514d64cd1e",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3324",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12624 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1515s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12624 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1516s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "844b306c8f193081e8370d58dab4aa178a705b18",
+    "blocker_refs": [
+     {
+      "head_sha": "844b306c8f193081e8370d58dab4aa178a705b18",
+      "ref": "self:omnimarket#3325",
+      "state": "head"
+     },
+     {
+      "head_sha": "7fef379abe1e18931d0f576df744c31687e3b960",
+      "ref": "OmniNode-ai/onex_change_control#12626",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:03:46Z",
+    "gate_since": "2026-10-03T18:04:42Z",
+    "head_sha": "844b306c8f193081e8370d58dab4aa178a705b18",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3325",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12626 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1510s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12626 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1509s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-receipt-runner-gh-token-ac1, dod-schema-fault-readiness, dod-required-bar-ac3, dod-required-bar-ac4]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "916b9cde467ad58a478abe56ef6dd34024f8c78e",
+    "blocker_refs": [
+     {
+      "head_sha": "916b9cde467ad58a478abe56ef6dd34024f8c78e",
+      "ref": "self:omnimarket#3326",
+      "state": "head"
+     },
+     {
+      "head_sha": "fb0b9855ecd5e451895ca3d6336bfaf25f18666d",
+      "ref": "OmniNode-ai/onex_change_control#12635",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:17:09Z",
+    "gate_since": "2026-10-03T18:18:03Z",
+    "head_sha": "916b9cde467ad58a478abe56ef6dd34024f8c78e",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3326",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12635 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1517s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12635 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1509s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "34b532229511a3d449dd3b705ae9f7711a781a4d",
+    "blocker_refs": [
+     {
+      "head_sha": "34b532229511a3d449dd3b705ae9f7711a781a4d",
+      "ref": "self:omnimarket#3327",
+      "state": "head"
+     },
+     {
+      "head_sha": "7066dcecab4635def62f462056405acc16fac020",
+      "ref": "OmniNode-ai/onex_change_control#12634",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:19:52Z",
+    "gate_since": "2026-10-03T18:45:17Z",
+    "head_sha": "34b532229511a3d449dd3b705ae9f7711a781a4d",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3327",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start this workflow.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12634 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1514s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12634 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1524s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "8f2186647379836770b9892e35ab4cac5bb4d823",
+    "blocker_refs": [
+     {
+      "head_sha": "8f2186647379836770b9892e35ab4cac5bb4d823",
+      "ref": "self:omnimarket#3328",
+      "state": "head"
+     },
+     {
+      "head_sha": "34b532229511a3d449dd3b705ae9f7711a781a4d",
+      "ref": "OmniNode-ai/omnimarket#3327",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:24:31Z",
+    "head_sha": "8f2186647379836770b9892e35ab4cac5bb4d823",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3328",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\nPR body has no evidence-source stamp line yet (the occ-autobind mint may still be in flight) -- poll deadline (1500s) reached after 1506s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\nthe occ-autobind producer TERMINALLY declined to mint a companion for this head SHA: skip:DEFER_HAND_AUTHORED \u2014 OmniNode-ai/omnimarket#3328: OCC#12635 (hand_authored, evidence/OMN-17427-omnimarket-3326) carries evidence for OMN-17427; OCC#12592 (hand_authored, operator/omn-17427-occ-companion-omnibase-infra-4516) carries evidence for OMN-17427; OCC#12625 (hand_authored, evidence/OMN-17427-omnimarket-3323) carries evidence for OMN-17427; OCC#12611 (hand_authored, evidence/omn-17427-omnibase-infra-4519) carries evidence for OMN-17427; OCC#12624 (hand_authored, evidence/OMN-17427-omnimarket-3324) carries evidence for OMN-17427; OCC#12616 (hand_authored, evidence/OMN-17427-omnimarket-3320) carries evidence for OMN-17427; OCC#12595 (hand_authored, operator/omn-17427-companion-core-1869) carries evidence for OMN-17427; OCC#12574 (hand_authored, evidence/OMN-17427-omnimarket-3308) carries evidence for OMN-17427; OCC#12629 (hand_authored, operator/omn-17427-occ-companion-omnibase-infra-4525) carries evidence for OMN-17427 (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed). No later poll changes this verdict, so this gate stops now rather than spending its remaining budget. A hand-authored OCC companion on the OMN-15247 path is the designed remedy and is SAFE to author now -- the producer has stood down for this head SHA, so there is no in-flight mint to collide with (contrast OMN-18881). It must be signed by a different lane than the one that authored the ticket, and a new commit re-opens this gate with a fresh verdict (OMN-18647)",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1.\nRECEIPT GATE FAILED: PR body is missing required 'Evidence-Source:' line (OMN-10419). Add one of: 'Evidence-Source: OCC#<PR-number>' or 'Evidence-Source: <occ-sha>'"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": []
+   },
+   {
+    "auto_merge_head": "b9f9a38c5dda0540a59af458475f0258e3801d15",
+    "blocker_refs": [
+     {
+      "head_sha": "b9f9a38c5dda0540a59af458475f0258e3801d15",
+      "ref": "self:omnimarket#3330",
+      "state": "head"
+     },
+     {
+      "head_sha": "e9eaffc1b326af36534ac00d54a16d2c4394f21c",
+      "ref": "OmniNode-ai/onex_change_control#12642",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T18:59:50Z",
+    "gate_since": "2026-10-03T19:01:18Z",
+    "head_sha": "b9f9a38c5dda0540a59af458475f0258e3801d15",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3330",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12642 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1516s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12642 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1509s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "81eda89b1ec087fd9e0a53c53445f3056bcdcc9b",
+    "blocker_refs": [
+     {
+      "head_sha": "81eda89b1ec087fd9e0a53c53445f3056bcdcc9b",
+      "ref": "self:omnimarket#3332",
+      "state": "head"
+     },
+     {
+      "head_sha": "b7275ec3e63abce68930e227d1a1965e43761b1f",
+      "ref": "OmniNode-ai/onex_change_control#12649",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:14:34Z",
+    "gate_since": "2026-10-03T19:16:11Z",
+    "head_sha": "81eda89b1ec087fd9e0a53c53445f3056bcdcc9b",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3332",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12649 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1509s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "eab52e8bad39e88a03493ab175a7c07750e36a56",
+    "blocker_refs": [
+     {
+      "head_sha": "eab52e8bad39e88a03493ab175a7c07750e36a56",
+      "ref": "self:omnimarket#3333",
+      "state": "head"
+     },
+     {
+      "head_sha": "961554b227aaa7de6493a46d6dac4df274efacab",
+      "ref": "OmniNode-ai/onex_change_control#12651",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:22:20Z",
+    "gate_since": "2026-10-03T19:24:22Z",
+    "head_sha": "eab52e8bad39e88a03493ab175a7c07750e36a56",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3333",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12651 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1513s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12651 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1514s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nno test-side change: the bound tests cannot be shown to fail at the merge base"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "212c0ee2b16bcc404aa3176bb0c879931a494858",
+    "blocker_refs": [
+     {
+      "head_sha": "212c0ee2b16bcc404aa3176bb0c879931a494858",
+      "ref": "self:omnimarket#3334",
+      "state": "head"
+     },
+     {
+      "head_sha": "29a0899c1eda30a80f143d9b48ee4495fe874779",
+      "ref": "OmniNode-ai/onex_change_control#12648",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:26:30Z",
+    "gate_since": "2026-10-03T19:28:07Z",
+    "head_sha": "212c0ee2b16bcc404aa3176bb0c879931a494858",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3334",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12648 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1510s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12648 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1525s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "verify / verify": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify",
+     "verify / verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "987730ddb6961f2895a04e11c049ec2069658a5c",
+    "blocker_refs": [
+     {
+      "head_sha": "987730ddb6961f2895a04e11c049ec2069658a5c",
+      "ref": "self:omnimarket#3335",
+      "state": "head"
+     },
+     {
+      "head_sha": "c23ca809dada9dc56c2988aaca8a74236937b7da",
+      "ref": "OmniNode-ai/onex_change_control#12652",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:26:37Z",
+    "gate_since": "2026-10-03T19:29:46Z",
+    "head_sha": "987730ddb6961f2895a04e11c049ec2069658a5c",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3335",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12652 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1524s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "9d172cfdd651c26a3fca876f82897c2735cb59fe",
+    "blocker_refs": [
+     {
+      "head_sha": "9d172cfdd651c26a3fca876f82897c2735cb59fe",
+      "ref": "self:omnimarket#3337",
+      "state": "head"
+     },
+     {
+      "head_sha": "3433077450c0c4ad0c9128e698ca68641c0e93f8",
+      "ref": "OmniNode-ai/onex_change_control#12647",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:32:49Z",
+    "gate_since": "2026-10-03T19:34:55Z",
+    "head_sha": "9d172cfdd651c26a3fca876f82897c2735cb59fe",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3337",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12647 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1510s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12647 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1510s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "3356b1b7b1833580b03aea737673a89f70afde64",
+    "blocker_refs": [
+     {
+      "head_sha": "3356b1b7b1833580b03aea737673a89f70afde64",
+      "ref": "self:omnimarket#3338",
+      "state": "head"
+     },
+     {
+      "head_sha": "551a057c48112b347a188689e1987503280180a1",
+      "ref": "OmniNode-ai/onex_change_control#12650",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:42:25Z",
+    "head_sha": "3356b1b7b1833580b03aea737673a89f70afde64",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3338",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start this workflow.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12650 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1518s; failing closed",
+     "occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12650 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1516s; failing closed",
+     "product-readiness / evaluate": "Process completed with exit code 1.",
+     "reason-graph": "Process completed with exit code 1.\nROOT PRODUCT_FAILED \u2014 product defect (enforcing; NON-required, does not block merge)",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)",
+     "tests+coverage (shadow)": "Process completed with exit code 1."
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "occ-preflight / eligibility",
+     "product-readiness / evaluate",
+     "reason-graph",
+     "repo-evidence / dod-verify",
+     "tests+coverage (shadow)"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": []
+   },
+   {
+    "auto_merge_head": "1497a0498501b5edfcc7657a6716cc5501246c67",
+    "blocker_refs": [
+     {
+      "head_sha": "1497a0498501b5edfcc7657a6716cc5501246c67",
+      "ref": "self:omnimarket#3339",
+      "state": "head"
+     },
+     {
+      "head_sha": "cd2f4d6328314810cf88144c65f27a980c228c3b",
+      "ref": "OmniNode-ai/onex_change_control#12655",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T19:48:41Z",
+    "gate_since": "2026-10-03T19:50:46Z",
+    "head_sha": "1497a0498501b5edfcc7657a6716cc5501246c67",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3339",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "call-reject-skip-token / occ-preflight / eligibility": "Process completed with exit code 1.\ncompanion OCC#12655 is still OPEN -- it must merge before this PR may merge -- poll deadline (1500s) reached after 1509s; failing closed",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "call-reject-skip-token / occ-preflight / eligibility",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "15506bb9bf82f9986a870229f2d2ea8b1a04e648",
+    "blocker_refs": [
+     {
+      "head_sha": "15506bb9bf82f9986a870229f2d2ea8b1a04e648",
+      "ref": "self:omnimarket#3340",
+      "state": "head"
+     },
+     {
+      "head_sha": "cbfe9db57a902d5aa18e5db98b7ecf38f361721d",
+      "ref": "OmniNode-ai/onex_change_control#12656",
+      "state": "OPEN"
+     }
+    ],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-10-03T20:09:46Z",
+    "gate_since": "2026-10-03T20:12:19Z",
+    "head_sha": "15506bb9bf82f9986a870229f2d2ea8b1a04e648",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3340",
+    "process_fix": false,
+    "red_annotations": {
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)": "Process completed with exit code 1.",
+     "OCC Companion Observe (dry_run, non-blocking)": "Process completed with exit code 1.",
+     "OCC Preflight Dependency": "Process completed with exit code 1.\nOCC preflight concluded failure; refusing to start heavy CI.",
+     "repo-evidence / dod-verify": "Process completed with exit code 1.\nOMN-17427 [dod-omn17427-ac1-one-saving, dod-omn17427-ac2-minted-tenant]: bound test also passes at the merge base: the control did not fail (always-pass)"
+    },
+    "red_checks": [
+     "CI Summary",
+     "Coverage Sweep Gate",
+     "OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)",
+     "OCC Companion Merged Gate (OMN-15214)",
+     "OCC Companion Observe (dry_run, non-blocking)",
+     "OCC Preflight Dependency",
+     "repo-evidence / dod-verify"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": [
+     "gate"
+    ]
+   },
+   {
+    "auto_merge_head": "aea29853114d5a70f7ae34fb7488f0262a0a14dc",
+    "blocker_refs": [
+     {
+      "head_sha": "aea29853114d5a70f7ae34fb7488f0262a0a14dc",
+      "ref": "self:omnimarket#3341",
+      "state": "head"
+     }
+    ],
+    "ci": "pending",
+    "collaborator": false,
+    "created_at": "2026-10-03T20:10:22Z",
+    "head_sha": "aea29853114d5a70f7ae34fb7488f0262a0a14dc",
+    "merge_state": "unknown",
+    "open_parents": [],
+    "parents": [],
+    "pr": "OmniNode-ai/omnimarket#3341",
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [],
+    "red_class": null,
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": true,
+    "state": "open",
+    "suspensions": []
+   }
+  ],
+  "rebuild_acks": [],
+  "results": [],
+  "state": {
+   "close_requested": [],
+   "draining_repos": [],
+   "eligibility_reruns": [],
+   "last_tick": 724,
+   "leases": [
+    {
+     "brief_class": "runtime",
+     "deadline_at": "2026-10-03T21:32:59Z",
+     "dispatch_head": "298b64b4ab21676ff9712de3cae8e10faefbfb9e",
+     "dispatch_red_checks": [
+      "runner-image-build-smoke"
+     ],
+     "dispatched_at": "2026-10-03T20:47:59Z",
+     "engine": "claude_sonnet",
+     "kill_sent_tick": null,
+     "last_seen_head": "298b64b4ab21676ff9712de3cae8e10faefbfb9e",
+     "lease_id": 2251,
+     "pr": "OmniNode-ai/omnibase_infra#4534",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "298b64b4ab21676ff9712de3cae8e10faefbfb9e"
+     ],
+     "stuck": false
+    },
+    {
+     "brief_class": "runtime",
+     "deadline_at": "2026-10-03T21:41:21Z",
+     "dispatch_head": "3356b1b7b1833580b03aea737673a89f70afde64",
+     "dispatch_red_checks": [
+      "CI Summary",
+      "Coverage Sweep Gate",
+      "OCC Companion Merged Gate (OMN-15214)",
+      "OCC Preflight Dependency",
+      "call-reject-skip-token / occ-preflight / eligibility",
+      "occ-preflight / eligibility",
+      "product-readiness / evaluate",
+      "reason-graph",
+      "repo-evidence / dod-verify",
+      "tests+coverage (shadow)"
+     ],
+     "dispatched_at": "2026-10-03T20:56:21Z",
+     "engine": "claude_sonnet",
+     "kill_sent_tick": null,
+     "last_seen_head": "3356b1b7b1833580b03aea737673a89f70afde64",
+     "lease_id": 2252,
+     "pr": "OmniNode-ai/omnimarket#3338",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "3356b1b7b1833580b03aea737673a89f70afde64"
+     ],
+     "stuck": false
+    },
+    {
+     "brief_class": "conflict_mechanical",
+     "deadline_at": "2026-10-03T21:41:21Z",
+     "dispatch_head": "c3aabd2c36df1589ad3adf53fc128f763f508f84",
+     "dispatch_red_checks": [],
+     "dispatched_at": "2026-10-03T20:56:21Z",
+     "engine": "claude_sonnet",
+     "kill_sent_tick": null,
+     "last_seen_head": "c3aabd2c36df1589ad3adf53fc128f763f508f84",
+     "lease_id": 2253,
+     "pr": "OmniNode-ai/onex_change_control#12643",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "c3aabd2c36df1589ad3adf53fc128f763f508f84"
+     ],
+     "stuck": false
+    },
+    {
+     "brief_class": "real_red",
+     "deadline_at": "2026-10-03T21:21:14Z",
+     "dispatch_head": "3433077450c0c4ad0c9128e698ca68641c0e93f8",
+     "dispatch_red_checks": [],
+     "dispatched_at": "2026-10-03T20:36:14Z",
+     "engine": "claude_opus",
+     "kill_sent_tick": null,
+     "last_seen_head": "3433077450c0c4ad0c9128e698ca68641c0e93f8",
+     "lease_id": 2246,
+     "pr": "OmniNode-ai/onex_change_control#12647",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "3433077450c0c4ad0c9128e698ca68641c0e93f8"
+     ],
+     "stuck": false
+    },
+    {
+     "brief_class": "real_red",
+     "deadline_at": "2026-10-03T21:32:59Z",
+     "dispatch_head": "9c9013f456a640f376a4f5bace110a45d8db4ff8",
+     "dispatch_red_checks": [
+      "CI Summary",
+      "Pre-commit"
+     ],
+     "dispatched_at": "2026-10-03T20:47:59Z",
+     "engine": "claude_sonnet",
+     "kill_sent_tick": null,
+     "last_seen_head": "cbfe9db57a902d5aa18e5db98b7ecf38f361721d",
+     "lease_id": 2250,
+     "pr": "OmniNode-ai/onex_change_control#12656",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "9c9013f456a640f376a4f5bace110a45d8db4ff8",
+      "cbfe9db57a902d5aa18e5db98b7ecf38f361721d"
+     ],
+     "stuck": false
+    }
+   ],
+   "next_lease_id": 2254,
+   "observe_only_repos": [],
+   "rebuilds": [],
+   "records": [
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "",
+     "ladder_index": 0,
+     "outcome": null,
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnibase_infra#4534",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [
+      "call-reject-skip-token / scan / reject-skip-gate-token",
+      "repo-evidence / dod-verify"
+     ],
+     "awaiting_head": null,
+     "blocker_fingerprint": "2bf0814c21829bd726dd01a0eb1307c7c432b334b2711801ac06453556df28f4",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3293",
+     "reason": "none",
+     "rerun_heads": [
+      "a636f30f7fb25d6e9b729b3ee870f6a9878e8048"
+     ],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [
+      "Publish occ-autobind command"
+     ],
+     "awaiting_head": "aff62b7b217dcaa35dade0c68eb415d1f742c8e5",
+     "blocker_fingerprint": "83578f0a93aa5e317eb430752a9c8a7cb48f63225fb00b2f23b0eed5be499186",
+     "ladder_index": 0,
+     "outcome": "fix_submitted",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3303",
+     "reason": "none",
+     "rerun_heads": [
+      "aff62b7b217dcaa35dade0c68eb415d1f742c8e5"
+     ],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "526bd091fec127e957ff9879d11014b8d1431fc23acc0b9ad4169ce0ced867ea",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3308",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [
+      "CI Summary",
+      "Coverage Sweep Gate",
+      "OCC Companion Merged Gate (OMN-15214)",
+      "OCC Preflight Dependency",
+      "call-reject-skip-token / occ-preflight / eligibility",
+      "occ-preflight / eligibility"
+     ],
+     "awaiting_head": "928df65150a8ffe0e2b61c637f502b6532b6c897",
+     "blocker_fingerprint": "c02567375faa278a65c17c0f01e1155c03fe9fae2cbc5fb9f761c01076d5f007",
+     "ladder_index": 0,
+     "outcome": "fix_submitted",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3309",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "25bca50ef61cbf5e41bb658061af415e684ee46e3a8837c6edb61b8cd0645f47",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3320",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "c06b3813b5360762c0aff48b96415ba48ffc31997a410504666772b6f1a24994",
+     "ladder_index": 3,
+     "outcome": "timed_out",
+     "parked_fingerprint": "c06b3813b5360762c0aff48b96415ba48ffc31997a410504666772b6f1a24994",
+     "parked_head": "db37112647d10deaf290860aa68e0269fe912e20",
+     "pr": "OmniNode-ai/omnimarket#3321",
+     "reason": "exited",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "a6eebc5af0062255fb75acd278edbad4086da739bced36754e147a8d1adc08c7",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3322",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "3067fadf8a1f32c7896e02460e319548b7b9587cbe6a680870f449f4d51ec1e3",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3323",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "a0f50d4268591f9137a733a32641631e1c18083bd18dcdae7a84fc3bbb67473d",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3324",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "5df77324669b359f3450b8903277913b1e3c583c26d3b8fb7bac38a3ab3d5343",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3325",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "3f005727700b5edf84d7141062b0726ac75bb14e14a052795843b19f2b4f4baf",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3326",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "03efafb5c87cb8bccb0f9cc1619eb1b7645111889c4cd2b1a46a42282b26a708",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3327",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "05d2c3637bfaa08385efe0fb425727a801348dd746cd77ee351829a2edfdd589",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3328",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "be73132ac06083ab1d76c5d8f86597067e3b539251648d14ec02e2936cf59d2a",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3330",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "4c51934239f5a215ec1fd09da86d8702e967c6b1abe1c9a65322c5ec490c7ec0",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3332",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "91164f2ea390a973465e22ff24ebaa9daab0998e391e06bfced8f3537f231e0e",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3333",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "fe3f2d9988689e2eff7123a7557572694e3b0401e1361a7c5184447dad6f78b0",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3334",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "5f55f2ea48ffdcaae116bfa5f0884ee52b7d4c8a33db605f658895423ca76245",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3335",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "aba3dc177be182b19b2897b05c33e7532d655bbfd272be3869852bdabbde7561",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3337",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "96763ee384784ebd172c38d70da562e196261edc574cf924bb0c98e80ce79456",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3338",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "3ab372bcca945ce0d95ff2147b8dcfaba903f454b38e2bb644b45d1f90455448",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3339",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "792c99f0947c920bb8694de0af315425a01d264f7bfb4f9d8e6d11e29393390f",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3340",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "5d82fa1cdac282a2c63e98920b7b4500c8824c71a4f2402a533cb87daca0eeaf",
+     "ladder_index": 0,
+     "outcome": "external_blocker",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/omnimarket#3341",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "fb9b3505618cd88dc37a5c1fbb4b98ae455f12e01449400d83ce77aa8b29f14a",
+     "ladder_index": 0,
+     "outcome": "fix_submitted",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/onex_change_control#12643",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "82adfd88084188212a6331e0cc0d1f73810bad24b80302e72bbbd8680ebb7794",
+     "ladder_index": 1,
+     "outcome": "invalid",
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/onex_change_control#12647",
+     "reason": "head_mismatch",
+     "rerun_heads": [],
+     "update_heads": []
+    },
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "",
+     "ladder_index": 0,
+     "outcome": null,
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "OmniNode-ai/onex_change_control#12656",
+     "reason": "none",
+     "rerun_heads": [],
+     "update_heads": []
+    }
+   ],
+   "revoked_lease_ids": [
+    1968,
+    1969,
+    1983
+   ],
+   "token_holder": null,
+   "uncovered": []
+  },
+  "tick": 725
+ },
+ "provenance": {
+  "floor_breached_repos": "not in the snapshot: read as no breach",
+  "gate_since": "per gate-suspended PR: completed_at of the first-created (lowest id) failing check-run copy of its red checks on the snapshot head, read from the GitHub check-runs API by the ids the annotation read carries",
+  "observed_at": "2026-10-03T21:00:21Z",
+  "red_annotations": "per red check: the failure-level annotations (at most 3, in order, newline-joined) of the latest failing check-run copy on the snapshot head, read from the GitHub check rollup at about 21:05Z; a red check with no failing copy in that read is absent (unread)",
+  "scrub": "author handles in annotation text (branch prefixes) replaced by role names",
+  "sha256": {
+   "landing-facts-snapshot.json": "31610a0cd3c6052361126554bdb162bc9df33f0eb63da7b6a4faefbde83784ec",
+   "omnimarket-red-annotations.json": "776bbf7a1624c24e883ae9c37bb5ad24240c734b976e31ddfbf5e85ea1b3d303"
+  },
+  "source": "landing controller facts snapshot of tick 725 (input of the tick), trimmed to the omnimarket PRs, the live leases and their probes, and the records of those subjects",
+  "tick": 725
+ }
+}
