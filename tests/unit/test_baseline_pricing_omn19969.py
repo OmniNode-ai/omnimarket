@@ -301,7 +301,7 @@ def test_savings_row_persists_manifest_version(
     class CaptureDatabase:
         row: dict[str, object] | None = None
 
-        def upsert(self, _table: str, _key: str, row: dict[str, object]) -> bool:
+        def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
             self.row = row
             return True
 
@@ -327,7 +327,7 @@ def test_savings_row_persists_manifest_version(
     db = CaptureDatabase()
     result = module.HandlerProjectionSavings().project_delegate_skill_savings(
         projection, db
-    )  # type: ignore[arg-type]
+    )
 
     assert result.rows_upserted == 1
     assert db.row is not None

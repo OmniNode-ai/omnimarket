@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20304
+title: "Correct savings migration name and capture-database test shape"
+summary: "Renames the savings series migration to 093_savings_series_recorded_model.sql, updates its test reference, and removes a type-ignore comment from the pricing test. The SQL is unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Renamed savings series migration exists at its corrected path"
+    command: "test -f src/omnimarket/nodes/node_projection_savings/migrations/093_savings_series_recorded_model.sql"
+  - kind: tests
+    description: "Checked-in relation inventory matches the renamed migration"
+    command: "uv run python scripts/generate_application_relation_inventory.py --check"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Renamed savings series migration exists at its corrected path"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "test -f src/omnimarket/nodes/node_projection_savings/migrations/093_savings_series_recorded_model.sql"
+  - id: dod-inventory
+    description: "Checked-in relation inventory matches the renamed migration"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run python scripts/generate_application_relation_inventory.py --check"
