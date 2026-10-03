@@ -169,7 +169,9 @@ async def test_the_row_source_reads_the_relation_columns_bound_and_once(
     for _ in range(2):
         await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
 
-    lookups = [(sql, params) for sql, params in pool.log if "pg_attribute" in sql]
+    # The column lookup itself: the unique-index lookup also joins
+    # pg_attribute (for each key column's collation) and is a separate read.
+    lookups = [(sql, params) for sql, params in pool.log if "array_agg(attname" in sql]
     assert len(lookups) == 1, "the relation's columns are read once, then cached"
     sql, params = lookups[0]
     assert "projection_delegation_savings" not in sql, "the relation is a bound value"
