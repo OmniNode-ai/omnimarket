@@ -33,6 +33,13 @@ class ModelDodAcceptanceSummary(BaseModel):
         default=(),
         description="Evidence ids of the derived items, in label order.",
     )
+    self_accepted_bindings: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "OMN-17427: self-accepted bindings without independent acceptance, "
+            "in contract order."
+        ),
+    )
 
     @property
     def basis(self) -> EnumDodAcceptanceBasis:

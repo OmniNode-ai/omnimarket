@@ -158,6 +158,9 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         ),
         "acceptance_declared_falsifiers": state.acceptance_declared_falsifier_count,
         "acceptance_runnable_falsifiers": state.acceptance_runnable_falsifier_count,
+        "acceptance_self_accepted_bindings": list(
+            state.acceptance_self_accepted_bindings
+        ),
     }
 
     def render(kept: int) -> str:
