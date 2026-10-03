@@ -63,6 +63,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
+from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
+    fold_terminal_ownership,
+)
 from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
@@ -1487,6 +1490,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if not existing_rows:
             return
         existing = existing_rows[0]
+        # OMN-17427: same terminal ownership decision as the sync preserve step.
+        carry_score = fold_terminal_ownership(existing, row)
         # OMN-20303: same attribution fold as the sync preserve step.
         row.update(
             HandlerDelegationRunAttributionFold()
@@ -1518,6 +1523,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "actual_score",
             "escalation_count",
         ):
+            if key == "actual_score" and not carry_score:
+                continue
             if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
                 row[key] = existing[key]
         # OMN-19448: same trace and routing preservation as the sync writer.
