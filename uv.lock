@@ -11,8 +11,8 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", specifier = ">=0.47.28,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.36,<0.39.0" },
+    { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.61,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
 
@@ -3043,7 +3043,7 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.28"
+version = "0.47.31"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blake3" },
@@ -3060,14 +3060,14 @@ dependencies = [
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/56/0e/616973684cbc53b4b9f6061e4c48a380a6cf36445dc4f0ff62bbc2b6fefd/omnibase_core-0.47.28.tar.gz", hash = "sha256:9e1c6cb4c89526501239f47c529cb5e9bb4ceeb1121d0dbba1c5d0084c869c9a", size = 10187444, upload-time = "2026-10-01T09:55:30.404Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/4c/1ea17755589bc0495377afbe09186c603a53f6d9601c69c4b65a49701f5c/omnibase_core-0.47.31.tar.gz", hash = "sha256:73c285a692ce7db3960ca4470020cae7f9ffe2b9866b4dc25ef9d50435e11cdb", size = 10302887, upload-time = "2026-10-03T01:15:07.533Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/96/0a352db874d89ad52889c286acbfa3fac92a53d5eec1246601f56effac84/omnibase_core-0.47.28-py3-none-any.whl", hash = "sha256:dcaeab1dfa3082c54671b03c58c81be971efdad7536af10b7183c5c5171b230a", size = 7246392, upload-time = "2026-10-01T09:55:28.076Z" },
+    { url = "https://files.pythonhosted.org/packages/99/fe/f6854d226e56be25e50b3688adb88e20df9dde659e832fb0eabc4ca2d075/omnibase_core-0.47.31-py3-none-any.whl", hash = "sha256:8cb926fe568c24bd38f4a86f7f71ffa0f9fa804370701e9da8404044f708372a", size = 7342404, upload-time = "2026-10-03T01:15:05.412Z" },
 ]
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.59"
+version = "0.38.61"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -3122,9 +3122,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/79/f5fcaf962c38c7293c2940fc5c66ca0a3691c11516e1a32764dad9c7fe6f/omnibase_infra-0.38.59.tar.gz", hash = "sha256:d95f5ac003c2b688b4be9bdeec211a8660541c870e66d731c1a762296c2913e4", size = 20228989, upload-time = "2026-09-27T13:56:23.579Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/cc/827813d48abfee83c99e78f665f5f09577ddf5e2800e346db16f43cd1b4c/omnibase_infra-0.38.61.tar.gz", hash = "sha256:471a633956af2a624690eee9a21c4120d89b5d8a266217b9f010462df2a5b862", size = 20954946, upload-time = "2026-10-01T08:54:16.041Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/51/0d76b05f9ba4a4df03f1f3579f54fcb31153f9e1c72084e8140663863f69/omnibase_infra-0.38.59-py3-none-any.whl", hash = "sha256:33f7a4623756d6b3eaf34a485155f15aab81b8e4de30ae60642191d02a053c76", size = 7294021, upload-time = "2026-09-27T13:56:19.671Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/83/01d37f06023b6dc1ce62ab41713e33e35b87467ff0fd79a08010ee897f02/omnibase_infra-0.38.61-py3-none-any.whl", hash = "sha256:71ab720e4fba9ab88f9360e8c5eb05eee008adfd0b44e08c07e43f13780da97b", size = 7426491, upload-time = "2026-10-01T08:54:13.289Z" },
 ]
 
 [[package]]
@@ -3220,8 +3220,8 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", specifier = ">=0.47.28,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.36,<0.39.0" },
+    { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.61,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
     { name = "packaging", specifier = ">=24.0" },

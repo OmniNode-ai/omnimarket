@@ -11,6 +11,9 @@
     # Or one request file (ModelDelegatedCodeEditRequest JSON).
     onex code-edit run --request edit.json --omnibase-path <workspace-root>
 
+    # Continue a delegate_failed loop with the same delegate flags.
+    onex code-edit run --resume <correlation-id> --state-root .onex_state
+
     # Offline: each turn's delegate orchestrator runs in this process.
     onex code-edit run ... --bus inmemory --delegate-in-process
 
@@ -49,6 +52,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     LoopReceiptExistsError,
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
+    ResumeRefusedError,
 )
 
 EXIT_NOT_ACCEPTED = 3
@@ -95,6 +99,13 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
 
 
 @code_edit_group.command("run")
+@click.option(
+    "--resume",
+    "resume_id",
+    type=click.UUID,
+    default=None,
+    help="Resume a delegate_failed loop from its receipt.",
+)
 @click.option(
     "--request",
     "request_path",
@@ -190,6 +201,7 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     help="Per-turn response budget; omitted, the routing contract decides.",
 )
 def run_command(
+    resume_id: uuid.UUID | None,
     request_path: Path | None,
     worktree: Path | None,
     task_file: Path | None,
@@ -209,7 +221,30 @@ def run_command(
     max_tokens: int | None,
 ) -> None:
     """Run one delegated code edit loop and print its compact result."""
-    if request_path is not None:
+    if resume_id is not None:
+        conflicts = {
+            "--request": request_path is not None,
+            "--worktree": worktree is not None,
+            "--task-file": task_file is not None,
+            "--writable": bool(writable),
+            "--context": bool(context_paths),
+            "--check": bool(check_specs),
+            "--formatter": formatter is not None,
+            "--new-correlation": new_correlation,
+        }
+        for flag, present in conflicts.items():
+            if present:
+                raise click.ClickException(f"--resume conflicts with {flag}")
+        try:
+            receipt = json.loads(
+                (state_root / "runs" / str(resume_id) / "loop_receipt.json").read_text()
+            )
+            if not isinstance(receipt, dict):
+                raise ValueError("receipt is not an object")
+            request = ModelDelegatedCodeEditRequest.model_validate(receipt["request"])
+        except (OSError, ValueError, KeyError, UnicodeError, RecursionError) as exc:
+            raise click.ClickException(f"unreadable receipt: {exc}") from exc
+    elif request_path is not None:
         try:
             request = ModelDelegatedCodeEditRequest.model_validate_json(
                 request_path.read_text()
@@ -251,8 +286,10 @@ def run_command(
         max_tokens=max_tokens,
     )
     try:
-        result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
-    except LoopReceiptExistsError as exc:
+        result = HandlerDelegatedCodeEditOrchestrator(ports).run(
+            request, resume=resume_id is not None
+        )
+    except (LoopReceiptExistsError, ResumeRefusedError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(json.dumps(result.model_dump(mode="json"), separators=(",", ":")))
     if result.status != EnumCodeEditStatus.ACCEPTED:

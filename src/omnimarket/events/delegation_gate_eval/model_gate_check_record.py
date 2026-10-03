@@ -15,7 +15,7 @@ class ModelGateCheckRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     check_id: str
-    arm: Literal["replayed", "recorded"]
+    arm: Literal["replayed", "recorded", "rubric"]
     catches: int = Field(ge=0)
     wrong_refusals: int = Field(ge=0)
     skips: int = Field(ge=0)

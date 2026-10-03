@@ -49,15 +49,11 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     resolve_required_bar_authority,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
 from omnimarket.routing import delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 pytestmark = pytest.mark.unit
 
@@ -137,9 +133,6 @@ def _dispatch(db_path: Path, correlation_id: UUID) -> dict[str, Any]:
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
     result: dict[str, Any] = asyncio.run(
         port.dispatch(

@@ -46,7 +46,7 @@ _RETIRED_OPENROUTER_ENV = "OPEN_ROUTER_API_KEY"
 # ... for code" directive covers.
 _CODE_CLASSES: tuple[str, ...] = (
     "code_generation",
-    "code_review",
+    # OMN-17427: code_review is withheld from every delegation tier.
     "refactor",
     "validator_generation",
     "test",
@@ -96,7 +96,7 @@ class TestOpenRouterFreeCoderIsAnActiveCodeTier:
     """The free coder rung actually carries the code-class family."""
 
     def test_cheap_frontier_serves_every_code_class(self) -> None:
-        """``cheap_frontier`` must declare all five code task types.
+        """``cheap_frontier`` must declare all routable code task types.
 
         Before OMN-16891 it declared only code_generation/refactor/test (plus
         reasoning/research), so ``code_review`` and ``validator_generation``

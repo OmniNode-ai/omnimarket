@@ -50,7 +50,7 @@
 #
 # Reconciliation 2026-06-24 (OMN-13540) against the redeploy dogfood
 # (docs/evidence/2026-06-24-redeploy-dogfood/results.md, verifier != runner):
-#   - I5 (research) + I6 (code_review): already expected-green; the dogfood
+#   - I5 (research) + I6 (code_review): historically expected-green; the dogfood
 #     CONFIRMED both terminalize with real model_name + tokens>0 (OMN-13541 fixed,
 #     OMN-13546 forwarder fix). No corpus change.
 #   - I9 (cross-cutting model_name+tokens on every completed row): FLIPPED to
@@ -286,17 +286,15 @@ cases:
     prompt: >
       Review this Python snippet for correctness and security, list findings
       by severity: `def run(cmd): import os; os.system(cmd)`
-    # Falsifies: a code_review task terminalises on the free local tier with
-    # tokens recorded.
+    # OMN-17427: no delegation rung measured adequate; refuse before inference.
     acceptance_criteria:
-      - "response_non_empty"   # was `non_empty`
+      - "response_non_empty"
     expected:
-      tier_behavior: free_local_first
+      terminal: failed
       quality_gate: any
-      terminal: completed
-      cost: any
+      cost: zero
       escalation: none
-      tokens: positive
+      tokens: any
 
   - id: I7
     layer: integration

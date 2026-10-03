@@ -8,6 +8,7 @@ import re
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
 from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
@@ -31,6 +32,21 @@ _DEFAULT_AUTHORITY_PATH = (
 )
 
 
+TASK_COMPLEXITY_RUBRIC_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml"
+)
+
+
+@lru_cache(maxsize=1)
+def load_task_complexity_rubric(path: str | None = None) -> dict[str, Any]:
+    """Composition-time rubric loading; also serves the benchmark API."""
+    target = Path(path) if path else TASK_COMPLEXITY_RUBRIC_PATH
+    with target.open(encoding="utf-8") as handle:
+        loaded: dict[str, Any] = yaml.safe_load(handle)
+    return loaded
+
+
 class EnumGatewayExposure(StrEnum):
     """Closed Gateway exposure policy for a Market task class."""
 
@@ -43,6 +59,9 @@ class EnumRoutingAvailabilityStatus(StrEnum):
 
     #: No tier can supply a capability the class requires (agent_delegation).
     PENDING_CAPABILITY = "pending_capability"
+    #: The operator withholds delegation because no rung measured adequate.
+    #: The caller does the work itself; tracking names the ruling.
+    WITHHELD = "withheld"
 
 
 class EnumTaskTypeResolution(StrEnum):
@@ -378,6 +397,16 @@ class ModelTaskClassOutputContract(BaseModel):
         return self
 
 
+class ModelTaskClassComplexityContract(BaseModel):
+    """Catalogue-owned complexity features; never request overrides (OMN-18341)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    output_kind: Literal["prose", "structured", "code", "patch"]
+    verification: Literal["grounding", "exact_match", "test_run", "patch_and_test"]
+    execution_required: bool
+
+
 class ModelDelegationOutputAuthority(BaseModel):
     """Declared extraction floors and markers shared by delegated task classes."""
 
@@ -639,7 +668,7 @@ def _qualifier_near(
 
 
 class ModelRoutingAvailability(BaseModel):
-    """A class the contract declares but cannot route yet (OMN-16811).
+    """A class the contract declares but does not delegate (OMN-16811, OMN-17427).
 
     Declared so that every consumer refuses the class up front, in these
     words, instead of dispatching it and waiting out the ingress budget.
@@ -677,6 +706,31 @@ class ModelTaskTypeResolution(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class ModelBandEdges(BaseModel):
+    """Inclusive upper edges of the small and medium size bands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    s_max: int = Field(ge=0)
+    m_max: int
+
+    @model_validator(mode="after")
+    def _validate_edges(self) -> ModelBandEdges:
+        if self.m_max <= self.s_max:
+            raise ValueError("m_max must be greater than s_max")
+        return self
+
+
+class ModelSizeBandThresholds(BaseModel):
+    """Contract-owned size edges for each measured feature."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tokens: ModelBandEdges
+    units: ModelBandEdges
+    steps: ModelBandEdges
+
+
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
 
@@ -685,10 +739,12 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     gateway_exposure: EnumGatewayExposure
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
+    complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
         description=(
-            "Present only on a class no tier can route yet. Absent means the "
+            "Present only on a class unavailable for delegation. Absent means the "
             "class routes."
         ),
     )
@@ -720,6 +776,7 @@ class ModelTaskClassAuthority(BaseModel):
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     selection_fallback: ModelSelectionFallback | None = Field(
         default=None,
         description=(
@@ -769,7 +826,7 @@ class ModelTaskClassAuthority(BaseModel):
 
     @property
     def unroutable_task_classes(self) -> dict[str, ModelRoutingAvailability]:
-        """Return every declared class no tier can route yet, with its declaration."""
+        """Return every declared class unavailable for delegation, with its declaration."""
         return {
             name: entry.routing_availability
             for name, entry in self.task_classes.items()
@@ -785,6 +842,20 @@ class ModelTaskClassAuthority(BaseModel):
             for name, entry in self.task_classes.items()
             if entry.gateway_exposure is exposure
         )
+
+    def size_band_thresholds_for(
+        self, task_class: str
+    ) -> tuple[ModelSizeBandThresholds, str] | None:
+        """Return a class override or the inherited default with its contract path."""
+        entry = self.task_classes.get(task_class)
+        if entry is not None and entry.size_band_thresholds is not None:
+            return (
+                entry.size_band_thresholds,
+                f"task_classes.{task_class}.size_band_thresholds",
+            )
+        if self.size_band_thresholds is not None:
+            return self.size_band_thresholds, "size_band_thresholds"
+        return None
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
         """Return the declared handler budget for ``task_class``, or refuse."""
@@ -885,6 +956,9 @@ class ModelTaskClassAuthority(BaseModel):
                     "word prompt and the task-class contract declares no "
                     "selection_fallback; pass --task-type"
                 )
+            refusal = self.unroutable_refusal(fallback.task_class)
+            if refusal is not None:
+                raise TaskClassSelectionError(refusal)
             return ModelTaskTypeResolution(
                 task_type=fallback.task_class,
                 resolution=EnumTaskTypeResolution.FALLBACK,
@@ -900,6 +974,9 @@ class ModelTaskClassAuthority(BaseModel):
         priority, name, phrase, opens = min(
             eligible, key=lambda item: (-item[0], item[1])
         )
+        refusal = self.unroutable_refusal(name)
+        if refusal is not None:
+            raise TaskClassSelectionError(refusal)
         how = (
             f"opening phrase {phrase!r} at the start of a {word_count}-word prompt"
             if opens
@@ -964,6 +1041,30 @@ def load_task_class_authority(
     except ValidationError as exc:
         msg = f"task-class authority validation failed for {path}: {exc}"
         raise ValueError(msg) from exc
+
+
+@lru_cache(maxsize=1)
+def _delegation_task_class_authority() -> ModelTaskClassAuthority:
+    """Read the shipped routing declarations once, like the routing config."""
+    return load_task_class_authority()
+
+
+def withheld_delegation_refusal(task_class: str) -> str | None:
+    """Refusal shared by ladder, pinned-backend and BYOK routing (OMN-17427).
+
+    Only a ``withheld`` declaration refuses here: the operator ruled the class
+    out of delegation, so no pin, overlay or customer key may route it. A
+    ``pending_capability`` class keeps failing closed where no backend serves
+    it, and a backend that does declare the capability still resolves.
+    """
+    authority = _delegation_task_class_authority()
+    declared = authority.unroutable_task_classes.get(task_class)
+    if (
+        declared is None
+        or declared.status is not EnumRoutingAvailabilityStatus.WITHHELD
+    ):
+        return None
+    return authority.unroutable_refusal(task_class)
 
 
 @lru_cache(maxsize=1)
@@ -1053,6 +1154,7 @@ __all__ = [
     "EnumQualityRuleEnforcement",
     "EnumRoutingAvailabilityStatus",
     "EnumTaskTypeResolution",
+    "ModelBandEdges",
     "ModelDelegationOutputAuthority",
     "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
@@ -1061,8 +1163,10 @@ __all__ = [
     "ModelRoutingAvailability",
     "ModelSelectionFallback",
     "ModelShortPromptSelection",
+    "ModelSizeBandThresholds",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
+    "ModelTaskClassComplexityContract",
     "ModelTaskClassExecutionBudget",
     "ModelTaskClassOutputContract",
     "ModelTaskClassSelection",
@@ -1074,4 +1178,5 @@ __all__ = [
     "resolve_reasoning_preamble_policy",
     "resolve_task_class_execution_budget",
     "resolve_task_class_output_contract",
+    "withheld_delegation_refusal",
 ]

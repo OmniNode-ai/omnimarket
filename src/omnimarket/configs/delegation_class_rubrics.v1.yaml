@@ -7,9 +7,8 @@
 #
 # Read by node_delegation_rubric_check_compute. Every threshold and trigger a
 # criterion uses lives here, never in the handler. Each criterion returns
-# pass, fail or undetermined; undetermined never counts as a pass. v1 records
-# the verdict only: it decides nothing until a class's rubric has been
-# measured against labelled items and turned on.
+# pass, fail or undetermined; undetermined never counts as a pass. A class verdict decides only when its false_pass_status below is met.
+# Every shipped class is refused (no valid measured line yet).
 #
 # A class absent from `classes` resolves to an empty rubric, which yields an
 # undetermined verdict with reason no_rubric_for_class.
@@ -97,13 +96,13 @@ x-tool-use-criteria: &tool_use_criteria
 - criterion_id: no_phantom_paths
   description: Tool paths and answer citations refer to supplied or successfully created workspace files.
   params:
-    path_argument_names: [path, file_path, notebook_path]
+    path_argument_names: [path, file_path, file_paths, notebook_path]
     creating_tools: [Write, create_file, write]
     line_tolerance: 0
 - criterion_id: edits_apply
   description: Every recorded edit has a successful caller-supplied result.
   params:
-    edit_tools: [Edit, MultiEdit, Write, apply_patch, str_replace_based_edit_tool, edit, multiedit, write]
+    edit_tools: [Edit, MultiEdit, Write, apply_patch, str_replace_based_edit_tool, edit, multiedit, write, replace_in_files]
 - criterion_id: stated_check_passes
   description: Test targets named in the final answer have caller-supplied passing execution results.
   params:
@@ -164,3 +163,171 @@ classes:
       - '\bkeeping ticket ids\b'
   code_generation: *code_criteria
   test: *code_criteria
+
+# OMN-20166: no class has a measured MET line on dev. Flip only the measured
+# class and keep its rubric version and declared line with the measurement.
+false_pass_status:
+  tool_use: refused
+  code_review: refused
+  review: refused
+  summarization: refused
+  code_generation: refused
+  test: refused
+false_pass_lines:
+  tool_use:
+    check_id: delegation.rubric.tool_use.false_pass
+    statistic: pass_rate
+    case_set: 'tool_use: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'tool_use: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  code_review:
+    check_id: delegation.rubric.code_review.false_pass
+    statistic: pass_rate
+    case_set: 'code_review: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'code_review: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  review:
+    check_id: delegation.rubric.review.false_pass
+    statistic: pass_rate
+    case_set: 'review: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'review: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  summarization:
+    check_id: delegation.rubric.summarization.false_pass
+    statistic: pass_rate
+    case_set: 'summarization: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'summarization: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  code_generation:
+    check_id: delegation.rubric.code_generation.false_pass
+    statistic: pass_rate
+    case_set: 'code_generation: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'code_generation: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  test:
+    check_id: delegation.rubric.test.false_pass
+    statistic: pass_rate
+    case_set: 'test: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'test: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+false_refusal_lines:
+  tool_use:
+    check_id: delegation.rubric.tool_use.false_refusal
+    statistic: pass_rate
+    case_set: 'tool_use: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'tool_use: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  code_review:
+    check_id: delegation.rubric.code_review.false_refusal
+    statistic: pass_rate
+    case_set: 'code_review: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'code_review: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  review:
+    check_id: delegation.rubric.review.false_refusal
+    statistic: pass_rate
+    case_set: 'review: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'review: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  summarization:
+    check_id: delegation.rubric.summarization.false_refusal
+    statistic: pass_rate
+    case_set: 'summarization: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'summarization: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  code_generation:
+    check_id: delegation.rubric.code_generation.false_refusal
+    statistic: pass_rate
+    case_set: 'code_generation: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'code_generation: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  test:
+    check_id: delegation.rubric.test.false_refusal
+    statistic: pass_rate
+    case_set: 'test: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'test: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure

@@ -153,16 +153,16 @@ def test_real_manifest_resolves_fixed_default_from_current_pricing_table() -> No
     selected = pricing.resolve_baseline_model(overlay={}, store={})
 
     assert selected.model == "claude-sonnet-5-5"
-    assert _load_table().get_entry(selected.model) is None
-    assert selected.state == "BASELINE_UNRESOLVED"
-    assert (
-        estimate_baseline_cost_usd(
-            prompt_tokens=100,
-            completion_tokens=50,
-            baseline_model=selected.model,
-        )
-        is None
+    assert _load_table().get_entry(selected.model) is not None
+    assert selected.state == "RESOLVED"
+    assert selected.selection_case == "fixed_default"
+    baseline_cost = estimate_baseline_cost_usd(
+        prompt_tokens=100,
+        completion_tokens=50,
+        baseline_model=selected.model,
     )
+    assert baseline_cost is not None
+    assert baseline_cost > 0
 
 
 def test_unresolved_receipt_keeps_null_savings_and_selection_reason() -> None:
@@ -301,9 +301,20 @@ def test_savings_row_persists_manifest_version(
     class CaptureDatabase:
         row: dict[str, object] | None = None
 
-        def upsert(self, _table: str, _key: str, row: dict[str, object]) -> bool:
+        def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
             self.row = row
             return True
+
+        def query(
+            self,
+            table: str,
+            filters: dict[str, object] | None = None,
+            *,
+            order_by: str | None = None,
+            descending: bool = False,
+            limit: int | None = None,
+        ) -> list[dict[str, object]]:
+            return []
 
     monkeypatch.setattr(
         module, "resolve_registry_tenant_uuid_or_none", lambda *_args, **_kwargs: None
@@ -316,7 +327,7 @@ def test_savings_row_persists_manifest_version(
     db = CaptureDatabase()
     result = module.HandlerProjectionSavings().project_delegate_skill_savings(
         projection, db
-    )  # type: ignore[arg-type]
+    )
 
     assert result.rows_upserted == 1
     assert db.row is not None

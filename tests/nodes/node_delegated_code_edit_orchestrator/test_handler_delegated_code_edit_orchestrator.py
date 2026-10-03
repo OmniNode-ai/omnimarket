@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 import uuid
 from collections.abc import Sequence
 from typing import Any, cast
@@ -11,6 +14,7 @@ from typing import Any, cast
 import pytest
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+    MAX_ERROR_CHARS,
     RESPONSE_CONTRACT,
     EnumCodeEditStatus,
     EnumCodeEditTool,
@@ -21,9 +25,20 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
     ModelTurnReply,
+    ResumeRefusedError,
     WorkspacePathError,
+    bound_error,
     normalise_path,
+    parse_turn_reply,
     writable,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
+    TOOL_SCHEMAS,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    MAX_BULK_FILES,
+    MAX_OBSERVATION_BYTES,
+    MAX_WRITE_BYTES,
 )
 
 pytestmark = pytest.mark.unit
@@ -66,19 +81,32 @@ class FakePorts:
         self.check_output = check_output
         self.receipts: dict[str, dict[str, object]] = {}
         self.claimed: set[str] = set()
+        self.archived: list[dict[str, object]] = []
+        self.state_root = "/state"
+        self.delegate_turns: list[int] = []
         self.writes: list[str] = []
         self.checks_run: list[str] = []
         self.formatter_argv: list[tuple[str, ...]] = []
         self.prompts: list[str] = []
         self.contracts: list[dict[str, object]] = []
 
-    def claim_loop_receipt(self, loop_run_id: str) -> None:
-        if loop_run_id in self.receipts:
+    def claim_loop_receipt(self, loop_run_id: str, *, resume: bool = False) -> None:
+        if loop_run_id in self.claimed:
+            raise LoopReceiptExistsError("already claimed")
+        if resume:
+            if loop_run_id not in self.receipts:
+                raise ResumeRefusedError("no receipt")
+            self.archived.append(self.receipts.pop(loop_run_id))
+        elif loop_run_id in self.receipts:
             raise LoopReceiptExistsError(loop_run_id)
         self.claimed.add(loop_run_id)
 
+    def load_loop_receipt(self, loop_run_id: str) -> dict[str, object] | None:
+        return self.receipts.get(loop_run_id)
+
     def write_loop_receipt(self, loop_run_id: str, payload: dict[str, object]) -> None:
         self.receipts[loop_run_id] = payload
+        self.claimed.discard(loop_run_id)
 
     def workspace_files(
         self, request: ModelDelegatedCodeEditRequest
@@ -135,6 +163,7 @@ class FakePorts:
         response_contract: dict[str, object],
         turn: int,
     ) -> ModelTurnReply:
+        self.delegate_turns.append(turn)
         self.prompts.append(prompt)
         self.contracts.append(response_contract)
         if not self.turns:
@@ -159,6 +188,44 @@ def _reply(n: int, *actions: ModelCodeEditAction) -> ModelTurnReply:
 
 
 FIX = "def add(a, b):\n    return a + b\n"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "UndefinedTable", "x" * MAX_ERROR_CHARS],
+    ids=["empty", "short", "at-limit"],
+)
+def test_bound_error_leaves_short_text_unchanged(text: str) -> None:
+    assert bound_error(text) == text
+
+
+@pytest.mark.parametrize("limit", [MAX_ERROR_CHARS, 300, 64])
+def test_bound_error_keeps_head_and_tail_with_the_exact_cut_count(limit: int) -> None:
+    head, tail = "HEADMARK", "UndefinedTable"
+    text = head + "x" * (10_000 - len(head) - len(tail)) + tail
+    bounded = bound_error(text, limit)
+    assert len(bounded) <= limit
+    assert bounded.startswith(head)
+    assert bounded.endswith(tail)
+    match = re.fullmatch(
+        r"(.*)\n\.\.\. \[(\d+) characters cut\] \.\.\.\n(.*)",
+        bounded,
+        re.DOTALL,
+    )
+    assert match is not None
+    kept_head, cut, kept_tail = match.groups()
+    assert int(cut) == len(text) - len(kept_head) - len(kept_tail)
+    share = len(kept_head) + len(kept_tail)
+    assert len(kept_head) == (share + 1) // 2
+    assert len(kept_tail) == share // 2
+    assert text.startswith(kept_head)
+    assert text.endswith(kept_tail)
+
+
+@pytest.mark.parametrize("limit", [0, 10, 63])
+def test_bound_error_uses_a_prefix_for_tiny_limits(limit: int) -> None:
+    text = "HEADMARK" + "x" * 100
+    assert bound_error(text, limit) == text[:limit]
 
 
 def test_accepted_when_finish_checks_pass_and_every_turn_has_a_run_id() -> None:
@@ -186,6 +253,7 @@ def test_accepted_when_finish_checks_pass_and_every_turn_has_a_run_id() -> None:
     assert ports.files["src/m.py"] == FIX
     assert result.rubric_outcome == "PASS"
     receipt = ports.receipts[request.correlation_id]
+    assert receipt["error"] is None
     assert receipt["delegate_run_ids"] == ["run-1", "run-2"]
     assert receipt["rubric_verdict"] == {"verdict": {"outcome": "PASS"}}
     assert all(c == RESPONSE_CONTRACT for c in ports.contracts)
@@ -279,6 +347,97 @@ def test_two_failed_delegate_runs_in_a_row_end_delegate_failed() -> None:
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
     assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
     assert ports.checks_run == []
+
+
+def test_failed_delegate_errors_keep_the_head_and_tail_in_the_receipt() -> None:
+    head, tail = "HEADMARK", "UndefinedTable"
+    reason = head + "x" * (6000 - len(head) - len(tail)) + tail
+    ports = FakePorts(
+        [
+            ModelTurnReply(run_id=f"run-{n}", ok=False, invalid_reason=reason)
+            for n in (1, 2)
+        ]
+    )
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert len(result.detail) <= 300
+    assert tail in result.detail
+    receipt = ports.receipts[request.correlation_id]
+    error = cast(dict[str, object], receipt["error"])
+    assert error["status"] == "delegate_failed"
+    assert error["turns"] == 2
+    detail = cast(str, error["detail"])
+    assert detail.startswith("two delegate runs failed in a row: HEADMARK")
+    assert detail.endswith(tail)
+    assert len(detail) <= MAX_ERROR_CHARS
+    turns = cast(list[dict[str, object]], receipt["turns"])
+    assert len(turns) == 2
+    for turn in turns:
+        invalid_reason = cast(str, turn["invalid_reason"])
+        assert invalid_reason.startswith(head)
+        assert invalid_reason.endswith(tail)
+        assert len(invalid_reason) <= MAX_ERROR_CHARS
+
+
+def test_an_unexpected_delegate_exception_still_writes_exactly_one_receipt() -> None:
+    class BrokenPorts(FakePorts):
+        receipt_writes = 0
+
+        def delegate(
+            self,
+            request: ModelDelegatedCodeEditRequest,
+            prompt: str,
+            response_contract: dict[str, object],
+            turn: int,
+        ) -> ModelTurnReply:
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+
+        def write_loop_receipt(
+            self, loop_run_id: str, payload: dict[str, object]
+        ) -> None:
+            self.receipt_writes += 1
+            super().write_loop_receipt(loop_run_id, payload)
+
+    ports = BrokenPorts([])
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.INFRA_ERROR
+    assert (
+        result.detail
+        == "unexpected AttributeError: 'NoneType' object has no attribute 'get'"
+    )
+    assert ports.receipt_writes == 1
+    assert list(ports.receipts) == [request.correlation_id]
+
+
+@pytest.mark.parametrize("failed_port", ["diff", "score"])
+def test_diff_and_score_exceptions_still_write_a_receipt(failed_port: str) -> None:
+    class BrokenPorts(FakePorts):
+        def diff(self, request: ModelDelegatedCodeEditRequest) -> str:
+            if failed_port == "diff":
+                raise RuntimeError("boom")
+            return super().diff(request)
+
+        def score(
+            self, request: ModelDelegatedCodeEditRequest, transcript: dict[str, object]
+        ) -> dict[str, object]:
+            if failed_port == "score":
+                raise RuntimeError("boom")
+            return super().score(request, transcript)
+
+    ports = BrokenPorts([_reply(1, _a("finish"))], check_passes=[True])
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert list(ports.receipts) == [request.correlation_id]
+    receipt = ports.receipts[request.correlation_id]
+    if failed_port == "diff":
+        assert result.detail == "diff failed: RuntimeError: boom"
+        assert receipt["diff"] == ""
+    else:
+        assert result.detail == ""
+        assert receipt["rubric_verdict"] == {"error": "RuntimeError: boom"}
 
 
 def test_an_unusable_reply_is_fed_back_not_terminal() -> None:
@@ -548,3 +707,559 @@ def test_format_is_offered_as_a_tool() -> None:
     contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
     tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
     assert "format" in tool_enum
+
+
+def _interrupted_ports() -> FakePorts:
+    dead = ModelTurnReply(run_id="dead", ok=False, invalid_reason="delegate exited 1")
+    return FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")).model_copy(
+                update={"tokens_in": 11, "tokens_out": 3, "model": "test-model"}
+            ),
+            _reply(2, _a("write", file_path="src/m.py", content=FIX)),
+            dead,
+            dead,
+        ]
+    )
+
+
+def test_delegate_failed_receipt_preserves_last_good_history() -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    receipt = ports.receipts[request.correlation_id]
+    block = cast(dict[str, Any], receipt["resume"])
+    assert result.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert result.resumable
+    assert block["resumable"] is True
+    assert block["last_good_turn"] == 2
+    assert block["turns_used"] == 4
+    assert block["max_turns"] == request.max_turns
+    assert block["reason"] == "resumable from turn 3 (4 turns left)"
+    assert len(block["history"]) == 2
+    assert block["history"][0].startswith("TURN 1\n")
+    assert block["history"][1].startswith("TURN 2\n")
+    assert "delegate run failed" not in "".join(block["history"])
+    assert (
+        block["diff_sha256"] == hashlib.sha256(ports.diff(request).encode()).hexdigest()
+    )
+    assert block["command"] == (
+        f"onex code-edit run --resume {request.correlation_id} "
+        "--state-root /state, with the same delegate flags"
+    )
+    assert receipt["superseded_turns"] == []
+    assert receipt["resumes"] == 0
+    turns = cast(list[dict[str, Any]], receipt["turns"])
+    assert [t["turn"] for t in turns] == [1, 2, 3, 4]
+    assert [t["ok"] for t in turns] == [True, True, False, False]
+    assert turns[0]["tokens_in"] == 11
+    assert turns[0]["tokens_out"] == 3
+
+
+def test_resume_restores_history_and_archives_failed_attempts() -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    handler.run(request)
+    prior = ports.receipts[request.correlation_id]
+    history = cast(dict[str, Any], prior["resume"])["history"]
+    ports.turns = [_reply(3, _a("finish", summary="fixed"))]
+    ports.check_passes = [True]
+    result = handler.run(request, resume=True)
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.turns == 3
+    assert result.local_tokens_in == 11
+    assert result.local_tokens_out == 3
+    assert ports.delegate_turns[-1] == 3
+    assert all(block in ports.prompts[-1] for block in history)
+    receipt = ports.receipts[request.correlation_id]
+    assert receipt["resumes"] == 1
+    assert [t["turn"] for t in cast(list[dict[str, Any]], receipt["turns"])] == [
+        1,
+        2,
+        3,
+    ]
+    assert [
+        t["turn"] for t in cast(list[dict[str, Any]], receipt["superseded_turns"])
+    ] == [3, 4]
+    assert ports.archived == [prior]
+    assert cast(dict[str, Any], receipt["resume"])["history"] == []
+    assert not result.resumable
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    assert [c["call_id"] for c in calls] == ["t1a1", "t2a1", "t3a1"]
+    assert json.loads(calls[1]["arguments_json"]) == {"path": "src/m.py"}
+
+
+@pytest.mark.parametrize(
+    ("case", "reason"),
+    [
+        ("missing", "no readable receipt"),
+        ("accepted", "status accepted.*1 turns used of 6"),
+        ("old", "predates resume support"),
+        ("diff", "worktree diff changed"),
+        ("request", "request differs"),
+        ("budget", "status budget_exhausted.*2 turns used of 2"),
+        ("no_progress", "status no_progress.*2 turns used of 6"),
+    ],
+)
+def test_resume_refusals_do_not_claim_or_write(case: str, reason: str) -> None:
+    ports = _interrupted_ports()
+    request = _request()
+    if case == "accepted":
+        ports.turns = [_reply(1, _a("finish"))]
+        ports.check_passes = [True]
+    elif case == "budget":
+        request = _request(max_turns=2)
+    elif case == "no_progress":
+        ports.turns = [_reply(1, _a("finish")), _reply(2, _a("finish"))]
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    if case != "missing":
+        handler.run(request)
+    if case == "old":
+        del ports.receipts[request.correlation_id]["resume"]
+    elif case == "diff":
+        ports.write_file(request, "src/new.py", "changed\n")
+    elif case == "request":
+        request = request.model_copy(update={"task": "different task"})
+    before = dict(ports.receipts)
+    prompts = list(ports.prompts)
+    with pytest.raises(ResumeRefusedError, match=reason):
+        handler.run(request, resume=True)
+    assert not ports.claimed
+    assert ports.receipts == before
+    assert ports.archived == []
+    assert ports.prompts == prompts
+
+
+def test_budget_exhausted_resume_reason_names_turn_count() -> None:
+    ports = FakePorts([])
+    request = _request(max_turns=2)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert not result.resumable
+    assert block["resumable"] is False
+    assert "2 turns used of 2" in block["reason"]
+    assert block["last_good_turn"] == 2
+    assert block["history"] == []
+    assert block["command"] == ""
+
+
+def test_resume_turn_cap_spans_segments() -> None:
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts([_reply(1, _a("view", path="src/m.py")), dead, dead])
+    request = _request(max_turns=3)
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    assert handler.run(request).status == EnumCodeEditStatus.DELEGATE_FAILED
+    ports.turns = [_reply(2, _a("ls")), _reply(3, _a("ls"))]
+    result = handler.run(request, resume=True)
+    assert result.status == EnumCodeEditStatus.BUDGET_EXHAUSTED
+    assert ports.delegate_turns == [1, 2, 3, 2, 3]
+    assert result.turns == 3
+
+
+def test_unusable_received_reply_is_a_good_resume_turn() -> None:
+    bad = ModelTurnReply(
+        run_id="bad", ok=False, raw_text="not json", invalid_reason="not JSON"
+    )
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts([bad, dead, dead])
+    request = _request()
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert block["last_good_turn"] == 1
+    assert len(block["history"]) == 1
+    assert "your reply was unusable" in block["history"][0]
+
+
+def test_resume_history_keeps_newest_whole_blocks_within_budget() -> None:
+    actions = tuple(_a("view", path="src/m.py") for _ in range(4))
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts(
+        [_reply(n, *actions) for n in range(1, 5)] + [dead, dead],
+        files={"src/m.py": "x" * 10_000},
+    )
+    request = _request(max_turns=10)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    block = cast(dict[str, Any], ports.receipts[request.correlation_id]["resume"])
+    assert block["last_good_turn"] == 4
+    assert sum(map(len, block["history"])) <= 120_000
+    assert len(block["history"]) == 2
+    assert block["history"][0].startswith("TURN 3\n")
+    assert block["history"][1].startswith("TURN 4\n")
+
+
+def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
+    dead = ModelTurnReply(run_id="dead", ok=False)
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("write", file_path="README.md", content="refused"),
+                _a("finish", summary="attempted fix"),
+            ),
+            dead,
+            dead,
+        ]
+    )
+    request = _request()
+    handler = HandlerDelegatedCodeEditOrchestrator(ports)
+    first = handler.run(request)
+    prior = ports.receipts[request.correlation_id]
+    prior_block = cast(dict[str, Any], prior["resume"])
+    assert first.refusals == 1
+    assert prior_block["last_failure_key"]
+    # Older turn records may omit metrics; seeding must default them to zero.
+    record = cast(list[dict[str, Any]], prior["turns"])[0]
+    del record["tokens_in"]
+    del record["tokens_out"]
+    ports.turns = [dead, dead]
+    second = handler.run(request, resume=True)
+    second_receipt = ports.receipts[request.correlation_id]
+    second_block = cast(dict[str, Any], second_receipt["resume"])
+    assert second.status == EnumCodeEditStatus.DELEGATE_FAILED
+    assert second.refusals == first.refusals
+    assert second.summary == first.summary == "attempted fix"
+    assert second.checks == first.checks
+    assert second.local_tokens_in == second.local_tokens_out == 0
+    assert second_block["history"] == prior_block["history"]
+    assert second_block["last_failure_key"] == prior_block["last_failure_key"]
+    assert second_block["diff_sha256"] == ""
+    assert second_block["last_good_turn"] == 1
+    assert second_receipt["resumes"] == 1
+    ports.turns = [_reply(2, _a("finish"))]
+    third = handler.run(request, resume=True)
+    receipt = ports.receipts[request.correlation_id]
+    assert third.status == EnumCodeEditStatus.NO_PROGRESS
+    assert third.turns == 2
+    assert receipt["resumes"] == 2
+    assert len(cast(list[object], receipt["superseded_turns"])) == 4
+    assert ports.archived == [prior, second_receipt]
+
+
+def test_replace_in_files_edits_thirty_files_in_one_action_and_turn() -> None:
+    files = {f"src/m{n}.py": "old\n" for n in range(30)}
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.turns == 1
+    assert ports.writes == list(files)
+    assert ports.files == dict.fromkeys(files, "new\n")
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    assert len(calls) == 1
+    assert calls[0]["status"] == "ok"
+    assert calls[0]["output"].startswith(
+        "replace_in_files: 30 edited, 0 failed of 30\n"
+    )
+    assert json.loads(calls[0]["arguments_json"])["file_paths"] == list(files)
+
+
+def test_replace_in_files_glob_is_a_scope_over_the_writable_manifest() -> None:
+    action = _a("replace_in_files", glob="**/*.py", old_string="old", new_string="new")
+    files = {
+        "src/z.py": "old",
+        "src/sub/a.py": "old",
+        "src/a.py": "old",
+        "src/none.py": "other",
+        "README.md": "old",
+    }
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/a.py", "src/z.py"]
+    assert ports.files["src/sub/a.py"] == ports.files["README.md"] == "old"
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "ok"
+    assert "2 edited, 0 failed of 3" in call["output"]
+    assert (
+        "1 without old_string, 1 matched outside the writable globs" in call["output"]
+    )
+    assert json.loads(call["arguments_json"])["glob"] == "**/*.py"
+
+
+def test_replace_in_files_glob_that_edits_nothing_is_an_error() -> None:
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts([_reply(1, action)], files={"src/a.py": "x", "src/b.py": "y"})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == []
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "no matched file contains old_string" in call["output"]
+
+
+def test_replace_in_files_partial_failure_is_one_error_call_and_feedback() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/missing.py", "src/z.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, _a("finish"))],
+        files={"src/a.py": "old", "src/missing.py": "different", "src/z.py": "old"},
+        check_passes=[True],
+    )
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert ports.writes == ["src/a.py", "src/z.py"]
+    assert ports.files["src/missing.py"] == "different"
+    assert result.refusals == 0
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    bulk_calls = [call for call in calls if call["tool_name"] == "replace_in_files"]
+    assert len(bulk_calls) == 1
+    assert bulk_calls[0]["status"] == "error"
+    output = bulk_calls[0]["output"]
+    assert output == (
+        "replace_in_files: 2 edited, 1 failed of 3\n"
+        "FAILED src/missing.py: no match\n"
+        "edited src/a.py (1x)\nedited src/z.py (1x)"
+    )
+    assert output in ports.prompts[1]
+    turns = cast(list[dict[str, Any]], ports.receipts[request.correlation_id]["turns"])
+    assert turns[0]["actions"][0]["ok"] is False
+
+
+def test_replace_in_files_write_error_leaves_one_file_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={"src/a.py": "old", "src/b.py": "old", "src/c.py": "old"},
+    )
+    write_file = ports.write_file
+
+    def write(request: ModelDelegatedCodeEditRequest, path: str, content: str) -> None:
+        if path == "src/b.py":
+            raise WorkspacePathError("write denied")
+        write_file(request, path, content)
+
+    monkeypatch.setattr(ports, "write_file", write)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files == {"src/a.py": "new", "src/b.py": "old", "src/c.py": "new"}
+    assert ports.writes == ["src/a.py", "src/c.py"]
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "FAILED src/b.py: write denied" in call["output"]
+
+
+@pytest.mark.parametrize(
+    ("use_paths", "glob"), [(True, ""), (False, "src/*.py"), (False, "missing/*.py")]
+)
+def test_replace_in_files_refuses_too_many_or_zero_targets(
+    use_paths: bool, glob: str
+) -> None:
+    files = {f"src/m{n}.py": "old" for n in range(MAX_BULK_FILES + 1)}
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files) if use_paths else (),
+        glob=glob,
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files=files,
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert result.refusals == 1
+    assert ports.files == files
+    assert ports.writes == []
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "refused:" in call["output"]
+
+
+def test_replace_in_files_does_not_strip_view_prefixes() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "replace_in_files",
+                    glob="src/*.py",
+                    old_string="  1| old",
+                    new_string="  1| new",
+                ),
+            )
+        ],
+        files={"src/a.py": "old", "src/b.py": "  1| old"},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/b.py"]
+    assert ports.files == {"src/a.py": "old", "src/b.py": "  1| new"}
+
+
+def test_replace_in_files_normalises_deduplicates_and_replaces_every_occurrence() -> (
+    None
+):
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/./m.py", "src/m.py", "src/z.py"),
+        old_string="old",
+    )
+    ports = FakePorts(
+        [_reply(1, action)], files={"src/m.py": "old old old", "src/z.py": "old"}
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/m.py", "src/z.py"]
+    assert ports.files == {"src/m.py": "  ", "src/z.py": ""}
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["output"] == (
+        "replace_in_files: 2 edited, 0 failed of 2\n"
+        "edited src/m.py (3x)\nedited src/z.py (1x)"
+    )
+
+
+def test_replace_in_files_feedback_keeps_failures_before_capped_successes() -> None:
+    files = {f"src/{'a' * 210}{n}.py": "old" for n in range(40)}
+    files["src/missing.py"] = "different"
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, _a("finish"))], files=files, check_passes=[True]
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
+    output = cast(list[dict[str, Any]], ports.transcript["calls"])[0]["output"]
+    assert output.splitlines()[1] == "FAILED src/missing.py: no match"
+    assert output.index("FAILED") < output.index("\nedited")
+    assert "more characters cut" in output
+    assert len(output) <= MAX_OBSERVATION_BYTES + 100
+    assert output in ports.prompts[1]
+
+
+def test_replace_in_files_confines_paths_and_refuses_oversized_content() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("../outside.py", "src/absent.py", "src/big.py", "src/m.py"),
+        old_string="old",
+        new_string="x" * MAX_WRITE_BYTES,
+    )
+    files = {"src/big.py": "old old", "src/m.py": "different"}
+    ports = FakePorts([_reply(1, action)], files=files)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == []
+    assert ports.files == files
+    assert result.refusals == 1
+    output = cast(list[dict[str, Any]], ports.transcript["calls"])[0]["output"]
+    assert "FAILED ../outside.py: leaves the worktree" in output
+    assert "FAILED src/absent.py: src/absent.py is not a file" in output
+    assert f"FAILED src/big.py: content over {MAX_WRITE_BYTES} bytes" in output
+
+
+@pytest.mark.parametrize(
+    ("arguments", "reason_fragment"),
+    [
+        ({"file_paths": ["src/m.py"], "glob": "src/*.py"}, "exactly one"),
+        ({}, "exactly one"),
+        ({"file_paths": "src/m.py"}, "non-empty list"),
+        ({"file_paths": None}, "non-empty list"),
+        ({"file_paths": []}, "non-empty list"),
+        ({"file_paths": ["src/m.py", 1]}, "non-empty strings"),
+        ({"file_paths": [""]}, "non-empty strings"),
+        ({"file_paths": ["src/m.py"] * (MAX_BULK_FILES + 1)}, "at most"),
+        ({"glob": "/src/*.py"}, "worktree-relative"),
+        ({"glob": "src/../*.py"}, "worktree-relative"),
+        ({"glob": ""}, "needs a string glob"),
+        ({"glob": None}, "needs a string glob"),
+        ({"glob": "src/*.py", "old_string": ""}, "needs a string old_string"),
+    ],
+)
+def test_replace_in_files_parser_rejects_invalid_arguments(
+    arguments: dict[str, object],
+    reason_fragment: str,
+) -> None:
+    actions, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {"tool": "replace_in_files", "old_string": "old", **arguments}
+                ]
+            }
+        )
+    )
+    assert actions == ()
+    assert reason_fragment in reason
+
+
+def test_replace_in_files_parser_preserves_the_array_and_empty_replacement() -> None:
+    paths = ["src/m.py", "src/z.py"]
+    actions, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "tool": "replace_in_files",
+                        "file_paths": paths,
+                        "old_string": "old",
+                        "new_string": "",
+                    }
+                ]
+            }
+        )
+    )
+    assert reason == ""
+    assert actions[0].file_paths == tuple(paths)
+    assert actions[0].new_string == ""
+    assert actions[0].tool == EnumCodeEditTool.REPLACE_IN_FILES
+
+
+@pytest.mark.parametrize("argument", ["file_paths", "glob"])
+@pytest.mark.parametrize(
+    "tool",
+    [
+        tool.value
+        for tool in EnumCodeEditTool
+        if tool != EnumCodeEditTool.REPLACE_IN_FILES
+    ],
+)
+def test_existing_tools_reject_bulk_arguments(tool: str, argument: str) -> None:
+    _, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "tool": tool,
+                        argument: ["src/m.py"]
+                        if argument == "file_paths"
+                        else "src/*.py",
+                    }
+                ]
+            }
+        )
+    )
+    assert f"takes no {argument}" in reason
+
+
+def test_replace_in_files_schemas_declare_arrays_and_keep_the_turn_limit() -> None:
+    schema = next(
+        schema
+        for schema in TOOL_SCHEMAS
+        if cast(dict[str, Any], schema["function"])["name"] == "replace_in_files"
+    )
+    function = cast(dict[str, Any], schema["function"])
+    assert function["parameters"]["properties"]["file_paths"] == {
+        "type": "array",
+        "items": {"type": "string"},
+    }
+    assert function["parameters"]["required"] == ["old_string"]
+    actions = cast(dict[str, Any], RESPONSE_CONTRACT["properties"])["actions"]
+    assert actions["maxItems"] == 12
+    properties = actions["items"]["properties"]
+    assert "replace_in_files" in properties["tool"]["enum"]
+    assert properties["glob"] == {"type": "string"}
+    assert properties["file_paths"] == {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 1,
+        "maxItems": MAX_BULK_FILES,
+    }

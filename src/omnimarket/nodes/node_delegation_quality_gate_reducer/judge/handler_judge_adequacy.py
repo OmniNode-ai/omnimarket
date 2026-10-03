@@ -269,7 +269,6 @@ class HandlerJudgeAdequacy:
         """Score candidate adequacy and return a durable judge verdict event."""
         rubric = _load_rubric(self._rubric_id)
         temperature = float(rubric["temperature"])
-        judge_model_version = str(rubric["judge_model_version"])
         judge_node_version = str(rubric["judge_node_version"])
         rubric_hash = str(rubric["rubric_hash"])
         user_prompt = _build_user_prompt(
@@ -281,6 +280,7 @@ class HandlerJudgeAdequacy:
         # Resolve the CONCRETE model id provenance from the routing authority
         # (e.g. ``glm-5.2``) — never a tier name. Recorded on the verdict event.
         self._judge_model_key = self._resolve_judge_model_key()
+        judge_model_version = self._judge_model_key
 
         # OMN-16932: do not spend a metered call on a provider that has already
         # told us its quota is gone. The judge rides ``cloud-gemini-judge``, which

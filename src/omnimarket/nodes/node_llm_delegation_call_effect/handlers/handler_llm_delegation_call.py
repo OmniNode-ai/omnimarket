@@ -811,6 +811,7 @@ class HandlerLlmDelegationCall:
                 )
             served_model_id = request.model_id
 
+        secret_source: EnumSecretSource | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
             # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
@@ -846,6 +847,7 @@ class HandlerLlmDelegationCall:
                 EnumDelegationFailureClass.TIMEOUT,
                 "request timed out",
                 quota_observation=observation,
+                secret_source=secret_source,
             )
         except httpx.HTTPStatusError as exc:
             # OMN-18696: classified by the SAME function the 200-body path uses
@@ -944,6 +946,7 @@ class HandlerLlmDelegationCall:
                     request,
                     EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
                     detail_text=detail,
+                    secret_source=secret_source,
                 )
             if failure_class in (
                 EnumDelegationFailureClass.PROVIDER_BILLING,
@@ -968,6 +971,7 @@ class HandlerLlmDelegationCall:
                     if verdict is not None
                     else None,
                     quota_observation=observation,
+                    secret_source=secret_source,
                 )
             return self._failure_result(
                 request,
@@ -976,6 +980,7 @@ class HandlerLlmDelegationCall:
                 http_status=exc.response.status_code,
                 provider_code=verdict.provider_code if verdict is not None else None,
                 quota_observation=observation,
+                secret_source=secret_source,
             )
         except SecretResolutionError as exc:
             # OMN-18696 AC1: the backend DECLARES a credential and nothing
@@ -1001,6 +1006,7 @@ class HandlerLlmDelegationCall:
                 EnumDelegationFailureClass.UNKNOWN,
                 str(exc),
                 quota_observation=observation,
+                secret_source=secret_source,
             )
 
         # OMN-18265: a top-level ``error`` object inside a 2xx body is the
@@ -1034,6 +1040,7 @@ class HandlerLlmDelegationCall:
                 provider_error.failure_class,
                 provider_error.as_error_message(),
                 quota_observation=observation,
+                secret_source=secret_source,
             )
 
         choices = response_json.get("choices") or []
@@ -1042,6 +1049,7 @@ class HandlerLlmDelegationCall:
                 request,
                 EnumDelegationFailureClass.INVALID_JSON,
                 "API returned empty choices array",
+                secret_source=secret_source,
             )
 
         # OMN-18278: read the provider's own stop reason off the SAME choice the
@@ -1293,6 +1301,7 @@ class HandlerLlmDelegationCall:
         reason: EnumLocalCredentialRefusalReason,
         *,
         detail_text: str,
+        secret_source: EnumSecretSource | None = None,
     ) -> ModelLlmDelegationCallResult:
         """Build the typed, non-retryable credential refusal (OMN-18696).
 
@@ -1323,6 +1332,8 @@ class HandlerLlmDelegationCall:
             request_id=request.request_id,
             success=False,
             failure_class=refusal.failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
             error_message=refusal.message,
             credential_refusal=refusal,
             endpoint_healthy=True,
@@ -1338,11 +1349,14 @@ class HandlerLlmDelegationCall:
         http_status: int | None = None,
         provider_code: str | None = None,
         quota_observation: ModelProviderQuotaObserved | None = None,
+        secret_source: EnumSecretSource | None = None,
     ) -> ModelLlmDelegationCallResult:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=False,
             failure_class=failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
             error_message=error_message,
             endpoint_healthy=endpoint_healthy,
             http_status=http_status,

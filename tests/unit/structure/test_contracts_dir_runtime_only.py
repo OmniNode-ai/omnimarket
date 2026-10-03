@@ -8,7 +8,10 @@ The 84 work-tracking ``OMN-XXXXX.yaml`` files moved from
 The runtime layer never read them; they are pure dod_evidence artifacts.
 These tests pin that invariant:
 
-- ``contracts/OMN-*.yaml`` glob in repo root must be empty.
+- No file moved to ``docs/work-tracking/contracts/`` may reappear under
+  ``contracts/``. ``contracts/OMN-<n>.yaml`` is the repo-owned DoD evidence
+  contract that the Repo Evidence Gate (caller-evidence mode) reads at the
+  pull request head, so the directory is no longer required to be empty.
 - Moved files must not contain user or volume absolute paths. Placeholder
   forms such as ``${OMNI_HOME}/...`` are allowed.
 """
@@ -25,13 +28,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 @pytest.mark.unit
 def test_no_omn_yamls_at_legacy_contracts_path() -> None:
-    """`contracts/OMN-*.yaml` at the repo root must return zero matches."""
+    """A work-tracking contract that moved must not return to `contracts/`."""
     legacy = REPO_ROOT / "contracts"
     if not legacy.exists():
         return  # directory removed, invariant trivially satisfied
-    matches = list(legacy.glob("OMN-*.yaml"))
-    assert matches == [], (
-        f"legacy contracts/ still has OMN-*.yaml files: {[m.name for m in matches]}"
+    moved = {
+        p.name
+        for p in (REPO_ROOT / "docs" / "work-tracking" / "contracts").glob("OMN-*.yaml")
+    }
+    returned = sorted(m.name for m in legacy.glob("OMN-*.yaml") if m.name in moved)
+    assert returned == [], (
+        f"work-tracking contracts moved out of contracts/ but are back: {returned}"
     )
 
 

@@ -43,6 +43,7 @@ from omnimarket.inference.request_instruction import (
 from omnimarket.inference.task_class_authority import (
     EnumTaskTypeResolution,
     ModelTaskClassAuthority,
+    TaskClassSelectionError,
     load_task_class_authority,
 )
 
@@ -223,7 +224,9 @@ class TestNegatedPhrasesDoNotClaim:
         self, production: ModelTaskClassAuthority
     ) -> None:
         prompt = "Not a code review of style. Do a code review of the logic."
-        assert _resolve(prompt, production) == "code_review"
+        # OMN-17427: the positive review request is selected, then refused.
+        with pytest.raises(TaskClassSelectionError, match=r"withheld.*OMN-17427"):
+            _resolve(prompt, production)
 
     def test_a_negated_veto_does_not_veto(
         self, production: ModelTaskClassAuthority
@@ -262,7 +265,10 @@ class TestNegatedPhrasesDoNotClaim:
         inside a quoted linter line and is covered by AC2's rule and AC5.
         """
         row = next(row for row in _corpus() if row["trial"] == "t3a")
-        assert _resolve(_prompt(row), production) != "summarization"
+        # OMN-17427: the review predicate wins over the negated summary, then refuses.
+        with pytest.raises(TaskClassSelectionError) as refused:
+            _resolve(_prompt(row), production)
+        assert str(refused.value) == production.unroutable_refusal("code_review")
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +353,9 @@ class TestTheOpeningSentence:
         self, production: ModelTaskClassAuthority
     ) -> None:
         prompt = "Write the three answers below as bullets. Review the diff."
-        assert _resolve(prompt, production) == "code_review"
+        # OMN-17427: the positive review request is selected, then refused.
+        with pytest.raises(TaskClassSelectionError, match=r"withheld.*OMN-17427"):
+            _resolve(prompt, production)
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +379,13 @@ class TestTheRecordedPromptsReplay:
         production: ModelTaskClassAuthority,
         row: dict[str, object],
     ) -> None:
+        # OMN-17427: a recorded review still selects its class, then is refused.
+        refusal = production.unroutable_refusal(str(row["needed_class"]))
+        if refusal is not None:
+            with pytest.raises(TaskClassSelectionError) as refused:
+                _resolve(_prompt(row), production)
+            assert str(refused.value) == refusal
+            return
         resolved = _resolve(_prompt(row), production)
         assert resolved == row["needed_class"], (
             f"{row['trial']} (run {row['run']}) resolved {resolved!r}; the work "

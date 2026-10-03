@@ -460,6 +460,16 @@ class HandlerDodVerify:
                 overall = EnumDodVerifyStatus.SKIPPED
                 no_acceptance_demotion = True
 
+        # OMN-17427: a binding's author cannot accept it, even with passing checks.
+        self_acceptance_demotion = False
+        if (
+            acceptance_summary is not None
+            and acceptance_summary.self_accepted_bindings
+            and overall == EnumDodVerifyStatus.VERIFIED
+        ):
+            overall = EnumDodVerifyStatus.SKIPPED
+            self_acceptance_demotion = True
+
         error_message: str | None = None
         if occ_ref_failure_cause is not None:
             # OMN-17796: its own remedy text, because OMN-17022's below is the
@@ -506,6 +516,17 @@ class HandlerDodVerify:
                 f"did not verify ({', '.join(unproven_falsifier_ids)}). The "
                 "author declared these checks before the work existed; a "
                 "criterion whose falsifier was not run is not proven."
+            )
+        elif self_acceptance_demotion:
+            bindings = (
+                acceptance_summary.self_accepted_bindings if acceptance_summary else ()
+            )
+            error_message = (
+                f"AC_BINDING_SELF_ACCEPTED: {len(bindings)} acceptance-criterion "
+                f"binding(s) for {command.ticket_id} were accepted by the lane "
+                f"that authored them ({', '.join(bindings)}). A binding is "
+                "accepted by a second lane that re-runs the bound check, never "
+                "by its author; until then the criterion is unproven."
             )
         elif no_acceptance_demotion:
             declared = (
@@ -625,6 +646,9 @@ class HandlerDodVerify:
             ),
             acceptance_unrunnable_labels=(
                 acceptance_summary.unrunnable_labels if acceptance_summary else ()
+            ),
+            acceptance_self_accepted_bindings=(
+                acceptance_summary.self_accepted_bindings if acceptance_summary else ()
             ),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,

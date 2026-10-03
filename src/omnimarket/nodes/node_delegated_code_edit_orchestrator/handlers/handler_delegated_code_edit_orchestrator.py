@@ -11,9 +11,9 @@ turns is this orchestrator:
     CLAIM -> [TURN -> APPLY(actions) -> (FINISH -> CHECKS)]* -> DIFF -> SCORE -> RECEIPT
 
 * At most ``max_turns`` turns (the tool_use rubric's budget caps it at 40).
-* Writes are confined: a write or edit whose path is absolute, climbs out with
-  ``..``, touches ``.git``, or matches no writable glob is refused and the
-  refusal is fed back. Nothing is written for it.
+* Writes are confined: a write, edit or replace_in_files whose path is absolute,
+  climbs out with ``..``, touches ``.git``, or matches no writable glob is
+  refused and the refusal is fed back. Nothing is written for it.
 * ``run_check`` runs only a check the request declares, by name; an undeclared
   name is refused. There is no shell tool.
 * ``finish`` runs every declared check. All passing ends the loop
@@ -24,12 +24,13 @@ turns is this orchestrator:
   ``delegate_failed``. An unusable reply is fed back like any other failure.
 * At the turn cap the checks run once more; passing is ``accepted``, failing
   is ``budget_exhausted``.
-* Exactly one terminal per correlation: an existing loop receipt refuses the
-  run before any turn.
+* An existing loop receipt refuses a fresh run before any turn.
 
 The receipt holds every turn's run id, actions and observations, the diff, the
 check results and the tool_use rubric verdict. The result carries none of the
-file content.
+file content. Its ``resume`` block allows ``--resume`` after delegate_failed,
+archiving the prior receipt as ``loop_receipt.<n>.json``; the turn cap spans
+all resumed segments.
 """
 
 from __future__ import annotations
@@ -39,9 +40,10 @@ import hashlib
 import json
 import posixpath
 import re
+import shlex
 import time
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
     RESPONSE_CONTRACT,
@@ -49,6 +51,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
     build_turn_prompt,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    MAX_BULK_FILES,
     MAX_OBSERVATION_BYTES,
     MAX_VIEW_BYTES,
     MAX_VIEW_WINDOW_BYTES,
@@ -64,9 +67,11 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     ModelDelegatedCodeEditRequest,
     ModelObservation,
     ModelTurnReply,
+    bound_error,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.protocols.protocol_delegated_code_edit_ports import (
     ProtocolDelegatedCodeEditPorts,
+    ResumeRefusedError,
     WorkspacePathError,
 )
 
@@ -197,6 +202,7 @@ class _Call:
 
 @dataclass
 class _State:
+    paths: tuple[str, ...] = ()
     replies: list[ModelTurnReply] = field(default_factory=list)
     calls: list[_Call] = field(default_factory=list)
     history: list[str] = field(default_factory=list)
@@ -205,6 +211,15 @@ class _State:
     last_checks: tuple[ModelCheckResult, ...] = ()
     last_failure_key: str = ""
     summary: str = ""
+    good_turn: int = 0
+    good_history_len: int = 0
+    superseded: list[dict[str, object]] = field(default_factory=list)
+    resumes: int = 0
+
+    def record_good(self, turn: int) -> None:
+        """Snapshot the history boundary after a received reply was processed."""
+        self.good_turn = turn
+        self.good_history_len = len(self.history)
 
 
 class _TerminalError(Exception):
@@ -246,24 +261,35 @@ class HandlerDelegatedCodeEditOrchestrator:
 
     # -- the sequence ---------------------------------------------------------
 
-    def run(self, request: ModelDelegatedCodeEditRequest) -> ModelCodeEditResult:
+    def run(
+        self, request: ModelDelegatedCodeEditRequest, *, resume: bool = False
+    ) -> ModelCodeEditResult:
         started = time.monotonic()
         loop_run_id = request.correlation_id
-        self._ports.claim_loop_receipt(loop_run_id)
-        state = _State()
+        prior = self._resume_receipt(request) if resume else None
+        self._ports.claim_loop_receipt(loop_run_id, resume=resume)
+        state = self._seed(prior) if prior is not None else _State()
         status = EnumCodeEditStatus.INFRA_ERROR
         detail = ""
         manifest: tuple[tuple[str, int], ...] = ()
         try:
             manifest = self._ports.workspace_files(request)
             context = self._context(request)
-            status = self._turns(request, manifest, context, state)
+            status = self._turns(request, manifest, context, state, state.good_turn + 1)
         except _TerminalError as terminal:
             status, detail = terminal.status, terminal.detail
         except WorkspacePathError as exc:
             status, detail = EnumCodeEditStatus.INFRA_ERROR, f"workspace: {exc}"
+        except Exception as exc:
+            status = EnumCodeEditStatus.INFRA_ERROR
+            detail = f"unexpected {type(exc).__name__}: {exc}"
 
-        diff = self._ports.diff(request)
+        try:
+            diff = self._ports.diff(request)
+        except Exception as exc:
+            diff = ""
+            if not detail:
+                detail = f"diff failed: {type(exc).__name__}: {exc}"
         changed = tuple(
             sorted(
                 {
@@ -274,11 +300,15 @@ class HandlerDelegatedCodeEditOrchestrator:
             )
         )
         transcript = self._transcript(request, manifest, state, started)
-        verdict = self._ports.score(request, transcript)
+        try:
+            verdict = self._ports.score(request, transcript)
+        except Exception as exc:
+            verdict = {"error": f"{type(exc).__name__}: {exc}"}
         outcome = verdict.get("verdict", {})
         rubric_outcome = (
             str(outcome.get("outcome", "")) if isinstance(outcome, dict) else ""
         )
+        resume_block = self._resume_block(request, status, diff, state)
         result = ModelCodeEditResult(
             loop_run_id=loop_run_id,
             status=status,
@@ -286,6 +316,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             delegate_run_ids=tuple(r.run_id for r in state.replies if r.run_id),
             changed_paths=changed,
             diff_sha256=hashlib.sha256(diff.encode()).hexdigest() if diff else "",
+            resumable=bool(resume_block["resumable"]),
             checks=state.last_checks,
             refusals=state.refusals,
             rubric_outcome=rubric_outcome,
@@ -293,7 +324,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             local_tokens_out=sum(r.tokens_out for r in state.replies),
             wall_ms=int((time.monotonic() - started) * 1000),
             summary=state.summary[:1000],
-            detail=detail[:300],
+            detail=bound_error(detail, 300),
         )
         self._ports.write_loop_receipt(
             loop_run_id,
@@ -304,13 +335,159 @@ class HandlerDelegatedCodeEditOrchestrator:
                 "request": request.model_dump(mode="json"),
                 "delegate_run_ids": list(result.delegate_run_ids),
                 "turns": state.turns,
+                "resume": resume_block,
+                "superseded_turns": state.superseded,
+                "resumes": state.resumes,
                 "diff": diff,
                 "checks": [c.model_dump(mode="json") for c in state.last_checks],
                 "rubric_verdict": verdict,
                 "result": result.model_dump(mode="json"),
+                "error": {
+                    "status": status.value,
+                    "detail": bound_error(detail),
+                    "turns": len(state.replies),
+                }
+                if status != EnumCodeEditStatus.ACCEPTED
+                else None,
             },
         )
         return result
+
+    def _resume_receipt(
+        self, request: ModelDelegatedCodeEditRequest
+    ) -> dict[str, object]:
+        """Refuse unsafe resumes before acquiring or archiving a claim."""
+        receipt = self._ports.load_loop_receipt(request.correlation_id)
+        if receipt is None:
+            raise ResumeRefusedError("there is no readable receipt to resume")
+        block = receipt.get("resume")
+        if not isinstance(block, dict):
+            raise ResumeRefusedError(
+                "the receipt carries no resume block; it predates resume support"
+            )
+        if not block.get("resumable"):
+            raise ResumeRefusedError(
+                str(block.get("reason", "the loop is not resumable"))
+            )
+        if receipt.get("request") != request.model_dump(mode="json"):
+            raise ResumeRefusedError("the request differs from the prior loop request")
+        diff = self._ports.diff(request)
+        digest = hashlib.sha256(diff.encode()).hexdigest() if diff else ""
+        if digest != block["diff_sha256"]:
+            raise ResumeRefusedError("the worktree diff changed since the prior loop")
+        return receipt
+
+    @staticmethod
+    def _seed(receipt: dict[str, object]) -> _State:
+        """Restore the last good turn, retaining interrupted attempts separately."""
+        block = cast(dict[str, object], receipt["resume"])
+        good_turn = cast(int, block["last_good_turn"])
+        turns = cast(list[dict[str, object]], receipt["turns"])
+        result = cast(dict[str, object], receipt["result"])
+        state = _State(
+            turns=[t for t in turns if cast(int, t["turn"]) <= good_turn],
+            history=list(cast(list[str], block["history"])),
+            refusals=cast(int, result["refusals"]),
+            summary=cast(str, result["summary"]),
+            last_checks=tuple(
+                ModelCheckResult.model_validate(c)
+                for c in cast(list[object], receipt["checks"])
+            ),
+            last_failure_key=cast(str, block["last_failure_key"]),
+            superseded=[
+                *cast(list[dict[str, object]], receipt.get("superseded_turns", [])),
+                *(t for t in turns if cast(int, t["turn"]) > good_turn),
+            ],
+            resumes=cast(int, receipt.get("resumes", 0)) + 1,
+            good_turn=good_turn,
+        )
+        state.good_history_len = len(state.history)
+        for turn in state.turns:
+            state.replies.append(
+                ModelTurnReply(
+                    run_id=cast(str, turn["run_id"]),
+                    ok=cast(bool, turn["ok"]),
+                    model=cast(str, turn["model"]),
+                    invalid_reason=cast(str, turn["invalid_reason"]),
+                    tokens_in=cast(int, turn.get("tokens_in", 0)),
+                    tokens_out=cast(int, turn.get("tokens_out", 0)),
+                )
+            )
+            # Lossy: receipts retain targets/names and bounded observations,
+            # but omit original content, patterns and other action arguments.
+            for number, action in enumerate(
+                cast(list[dict[str, object]], turn["actions"]), start=1
+            ):
+                arguments = (
+                    {"path": action["target"]}
+                    if action.get("target")
+                    else ({"name": action["name"]} if action.get("name") else {})
+                )
+                state.calls.append(
+                    _Call(
+                        call_id=f"t{turn['turn']}a{number}",
+                        tool=cast(str, action["tool"]),
+                        arguments=arguments,
+                        ok=cast(bool, action["ok"]),
+                        output=cast(str, action["output"]),
+                    )
+                )
+        return state
+
+    def _resume_block(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        status: EnumCodeEditStatus,
+        diff: str,
+        state: _State,
+    ) -> dict[str, object]:
+        """Resume metadata for every verdict or interruption."""
+        resumable = (
+            status == EnumCodeEditStatus.DELEGATE_FAILED
+            and state.good_turn < request.max_turns
+        )
+        if resumable:
+            reason = (
+                f"resumable from turn {state.good_turn + 1} "
+                f"({request.max_turns - state.good_turn} turns left)"
+            )
+        elif status == EnumCodeEditStatus.DELEGATE_FAILED:
+            reason = (
+                "delegate_failed with no turn left to resume into "
+                f"(last good turn {state.good_turn} of {request.max_turns})"
+            )
+        else:
+            reason = (
+                f"status {status.value} is a verdict, not an interruption; "
+                f"{len(state.turns)} turns used of {request.max_turns}; "
+                "only a delegate_failed loop resumes"
+            )
+        history: list[str] = []
+        size = 0
+        if resumable:
+            for block in reversed(state.history[: state.good_history_len]):
+                if size + len(block) > 120_000:
+                    break
+                history.append(block)
+                size += len(block)
+            history.reverse()
+        return {
+            "resumable": resumable,
+            "reason": reason,
+            "last_good_turn": state.good_turn,
+            "turns_used": len(state.turns),
+            "max_turns": request.max_turns,
+            "diff_sha256": hashlib.sha256(diff.encode()).hexdigest() if diff else "",
+            "last_failure_key": state.last_failure_key,
+            "history": history,
+            "command": (
+                f"onex code-edit run --resume {request.correlation_id} "
+                f"--state-root {shlex.quote(self._ports.state_root)}, "
+                "with the same delegate flags"
+            )
+            if resumable
+            else "",
+        }
 
     def _context(
         self, request: ModelDelegatedCodeEditRequest
@@ -332,10 +509,12 @@ class HandlerDelegatedCodeEditOrchestrator:
         manifest: tuple[tuple[str, int], ...],
         context: tuple[tuple[str, str], ...],
         state: _State,
+        start_turn: int = 1,
     ) -> EnumCodeEditStatus:
+        state.paths = tuple(path for path, _ in manifest)
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
-        for turn in range(1, request.max_turns + 1):
+        for turn in range(start_turn, request.max_turns + 1):
             prompt = self._prompt(request, index, context, state, turn)
             reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
             state.replies.append(reply)
@@ -344,8 +523,10 @@ class HandlerDelegatedCodeEditOrchestrator:
                 "run_id": reply.run_id,
                 "ok": reply.ok,
                 "model": reply.model,
+                "tokens_in": reply.tokens_in,
+                "tokens_out": reply.tokens_out,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-                "invalid_reason": reply.invalid_reason,
+                "invalid_reason": bound_error(reply.invalid_reason),
                 "actions": [],
             }
             state.turns.append(record)
@@ -357,7 +538,9 @@ class HandlerDelegatedCodeEditOrchestrator:
                 if failed_delegates >= 2:
                     raise _TerminalError(
                         EnumCodeEditStatus.DELEGATE_FAILED,
-                        f"two delegate runs failed in a row: {reply.invalid_reason[:200]}",
+                        bound_error(
+                            "two delegate runs failed in a row: " + reply.invalid_reason
+                        ),
                     )
                 continue
             failed_delegates = 0
@@ -367,22 +550,26 @@ class HandlerDelegatedCodeEditOrchestrator:
                     f"TURN {turn}: your reply was unusable: {reason[:300]}. "
                     "Reply with one JSON object with an actions list.\n"
                 )
+                state.record_good(turn)
                 continue
-            finished = self._apply_turn(request, turn, reply, record, state)
-            if finished:
-                checks = self._run_checks(request, state)
-                self._record_finish(request, checks, state)
-                if all(c.status == "passed" for c in checks):
-                    return EnumCodeEditStatus.ACCEPTED
-                state.history.append(
-                    "FINISH REFUSED: these checks did not pass:\n"
-                    + "".join(
-                        f"- {c.name}: {c.status}\n{_cap(c.output_tail, 2_000)}\n"
-                        for c in checks
-                        if c.status != "passed"
+            try:
+                finished = self._apply_turn(request, turn, reply, record, state)
+                if finished:
+                    checks = self._run_checks(request, state)
+                    self._record_finish(request, checks, state)
+                    if all(c.status == "passed" for c in checks):
+                        return EnumCodeEditStatus.ACCEPTED
+                    state.history.append(
+                        "FINISH REFUSED: these checks did not pass:\n"
+                        + "".join(
+                            f"- {c.name}: {c.status}\n{_cap(c.output_tail, 2_000)}\n"
+                            for c in checks
+                            if c.status != "passed"
+                        )
                     )
-                )
-                self._progress_or_stop(request, checks, state)
+                    self._progress_or_stop(request, checks, state)
+            finally:
+                state.record_good(turn)
         checks = self._run_checks(request, state)
         if all(c.status == "passed" for c in checks):
             return EnumCodeEditStatus.ACCEPTED
@@ -454,6 +641,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 {
                     "tool": action.tool.value,
                     "target": action.target,
+                    "files": list(action.file_paths),
                     "name": action.name,
                     "ok": observation.ok,
                     "output": _cap(observation.output, 2_000),
@@ -479,6 +667,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         state: _State,
     ) -> ModelObservation:
         tool = action.tool
+        if tool == EnumCodeEditTool.REPLACE_IN_FILES:
+            return self._replace_in_files(request, action, state)
         if tool == EnumCodeEditTool.RUN_CHECK:
             check = request.check_named(action.name)
             if check is None:
@@ -560,6 +750,83 @@ class HandlerDelegatedCodeEditOrchestrator:
             return ModelObservation(ok=True, output=f"edited {path}")
         except WorkspacePathError as exc:
             return ModelObservation(ok=False, output=f"error: {exc}")
+
+    def _replace_in_files(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        action: ModelCodeEditAction,
+        state: _State,
+    ) -> ModelObservation:
+        """Replace every occurrence independently in each writable target file.
+
+        A glob is a scope, not a list: it expands to the manifest files that are
+        writable, a matching file outside the writable globs is counted and
+        skipped, and a file without old_string is not a failure. A named file
+        that is refused or lacks old_string is.
+        """
+        by_glob = not action.file_paths
+        outside = 0
+        if not by_glob:
+            targets = list(
+                dict.fromkeys(
+                    normalise_path(path) or path for path in action.file_paths
+                )
+            )
+        else:
+            pattern = glob_regex(action.glob)
+            matched = sorted(path for path in state.paths if pattern.match(path))
+            targets = [path for path in matched if writable(request, path)]
+            outside = len(matched) - len(targets)
+        if not targets or len(targets) > MAX_BULK_FILES:
+            state.refusals += 1
+            return ModelObservation(
+                ok=False,
+                output="refused: replace_in_files has no targets"
+                if not targets
+                else f"refused: replace_in_files targets over {MAX_BULK_FILES} files",
+            )
+        failures: list[str] = []
+        edited: list[str] = []
+        unmatched = 0
+        for raw in targets:
+            path = normalise_path(raw)
+            if path is None:
+                failures.append(f"FAILED {raw}: leaves the worktree")
+                continue
+            if not writable(request, path):
+                state.refusals += 1
+                failures.append(f"FAILED {path}: not writable")
+                continue
+            try:
+                current = self._ports.read_file(request, path)
+                occurrences = current.count(action.old_string)
+                if not occurrences:
+                    if by_glob:
+                        unmatched += 1
+                    else:
+                        failures.append(f"FAILED {path}: no match")
+                    continue
+                updated = current.replace(action.old_string, action.new_string)
+                if len(updated.encode()) > MAX_WRITE_BYTES:
+                    state.refusals += 1
+                    failures.append(
+                        f"FAILED {path}: content over {MAX_WRITE_BYTES} bytes"
+                    )
+                    continue
+                self._ports.write_file(request, path, updated)
+            except WorkspacePathError as exc:
+                failures.append(f"FAILED {path}: {exc}")
+                continue
+            edited.append(f"edited {path} ({occurrences}x)")
+        if by_glob and not edited and not failures:
+            failures.append("FAILED glob: no matched file contains old_string")
+        header = f"replace_in_files: {len(edited)} edited, {len(failures)} failed of {len(targets)}"
+        if by_glob:
+            header += f"; {unmatched} without old_string, {outside} matched outside the writable globs"
+        return ModelObservation(
+            ok=not failures,
+            output=_cap("\n".join([header, *failures, *edited])),
+        )
 
     def _format(
         self, request: ModelDelegatedCodeEditRequest, path: str, state: _State

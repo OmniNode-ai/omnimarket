@@ -7,8 +7,8 @@ One loop edits one worktree toward one task. Each model turn is one
 them through its ports, confined to the worktree and to the paths the request
 declares writable, and runs only the checks the request declares. The tool
 names match the ones the crush agent offers (``view``, ``ls``, ``grep``,
-``write``, ``edit``) so the tool_use rubric scores both engines on one
-vocabulary.
+``write``, ``edit``, ``replace_in_files``) so the tool_use rubric scores both
+engines on one vocabulary.
 """
 
 from __future__ import annotations
@@ -24,12 +24,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 MAX_TURNS_CEILING = 40
 #: Actions one turn may carry.
 MAX_ACTIONS_PER_TURN = 12
+#: Files one bulk replacement may target.
+MAX_BULK_FILES = 200
 #: Bytes of one file the loop shows the model.
 MAX_VIEW_BYTES = 60_000
 #: Bytes of one file the model may write.
 MAX_WRITE_BYTES = 200_000
 #: Bytes of tool output fed back per action.
 MAX_OBSERVATION_BYTES = 6_000
+#: Characters of one error retained in the loop receipt.
+MAX_ERROR_CHARS = 4096
 #: Lines one view shows; a longer file is paged with ``offset``.
 VIEW_WINDOW_LINES = 250
 #: Bytes one view window may carry.
@@ -38,12 +42,32 @@ MAX_VIEW_WINDOW_BYTES = 16_000
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 
 
+def bound_error(text: str, limit: int = MAX_ERROR_CHARS) -> str:
+    """Bound an error while preserving its head, tail and exact cut count."""
+    if len(text) <= limit:
+        return text
+    if limit < 64:
+        return text[:limit]
+    cut = len(text) - limit
+    while True:
+        marker = f"\n... [{cut} characters cut] ...\n"
+        share = limit - len(marker)
+        removed = len(text) - share
+        if removed == cut:
+            break
+        cut = removed
+    head = (share + 1) // 2
+    tail = share // 2
+    return text[:head] + marker + text[-tail:]
+
+
 class EnumCodeEditTool(StrEnum):
     VIEW = "view"
     LS = "ls"
     GREP = "grep"
     WRITE = "write"
     EDIT = "edit"
+    REPLACE_IN_FILES = "replace_in_files"
     FORMAT = "format"
     RUN_CHECK = "run_check"
     FINISH = "finish"
@@ -51,7 +75,12 @@ class EnumCodeEditTool(StrEnum):
 
 #: Tools that change the worktree.
 WRITING_TOOLS = frozenset(
-    {EnumCodeEditTool.WRITE, EnumCodeEditTool.EDIT, EnumCodeEditTool.FORMAT}
+    {
+        EnumCodeEditTool.WRITE,
+        EnumCodeEditTool.EDIT,
+        EnumCodeEditTool.REPLACE_IN_FILES,
+        EnumCodeEditTool.FORMAT,
+    }
 )
 
 
@@ -164,6 +193,8 @@ class ModelCodeEditAction(BaseModel):
         default=0, ge=0, description="view: first line to show (1-based)."
     )
     file_path: str = ""
+    file_paths: tuple[str, ...] = ()
+    glob: str = ""
     pattern: str = ""
     content: str = ""
     old_string: str = ""
@@ -173,8 +204,8 @@ class ModelCodeEditAction(BaseModel):
 
     @property
     def target(self) -> str:
-        """The worktree-relative path the action names, if any."""
-        return self.file_path or self.path
+        """The worktree-relative path (or, for a bulk edit, the glob) the action names, if any."""
+        return self.file_path or self.path or self.glob
 
 
 class ModelTurnReply(BaseModel):
@@ -223,6 +254,7 @@ class ModelCodeEditResult(BaseModel):
     delegate_run_ids: tuple[str, ...] = ()
     changed_paths: tuple[str, ...] = ()
     diff_sha256: str = ""
+    resumable: bool = False
     checks: tuple[ModelCheckResult, ...] = ()
     refusals: int = Field(default=0, ge=0)
     rubric_outcome: str = ""
@@ -235,6 +267,8 @@ class ModelCodeEditResult(BaseModel):
 
 __all__ = [
     "MAX_ACTIONS_PER_TURN",
+    "MAX_BULK_FILES",
+    "MAX_ERROR_CHARS",
     "MAX_OBSERVATION_BYTES",
     "MAX_TURNS_CEILING",
     "MAX_VIEW_BYTES",
@@ -251,4 +285,5 @@ __all__ = [
     "ModelDelegatedCodeEditRequest",
     "ModelObservation",
     "ModelTurnReply",
+    "bound_error",
 ]

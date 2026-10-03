@@ -120,7 +120,14 @@ dependencies = [
     # goal DoD item receipt primitives and shared evaluation reducer.
     # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
     # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
-    "omnibase-core>=0.47.28,<0.48.0",
+    # OMN-19750: onex local init also needs core>=0.47.24 (core#1786, the
+    # runtime lane declaration types) and omnibase_infra>=0.38.60 (infra#4180,
+    # the shipped runtime.lane example); both floors above already satisfy it.
+    # OMN-20368: floor raised 0.47.28 -> 0.47.31, the first release carrying the
+    # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
+    # models.ticket.model_done_write_decision. node_linear_triage imports both
+    # unconditionally, so an older core fails at import. Raised in BOTH places.
+    "omnibase-core>=0.47.31,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -191,7 +198,13 @@ dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -253,6 +266,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
+node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
@@ -302,6 +316,7 @@ node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sam
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
+node_delegation_hook_followup_compute = "omnimarket.nodes.node_delegation_hook_followup_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
@@ -665,6 +680,7 @@ node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 node_delegation_orchestrator = "omnimarket.nodes.node_delegation_orchestrator"
 node_llm_delegation_routing_compute = "omnimarket.nodes.node_llm_delegation_routing_compute"
+node_routing_complexity_compute = "omnimarket.nodes.node_routing_complexity_compute"
 node_delegation_quality_gate_reducer = "omnimarket.nodes.node_delegation_quality_gate_reducer"
 node_delegation_routing_reducer = "omnimarket.nodes.node_delegation_routing_reducer"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
@@ -846,6 +862,15 @@ omnimarket = "omnimarket.nodes"
 # removal criterion (target released) is met. Do not reintroduce this override
 # without updating the version pin above in the same edit.
 
+# OMN-19750: omnibase-core's temporary git-rev override to omnibase_core#1786's
+# squash (be874b620) is REMOVED. omnibase-core 0.47.24 is published on PyPI
+# (OMN-18595) and contains that squash as an ancestor; the floors raised above
+# resolve the released wheel.
+# OMN-19750: omnibase-infra's temporary git-rev override to omnibase_infra#4180's
+# head (00f224e0a) is REMOVED. omnibase_infra 0.38.60 is published on PyPI and
+# carries that squash as an ancestor, and the floors raised above resolve the
+# released wheel, so the draft's last temporary source is gone.
+
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
 # versions past omninode-memory's stale transitive hard-pins (observed at
@@ -921,7 +946,11 @@ override-dependencies = [
     # shared DoD outcome reducer and goal contract types.
     # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
     # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
-    "omnibase-core>=0.47.28,<0.48.0",
+    # OMN-20368: floor raised 0.47.28 -> 0.47.31, the first release carrying the
+    # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
+    # models.ticket.model_done_write_decision. node_linear_triage imports both
+    # unconditionally, so an older core fails at import. Raised in BOTH places.
+    "omnibase-core>=0.47.31,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
@@ -951,7 +980,13 @@ override-dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.36,<0.39.0",
+    # OMN-19969: floor raised to 0.38.61, the first omnibase_infra release
+    # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
+    # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
+    # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
+    # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
+    # core floor above admits it, so this bump cascades nothing.
+    "omnibase-infra>=0.38.61,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
