@@ -65,6 +65,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.routing.backend_placement import (
+    load_bound_bifrost_placements,
+    placement_digest,
+)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -512,10 +516,12 @@ class TestTerminalEventEscalationMetadata:
         # bytes the routing authority actually resolved.
         pinned_tiers = Path(os.environ["DELEGATION_ROUTING_TIERS_PATH"])
         assert result.routing_tiers_hash is not None
-        assert (
-            result.routing_tiers_hash
-            == hashlib.sha256(pinned_tiers.read_bytes()).hexdigest()
-        )
+        # The hash covers the committed backend placements too (OMN-19215).
+        expected_content = pinned_tiers.read_bytes()
+        placements = placement_digest(load_bound_bifrost_placements())
+        if placements is not None:
+            expected_content += b"\0backend-placements\0" + placements.encode()
+        assert result.routing_tiers_hash == hashlib.sha256(expected_content).hexdigest()
         # OMN-13167: precise terminal reason keyed by the stable token prefix.
         assert result.terminal_failure_reason is not None
         assert result.terminal_failure_reason.startswith("no_higher_tier_available")
