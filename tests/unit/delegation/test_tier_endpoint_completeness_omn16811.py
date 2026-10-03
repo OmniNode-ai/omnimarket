@@ -20,7 +20,7 @@ symptoms to DIFFERENT causes, and this module pins both:
   is a machine-readable fact any consumer (dashboard, gateway) can read.
 
 * ``escalation`` DOES resolve — but to exactly one rung, ``claude`` →
-  ``cloud-gemini-pro``. It is the only admitted class whose whole ladder is a
+  ``cloud-gemini-2-5-flash``. It is the only admitted class whose whole ladder is a
   single credentialed cloud backend, so a quota-exhausted or unreachable
   Gemini strands the class with no local fallback while every other class
   keeps routing on the owned GPUs. The cheapest-first ladder doctrine says the
@@ -191,7 +191,7 @@ def test_escalation_routes_with_every_credentialed_backend_unavailable() -> None
     """The escalation class must not strand when no cloud credential resolves.
 
     Dev-lane ground truth (read-only in-container probe, 2026-08-28): the
-    escalation ladder resolved to exactly ``[('claude', 'cloud-gemini-pro')]``.
+    escalation ladder resolved to exactly ``[('claude', 'cloud-gemini-2-5-flash')]``.
     Every other admitted class kept a local rung, which is why eleven of
     thirteen classes terminated and this one did not.
     """

@@ -96,6 +96,8 @@ def db(tmp_path: Path) -> Path:
 
 
 def _run(db: Path, *args: str) -> str:
+    if "--baseline" not in args:
+        args = ("--baseline", "claude-opus-4-6", *args)
     result = CliRunner().invoke(metering_command, ["--db", str(db), *args])
     assert result.exit_code == 0, result.output
     return result.output

@@ -627,3 +627,200 @@ checks:
         power: 0.8
         margin: 0.07
         incomplete_run_treatment: count_as_failure
+
+  # OMN-20166: deterministic criteria and class calibration lines.
+  - check_id: delegation.rubric.criterion.cited_lines_exist
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion cited_lines_exist
+  - check_id: delegation.rubric.criterion.claims_traceable
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion claims_traceable
+  - check_id: delegation.rubric.criterion.code_parses
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion code_parses
+  - check_id: delegation.rubric.criterion.declared_format_met
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion declared_format_met
+  - check_id: delegation.rubric.criterion.edits_apply
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion edits_apply
+  - check_id: delegation.rubric.criterion.id_coverage
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion id_coverage
+  - check_id: delegation.rubric.criterion.ids_traceable
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion ids_traceable
+  - check_id: delegation.rubric.criterion.named_symbols_exist
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion named_symbols_exist
+  - check_id: delegation.rubric.criterion.named_test_passes
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion named_test_passes
+  - check_id: delegation.rubric.criterion.no_phantom_paths
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion no_phantom_paths
+  - check_id: delegation.rubric.criterion.stated_check_passes
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion stated_check_passes
+  - check_id: delegation.rubric.criterion.stated_test_passes
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion stated_test_passes
+  - check_id: delegation.rubric.criterion.task_answer_traceable
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion task_answer_traceable
+  - check_id: delegation.rubric.criterion.tool_calls_wellformed
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion tool_calls_wellformed
+  - check_id: delegation.rubric.criterion.within_budget
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml criterion within_budget
+  - check_id: delegation.rubric.tool_use.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.tool_use.false_pass
+      statistic: pass_rate
+      case_set: 'tool_use: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'tool_use: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.code_review.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.code_review.false_pass
+      statistic: pass_rate
+      case_set: 'code_review: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'code_review: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.review.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.review.false_pass
+      statistic: pass_rate
+      case_set: 'review: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'review: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.summarization.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.summarization.false_pass
+      statistic: pass_rate
+      case_set: 'summarization: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'summarization: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.code_generation.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.code_generation.false_pass
+      statistic: pass_rate
+      case_set: 'code_generation: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'code_generation: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.test.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.test.false_pass
+      statistic: pass_rate
+      case_set: 'test: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'test: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET

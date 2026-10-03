@@ -72,7 +72,7 @@ class TestBifrostBindingRefusal:
         with caplog.at_level("INFO"):
             endpoints = routing._load_bifrost_endpoints()
 
-        assert "cloud-glm-judge" in endpoints
+        assert "cloud-gemini-judge" in endpoints
         # The shipped contract binds no local endpoint; only an overlay does.
         assert "local-coder" not in endpoints
         assert "bifrost_standalone_install_pair" in caplog.text

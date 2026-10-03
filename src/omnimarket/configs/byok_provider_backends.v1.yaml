@@ -181,7 +181,7 @@ providers:
     # OMN-20157. OpenRouter's catalogue is account-independent and public; the
     # listed ids are what any key may address. Free tier: rate-limited, no SLA,
     # and $0 on the customer's account. The first family is the one the
-    # platform's `openrouter-qwen3-coder-480b` rung runs (OMN-15638 repoint),
+    # platform's `openrouter-nemotron-ultra` rung runs (OMN-15638 repoint),
     # newest generation first; the second is the free Qwen coder family.
     # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
     models_url: "https://openrouter.ai/api/v1/models"
@@ -194,6 +194,13 @@ providers:
       # Listed live 2026-10-01: google/gemma-4-31b-it:free.
       - pattern: 'google/gemma-(?P<generation>[0-9]+)-[0-9]+b(?:-a[0-9]+b)?-it:free'
         tags: [free, general]
+      # OMN-19205, 2026-10-02 15:06-15:08Z on the C29 key: both gemma-4 free
+      # slugs 429 "rate-limited upstream" (Google AI Studio), nemotron-ultra an
+      # in-body 503, nemotron-3-super-120b-a12b answered three of three. A
+      # throttle switch leaves the failed model's whole family, so the family
+      # after gemma is the one that has to answer: nemotron-super, then ultra.
+      - pattern: 'nvidia/nemotron-(?P<generation>[0-9]+(?:\.[0-9]+)?)-super-[a-z0-9-]+:free'
+        tags: [free, general, large_context]
       - pattern: 'nvidia/nemotron-(?P<generation>[0-9]+(?:\.[0-9]+)?)-ultra-[a-z0-9-]+:free'
         tags: [free, cheapest, large_context]
       - pattern: 'qwen/qwen(?P<generation>[0-9]+(?:\.[0-9]+)?)-coder[a-z0-9.-]*:free'

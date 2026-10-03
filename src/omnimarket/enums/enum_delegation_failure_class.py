@@ -17,6 +17,7 @@ class EnumDelegationFailureClass(StrEnum):
     TIMEOUT = "timeout"
     INVALID_JSON = "invalid_json"
     QUALITY_GATE_FAILED = "quality_gate_failed"
+    RUBRIC_FAILED = "rubric_failed"
     CONTEXT_TOO_LARGE = "context_too_large"
     PRICING_UNKNOWN = "pricing_unknown"
     # The provider was reached and REJECTED the credential we presented: HTTP

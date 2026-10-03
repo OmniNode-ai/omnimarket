@@ -15,6 +15,9 @@ from omnimarket.events.delegation_gate_eval.enum_gate_verdict import (
 from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
     ModelGateReplayVerdict,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 
 
 class ModelGateItemVerdict(BaseModel):
@@ -30,3 +33,5 @@ class ModelGateItemVerdict(BaseModel):
     recorded_deciding_check: str | None
     replayed: ModelGateReplayVerdict
     replay_count: int = Field(ge=1)
+
+    rubric_verdict: ModelAttemptRubricVerdict | None = None

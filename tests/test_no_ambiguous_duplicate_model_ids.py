@@ -62,7 +62,7 @@ def test_no_ambiguous_duplicate_model_ids_in_live_registry() -> None:
 
     Measured 2026-07-12: 0 ambiguous collisions (the local tier's two
     Qwen3.6-35B-A3B entries are correctly disambiguated; cross-tier repeats
-    of glm-5-turbo / openrouter-qwen3-coder-480b are a DIFFERENT tier each,
+    of glm-5-turbo / openrouter-nemotron-ultra are a DIFFERENT tier each,
     out of scope for this per-tier check by design). This test pins that
     count so it can only ratchet down.
     """

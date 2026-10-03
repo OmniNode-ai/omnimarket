@@ -102,7 +102,7 @@ def _stable_cloud_escalation_route(
                         "capabilities": ["code_generation"],
                     },
                     {
-                        "backend_id": "cloud-gemini-pro",
+                        "backend_id": "cloud-gemini-2-5-flash",
                         "provider": "gemini",
                         "endpoint_url": (
                             "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -125,7 +125,7 @@ def _stable_cloud_escalation_route(
                         "backend_policy_version": "2.0.0",
                         "match_operation_types": ["chat_completion"],
                         "match_capabilities": ["code_generation"],
-                        "backend_ids": ["local-coder", "cloud-gemini-pro"],
+                        "backend_ids": ["local-coder", "cloud-gemini-2-5-flash"],
                         "fallback_policy": {
                             "action": "escalate_to_next_tier",
                             "max_retries": 1,
@@ -134,7 +134,7 @@ def _stable_cloud_escalation_route(
                         "shadow_policy_id": "e5f6a7b8-0001-4000-8000-000000000001",
                     }
                 ],
-                "default_backends": ["local-coder", "cloud-gemini-pro"],
+                "default_backends": ["local-coder", "cloud-gemini-2-5-flash"],
             },
             sort_keys=False,
         )

@@ -4,7 +4,7 @@
 
 Leg 1 — the JUDGE. ``HandlerQualityGateIntent.handle_async`` fires an LLM-judge
 adequacy call for every ``code_generation``/``test``/``validator_generation``/
-``refactor`` delegation, and that call rides ``cloud-glm-judge``, which OMN-14625
+``refactor`` delegation, and that call rides ``cloud-gemini-judge``, which OMN-14625
 repointed onto Gemini because z.ai GLM is unreachable from ``.201``. Against a
 free-tier cap of 20 requests that is ~10 delegations before the lane is dead,
 and it burns quota even on delegations that would never have escalated. Once the
@@ -98,10 +98,10 @@ def _gemini_capped_at(
 
 # A self-contained contract whose metered rung is a REAL Gemini host, so the
 # quota policy's ``match_endpoint_host`` actually matches it. The packaged
-# ``routing_tiers.yaml`` puts ``cloud-gemini-pro`` in BOTH ``cheap_cloud`` and the
+# ``routing_tiers.yaml`` puts ``cloud-gemini-2-5-flash`` in BOTH ``cheap_cloud`` and the
 # ``claude`` ceiling for ``code_generation`` (OMN-14625 repointed both off the
 # dead z.ai ``cloud-glm``), which is exactly the shape this ticket needs: one
-# quota domain standing behind two ladder rungs. ``openrouter-qwen3-coder-480b``
+# quota domain standing behind two ladder rungs. ``openrouter-nemotron-ultra``
 # is deliberately ABSENT so ``cheap_frontier`` cannot route either — that mirrors
 # the dev lane, where ``OPEN_ROUTER_API_KEY`` is not in the secret store, and it
 # is what makes "every remaining rung is capped" reachable in a unit test.
@@ -118,7 +118,7 @@ _BIFROST_GEMINI_LADDER = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
-      - backend_id: cloud-gemini-pro
+      - backend_id: cloud-gemini-2-5-flash
         provider: gemini
         endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         model_name: gemini-2.5-flash
@@ -134,7 +134,7 @@ _BIFROST_GEMINI_LADDER = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-gemini-pro]
+        backend_ids: [local-coder, cloud-gemini-2-5-flash]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -183,7 +183,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
         into a ``JUDGE_FAILED`` verdict — and then the next delegation did it
         again. Twelve such calls were counted in an 8h window on the dev lane.
         """
-        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
             HandlerJudgeAdequacy,
         )
 
@@ -232,7 +232,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
     @pytest.mark.asyncio
     async def test_judge_still_runs_when_the_provider_is_healthy(self) -> None:
         """The skip is conditional, not a disablement of the judge."""
-        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
+        from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
             HandlerJudgeAdequacy,
         )
 
@@ -294,7 +294,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
 
         adapter = RoutingResolvedJudgeInferenceAdapter(observation_sink=_Sink())
         backend = ModelResolvedDelegationBackend(
-            backend_id="cloud-glm-judge",
+            backend_id="cloud-gemini-judge",
             model_id="gemini-2.5-flash",
             endpoint_ref=_GEMINI_ENDPOINT,
             secret_ref="llm.gemini.api_key",
@@ -343,7 +343,7 @@ class TestJudgeSkipsAQuotaDeadProvider:
         )
 
         backend = ModelResolvedDelegationBackend(
-            backend_id="cloud-glm-judge",
+            backend_id="cloud-gemini-judge",
             model_id="gemini-2.5-flash",
             endpoint_ref=_GEMINI_ENDPOINT,
             secret_ref="llm.gemini.api_key",
@@ -472,7 +472,7 @@ class TestEscalationCannotTargetAQuotaDeadProvider:
         # OMN-20154: the orchestrator folds the quota snapshot's blocked
         # backends into the exclusion set it already passes.
         blocked = quota_blocked_backend_refs(_gemini_capped_at(datetime.now(UTC)))
-        assert blocked == frozenset({"cloud-gemini-pro"})
+        assert blocked == frozenset({"cloud-gemini-2-5-flash"})
 
         # Both metered rungs in this ladder resolve the SAME Gemini backend, so
         # one cap must remove both — the quota domain is the failure domain.

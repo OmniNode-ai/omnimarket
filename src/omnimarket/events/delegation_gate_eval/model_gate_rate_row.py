@@ -21,7 +21,7 @@ class ModelGateRateRow(BaseModel):
 
     task_class: str
     stratum: str
-    arm: Literal["replayed", "recorded"]
+    arm: Literal["replayed", "recorded", "rubric"]
     accepted_n: int = Field(ge=0)
     false_pass_count: int = Field(ge=0)
     false_refusal_count: int = Field(ge=0)

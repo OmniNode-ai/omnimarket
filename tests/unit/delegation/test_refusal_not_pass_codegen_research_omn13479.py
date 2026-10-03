@@ -78,9 +78,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     TOPIC_QUALITY_GATE_RESULT,
     HandlerQualityGateIntent,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -94,7 +91,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
 )
-from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -132,7 +128,7 @@ _INADEQUATE_RESEARCH = "It works fine."
 
 # code_generation routes (per task_class_contracts.v1.yaml) to the cheap_cloud
 # tier first (tier_order [cheap_cloud, local, claude]) on model gemini-2.5-flash /
-# backend cloud-gemini-pro (OMN-14625: repointed off z.ai GLM, DEAD from the
+# backend cloud-gemini-2-5-flash (OMN-14625: repointed off z.ai GLM, DEAD from the
 # .201 runtime). The self-contained bifrost contract below declares exactly
 # that backend with a COMPLETE verbatim endpoint URL and NO api_key_ref, so
 # routing resolves host-independently (CI has no ~/.omninode overlay and no
@@ -141,7 +137,7 @@ _BIFROST_CODE_GENERATION = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-gemini-pro\n"
+    "  - backend_id: cloud-gemini-2-5-flash\n"
     "    provider: gemini\n"
     '    endpoint_url: "http://test-codegen:8000/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
@@ -157,14 +153,14 @@ _BIFROST_CODE_GENERATION = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-gemini-pro]\n"
+    "    backend_ids: [cloud-gemini-2-5-flash]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"\n'
     "default_backends:\n"
-    "  - cloud-gemini-pro\n"
+    "  - cloud-gemini-2-5-flash\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -468,9 +464,7 @@ class TestCodeGenerationRefusalRealDispatchPath:
         """
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        gate_handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(inference_bridge=RecordedJudgeReplayAdapter())
-        )
+        gate_handler = HandlerQualityGateIntent()
 
         # Hop 1: orchestrator emits routing intent.
         routing_intents = workflow.handle_delegation_request(request)
@@ -497,15 +491,15 @@ class TestCodeGenerationRefusalRealDispatchPath:
         assert len(gate_intents) == 1
         assert isinstance(gate_intents[0], ModelQualityGateIntent)
 
-        # Hop 6: quality gate reducer with the OMN-13470 judge combine ACTIVE.
+        # Hop 6: deterministic quality gate.
         gate_output = await gate_handler.handle_async(gate_intents[0])
         gate_result = next(
             e for e in gate_output.events if isinstance(e, ModelQualityGateResult)
         )
-        # The judge EFFECT must actually have run on the canonical inference path.
-        assert any(
+        # The gate publishes only its deterministic result.
+        assert not any(
             isinstance(e, ModelDelegationJudgeVerdictEvent) for e in gate_output.events
-        ), "the OMN-13470 judge verdict event must be emitted (combine active)"
+        ), "acceptance emits no judge verdict (OMN-20164)"
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
 
         # Hop 7: orchestrator processes the gate result -> terminal events.

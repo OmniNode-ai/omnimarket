@@ -10,7 +10,7 @@ title: "B3 — cloud URLs + api_key references → bifrost; remove host-env rout
 summary: >
   The committed bifrost_delegation.yaml already carries the COMPLETE verbatim
   cloud endpoint_url (full chat path) for cloud-gemini-flash,
-  openrouter-glm-flash, and openrouter-qwen3-coder-480b (landed by A1/OMN-12815),
+  openrouter-glm-flash, and openrouter-nemotron-ultra (landed by A1/OMN-12815),
   and each cloud backend declares its API-key reference NAME. The HG2 resolver
   (OMN-12824) resolves the secret VALUE fail-closed at the inference effect
   boundary via the canonical ProtocolSecretStore (env-backed by default,
@@ -62,7 +62,7 @@ dod_evidence:
     description: >
       The committed bifrost contract carries the COMPLETE verbatim endpoint_url
       and a declared API-key reference NAME for cloud-gemini-flash,
-      openrouter-glm-flash, and openrouter-qwen3-coder-480b; no literal secret
+      openrouter-glm-flash, and openrouter-nemotron-ultra; no literal secret
       token appears in the contract. Run by a verifier other than the author.
     source: generated
     checks:

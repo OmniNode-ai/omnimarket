@@ -31,9 +31,9 @@ benefits from it.
 Fixture shape: ``local`` tier's only backend is genuinely distinct
 (``local-x``); ``cheap_cloud`` and ``claude`` both declare ``backend_id:
 cloud-shared`` — reproducing the live ``routing_tiers.yaml`` shape where
-``cloud-gemini-pro`` backs both tiers for ``research``. ``cloud-shared``'s
+``cloud-gemini-2-5-flash`` backs both tiers for ``research``. ``cloud-shared``'s
 bifrost-declared ``tier:`` field is ``frontier_api`` (matching the live
-``cloud-gemini-pro`` entry), NOT ``cheap_cloud``/``claude`` — this is what lets
+``cloud-gemini-2-5-flash`` entry), NOT ``cheap_cloud``/``claude`` — this is what lets
 the mislabeling assertion be unambiguous.
 """
 
@@ -120,7 +120,7 @@ _BIFROST_YAML = textwrap.dedent(
         model_name: shared-model
         # OMN-15803 mechanism 1: the bifrost contract's own descriptive tier
         # label, deliberately distinct from any routing_tiers.yaml tier name —
-        # matches the live cloud-gemini-pro entry's "tier: frontier_api".
+        # matches the live cloud-gemini-2-5-flash entry's "tier: frontier_api".
         tier: frontier_api
         timeout_ms: 30000
         max_tokens: 4096
@@ -330,7 +330,7 @@ def test_escalation_never_reattempts_the_identical_backend(
     """Invariant (iii): an escalation step must change backend or tier.
 
     RED at current head: cheap_cloud and claude both resolve to backend_id
-    "cloud-shared" for research (mirrors the live cloud-gemini-pro shape) —
+    "cloud-shared" for research (mirrors the live cloud-gemini-2-5-flash shape) —
     escalating cheap_cloud -> claude re-dispatches the IDENTICAL backend+model
     a third time, a functional no-op with zero new information. GREEN after
     the fix: the port threads its accumulated ``excluded_backend_refs`` into

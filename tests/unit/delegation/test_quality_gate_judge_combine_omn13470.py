@@ -77,11 +77,11 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
     HandlerQualityGateIntent,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
+    HandlerJudgeAdequacy,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.adapter_routing_resolved_judge import (
     RoutingResolvedJudgeInferenceAdapter,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
@@ -172,9 +172,9 @@ _BIFROST_CONTRACT_CODE = (
 
 # OMN-13599: code_generation routes local -> cheap_cloud -> claude.
 # OMN-14625: cheap_cloud's code_generation primary was repointed off z.ai GLM
-# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-pro). The
+# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-2-5-flash). The
 # real-bus chain routes a code_generation request, so its self-contained
-# bifrost contract must carry the cloud-gemini-pro backend (the cheap_cloud
+# bifrost contract must carry the cloud-gemini-2-5-flash backend (the cheap_cloud
 # code-gen primary) with a COMPLETE verbatim endpoint_url and NO secret_ref —
 # so routing resolves deterministically to gemini-2.5-flash without a host
 # overlay and without the LLM_GEMINI_API_KEY the delegation conftest
@@ -185,7 +185,7 @@ _BIFROST_CONTRACT_CODE_GLM = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-gemini-pro\n"
+    "  - backend_id: cloud-gemini-2-5-flash\n"
     "    provider: gemini\n"
     '    endpoint_url: "https://example.test/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
@@ -214,14 +214,14 @@ _BIFROST_CONTRACT_CODE_GLM = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-gemini-pro]\n"
+    "    backend_ids: [cloud-gemini-2-5-flash]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"\n'
     "default_backends:\n"
-    "  - cloud-gemini-pro\n"
+    "  - cloud-gemini-2-5-flash\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -337,8 +337,8 @@ class TestJudgeResolvesConcreteModelNotTier:
 
         OMN-14625: the escalation backend (``cloud-glm``) is UNCHANGED by this
         ticket — cheap_cloud/claude were repointed to a different backend
-        (``cloud-gemini-pro``), leaving ``cloud-glm`` itself defined-but-unused
-        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-glm-judge`` backend was
+        (``cloud-gemini-2-5-flash``), leaving ``cloud-glm`` itself defined-but-unused
+        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-gemini-judge`` backend was
         separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) on a
         "z.ai route is DEAD from the .201 runtime" finding that OMN-6790 later
         disproved (the route serves 200s on the Coding Plan endpoint; the judge
@@ -414,6 +414,7 @@ class TestJudgeAdequacyEffectReplay:
         assert replay.calls[0]["model_key"] not in {"cheap_cloud", "local"}
         # Provenance: the verdict records the concrete model id, not the tier.
         assert verdict.judge_model not in {"cheap_cloud", "cheap_frontier"}
+        assert verdict.judge_model_version == verdict.judge_model
         # Replay identity: the recorded event hash recomputes deterministically.
         assert verdict.event_hash == verdict.compute_event_hash()
 
@@ -499,6 +500,7 @@ class TestJudgeAdequacyEffectLiveCloud:
         assert verdict.actual_score is not None
         assert verdict.actual_score > 0.0
         assert verdict.judge_model not in {"cheap_cloud", "cheap_frontier"}
+        assert verdict.judge_model_version == verdict.judge_model
 
 
 # ---------------------------------------------------------------------------
@@ -508,21 +510,7 @@ class TestJudgeAdequacyEffectLiveCloud:
 
 @pytest.mark.unit
 class TestJudgeCombineRealBusChain:
-    """Orchestrator FSM -> routing -> inference -> gate(judge) -> terminal, on a
-    REAL in-memory bus (``EventBusInmemory``) with REAL routing resolution + REAL
-    handler registration.
-
-    The judge inference is the recorded-from-real-call replay (concrete model id
-    pinned); the LLM endpoint is exercised for real in the live-gated suite above.
-    The terminal delegation events are PUBLISHED OVER THE BUS and consumed by a
-    real subscriber, proving a valid terminal event actually lands on the bus
-    (the OMN-13140 all-tiers-failed-terminal-must-emit invariant).
-
-    The routing reducer resolves a concrete backend from a SELF-CONTAINED bifrost
-    contract pointed to by BIFROST_CONTRACT_PATH — REAL routing resolution, but
-    host-independent (CI has no ~/.omninode overlay). The contract carries the
-    same shape the committed bifrost config uses; resolution is real, not mocked.
-    """
+    """Drive the bus delegation chain with deterministic acceptance."""
 
     @pytest.fixture(autouse=True)
     def _bifrost_contract(
@@ -546,7 +534,6 @@ class TestJudgeCombineRealBusChain:
         self,
         *,
         llm_content: str,
-        judge_adapter: RecordedJudgeReplayAdapter,
         min_tier_name: str | None = None,
     ) -> tuple[object, list[object], HandlerDelegationWorkflow, list[str]]:
         bus = EventBusInmemory()
@@ -572,9 +559,7 @@ class TestJudgeCombineRealBusChain:
 
         workflow = HandlerDelegationWorkflow(workflows={})
         routing_handler = HandlerRoutingIntent()
-        gate_handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(inference_bridge=judge_adapter)
-        )
+        gate_handler = HandlerQualityGateIntent()
 
         request = ModelDelegationRequest(
             prompt="Implement an add(a, b) function.",
@@ -611,7 +596,7 @@ class TestJudgeCombineRealBusChain:
         gate_intents = workflow.handle_inference_response(response)
         assert isinstance(gate_intents[0], ModelQualityGateIntent)
 
-        # --- quality-gate intent: judge EFFECT + combine, emit gate result ---
+        # --- quality-gate intent: deterministic reducer, emit gate result ---
         gate_output = await gate_handler.handle_async(gate_intents[0])
         gate_result = next(
             e
@@ -623,7 +608,7 @@ class TestJudgeCombineRealBusChain:
             for e in gate_output.events
             if isinstance(e, ModelDelegationJudgeVerdictEvent)
         ]
-        assert judge_verdicts, "judge verdict event must be emitted"
+        assert not judge_verdicts, "acceptance emits no judge verdict (OMN-20164)"
 
         # --- terminal: publish the gate-driven terminal events OVER THE BUS ---
         terminal_events = workflow.handle_gate_result(gate_result)
@@ -651,12 +636,11 @@ class TestJudgeCombineRealBusChain:
         return gate_result, terminal_events, workflow, consumed_topics
 
     @pytest.mark.asyncio
-    async def test_good_code_completes_via_combined_score_over_bus(self) -> None:
+    async def test_good_code_completes_via_deterministic_floor_over_bus(self) -> None:
         gate_result, _terminal, workflow, consumed = await self._drive_chain(
             llm_content=_GOOD_CODE_MARKED,
-            judge_adapter=RecordedJudgeReplayAdapter(),
         )
-        assert gate_result.score_source == "combined"  # type: ignore[attr-defined]
+        assert gate_result.score_source == "deterministic_acceptance"  # type: ignore[attr-defined]
         assert TOPIC_ID_DELEGATION_COMPLETED in consumed, (
             "good code answer must publish a terminal delegation-completed event "
             f"over the bus; consumed={consumed}"
@@ -670,7 +654,6 @@ class TestJudgeCombineRealBusChain:
     async def test_refusal_not_completed_even_with_high_judge_over_bus(self) -> None:
         gate_result, _terminal, _workflow, consumed = await self._drive_chain(
             llm_content="I cannot complete this task.",
-            judge_adapter=RecordedJudgeReplayAdapter(),
             min_tier_name="claude",
         )
         assert gate_result.passed is False  # type: ignore[attr-defined]

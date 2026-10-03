@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_recombine_compute
+version: "1.0.0"
+description: "Join unit answers in source order and deduplicate findings by path and line."
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_recombine_compute: "omnimarket.nodes.node_delegation_recombine_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read_only
+dependencies:
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "deterministic", "recombine"]
+pack: "core"
+display_name: "Delegation Recombine"
+node_role: "compute"

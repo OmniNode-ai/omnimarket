@@ -309,7 +309,7 @@ def test_distinct_backend_refs_do_not_fake_distinct_failure_domains(
 def test_next_tier_skips_a_repeated_exhausted_backend_ref(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The claude tier is not new quota when it repeats cloud-gemini-pro."""
+    """The claude tier is not new quota when it repeats cloud-gemini-2-5-flash."""
     config = _routing_config()
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
     backends = _synthetic_available_backends(config)
@@ -323,7 +323,7 @@ def test_next_tier_skips_a_repeated_exhausted_backend_ref(
             "cheap_cloud",
             frozenset(),
             task_type="research",
-            excluded_backend_refs=frozenset({"cloud-gemini-pro"}),
+            excluded_backend_refs=frozenset({"cloud-gemini-2-5-flash"}),
         )
         is None
     )

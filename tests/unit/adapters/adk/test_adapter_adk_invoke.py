@@ -224,7 +224,7 @@ def test_build_dispatch_rejects_model_kind() -> None:
         correlation_id=uuid4(),
         invocation_kind=EnumInvocationKind.MODEL,
         agent_protocol=None,
-        model_backend="cloud-gemini-pro",
+        model_backend="cloud-gemini-2-5-flash",
         target_ref="model://gemini",
         payload={},
     )

@@ -209,7 +209,7 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
     def test_the_judge_and_the_escalation_backend_share_one_quota_domain(self) -> None:
         """The whole point of keying by DOMAIN rather than backend_id.
 
-        ``cloud-glm-judge`` (the judge leg), ``cloud-gemini-pro`` (the
+        ``cloud-gemini-judge`` (the judge leg), ``cloud-gemini-2-5-flash`` (the
         ``cheap_cloud`` escalation rung for ``test``) and ``cloud-gemini-flash``
         are three distinct ``backend_id``s that all spend the SAME Gemini
         free-tier counter with the same key. A backend-id-keyed ledger would let
@@ -226,7 +226,7 @@ class TestQuotaVerdictIsEnforcedNotJustLogged:
             now=now,
         )
         assert verdict is not None
-        # Recorded from the JUDGE's endpoint (cloud-glm-judge).
+        # Recorded from the JUDGE's endpoint (cloud-gemini-judge).
         state = _state_after(verdict, endpoint_url=_GEMINI_ENDPOINT, now=now)
 
         # Observed from a DIFFERENT backend_id on the same provider host, model

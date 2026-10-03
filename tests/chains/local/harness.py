@@ -52,6 +52,7 @@ Related:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 from collections.abc import Iterator
@@ -77,9 +78,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing,
 )
@@ -87,7 +85,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     BifrostBackendRef,
 )
 from omnimarket.routing import byok_provider_backends, delegation_backend_resolution
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 #: The provider slug both the shipped catalogue and the house rung declare.
 PROVIDER_SLUG = "openrouter"
@@ -101,7 +98,7 @@ HOUSE_SECRET_REF = "llm.openrouter.api_key"
 BYOK_BACKEND_ID = "byok-openrouter"
 
 #: The house rung's backend id in ``bifrost_delegation.yaml``.
-HOUSE_BACKEND_ID = "openrouter-qwen3-coder-480b"
+HOUSE_BACKEND_ID = "openrouter-nemotron-ultra"
 
 #: Task type used by every pair. Declared on the rung's capabilities below.
 TASK_TYPE = "code_generation"
@@ -132,12 +129,22 @@ class LocalProviderStub:
     """
 
     def __init__(
-        self, *, model_id: str, content: str = "### ANSWER\nprint('ok')\n"
+        self,
+        *,
+        model_id: str,
+        content: str = "### ANSWER\nprint('ok')\n",
+        completion_error_body: dict[str, Any] | None = None,
+        completion_delay_seconds: float = 0.0,
+        finish_reason: str = "stop",
     ) -> None:
         self.model_id = model_id
         self.content = content
         #: ``401`` rejects every completion; ``200`` answers it.
         self.completion_status = 200
+        self.completion_error_body = completion_error_body
+        self.completion_delay_seconds = completion_delay_seconds
+        self.finish_reason = finish_reason
+        self._stop_event = threading.Event()
         #: Authorization header per completion request, in order. ``None`` for
         #: a request that carried none.
         self.authorizations: list[str | None] = []
@@ -150,6 +157,7 @@ class LocalProviderStub:
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
+        self._stop_event.clear()
         outer = self
 
         class _Handler(BaseHTTPRequestHandler):
@@ -170,10 +178,13 @@ class LocalProviderStub:
                     outer.payloads.append(json.loads(raw or b"{}"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     outer.payloads.append({})
+                outer._stop_event.wait(outer.completion_delay_seconds)
                 if outer.completion_status != 200:
                     self._respond(
                         outer.completion_status,
-                        {
+                        outer.completion_error_body
+                        if outer.completion_error_body is not None
+                        else {
                             "error": {
                                 "message": "Incorrect API key provided.",
                                 "type": "invalid_request_error",
@@ -187,7 +198,7 @@ class LocalProviderStub:
                         "choices": [
                             {
                                 "message": {"content": outer.content},
-                                "finish_reason": "stop",
+                                "finish_reason": outer.finish_reason,
                             }
                         ],
                         "model": outer.model_id,
@@ -205,13 +216,16 @@ class LocalProviderStub:
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(payload)
+                # A timed-out client can close before the delayed reply.
+                with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                    self.wfile.write(payload)
 
         self._server = HTTPServer(("127.0.0.1", 0), _Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
+        self._stop_event.set()
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
@@ -417,7 +431,7 @@ def install_rungs(monkeypatch: pytest.MonkeyPatch, rungs: list[dict[str, Any]]) 
 def house_openrouter_rung(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Make the tier ladder resolve the house-keyed OpenRouter rung.
 
-    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-qwen3-coder-480b``: the
+    Mirrors ``bifrost_delegation.yaml``'s ``openrouter-nemotron-ultra``: the
     same backend id, the same house ``secret_ref``, the same tier and budgets.
     Supplied through the loader seam so a pair asserts the SUBSTITUTION rather
     than which rung today's ladder prefers for a task type.
@@ -487,7 +501,6 @@ async def run_local_delegation(
     prompt: str,
     db_path: Path,
     correlation_id: UUID,
-    adequacy_score: float = 0.95,
     task_type: str = TASK_TYPE,
     backend_id: str | None = HOUSE_BACKEND_ID,
     response_contract: dict[str, object] | None = None,
@@ -497,11 +510,6 @@ async def run_local_delegation(
     ``effect_process_boundary=False`` runs the effect handler in-process, the
     same setting the existing delegate golden chain uses; the handler, its
     transport and its classification are the production ones either way.
-
-    The judge is injected with a canned adequacy score for one reason: the
-    quality gate's verdict is L11's subject, not L4/L5/L6's. A pair about a
-    credential must not go red because a stub provider's canned sentence did
-    not persuade a live judge.
 
     ``backend_id`` defaults to the HOUSE OpenRouter rung, using the request
     model's own caller-supplied pin (OMN-15156). Every pair here is about what
@@ -516,9 +524,6 @@ async def run_local_delegation(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=adequacy_score)
-        ),
     )
     handler = HandlerDelegateSkill(dispatch_port=port)
     return await handler.handle(

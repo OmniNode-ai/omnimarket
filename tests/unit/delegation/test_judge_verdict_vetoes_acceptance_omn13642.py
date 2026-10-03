@@ -67,9 +67,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
     HandlerQualityGateIntent,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -79,7 +76,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
 )
-from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
 # These tests pin the DECLARED judge (its recorded replay and concrete model id),
 # which is the reviewer only on a machine whose judge credential resolves
@@ -221,62 +217,8 @@ class TestJudgeVerdictVetoUnit:
 
 
 # ---------------------------------------------------------------------------
-# handle_async over the REAL judge (recorded-from-real GLM replay)
+# Historical explicit-verdict inputs above remain pure reducer checks.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestJudgeVerdictThreadsThroughHandleAsync:
-    """``handle_async`` runs the real judge EFFECT and threads its VERDICT to delta.
-
-    The judge verdict is computed by the real ``HandlerJudgeAdequacy`` parsing a
-    recorded-from-real GLM response (concrete model id pinned by the replay). The
-    FAIL replay drives a ``fail`` verdict; the PASS replay a ``pass`` verdict.
-    """
-
-    def _intent(self, content: str) -> ModelQualityGateIntent:
-        return ModelQualityGateIntent(payload=_test_gate_input(content))
-
-    @pytest.mark.asyncio
-    async def test_fail_verdict_vetoes_accept_in_handle_async(self) -> None:
-        handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(
-                inference_bridge=RecordedJudgeReplayAdapter(
-                    "glm_code_adequacy_fail.json"
-                )
-            )
-        )
-        output = await handler.handle_async(self._intent(_GOOD_TEST_ARTIFACT))
-        result = next(e for e in output.events if isinstance(e, ModelQualityGateResult))
-        verdicts = [
-            e for e in output.events if isinstance(e, ModelDelegationJudgeVerdictEvent)
-        ]
-        assert verdicts, "the judge verdict event must be emitted"
-        assert verdicts[0].verdict is EnumDelegationJudgeVerdict.FAIL
-        # The judge FAIL vetoes acceptance even though the combined score cleared
-        # the bar — the published gate result the orchestrator consumes is NOT
-        # accepted.
-        assert result.passed is False
-        assert result.score_source == "combined"
-        assert result.quality_score >= _TEST_REQUIRED_BAR
-
-    @pytest.mark.asyncio
-    async def test_pass_verdict_accepts_in_handle_async(self) -> None:
-        handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(
-                inference_bridge=RecordedJudgeReplayAdapter(
-                    "glm_code_adequacy_pass.json"
-                )
-            )
-        )
-        output = await handler.handle_async(self._intent(_GOOD_TEST_ARTIFACT))
-        result = next(e for e in output.events if isinstance(e, ModelQualityGateResult))
-        verdicts = [
-            e for e in output.events if isinstance(e, ModelDelegationJudgeVerdictEvent)
-        ]
-        assert verdicts[0].verdict is EnumDelegationJudgeVerdict.PASS
-        assert result.passed is True
-        assert result.score_source == "combined"
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +254,7 @@ _BIFROST_TEST = (
     "  # now resolves through the same BIFROST_CONTRACT_PATH binding this fixture\n"
     "  # sets. Before that it escaped the binding and read the packaged contract\n"
     "  # instead -- the seam divergence OMN-18676 closed.\n"
-    "  - backend_id: cloud-glm-judge\n"
+    "  - backend_id: cloud-gemini-judge\n"
     "    provider: gemini\n"
     '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
@@ -396,13 +338,7 @@ def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
 
 @pytest.mark.unit
 class TestJudgeVerdictVetoRealDispatchPath:
-    """Drive the FULL chain for ``test`` and prove the verdict reaches the terminal.
-
-    Every hop is the REAL handler; only the outbound httpx call is patched. The
-    gate hop runs ``handle_async`` over the FAIL judge replay, so the verdict veto
-    fires and ``handle_gate_result`` must NOT emit ``delegation-completed`` even
-    though the combined score cleared the bar.
-    """
+    """Drive the bus delegation chain and prove the deterministic result reaches the terminal."""
 
     @pytest.fixture(autouse=True)
     def _bifrost_contract(
@@ -419,15 +355,9 @@ class TestJudgeVerdictVetoRealDispatchPath:
         self,
         workflow: HandlerDelegationWorkflow,
         request: ModelDelegationRequest,
-        *,
-        fixture_name: str,
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         routing_handler = HandlerRoutingIntent()
-        gate_handler = HandlerQualityGateIntent(
-            judge=HandlerJudgeAdequacy(
-                inference_bridge=RecordedJudgeReplayAdapter(fixture_name)
-            )
-        )
+        gate_handler = HandlerQualityGateIntent()
 
         routing_intents = workflow.handle_delegation_request(request)
         assert isinstance(routing_intents[0], ModelRoutingIntent)
@@ -438,7 +368,7 @@ class TestJudgeVerdictVetoRealDispatchPath:
 
         # Hop 4: the primary-delegation inference OUTPUT event, constructed as a
         # controlled internal DTO — the model/HTTP boundary is NOT faked. The
-        # veto under test is driven by the REAL recorded judge adapter above.
+        # The deterministic acceptance checks run on this recorded artifact.
         response = _inference_response(inference_intents[0], _GOOD_TEST_ARTIFACT_MARKED)
 
         gate_intents = workflow.handle_inference_response(response)
@@ -448,15 +378,15 @@ class TestJudgeVerdictVetoRealDispatchPath:
         gate_result = next(
             e for e in gate_output.events if isinstance(e, ModelQualityGateResult)
         )
-        assert any(
+        assert not any(
             isinstance(e, ModelDelegationJudgeVerdictEvent) for e in gate_output.events
-        ), "the judge verdict event must be emitted (combine active)"
+        ), "the gate emits no judge verdict (OMN-20164)"
 
         terminal_events = workflow.handle_gate_result(gate_result)
         return gate_result, terminal_events
 
     @pytest.mark.asyncio
-    async def test_fail_verdict_not_completed_over_dispatch_path(self) -> None:
+    async def test_deterministic_artifact_completes_over_dispatch_path(self) -> None:
         workflow = HandlerDelegationWorkflow(workflows={})
         request = ModelDelegationRequest(
             prompt="Write a unit test for add(a, b).",
@@ -465,35 +395,10 @@ class TestJudgeVerdictVetoRealDispatchPath:
             max_tokens=512,
             emitted_at=datetime.now(UTC),
         )
-        gate_result, terminal_events = await self._run_full_chain(
-            workflow, request, fixture_name="glm_code_adequacy_fail.json"
-        )
-
-        # The gate result the orchestrator consumed carries the veto.
-        assert gate_result.passed is False
-        assert gate_result.score_source == "combined"
-        assert gate_result.quality_score >= _TEST_REQUIRED_BAR
-        # The verdict reached handle_gate_result: NOT completed.
-        assert TOPIC_ID_DELEGATION_COMPLETED not in _terminal_topics(terminal_events)
-        wf = workflow.workflows[request.correlation_id]
-        assert wf.state != EnumDelegationState.COMPLETED
-
-    @pytest.mark.asyncio
-    async def test_pass_verdict_completes_over_dispatch_path(self) -> None:
-        workflow = HandlerDelegationWorkflow(workflows={})
-        request = ModelDelegationRequest(
-            prompt="Write a unit test for add(a, b).",
-            task_type="test",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            emitted_at=datetime.now(UTC),
-        )
-        gate_result, terminal_events = await self._run_full_chain(
-            workflow, request, fixture_name="glm_code_adequacy_pass.json"
-        )
+        gate_result, terminal_events = await self._run_full_chain(workflow, request)
 
         assert gate_result.passed is True
-        assert gate_result.score_source == "combined"
+        assert gate_result.score_source == "deterministic_acceptance"
         assert TOPIC_ID_DELEGATION_COMPLETED in _terminal_topics(terminal_events)
         wf = workflow.workflows[request.correlation_id]
         assert wf.state == EnumDelegationState.COMPLETED

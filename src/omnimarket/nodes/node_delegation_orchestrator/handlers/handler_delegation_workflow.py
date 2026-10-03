@@ -108,6 +108,7 @@ from omnimarket.delegation.response_contract_instruction import (
     render_response_contract_instruction,
 )
 from omnimarket.delegation.rubric.attempt_verdict import (
+    apply_measured_rubric,
     record_attempt_rubric_verdict,
     rubric_check_error_verdict,
 )
@@ -772,6 +773,12 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # af9f024f-8aa9-4531-85f7-624d77b6d77e).
     if "provider http 429" in normalized:
         return EnumDelegationFailureClass.RATE_LIMITED
+    # OMN-19450: the same rule for a rejected credential. The message carries the
+    # call's URL, whose correlation query value can contain "429" by chance and
+    # read as a rate limit through the generic marker below, so the status the
+    # provider answered is matched first.
+    if "provider http 401" in normalized or "provider http 403" in normalized:
+        return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -1759,7 +1766,13 @@ def _inference_failure_cause(
     run; the final 429 only stopped the ladder collecting another answer, and
     it stays legible in that rung's own failure reason.
 
-    Otherwise unchanged: a final rate limit names quota exhaustion, and any
+    OMN-19450: a final failure the provider's own signal classifies names that
+    cause instead of none, so the terminal the projection copies agrees with
+    the one the caller reads. A rejected credential is ``auth_failed``, an
+    exceeded call budget is ``timeout``, and a response the provider cut off at
+    ``finish_reason=length`` is ``quality_gate_refused``: the output-budget rule
+    refused an answer the provider did give, and the rung records the stop
+    reason and the truncated flag that tell it apart from a rule's veto. Any
     other final failure states no cause rather than inventing one.
     """
     if ladder_is_gate_decided(
@@ -1769,8 +1782,14 @@ def _inference_failure_cause(
         ]
     ):
         return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    if workflow.escalation_history and workflow.escalation_history[-1].truncated:
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if failure_class is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
+        return EnumDelegationTerminalFailureCause.AUTH_FAILED
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     return None
 
 
@@ -2181,7 +2200,7 @@ class DelegationWorkflowState:
     same_tier_failed_backend_tier: str | None = None
     # OMN-15503: workflow-wide transport-failure memory. The same backend_ref can
     # appear under more than one tier label (the committed cheap_cloud and claude
-    # slots both reference cloud-gemini-pro), so the per-tier sibling set above is
+    # slots both reference cloud-gemini-2-5-flash), so the per-tier sibling set above is
     # insufficient for cross-tier routing. Every retryable inference failure adds
     # its concrete ref here; all later routing intents and next-tier eligibility
     # probes exclude the accumulated set. A renamed/reordered tier can therefore
@@ -2399,6 +2418,7 @@ class HandlerDelegationWorkflow:
                 excluded_tiers,
                 task_type=task_type,
                 excluded_backend_refs=skip_refs,
+                correlation_id=workflow.correlation_id,
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -2407,6 +2427,7 @@ class HandlerDelegationWorkflow:
                         excluded_tiers,
                         task_type=task_type,
                         excluded_backend_refs=skip_refs,
+                        correlation_id=workflow.correlation_id,
                     )
                     if task_type is not None
                     else NO_HIGHER_TIER_REASON_TOKEN
@@ -3422,6 +3443,22 @@ class HandlerDelegationWorkflow:
             return []
 
         result = _gate_result_with_output_refusal(workflow, result)
+        assert workflow.request is not None
+        # OMN-20166: record every verdict; only configured MET classes decide.
+        try:
+            rubric_verdict = record_attempt_rubric_verdict(
+                task_class=workflow.request.task_type,
+                request_text=workflow.request.prompt,
+                answer_text=workflow.inference_content or "",
+            )
+        except Exception as exc:
+            # A recording fault must never fail the delegation it describes.
+            _logger.warning("Rubric recording failed: %s", type(exc).__name__)
+            rubric_verdict = rubric_check_error_verdict(workflow.request.task_type)
+
+        result = apply_measured_rubric(
+            result, rubric_verdict, task_class=workflow.request.task_type
+        )
         self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
         if workflow.response_contract_evidence is not None:
@@ -3517,6 +3554,8 @@ class HandlerDelegationWorkflow:
             score_below_required_bar=score_below_required_bar,
             no_rung_can_satisfy=no_rung_can_satisfy,
         )
+        if result.fail_category == "rubric_failed":
+            acceptance_reason = EnumDelegationAcceptanceReason.RUBRIC_FAILED
         _logger.info(
             "delegation acceptance decision: decision=%s reason=%s tier=%s "
             "model=%s score=%.3f required_bar=%.3f correlation_id=%s",
@@ -3528,19 +3567,6 @@ class HandlerDelegationWorkflow:
             required_bar_authority.required_bar,
             cid,
         )
-
-        # OMN-20165: the accept or climb decision above is settled; the rubric
-        # verdict is recorded on this rung's attempt and read by no decision.
-        try:
-            rubric_verdict = record_attempt_rubric_verdict(
-                task_class=workflow.request.task_type,
-                request_text=workflow.request.prompt,
-                answer_text=workflow.inference_content or "",
-            )
-        except Exception as exc:
-            # A recording fault must never fail the delegation it describes.
-            _logger.warning("Rubric recording failed: %s", type(exc).__name__)
-            rubric_verdict = rubric_check_error_verdict(workflow.request.task_type)
 
         if quality_accepted:
             # OMN-16932: record the WINNING rung in escalation_history. Until now
@@ -3640,6 +3666,11 @@ class HandlerDelegationWorkflow:
                 finish_reason=result.finish_reason,
                 reasoning_preamble_rule=result.reasoning_preamble_rule or None,
                 rubric_verdict=rubric_verdict,
+                failure_class=(
+                    EnumDelegationFailureClass.RUBRIC_FAILED.value
+                    if result.fail_category == "rubric_failed"
+                    else None
+                ),
             ),
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
@@ -3661,7 +3692,7 @@ class HandlerDelegationWorkflow:
         # returned byte-identical text, score and refusal.
         retry_local_intents = (
             None
-            if no_rung_can_satisfy
+            if no_rung_can_satisfy or result.fail_category == "rubric_failed"
             else self._maybe_retry_local(workflow, rejected_attempt_cost_usd)
         )
         if retry_local_intents is not None:
@@ -3709,7 +3740,11 @@ class HandlerDelegationWorkflow:
             # to the contract-declared escalation topic alongside the re-route.
             escalation_event = self._build_escalation_event(
                 workflow,
-                failure_class=EnumDelegationFailureClass.QUALITY_GATE_FAILED,
+                failure_class=(
+                    EnumDelegationFailureClass.RUBRIC_FAILED
+                    if result.fail_category == "rubric_failed"
+                    else EnumDelegationFailureClass.QUALITY_GATE_FAILED
+                ),
                 escalation_reason=self._score_vs_bar_reason(
                     result,
                     required_bar_authority,
@@ -4279,7 +4314,9 @@ class HandlerDelegationWorkflow:
         rejection is reported first because it short-circuits the other two.
         """
         score_below_bar = result.quality_score < required_bar_authority.required_bar
-        if pre_filter_rejected:
+        if result.fail_category == "rubric_failed":
+            prefix = "rubric_failed"
+        elif pre_filter_rejected:
             prefix = "pre_filter_rejected"
         elif score_below_bar:
             prefix = "score_below_required_bar"

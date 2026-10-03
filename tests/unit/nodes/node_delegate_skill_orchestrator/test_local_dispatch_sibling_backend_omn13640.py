@@ -27,13 +27,13 @@ MEASURED, not inferred (2026-09-15, three consecutive ``onex delegate`` runs on
 a 194-word prose prompt, task class ``research``)::
 
     local       local-heavy-reasoning  climb / heuristic_veto   (x3, max_retries)
-    cheap_cloud cloud-gemini-pro       climb / rate_limited     429 free-tier quota
+    cheap_cloud cloud-gemini-2-5-flash       climb / rate_limited     429 free-tier quota
     -> terminal status=failed, escalation_count=1
 
 against the live routing authority::
 
     sibling_backend_available_in_tier("cheap_cloud", "research",
-                                      frozenset({"cloud-gemini-pro"}))  ->  "cloud-glm"
+                                      frozenset({"cloud-gemini-2-5-flash"}))  ->  "cloud-glm"
     next_eligible_tier("cheap_cloud", {"local", "cheap_cloud"}, ...)     ->  None
 
 i.e. a healthy flat-rate sibling was declared, eligible and untried, and the
@@ -43,9 +43,9 @@ Fixture shape.
 
 ``cheap_cloud`` declares TWO backends for ``research`` — ``cloud-primary``
 (which fails) and ``cloud-sibling`` (which answers) — mirroring the live
-``cheap_cloud`` tier's ``cloud-gemini-pro`` + ``cloud-glm`` pair. The ``claude``
+``cheap_cloud`` tier's ``cloud-gemini-2-5-flash`` + ``cloud-glm`` pair. The ``claude``
 tier declares the SAME backend as ``cloud-primary``, mirroring the live shape
-where ``cloud-gemini-pro`` backs both tiers, so the ladder is genuinely
+where ``cloud-gemini-2-5-flash`` backs both tiers, so the ladder is genuinely
 exhausted above ``cheap_cloud`` and the sibling is the only remaining route.
 That makes the assertion unambiguous: a run that fails here failed because the
 sibling was never tried, not because some other tier absorbed it.
@@ -70,9 +70,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
@@ -83,7 +80,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _real_resolve_delegation_backend,
 )
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 pytestmark = pytest.mark.unit
 
@@ -323,9 +319,6 @@ def _port(effect: _ScriptedEffect, tmp_path: Path) -> LocalDelegationDispatchPor
         effect_handler=effect,
         evidence_db_path=tmp_path / "d.sqlite",
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
 
 

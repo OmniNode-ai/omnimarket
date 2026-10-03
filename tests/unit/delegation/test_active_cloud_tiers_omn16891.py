@@ -52,7 +52,7 @@ _CODE_CLASSES: tuple[str, ...] = (
     "test",
 )
 
-_OPENROUTER_CODER_BACKEND = "openrouter-qwen3-coder-480b"
+_OPENROUTER_CODER_BACKEND = "openrouter-nemotron-ultra"
 
 # OMN-12717 reasoning-burn: the free OpenRouter coder spent 18 reasoning tokens
 # on a 16-token budget and returned preamble instead of the answer. A generous

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from decimal import Decimal
+from functools import partial
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -110,11 +111,22 @@ class TestSavingsRunnerCanonicalTerminal:
             not in runner.subscribe_topics
         )
 
-    def test_completed_with_derivable_counterfactual_upserts_row(self) -> None:
+    def test_completed_with_derivable_counterfactual_upserts_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A canonical completed terminal whose re-derived counterfactual beats the
         measured cost must upsert a row, not be DLQ'd as malformed."""
         published, capture = _capture()
         runner = SavingsProjectionRunner(publish_fn=capture)
+        runner._delegate_skill_baseline_model = "claude-opus-4-6"
+        from omnimarket.nodes.node_projection_savings.handlers import handler_savings
+        from omnimarket.pricing import build_premium_counterfactual
+
+        monkeypatch.setattr(
+            handler_savings,
+            "build_premium_counterfactual",
+            partial(build_premium_counterfactual, premium_model="claude-opus-4-6"),
+        )
         runner._db = _mock_db()
 
         data = _canonical_completed_payload()
@@ -164,12 +176,20 @@ class TestSavingsRunnerCanonicalTerminal:
         assert dlq_rows == [], "non-positive saving must NOT be DLQ'd"
         assert _savings_write_calls(runner._db) == []
 
-    def test_savings_amounts_are_correct(self) -> None:
+    def test_savings_amounts_are_correct(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Savings = re-derived counterfactual_cost_usd - measured cumulative cost."""
         from omnimarket.pricing import build_premium_counterfactual
 
         published, capture = _capture()
         runner = SavingsProjectionRunner(publish_fn=capture)
+        runner._delegate_skill_baseline_model = "claude-opus-4-6"
+        from omnimarket.nodes.node_projection_savings.handlers import handler_savings
+
+        monkeypatch.setattr(
+            handler_savings,
+            "build_premium_counterfactual",
+            partial(build_premium_counterfactual, premium_model="claude-opus-4-6"),
+        )
         # OMN-17426: an applied event re-reads the two singleton aggregates, so
         # the runner now touches the DB even on a path whose upsert is stubbed
         # out. Without a double it reaches the real unconnected adapter.
@@ -193,7 +213,11 @@ class TestSavingsRunnerCanonicalTerminal:
         assert len(captured_kwargs) == 1
         kwargs = captured_kwargs[0]
         # The cloud baseline is re-derived from the served tokens.
-        cf = build_premium_counterfactual(prompt_tokens=1000, completion_tokens=500)
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            premium_model="claude-opus-4-6",
+        )
         assert cf is not None
         assert kwargs["local_cost_usd"] == Decimal("0.003")
         assert kwargs["cloud_cost_usd"] == cf.counterfactual_cost_usd
