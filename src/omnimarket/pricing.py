@@ -142,6 +142,82 @@ def estimate_baseline_cost_usd(
     return float(estimate.estimated_cost_usd)
 
 
+def estimate_baseline_savings_usd(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    actual_cost_usd: float,
+    baseline_model: str,
+) -> float | None:
+    """The one saving figure a completed delegation reports (OMN-17427).
+
+    ``counterfactual(baseline_model) - actual``, floored at zero and rounded to
+    the micro-dollar. The receipt and the ``delegation_events`` evidence row both
+    take their ``cost_savings_usd`` from this function over the same tokens, the
+    same actual cost and the same resolved baseline, so one run can never state
+    two savings under one name. ``None`` when the baseline has no price in the
+    manifest: unresolved is not a zero.
+    """
+    counterfactual_cost_usd = estimate_baseline_cost_usd(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        baseline_model=baseline_model,
+    )
+    if counterfactual_cost_usd is None:
+        return None
+    return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
+
+
+class ModelBaselineSavings(BaseModel):
+    """One delegated run's savings against its resolved baseline (OMN-17427).
+
+    The single computation both the local evidence row and the receipt read.
+    ``savings_usd`` is ``None`` when the baseline has no manifest price, never a
+    stand-in zero. ``premium_counterfactual`` pins the price the saving was
+    derived from, so the row can be re-audited from what it stores.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    baseline: BaselineModelSelection
+    savings_usd: float | None
+    premium_counterfactual: ModelPremiumCounterfactual | None
+
+
+def compute_baseline_savings(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    actual_cost_usd: float,
+    session_model: str = "",
+) -> ModelBaselineSavings:
+    """Resolve the baseline and state the saving against it, once.
+
+    A local run has no overlay or store in hand, so the baseline is the
+    session-named model or the manifest default, exactly as the receipt resolves
+    it for the same run.
+    """
+    baseline = resolve_baseline_model(overlay={}, store={}, session_model=session_model)
+    if baseline.state == "BASELINE_UNRESOLVED":
+        return ModelBaselineSavings(
+            baseline=baseline, savings_usd=None, premium_counterfactual=None
+        )
+    return ModelBaselineSavings(
+        baseline=baseline,
+        savings_usd=estimate_baseline_savings_usd(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            actual_cost_usd=actual_cost_usd,
+            baseline_model=baseline.model,
+        ),
+        premium_counterfactual=build_premium_counterfactual(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            premium_model=baseline.model,
+        ),
+    )
+
+
 def estimate_frontier_costs_usd(
     *,
     prompt_tokens: int,
@@ -422,10 +498,13 @@ __all__: list[str] = [
     "DEFAULT_FRONTIER_COMPARISON_MODELS",
     "ROUTING_TIERS_YAML",
     "ModelActualCostMeasurement",
+    "ModelBaselineSavings",
     "ModelTierCostResult",
     "build_premium_counterfactual",
+    "compute_baseline_savings",
     "compute_tier_cost_usd",
     "estimate_baseline_cost_usd",
+    "estimate_baseline_savings_usd",
     "estimate_frontier_costs_usd",
     "get_manifest_version_int",
     "recompute_actual_cost_and_savings",
