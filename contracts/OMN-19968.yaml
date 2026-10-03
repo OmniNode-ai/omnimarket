@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19968"
+title: "Projection writers that run on a developer machine produce the same rows on SQLite and on Postgres"
+summary: "The four writers with a SQLite path (delegation_events, llm_call_metrics, usage_by_model_day, metering_summary) give equal normalized rows through the real SQLite adapter and the real Postgres adapter, and no Postgres-only SQL is reachable from the SQLite path. This change makes the llm-cost writer speak the shared usage-source vocabulary (measured/estimated/unknown) on both stores, which is what kept llm_call_metrics rows from matching on a database infra has migrated; AC1 binds to the test that pins it. AC2 was delivered earlier (omnimarket#3067) and is not changed here, so this contract does not claim it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-store-neutral-writers"
+    statement: |-
+      Projection writers that run on a developer machine must produce the same rows on SQLite and on Postgres, with no Postgres-only SQL on the SQLite path.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: For each of the four writers with a SQLite path (delegation_events, llm_call_metrics, usage_by_model_day and metering_summary) the same recorded event fixtures give equal normalized rows through the real SQLite adapter and the real Postgres adapter -- falsifier: the omnimarket parity test run with uv run pytest shows a row difference
+evidence_requirements:
+  - kind: "tests"
+    description: "The llm-cost writer, its SQLite schema and the forward migration use the shared usage-source vocabulary, so its rows match on SQLite and on a Postgres infra has migrated."
+    command: "uv run pytest tests/unit/test_omn19968_usage_source_vocabulary.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19968-ac1-shared-usage-source"
+    description: "The llm-cost writer writes measured/estimated/unknown, the SQLite schema defaults to it, existing rows move onto it, and the forward migration renames the retired labels in place."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn19968_usage_source_vocabulary.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

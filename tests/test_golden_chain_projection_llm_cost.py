@@ -76,7 +76,7 @@ class TestLlmCostProjection:
         assert result.rows_upserted == 3
         assert len(db.query(TABLE)) == 3
 
-    def test_usage_source_measured_maps_to_api(self) -> None:
+    def test_usage_source_measured_maps_to_measured(self) -> None:
         db = InmemoryDatabaseAdapter()
         HANDLER.project(
             ModelLlmCallCompletedEvent(
@@ -85,7 +85,7 @@ class TestLlmCostProjection:
             db,
         )
         rows = db.query(TABLE)
-        assert rows[0]["usage_source"] == "API"
+        assert rows[0]["usage_source"] == "measured"
         assert rows[0]["usage_is_estimated"] is False
 
     def test_usage_source_estimated(self) -> None:
@@ -100,7 +100,7 @@ class TestLlmCostProjection:
             db,
         )
         rows = db.query(TABLE)
-        assert rows[0]["usage_source"] == "ESTIMATED"
+        assert rows[0]["usage_source"] == "estimated"
         assert rows[0]["usage_is_estimated"] is True
 
     def test_compute_cost_folds_into_estimated_cost(self, tmp_path: Path) -> None:
