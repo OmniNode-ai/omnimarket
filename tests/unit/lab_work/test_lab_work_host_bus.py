@@ -6,9 +6,12 @@ advertisement, and the local runner against a real git repository."""
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,11 +22,12 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_lab_work_topics
-from omnimarket.lab_work.placement import EnumPlacementDecision
+from omnimarket.lab_work.placement import EnumPlacementDecision, EnumRefusalReason
 from omnimarket.nodes.node_lab_work_unit_effect import (
     EnumLabWorkUnitStatus,
     HandlerHostCapacityAdvertiseEffect,
     HandlerLabWorkUnitEffect,
+    ModelHostCapacityAdvertisement,
     ModelHostCapacityProbeRequest,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
@@ -256,6 +260,143 @@ def test_cli_run_exits_69_when_no_pool_host_advertises() -> None:
     result = CliRunner().invoke(cli.lab_work_group, base)
     assert result.exit_code == cli.EXIT_NO_ADVERTISEMENT, result.output
     assert "could_not_check" in result.output
+
+
+def test_cli_run_exits_75_when_every_host_is_over_the_load_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from click.testing import CliRunner
+
+    from omnimarket.lab_work import cli
+
+    runners = [_Runner(), _Runner()]
+
+    @asynccontextmanager
+    async def open_busy_pool(**kwargs: object) -> AsyncIterator[EventBusInmemory]:
+        bus = EventBusInmemory(environment="local", group="lab-work-busy-test")
+        await bus.start()
+        hosts = [
+            LabWorkHost(
+                bus,
+                HandlerLabWorkUnitEffect(name, runner),
+                HandlerHostCapacityAdvertiseEffect(_Reader(load, cores)),
+            )
+            for name, runner, load, cores in [
+                ("h202", runners[0], 25, 32),
+                ("h105", runners[1], 8, 10),
+            ]
+        ]
+
+        async def collect_busy_hosts(
+            caller: LabWorkCaller, window_seconds: float
+        ) -> list[ModelHostCapacityAdvertisement]:
+            for host in hosts:
+                await host.advertise_once()
+            return caller.advertisements()
+
+        monkeypatch.setattr(LabWorkCaller, "collect", collect_busy_hosts)
+        try:
+            yield bus
+        finally:
+            await bus.close()
+
+    async def unexpected_dispatch(
+        caller: LabWorkCaller, request: ModelLabWorkUnitRequest
+    ) -> ModelLabWorkUnitReceipt:
+        pytest.fail("an over-capacity pool must not receive a work unit")
+
+    monkeypatch.setattr(cli, "open_lab_run_bus", open_busy_pool)
+    monkeypatch.setattr(LabWorkCaller, "dispatch", unexpected_dispatch)
+    result = CliRunner().invoke(
+        cli.lab_work_group,
+        [
+            "run",
+            "--bus",
+            "inmemory",
+            "--repo",
+            "OmniNode-ai/omnimarket",
+            "--sha",
+            SHA,
+            "--lane",
+            "test-lane",
+            "--window",
+            "0.1",
+            "--",
+            "uv",
+            "run",
+            "pytest",
+        ],
+    )
+    assert result.exit_code == cli.EXIT_NO_HOST == 75, result.output
+    assert "placement: refused (over_capacity)" in result.output
+    assert "h202: over the 0.75 load/core bar" in result.output
+    assert "h105: over the 0.75 load/core bar" in result.output
+    assert "not running it anywhere" in result.output
+    assert "lab-work: sent" not in result.output
+    assert all(runner.ran == [] for runner in runners)
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [b"\xff", b"{", b"[]", b'{"payload":{"cores":0}}'],
+    ids=["invalid-utf8", "invalid-json", "not-an-object", "invalid-capacity"],
+)
+def test_caller_ignores_malformed_capacity_advertisements(malformed: bytes) -> None:
+    async def scenario() -> None:
+        stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
+        bus = EventBusInmemory(environment="local", group="lab-work-malformed-test")
+        await bus.start()
+        caller = LabWorkCaller(bus, now=lambda: stamp)
+        await caller.start()
+        try:
+            await bus.publish(caller.topics.capacity, b"h202", malformed)
+            assert caller.advertisements() == []
+            assert caller.place().refusal is EnumRefusalReason.COULD_NOT_CHECK
+            valid = HandlerHostCapacityAdvertiseEffect(
+                _Reader(0, 32), now=lambda: stamp
+            ).handle(ModelHostCapacityProbeRequest(host_name="h202"))
+            await bus.publish(
+                caller.topics.capacity,
+                b"h202",
+                json.dumps({"payload": valid.model_dump(mode="json")}).encode(),
+            )
+            assert caller.advertisements() == [valid]
+            assert caller.place().host_name == "h202"
+        finally:
+            await caller.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
+
+
+def test_caller_rejects_an_advertisement_with_zero_total_slots() -> None:
+    async def scenario() -> None:
+        stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
+        bus = EventBusInmemory(environment="local", group="lab-work-zero-slots-test")
+        await bus.start()
+        caller = LabWorkCaller(bus, now=lambda: stamp)
+        await caller.start()
+        try:
+            valid = HandlerHostCapacityAdvertiseEffect(
+                _Reader(0, 32), now=lambda: stamp
+            ).handle(ModelHostCapacityProbeRequest(host_name="h202"))
+            payload = valid.model_dump(mode="json")
+            payload["max_units"] = 0
+            await bus.publish(
+                caller.topics.capacity,
+                b"h202",
+                json.dumps({"payload": payload}).encode(),
+            )
+            assert caller.advertisements() == []
+            placement = caller.place()
+            assert placement.decision is EnumPlacementDecision.REFUSED
+            assert placement.refusal is EnumRefusalReason.COULD_NOT_CHECK
+            assert placement.host_name == ""
+        finally:
+            await caller.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
 
 
 def test_claude_login_is_a_cached_login_check_not_a_binary_check(
