@@ -192,21 +192,26 @@ def no_phantom_paths(
             continue
         for name in params.path_argument_names:
             value = arguments.get(name)
-            if not isinstance(value, str):
+            if isinstance(value, str):
+                paths = [value]
+            elif isinstance(value, list):
+                paths = [path for path in value if isinstance(path, str)]
+            else:
                 continue
-            path = value.removeprefix("./")
-            fact = f"{call.call_id}:{path}"
-            if (
-                call.tool_name in params.creating_tools
-                and call.result is not None
-                and call.result.status == EnumToolCallStatus.OK
-            ):
-                created.add(path)
-            elif not _path_exists(path, set(known) | created):
-                return result(
-                    criterion, EnumRubricOutcome.FAIL, "phantom_path", fact, (fact,)
-                )
-            checked.append(fact)
+            for raw_path in paths:
+                path = raw_path.removeprefix("./")
+                fact = f"{call.call_id}:{path}"
+                if (
+                    call.tool_name in params.creating_tools
+                    and call.result is not None
+                    and call.result.status == EnumToolCallStatus.OK
+                ):
+                    created.add(path)
+                elif not _path_exists(path, set(known) | created):
+                    return result(
+                        criterion, EnumRubricOutcome.FAIL, "phantom_path", fact, (fact,)
+                    )
+                checked.append(fact)
     for citation in re.finditer(CITED_LINES_PATTERN, request.answer_text):
         path = citation["path"].removeprefix("./")
         fact = citation[0]

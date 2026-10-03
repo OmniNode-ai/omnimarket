@@ -11,9 +11,9 @@ turns is this orchestrator:
     CLAIM -> [TURN -> APPLY(actions) -> (FINISH -> CHECKS)]* -> DIFF -> SCORE -> RECEIPT
 
 * At most ``max_turns`` turns (the tool_use rubric's budget caps it at 40).
-* Writes are confined: a write or edit whose path is absolute, climbs out with
-  ``..``, touches ``.git``, or matches no writable glob is refused and the
-  refusal is fed back. Nothing is written for it.
+* Writes are confined: a write, edit or replace_in_files whose path is absolute,
+  climbs out with ``..``, touches ``.git``, or matches no writable glob is
+  refused and the refusal is fed back. Nothing is written for it.
 * ``run_check`` runs only a check the request declares, by name; an undeclared
   name is refused. There is no shell tool.
 * ``finish`` runs every declared check. All passing ends the loop
@@ -51,6 +51,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
     build_turn_prompt,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    MAX_BULK_FILES,
     MAX_OBSERVATION_BYTES,
     MAX_VIEW_BYTES,
     MAX_VIEW_WINDOW_BYTES,
@@ -201,6 +202,7 @@ class _Call:
 
 @dataclass
 class _State:
+    paths: tuple[str, ...] = ()
     replies: list[ModelTurnReply] = field(default_factory=list)
     calls: list[_Call] = field(default_factory=list)
     history: list[str] = field(default_factory=list)
@@ -509,6 +511,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         state: _State,
         start_turn: int = 1,
     ) -> EnumCodeEditStatus:
+        state.paths = tuple(path for path, _ in manifest)
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
         for turn in range(start_turn, request.max_turns + 1):
@@ -638,6 +641,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 {
                     "tool": action.tool.value,
                     "target": action.target,
+                    "files": list(action.file_paths),
                     "name": action.name,
                     "ok": observation.ok,
                     "output": _cap(observation.output, 2_000),
@@ -663,6 +667,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         state: _State,
     ) -> ModelObservation:
         tool = action.tool
+        if tool == EnumCodeEditTool.REPLACE_IN_FILES:
+            return self._replace_in_files(request, action, state)
         if tool == EnumCodeEditTool.RUN_CHECK:
             check = request.check_named(action.name)
             if check is None:
@@ -744,6 +750,83 @@ class HandlerDelegatedCodeEditOrchestrator:
             return ModelObservation(ok=True, output=f"edited {path}")
         except WorkspacePathError as exc:
             return ModelObservation(ok=False, output=f"error: {exc}")
+
+    def _replace_in_files(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        action: ModelCodeEditAction,
+        state: _State,
+    ) -> ModelObservation:
+        """Replace every occurrence independently in each writable target file.
+
+        A glob is a scope, not a list: it expands to the manifest files that are
+        writable, a matching file outside the writable globs is counted and
+        skipped, and a file without old_string is not a failure. A named file
+        that is refused or lacks old_string is.
+        """
+        by_glob = not action.file_paths
+        outside = 0
+        if not by_glob:
+            targets = list(
+                dict.fromkeys(
+                    normalise_path(path) or path for path in action.file_paths
+                )
+            )
+        else:
+            pattern = glob_regex(action.glob)
+            matched = sorted(path for path in state.paths if pattern.match(path))
+            targets = [path for path in matched if writable(request, path)]
+            outside = len(matched) - len(targets)
+        if not targets or len(targets) > MAX_BULK_FILES:
+            state.refusals += 1
+            return ModelObservation(
+                ok=False,
+                output="refused: replace_in_files has no targets"
+                if not targets
+                else f"refused: replace_in_files targets over {MAX_BULK_FILES} files",
+            )
+        failures: list[str] = []
+        edited: list[str] = []
+        unmatched = 0
+        for raw in targets:
+            path = normalise_path(raw)
+            if path is None:
+                failures.append(f"FAILED {raw}: leaves the worktree")
+                continue
+            if not writable(request, path):
+                state.refusals += 1
+                failures.append(f"FAILED {path}: not writable")
+                continue
+            try:
+                current = self._ports.read_file(request, path)
+                occurrences = current.count(action.old_string)
+                if not occurrences:
+                    if by_glob:
+                        unmatched += 1
+                    else:
+                        failures.append(f"FAILED {path}: no match")
+                    continue
+                updated = current.replace(action.old_string, action.new_string)
+                if len(updated.encode()) > MAX_WRITE_BYTES:
+                    state.refusals += 1
+                    failures.append(
+                        f"FAILED {path}: content over {MAX_WRITE_BYTES} bytes"
+                    )
+                    continue
+                self._ports.write_file(request, path, updated)
+            except WorkspacePathError as exc:
+                failures.append(f"FAILED {path}: {exc}")
+                continue
+            edited.append(f"edited {path} ({occurrences}x)")
+        if by_glob and not edited and not failures:
+            failures.append("FAILED glob: no matched file contains old_string")
+        header = f"replace_in_files: {len(edited)} edited, {len(failures)} failed of {len(targets)}"
+        if by_glob:
+            header += f"; {unmatched} without old_string, {outside} matched outside the writable globs"
+        return ModelObservation(
+            ok=not failures,
+            output=_cap("\n".join([header, *failures, *edited])),
+        )
 
     def _format(
         self, request: ModelDelegatedCodeEditRequest, path: str, state: _State
