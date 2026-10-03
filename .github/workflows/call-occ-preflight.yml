@@ -25,9 +25,11 @@
 #   rename this job or add a `name:` — either would change the surfaced context
 #   and wedge the entire CI matrix.
 #
-# Trigger note: the omnibase_core/omniclaude callers also fire on `merge_group`,
-# but omnimarket's dev branch has no merge queue configured, so merge_group is
-# intentionally omitted here (it would never fire). `edited` is retained so the
+# Trigger note: fires on `merge_group` like the omnibase_core/omniclaude
+# callers (OMN-20375: omnimarket dev gains a merge queue). The reusable re-runs
+# eligibility fully on a queue commit (its invariant I2), and the required
+# context `occ-preflight / eligibility` must report there or every queue entry
+# waits on it until the queue's check timeout. `edited` is retained so the
 # OCC autobind emitter's `Evidence-Source: OCC#<n>` PATCH re-fires eligibility
 # immediately (OMN-13990 D2 self-heal) instead of waiting for an unrelated push.
 #
@@ -42,6 +44,7 @@ on:
   pull_request:
     branches: [main, dev, "hotfix/**"]
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
 
 # OMN-19643: cancel only superseded pull request runs.
 # OMN-20038: an `edited` event (a PR-body or title edit, 44 runs in 2h on
