@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any, cast
 
+import jsonschema
 import pytest
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
@@ -711,8 +712,86 @@ def test_format_is_offered_as_a_tool() -> None:
     names = [t["function"]["name"] for t in schemas]
     assert "format" in names
     contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
-    tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
-    assert "format" in tool_enum
+    tool_names = {
+        variant["properties"]["tool"]["const"]
+        for variant in contract["properties"]["actions"]["items"]["anyOf"]
+    }
+    assert "format" in tool_names
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        (
+            {
+                "note": "n",
+                "actions": [
+                    {"tool": "view", "path": "a.py", "offset": 3},
+                    {"tool": "grep", "pattern": "x", "path": "src"},
+                    {"tool": "finish", "summary": "done"},
+                ],
+            },
+            True,
+        ),
+        (
+            {
+                "actions": [
+                    {"tool": "grep", "pattern": "x", "name": "n", "summary": "s"}
+                ]
+            },
+            False,
+        ),
+        (
+            {
+                "actions": [
+                    {
+                        "tool": "edit",
+                        "file_path": "a.py",
+                        "old_string": "a",
+                        "new_string": "b",
+                        "summary": "s",
+                    }
+                ]
+            },
+            False,
+        ),
+        (
+            {
+                "actions": [
+                    {
+                        "tool": "replace_in_files",
+                        "old_string": "a",
+                        "new_string": "b",
+                        "glob": "src/*.py",
+                    }
+                ]
+            },
+            True,
+        ),
+        (
+            {
+                "actions": [
+                    {
+                        "tool": "replace_in_files",
+                        "old_string": "a",
+                        "new_string": "b",
+                        "glob": "src/*.py",
+                        "file_paths": ["a.py"],
+                    }
+                ]
+            },
+            False,
+        ),
+        ({"actions": [{"tool": "view"}]}, False),
+        ({"actions": [{"tool": "write", "file_path": "a.py", "content": ""}]}, True),
+    ],
+)
+def test_response_contract_and_parser_agree(
+    reply: dict[str, object], expected: bool
+) -> None:
+    validator = jsonschema.Draft202012Validator(RESPONSE_CONTRACT)
+    assert validator.is_valid(reply) is expected
+    assert (parse_turn_reply(json.dumps(reply))[1] == "") is expected
 
 
 def _interrupted_ports() -> FakePorts:
@@ -1271,15 +1350,24 @@ def test_replace_in_files_schemas_declare_arrays_and_keep_the_turn_limit() -> No
     assert function["parameters"]["required"] == ["old_string"]
     actions = cast(dict[str, Any], RESPONSE_CONTRACT["properties"])["actions"]
     assert actions["maxItems"] == 12
-    properties = actions["items"]["properties"]
-    assert "replace_in_files" in properties["tool"]["enum"]
-    assert properties["glob"] == {"type": "string"}
-    assert properties["file_paths"] == {
+    variants = [
+        variant
+        for variant in actions["items"]["anyOf"]
+        if variant["properties"]["tool"]["const"] == "replace_in_files"
+    ]
+    assert len(variants) == 2
+    file_paths_variant, glob_variant = variants
+    assert file_paths_variant["required"] == ["tool", "old_string", "file_paths"]
+    assert file_paths_variant["properties"]["file_paths"] == {
         "type": "array",
         "items": {"type": "string"},
         "minItems": 1,
         "maxItems": MAX_BULK_FILES,
     }
+    assert "glob" not in file_paths_variant["properties"]
+    assert glob_variant["required"] == ["tool", "old_string", "glob"]
+    assert glob_variant["properties"]["glob"] == {"type": "string", "minLength": 1}
+    assert "file_paths" not in glob_variant["properties"]
 
 
 # -- OMN-20291: the replay's node failure classes ------------------------------
