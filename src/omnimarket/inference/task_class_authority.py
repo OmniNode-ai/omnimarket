@@ -1068,6 +1068,39 @@ def withheld_delegation_refusal(task_class: str) -> str | None:
 
 
 @lru_cache(maxsize=1)
+def _loaded_size_band_authority() -> ModelTaskClassAuthority:
+    """Load the size-band authority once; a raised read is never cached."""
+    return load_task_class_authority()
+
+
+def _size_band_authority() -> ModelTaskClassAuthority | None:
+    """The size-band authority, or ``None`` while it is unreadable.
+
+    Only a successful load is cached, so a transient read failure yields no
+    band for that decision and the next decision reads the file again.
+    """
+    try:
+        return _loaded_size_band_authority()
+    except (OSError, ValueError, yaml.YAMLError):
+        return None
+
+
+def resolve_size_band_thresholds(
+    task_class: str,
+) -> tuple[ModelSizeBandThresholds, str] | None:
+    """Return the declared size thresholds and their contract path, or ``None``.
+
+    ``None`` is a real answer: the authority is unreadable or declares no
+    thresholds for the class, and routing then carries no band rather than a
+    guessed one.
+    """
+    authority = _size_band_authority()
+    if authority is None:
+        return None
+    return authority.size_band_thresholds_for(task_class)
+
+
+@lru_cache(maxsize=1)
 def _quality_rules() -> dict[str, ModelQualityRule]:
     """The declared quality-rule registry, read once.
 
@@ -1176,6 +1209,7 @@ __all__ = [
     "resolve_delegation_output_authority",
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
+    "resolve_size_band_thresholds",
     "resolve_task_class_execution_budget",
     "resolve_task_class_output_contract",
     "withheld_delegation_refusal",
