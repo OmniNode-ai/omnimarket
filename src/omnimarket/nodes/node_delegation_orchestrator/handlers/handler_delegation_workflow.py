@@ -143,6 +143,7 @@ from omnimarket.inference.provider_quota_state import (
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
+from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
@@ -2047,6 +2048,7 @@ class _AttemptProviderFacts:
     """Provider facts of one attempt (OMN-20154)."""
 
     provider_id: str | None
+    host: str | None
     http_status: int | None
     provider_code: str | None
     failure_class: str | None
@@ -2967,6 +2969,7 @@ class HandlerDelegationWorkflow:
                 )
                 facts = _AttemptProviderFacts(
                     provider_id=quota_domain_for_endpoint(endpoint),
+                    host=endpoint_host(endpoint),
                     http_status=parsed.http_status,
                     provider_code=verdict.provider_code if verdict else None,
                     failure_class=_inference_error_failure_class(
@@ -2988,6 +2991,7 @@ class HandlerDelegationWorkflow:
                 )
                 facts = _AttemptProviderFacts(
                     provider_id=quota_domain_for_endpoint(endpoint),
+                    host=endpoint_host(endpoint),
                     http_status=200,
                     provider_code=None,
                     failure_class=None,
@@ -4178,6 +4182,7 @@ class HandlerDelegationWorkflow:
         return attempt.model_copy(
             update={
                 "provider_id": attempt.provider_id or facts.provider_id,
+                "host": attempt.host or facts.host,
                 "http_status": attempt.http_status or facts.http_status,
                 "provider_code": attempt.provider_code or facts.provider_code,
                 "failure_class": attempt.failure_class or failure_class,

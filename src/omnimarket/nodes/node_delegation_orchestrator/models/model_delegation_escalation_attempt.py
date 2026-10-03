@@ -102,6 +102,11 @@ class ModelDelegationEscalationAttempt(BaseModel):
             "an endpoint URL. None when the decision carried no key."
         ),
     )
+    # OMN-20168: retain placement on the rung that called the provider.
+    host: str | None = Field(
+        default=None,
+        description="Hostname of the endpoint called; None when no provider call was made.",
+    )
     # OMN-20154: which provider this rung called and what it answered. Every
     # attempt in 7 days of lab rows carried failure_class null and no provider
     # or status, so a 429 storm could not be counted per provider from the
