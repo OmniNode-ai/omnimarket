@@ -17,8 +17,11 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_del
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
     RESPONSE_CONTRACT,
     TOOL_SCHEMAS,
+    HistoryAction,
+    HistoryTurn,
     build_turn_prompt,
     parse_turn_reply,
+    render_history,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     EnumCodeEditStatus,
@@ -48,6 +51,8 @@ __all__ = [
     "EnumCodeEditStatus",
     "EnumCodeEditTool",
     "HandlerDelegatedCodeEditOrchestrator",
+    "HistoryAction",
+    "HistoryTurn",
     "LoopReceiptExistsError",
     "ModelCheckResult",
     "ModelCodeEditAction",
@@ -62,5 +67,6 @@ __all__ = [
     "build_turn_prompt",
     "normalise_path",
     "parse_turn_reply",
+    "render_history",
     "writable",
 ]

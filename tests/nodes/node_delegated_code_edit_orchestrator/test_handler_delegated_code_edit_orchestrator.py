@@ -549,12 +549,18 @@ def test_offset_must_be_a_positive_integer() -> None:
 
 def test_a_turn_whose_results_exceed_the_history_budget_is_cut_not_dropped() -> None:
     from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+        HistoryAction,
+        HistoryTurn,
         build_turn_prompt,
     )
 
     request = _request()
-    huge = "TURN 2\n> view(path='src/m.py') -> ok\n" + "x" * 50_000 + "\n"
-    history = ["TURN 1\n> ls() -> ok\nsrc\n", huge]
+    history = [
+        HistoryTurn(1, actions=(HistoryAction("> ls() -> ok", "src"),)),
+        HistoryTurn(
+            2, actions=(HistoryAction("> view(path='src/m.py') -> ok", "x" * 50_000),)
+        ),
+    ]
     head_only = build_turn_prompt(request, ["src/m.py"], (), [], 3, max_chars=1)
     prompt = build_turn_prompt(
         request, ["src/m.py"], (), history, 3, max_chars=len(head_only) + 5_000
@@ -608,3 +614,242 @@ def test_format_is_offered_as_a_tool() -> None:
     contract = cast("dict[str, Any]", RESPONSE_CONTRACT)
     tool_enum = contract["properties"]["actions"]["items"]["properties"]["tool"]["enum"]
     assert "format" in tool_enum
+
+
+# -- OMN-20291: the replay's node failure classes ------------------------------
+
+
+def _calls(ports: FakePorts) -> list[dict[str, Any]]:
+    return cast("list[dict[str, Any]]", ports.transcript["calls"])
+
+
+def test_an_absolute_path_inside_the_worktree_is_used_as_its_relative_form() -> None:
+    """Replay 58744096: the loop prints check argv with the worktree's absolute
+    PYTHONPATH; the model searched that path and was refused as leaving the
+    worktree, and the rubric scored the absolute path a phantom path."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a("view", path="/work/tree/src/m.py"),
+                _a("grep", pattern="add", path="/work/tree/src"),
+                _a(
+                    "edit",
+                    file_path="/work/tree/src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+                _a("view", path="/work/treeX/src/m.py"),
+                _a("finish", summary="s"),
+            )
+        ],
+        check_passes=[True],
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == FIX
+    calls = _calls(ports)
+    assert [c["status"] for c in calls] == ["ok", "ok", "ok", "error", "ok"]
+    assert '"path": "src/m.py"' in calls[0]["arguments_json"]
+    assert '"path": "src"' in calls[1]["arguments_json"]
+    assert '"file_path": "src/m.py"' in calls[2]["arguments_json"]
+    # A sibling directory that merely shares the prefix still leaves the worktree.
+    assert "leaves the worktree" in calls[3]["output"]
+    assert result.refusals == 1
+
+
+def test_normalise_path_maps_an_absolute_path_under_the_root() -> None:
+    assert normalise_path("/work/tree/src/m.py", root="/work/tree") == "src/m.py"
+    assert normalise_path("/work/tree", root="/work/tree") == "."
+    assert normalise_path("/work/tree/../x", root="/work/tree") is None
+    assert normalise_path("/tmp/x.py", root="/work/tree") is None
+    assert normalise_path("/abs") is None
+
+
+DOC = (
+    "def f():\n"
+    '    """Docs.\n'
+    "\n"
+    "    * Owned: a CLAIM owns a PR by its ticket\n"
+    "      (OMN-1), and no CLAIM owns a PR by a dispatcher. A later TERMINAL ends it.\n"
+    '    """\n'
+)
+
+
+def test_edit_tolerates_a_uniform_indentation_shift() -> None:
+    """Replay ea3ee264: the view prints ``   96|   text`` and the model copied one
+    space of the ``| `` separator into every line of old_string and new_string."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="       (OMN-1), and no CLAIM owns a PR by a dispatcher. A later TERMINAL",
+                    new_string="       (OMN-1), and no CLAIM owns a PR by a dispatcher,\n"
+                    "       nor by a shared ticket. A later TERMINAL",
+                ),
+            )
+        ],
+        files={"src/m.py": DOC},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == DOC.replace(
+        "a dispatcher. A later",
+        "a dispatcher,\n      nor by a shared ticket. A later",
+    )
+    assert [c["status"] for c in _calls(ports)] == ["ok"]
+
+
+def test_a_multi_line_edit_tolerates_a_uniform_indentation_shift() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="     * Owned: a CLAIM owns a PR by its ticket\n"
+                    "       (OMN-1), and no CLAIM",
+                    new_string="     * Owned: a CLAIM owns a PR by its ticket\n"
+                    "       (OMN-2), and no CLAIM",
+                ),
+            )
+        ],
+        files={"src/m.py": DOC},
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == DOC.replace("(OMN-1)", "(OMN-2)")
+
+
+def test_an_indentation_tolerant_match_must_still_be_unique() -> None:
+    body = "def f():\n    x = 1\n\ndef g():\n        x = 1\n"
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="\tx = 1",
+                    new_string="\tx = 2",
+                ),
+            )
+        ],
+        files={"src/m.py": body},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files["src/m.py"] == body
+    assert _calls(ports)[0]["status"] == "error"
+
+
+def test_an_edit_already_applied_is_reported_applied_not_failed() -> None:
+    """Replay ea3ee264 turn 7: the model re-sent an edit it had applied in turn 3."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+        ],
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/m.py"] == FIX
+    calls = _calls(ports)
+    assert [c["status"] for c in calls] == ["ok", "ok"]
+    assert "already" in calls[1]["output"]
+    assert ports.writes == ["src/m.py"]
+
+
+def test_an_insertion_already_applied_is_not_inserted_twice() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="def add(a, b):",
+                    new_string="def add(a, b):\n    # sum",
+                ),
+            ),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="def add(a, b):",
+                    new_string="def add(a, b):\n    # sum",
+                ),
+            ),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/m.py"] == "def add(a, b):\n    # sum\n    return 0\n"
+    assert [c["status"] for c in _calls(ports)] == ["ok", "ok"]
+
+
+def _views(n: int, path: str = "src/big.py") -> ModelTurnReply:
+    return _reply(
+        n, *(_a("view", path=path, offset=str(1 + 250 * k)) for k in range(4))
+    )
+
+
+def test_every_earlier_turn_stays_in_the_prompt_when_its_output_cannot() -> None:
+    """Replays a16a3138 and e3a2c923: from turn 3 the prompt sat at its cap and
+    held only the last one to three turns, so the model forgot what it had read
+    and re-read the same files for 40 turns without editing."""
+    big = "".join(f"line {i} " + "x" * 40 + "\n" for i in range(1, 1001))
+    turns = [
+        _views(1),
+        _reply(2, _a("grep", pattern="line 7", path="src")),
+        *(_views(n) for n in range(3, 9)),
+    ]
+    ports = FakePorts(turns, files={"src/m.py": "x\n", "src/big.py": big})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=9))
+    last = ports.prompts[-1]
+    for n in range(1, 9):
+        assert f"TURN {n}\n" in last, n
+    assert "> grep(path='src', pattern='line 7') -> ok" in last
+    assert "[earlier turns cut to fit]" not in last
+    # The newest turn's views are shown in full; a window shown again later is
+    # not repeated, it points at the later turn.
+    assert last.count("line 999 ") == 1
+    assert "shown again in turn 8" in last
+
+
+def test_a_view_of_a_file_changed_later_is_marked_stale() -> None:
+    ports = FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")),
+            _reply(
+                2,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return a + b",
+                ),
+            ),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=3))
+    last = ports.prompts[-1]
+    assert "src/m.py changed in turn 2 after this view" in last
