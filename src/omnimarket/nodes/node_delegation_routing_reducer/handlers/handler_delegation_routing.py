@@ -80,6 +80,7 @@ from omnimarket.inference.requested_response_shape import (
     resolve_requested_response_shape,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
+from omnimarket.inference.task_class_authority import withheld_delegation_refusal
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
@@ -2704,6 +2705,11 @@ def delta(
             :mod:`omnimarket.routing.customer_key_terminus`.
     """
     task_type = request.task_type
+    # OMN-17427: a withheld class is refused before every backend or overlay override.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        raise ProtocolConfigurationError(refusal)
+
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
 
     # OMN-16932: a prompt that declares its own answer shape ("Reply with

@@ -3,8 +3,8 @@
 """Standalone projection runner for consumer flow windows (OMN-16777).
 
 Consumes ``onex.evt.platform.node-heartbeat.v1`` — the topic the runtime already
-emits on — and writes the flow rows the read model serves, then publishes each
-written row as a snapshot delta so the exposure is genuinely bus-backed.
+emits on — and writes the flow rows the read model serves, then publishes
+snapshot deltas on first sighting, verdict change, or a bounded refresh interval.
 
 The verdict logic is NOT duplicated here: ``derive_flow_state`` is imported from
 the pure handler, so the SQL writer and the in-memory writer cannot drift into
@@ -29,11 +29,13 @@ import yaml
 
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
     HandlerProjectionConsumerFlow,
+    snapshot_publish_due,
 )
 from omnimarket.nodes.node_projection_consumer_flow.models import (
     ModelConsumerFlowProjectionRequest,
     ModelConsumerFlowRow,
     ModelNodeFlowWindowWire,
+    ModelSnapshotPublishPolicy,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
@@ -186,6 +188,9 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
+        self._snapshot_publish_policy = ModelSnapshotPublishPolicy.model_validate(
+            self._contract["snapshot_publish_policy"]
+        )
 
         node_name = str(self._contract.get("name", "projection_consumer_flow"))
         exposures = load_projection_exposures_from_contract(
@@ -194,9 +199,19 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         self._snapshot_exposure: ProjectionTableConfig | None = next(
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
+        if self._snapshot_exposure is not None:
+            for column in self._snapshot_publish_policy.verdict_columns:
+                if column not in self._snapshot_exposure.columns:
+                    raise ValueError(
+                        f"Snapshot verdict column {column!r} is not in exposure columns"
+                    )
+        self._last_published: dict[
+            tuple[str, str], tuple[tuple[str, ...], datetime]
+        ] = {}
         # Cold start is self-healing and deliberately has no backfill publisher:
-        # every live runtime re-emits a heartbeat on its own interval, and every
-        # heartbeat carrying a window republishes its rows. The bus-backed cache
+        # every live runtime re-emits a heartbeat on its own interval. The first
+        # window per pair after start publishes, then on verdict change or once
+        # per refresh interval. The bus-backed cache
         # therefore reaches steady state within one heartbeat interval of
         # startup. A runtime that is NOT heartbeating publishes nothing — which
         # is the correct answer, because a runtime that stopped heartbeating is
@@ -434,6 +449,19 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         bus_backed exposure AND the write returned a real row."""
         if self._snapshot_exposure is None or row is None:
             return
+        policy = self._snapshot_publish_policy
+        key = (str(row["consumer_group"]), str(row["topic"]))
+        verdict = tuple(str(row[column]) for column in policy.verdict_columns)
+        window_end = row["window_end"]
+        if not isinstance(window_end, datetime):
+            window_end = datetime.fromisoformat(window_end)
+        if not snapshot_publish_due(
+            policy=policy,
+            last_published=self._last_published.get(key),
+            verdict=verdict,
+            window_end=window_end,
+        ):
+            return
         source_event_id = str(data.get("correlation_id") or meta.fallback_id)
         await self.publish_snapshot_delta(
             self._snapshot_exposure,
@@ -444,6 +472,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             source_partition=meta.partition,
             source_offset=meta.offset,
         )
+        self._last_published[key] = (verdict, window_end)
 
 
 __all__ = ["ConsumerFlowProjectionWriter"]

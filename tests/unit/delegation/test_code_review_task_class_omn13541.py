@@ -50,13 +50,8 @@ class TestCodeReviewTaskClass:
         assert 0.0 <= authority.required_bar <= 1.0
         assert authority.authority_source == "task_class:code_review"
 
-    def test_routing_tiers_serve_code_review_with_cloud_fallback(self) -> None:
-        """code_review is routable on BOTH a local tier and a cheap_cloud tier.
-
-        The single-local-backend topology was the strand risk; the cheap_cloud
-        glm-5.2 fallback (escalation_policy.tier_order [local, cheap_cloud])
-        removes the single point of failure.
-        """
+    def test_routing_tiers_withhold_code_review(self) -> None:
+        """OMN-17427: the class stays declared but no tier serves it."""
         config = _get_config()
         tiers_serving = {
             tier.name
@@ -64,10 +59,4 @@ class TestCodeReviewTaskClass:
             for model in tier.models
             if "code_review" in model.use_for
         }
-        assert "local" in tiers_serving, (
-            f"local tier must serve code_review; got {tiers_serving}"
-        )
-        assert "cheap_cloud" in tiers_serving, (
-            "cheap_cloud must serve code_review so escalation has a cloud fallback; "
-            f"got {tiers_serving}"
-        )
+        assert tiers_serving == set()

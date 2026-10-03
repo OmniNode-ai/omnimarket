@@ -97,6 +97,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 )
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
     derive_falsifier_items,
+    is_accepted_binding,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
@@ -241,6 +242,8 @@ def _draft_binding_labels(
     claim is ignored rather than added, so this can demote a criterion and can
     never introduce one.
 
+    OMN-17427: a record accepted by its own proposer is also a draft.
+
     A record whose label is unreadable is treated as a draft. That direction is
     deliberate: the failure mode being avoided is a proposal counted as proof,
     so an unreadable record resolves to the side that holds the flip.
@@ -255,7 +258,7 @@ def _draft_binding_labels(
     for record in raw:
         if not isinstance(record, dict):
             continue
-        if str(record.get("accepted_by") or "").strip():
+        if is_accepted_binding(record):
             continue
         folded = (
             str(record.get("label") or "").upper().replace("-", "").replace("_", "")
@@ -3557,7 +3560,8 @@ class EvidenceCollector:
         # never silently as coverage.
         # OMN-18238. And WHICH of those claims is only a PROPOSAL. A binding
         # record with no `accepted_by` is a draft: a machine may propose a
-        # binding, it may not decide one. The draft labels are carried
+        # binding, it may not decide one, and (OMN-17427) a record accepted by
+        # its own proposer is a draft too. The draft labels are carried
         # alongside the claim rather than removed from it, because "claimed but
         # not yet accepted" and "not claimed at all" are different facts and
         # the consumer's hold reason has to tell them apart.

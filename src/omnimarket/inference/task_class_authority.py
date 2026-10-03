@@ -8,6 +8,7 @@ import re
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
 from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
@@ -31,6 +32,21 @@ _DEFAULT_AUTHORITY_PATH = (
 )
 
 
+TASK_COMPLEXITY_RUBRIC_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml"
+)
+
+
+@lru_cache(maxsize=1)
+def load_task_complexity_rubric(path: str | None = None) -> dict[str, Any]:
+    """Composition-time rubric loading; also serves the benchmark API."""
+    target = Path(path) if path else TASK_COMPLEXITY_RUBRIC_PATH
+    with target.open(encoding="utf-8") as handle:
+        loaded: dict[str, Any] = yaml.safe_load(handle)
+    return loaded
+
+
 class EnumGatewayExposure(StrEnum):
     """Closed Gateway exposure policy for a Market task class."""
 
@@ -43,6 +59,9 @@ class EnumRoutingAvailabilityStatus(StrEnum):
 
     #: No tier can supply a capability the class requires (agent_delegation).
     PENDING_CAPABILITY = "pending_capability"
+    #: The operator withholds delegation because no rung measured adequate.
+    #: The caller does the work itself; tracking names the ruling.
+    WITHHELD = "withheld"
 
 
 class EnumTaskTypeResolution(StrEnum):
@@ -378,6 +397,16 @@ class ModelTaskClassOutputContract(BaseModel):
         return self
 
 
+class ModelTaskClassComplexityContract(BaseModel):
+    """Catalogue-owned complexity features; never request overrides (OMN-18341)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    output_kind: Literal["prose", "structured", "code", "patch"]
+    verification: Literal["grounding", "exact_match", "test_run", "patch_and_test"]
+    execution_required: bool
+
+
 class ModelDelegationOutputAuthority(BaseModel):
     """Declared extraction floors and markers shared by delegated task classes."""
 
@@ -639,7 +668,7 @@ def _qualifier_near(
 
 
 class ModelRoutingAvailability(BaseModel):
-    """A class the contract declares but cannot route yet (OMN-16811).
+    """A class the contract declares but does not delegate (OMN-16811, OMN-17427).
 
     Declared so that every consumer refuses the class up front, in these
     words, instead of dispatching it and waiting out the ingress budget.
@@ -685,10 +714,11 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     gateway_exposure: EnumGatewayExposure
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
+    complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
         description=(
-            "Present only on a class no tier can route yet. Absent means the "
+            "Present only on a class unavailable for delegation. Absent means the "
             "class routes."
         ),
     )
@@ -769,7 +799,7 @@ class ModelTaskClassAuthority(BaseModel):
 
     @property
     def unroutable_task_classes(self) -> dict[str, ModelRoutingAvailability]:
-        """Return every declared class no tier can route yet, with its declaration."""
+        """Return every declared class unavailable for delegation, with its declaration."""
         return {
             name: entry.routing_availability
             for name, entry in self.task_classes.items()
@@ -885,6 +915,9 @@ class ModelTaskClassAuthority(BaseModel):
                     "word prompt and the task-class contract declares no "
                     "selection_fallback; pass --task-type"
                 )
+            refusal = self.unroutable_refusal(fallback.task_class)
+            if refusal is not None:
+                raise TaskClassSelectionError(refusal)
             return ModelTaskTypeResolution(
                 task_type=fallback.task_class,
                 resolution=EnumTaskTypeResolution.FALLBACK,
@@ -900,6 +933,9 @@ class ModelTaskClassAuthority(BaseModel):
         priority, name, phrase, opens = min(
             eligible, key=lambda item: (-item[0], item[1])
         )
+        refusal = self.unroutable_refusal(name)
+        if refusal is not None:
+            raise TaskClassSelectionError(refusal)
         how = (
             f"opening phrase {phrase!r} at the start of a {word_count}-word prompt"
             if opens
@@ -964,6 +1000,30 @@ def load_task_class_authority(
     except ValidationError as exc:
         msg = f"task-class authority validation failed for {path}: {exc}"
         raise ValueError(msg) from exc
+
+
+@lru_cache(maxsize=1)
+def _delegation_task_class_authority() -> ModelTaskClassAuthority:
+    """Read the shipped routing declarations once, like the routing config."""
+    return load_task_class_authority()
+
+
+def withheld_delegation_refusal(task_class: str) -> str | None:
+    """Refusal shared by ladder, pinned-backend and BYOK routing (OMN-17427).
+
+    Only a ``withheld`` declaration refuses here: the operator ruled the class
+    out of delegation, so no pin, overlay or customer key may route it. A
+    ``pending_capability`` class keeps failing closed where no backend serves
+    it, and a backend that does declare the capability still resolves.
+    """
+    authority = _delegation_task_class_authority()
+    declared = authority.unroutable_task_classes.get(task_class)
+    if (
+        declared is None
+        or declared.status is not EnumRoutingAvailabilityStatus.WITHHELD
+    ):
+        return None
+    return authority.unroutable_refusal(task_class)
 
 
 @lru_cache(maxsize=1)
@@ -1063,6 +1123,7 @@ __all__ = [
     "ModelShortPromptSelection",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
+    "ModelTaskClassComplexityContract",
     "ModelTaskClassExecutionBudget",
     "ModelTaskClassOutputContract",
     "ModelTaskClassSelection",
@@ -1074,4 +1135,5 @@ __all__ = [
     "resolve_reasoning_preamble_policy",
     "resolve_task_class_execution_budget",
     "resolve_task_class_output_contract",
+    "withheld_delegation_refusal",
 ]
