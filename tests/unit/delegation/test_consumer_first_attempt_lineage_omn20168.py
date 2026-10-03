@@ -1,13 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20168, consumer first: a released consumer must decode the next shape.
-
-The change after this consumer's release stamps attempt lineage and placement
-keys onto delegation attempts and declares their fields. The attempt model is
-``extra="forbid"``, so a consumer released without tolerance would refuse every
-terminal carrying the keys (OMN-18852 / OMN-18868). This release accepts exactly
-these forthcoming keys, discards them, and still refuses any other unknown key.
-"""
+"""OMN-20168: the consumer now declares and retains attempt lineage."""
 
 from __future__ import annotations
 
@@ -41,7 +34,8 @@ _ATTEMPT_LINEAGE = {
 def test_an_attempt_carrying_attempt_lineage_decodes() -> None:
     record = ModelDelegateSkillAttemptRecord.model_validate(_ATTEMPT | _ATTEMPT_LINEAGE)
     assert record.failure_class == "rate_limited"
-    assert _ATTEMPT_LINEAGE.keys().isdisjoint(record.model_dump())
+    wire = record.model_dump(mode="json")
+    assert {key: wire[key] for key in _ATTEMPT_LINEAGE} == _ATTEMPT_LINEAGE
 
 
 def test_an_attempt_with_null_attempt_lineage_decodes() -> None:
@@ -49,7 +43,7 @@ def test_an_attempt_with_null_attempt_lineage_decodes() -> None:
         _ATTEMPT | dict.fromkeys(_ATTEMPT_LINEAGE)
     )
     assert record.failure_class == "rate_limited"
-    assert _ATTEMPT_LINEAGE.keys().isdisjoint(record.model_dump())
+    assert all(getattr(record, key) is None for key in _ATTEMPT_LINEAGE)
 
 
 def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
@@ -59,5 +53,6 @@ def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:
 
 @pytest.mark.parametrize("key", _ATTEMPT_LINEAGE)
 def test_attempt_lineage_is_a_forthcoming_attempt_key_only(key: str) -> None:
-    assert key in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert key not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert key in ModelDelegateSkillAttemptRecord.model_fields
     assert key not in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS

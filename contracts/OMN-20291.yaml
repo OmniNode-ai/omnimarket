@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20291"
+title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
+summary: "The OMN-20291 replay of 26 crush tasks left the delegated code edit node failing 8. Four causes were in the node's loop: a history that forgot what the model had read, so it re-read to the turn cap; absolute paths inside the worktree refused as leaving it; edits whose anchor carried the view separator's blank; and a replace_in_files cap that counted every file a glob matched. Each is fixed and bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-code-edit-replay-failure-classes"
+    statement: |-
+      The delegated code edit node must not lose the turns a model has read, must use an absolute path inside its own worktree, must apply an edit whose only difference is the view separator's indentation, and must cap a bulk edit by the files it would change.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: replace_in_files caps a glob by the files that hold old_string, not every file the glob matches -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "replace_in_files"
+      - id: "AC5"
+        statement: |-
+          AC5: a task's file list is the only edit scope of replace_in_files (a glob narrows it, a named file outside it is refused, no list changes nothing), a listed file without old_string is skipped and reported, and the prompt says helper scripts are not available -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "file_list or without_old_string or names_the_file_list or rails_hold or does_not_apply_an_insertion_twice or already_done"
+      - id: "AC6"
+        statement: |-
+          AC6: a refused action is recorded as refused and is counted separately from the budget -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "refused_calls_are_marked"
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegated code edit node's handler tests pass."
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-code-edit-replay-ac4"
+    description: "The replace_in_files tests prove the cap counts the files a glob would edit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"replace_in_files\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-code-edit-file-list-ac5"
+    description: "The file list, skip and prompt tests prove a bulk edit stays inside the task's file list and skips files without old_string."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"file_list or without_old_string or names_the_file_list or rails_hold or does_not_apply_an_insertion_twice or already_done\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-code-edit-refused-ac6"
+    description: "The refused-call test proves a refused action is marked and counted separately from the budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"refused_calls_are_marked\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

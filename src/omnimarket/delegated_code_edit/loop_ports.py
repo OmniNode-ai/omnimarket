@@ -600,6 +600,7 @@ def score_transcript(
                     status=EnumToolCallStatus(str(row["status"])),
                     output=str(row["output"]),
                 ),
+                refused=bool(row.get("refused", False)),
             )
         )
     workspace: Sequence[ModelWorkspaceFile] | None = (

@@ -33,3 +33,7 @@ class ModelGateRateRow(BaseModel):
     false_refusal_wilson: ModelWilsonInterval
     false_pass_evaluation: ModelRangeEvaluation
     false_refusal_evaluation: ModelRangeEvaluation
+    # Class-level generation measurements, shared across strata and gate arms.
+    flip_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    flip_rate_wilson: ModelWilsonInterval | None = None
+    measured_backend_id: str | None = Field(default=None, min_length=1)

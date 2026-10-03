@@ -48,16 +48,20 @@ _AUTHORITATIVE_SURFACES: tuple[str, ...] = (
 class HandlerVerifiedDispatchOrchestrator:
     """Orchestrates paired worker/verifier subagent dispatch with bounded escalation.
 
-    This handler implements the verified dispatch loop:
+    The verified dispatch loop:
     1. Dispatch worker subagent with the given prompt.
     2. Dispatch verifier subagent to independently query authoritative surfaces.
     3. If verifier rejects and attempts remain, wait cooldown and retry.
     4. On max_attempts exhaustion, escalate per the escalation_action policy.
 
     The handler is designed to be driven by the ONEX runtime via the contract-
-    declared command topic. In non-runtime (test) contexts, call ``dispatch``
-    directly.
+    declared command topic, which binds ``handle``. In non-runtime (test)
+    contexts, call ``dispatch`` directly.
     """
+
+    def handle(self, request: ModelDispatchRequest) -> dict[str, Any]:
+        """Dispatch entrypoint for the contract input model; runs ``dispatch``."""
+        return self.dispatch(request)
 
     def dispatch(self, request: ModelDispatchRequest) -> dict[str, Any]:
         """Run the verified dispatch loop and return the final outcome.

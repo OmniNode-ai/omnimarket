@@ -38,6 +38,16 @@ MAX_ERROR_CHARS = 4096
 VIEW_WINDOW_LINES = 250
 #: Bytes one view window may carry.
 MAX_VIEW_WINDOW_BYTES = 16_000
+#: Characters the reads (view, grep, ls) of one turn may show together. The
+#: history holds about 66,000 characters, so a turn's reads fit it whole with
+#: room for the turn before (OMN-20291).
+MAX_READ_CHARS_PER_TURN = 30_000
+#: Below this many characters left, a turn's further reads are not run.
+MIN_READ_CHARS = 2_000
+#: Turns in a row that read and change no file before the next turn's reads are
+#: refused, so a model that cannot hold every file it wants to read writes with
+#: what it has instead of reading to the turn cap (OMN-20291).
+MAX_READ_ONLY_TURNS = 3
 
 _CHECK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 
@@ -136,6 +146,12 @@ class ModelDelegatedCodeEditRequest(BaseModel):
     context_paths: tuple[str, ...] = Field(
         default=(), description="Worktree-relative files shown in the first turn."
     )
+    file_list: tuple[str, ...] = Field(
+        default=(),
+        description="Worktree-relative files the task names. When given, "
+        "replace_in_files reaches only these (a glob narrows the list, never "
+        "widens it); the writable globs still apply. Empty: no list.",
+    )
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
     formatter: tuple[str, ...] = Field(
         default=(),
@@ -163,7 +179,7 @@ class ModelDelegatedCodeEditRequest(BaseModel):
             raise ValueError("workspace_root must be an absolute path")
         return value.rstrip("/") or "/"
 
-    @field_validator("writable_globs", "context_paths")
+    @field_validator("writable_globs", "context_paths", "file_list")
     @classmethod
     def _relative(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for item in value:
@@ -230,6 +246,12 @@ class ModelObservation(BaseModel):
 
     ok: bool
     output: str = Field(default="", max_length=MAX_VIEW_WINDOW_BYTES + 400)
+    refused: bool = Field(
+        default=False,
+        description="The loop did not run the action (a write outside the "
+        "writable scope, a read while reads are paused): it changed and showed "
+        "nothing, so the tool_use budget counts it apart from work.",
+    )
 
 
 class ModelCheckResult(BaseModel):
