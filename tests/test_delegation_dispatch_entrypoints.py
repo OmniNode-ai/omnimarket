@@ -4,8 +4,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -18,6 +21,7 @@ from omnibase_infra.runtime.auto_wiring.handler_wiring import (
 
 from omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer import (
     HandlerAbCompareReducer,
+    PricingMap,
 )
 from omnimarket.nodes.node_ab_compare_reducer.models.model_ab_compare_state import (
     ModelAbCompareState,
@@ -43,6 +47,128 @@ from omnimarket.nodes.node_verified_dispatch_orchestrator.models.model_dispatch_
 
 pytestmark = pytest.mark.unit
 _NODES = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "nodes"
+
+_AB_COMPARE_PRICING: PricingMap = {
+    "cloud": {
+        "display_name": "Cloud model",
+        "cost_per_1k_input": 0.003,
+        "cost_per_1k_output": 0.015,
+    }
+}
+
+
+def _ab_compare_handle_corpus() -> list[ModelAbCompareState]:
+    """The adequacy recorder and parity test use these same contract inputs."""
+    results = [
+        ModelInferenceResultEntry(
+            model_key=model_key,
+            prompt_tokens=100,
+            completion_tokens=200,
+            total_tokens=300,
+            latency_ms=50,
+            correlation_id="ab-flip",
+        )
+        for model_key in ("cloud", "unpriced-local")
+    ]
+    return [
+        ModelAbCompareState(
+            correlation_id="ab-flip", expected_count=2, completed=True, results=results
+        ),
+        ModelAbCompareState(
+            correlation_id="ab-flip", expected_count=2, results=results[:1]
+        ),
+        ModelAbCompareState(correlation_id="ab-flip", expected_count=2),
+        ModelAbCompareState(correlation_id="ab-flip", expected_count=2, completed=True),
+    ]
+
+
+def test_ab_compare_reducer_handle_matches_materialize_corpus() -> None:
+    """The new adapter preserves materialization, including constructor pricing."""
+    assert callable(getattr(HandlerAbCompareReducer, "handle", None))
+    for pricing in (None, _AB_COMPARE_PRICING):
+        handler = HandlerAbCompareReducer(pricing=pricing)
+        for state in _ab_compare_handle_corpus():
+            assert handler.handle(state) == handler.materialize(state, pricing or {})
+
+
+def _verified_dispatch_handle_corpus() -> list[ModelDispatchRequest]:
+    """Pass, retry then pass, and both escalation policies; no live services."""
+    return [
+        ModelDispatchRequest(
+            ticket_id=ticket_id,
+            worker_prompt="verify the adapter boundary",
+            max_attempts=max_attempts,
+            cooldown_seconds=0,
+            escalation_action=action,
+            correlation_id=None if ticket_id == "pass" else "dispatch-flip",
+        )
+        for ticket_id, max_attempts, action in (
+            ("pass", 1, "linear_ticket"),
+            ("retry", 3, "linear_ticket"),
+            ("escalate-linear", 2, "linear_ticket"),
+            ("escalate-human", 2, "human_review"),
+        )
+    ]
+
+
+class _CorpusVerifiedDispatchHandler(HandlerVerifiedDispatchOrchestrator):
+    """Inject probe outcomes while executing the preserved dispatch/verifier loop."""
+
+    def __init__(self) -> None:
+        self._attempt = 0
+
+    def _run_worker(self, *, worker_run_id: str, prompt: str, ticket_id: str) -> str:
+        self._attempt += 1
+        return super()._run_worker(
+            worker_run_id=worker_run_id, prompt=prompt, ticket_id=ticket_id
+        )
+
+    def _probe_surface(
+        self, *, surface: str, worker_claim: str, ticket_id: str
+    ) -> tuple[bool, str]:
+        passed, result = super()._probe_surface(
+            surface=surface, worker_claim=worker_claim, ticket_id=ticket_id
+        )
+        if ticket_id.startswith("escalate") or (
+            ticket_id == "retry" and self._attempt == 1
+        ):
+            return False, f"surface={surface} rejected attempt={self._attempt}"
+        return passed, result
+
+
+def _run_verified_dispatch_corpus_request(
+    request: ModelDispatchRequest, *, canonical: bool = True
+) -> dict[str, Any]:
+    """Reset probe state and freeze only volatile UUID/time fields for parity."""
+    module = HandlerVerifiedDispatchOrchestrator.__module__
+    with (
+        patch(f"{module}.uuid.uuid4", return_value=UUID(int=1)),
+        patch(f"{module}.datetime") as clock,
+    ):
+        clock.now.return_value = datetime(2026, 10, 3, tzinfo=UTC)
+        handler = _CorpusVerifiedDispatchHandler()
+        return handler.handle(request) if canonical else handler.dispatch(request)
+
+
+def test_verified_dispatch_orchestrator_handle_matches_dispatch_corpus() -> None:
+    """The adapter preserves bundles, retries, and escalation for every input."""
+    assert callable(getattr(HandlerVerifiedDispatchOrchestrator, "handle", None))
+    expected = [
+        ("accept", 1, False),
+        ("accept", 2, False),
+        ("reject", 2, True),
+        ("reject", 2, True),
+    ]
+    for request, outcome in zip(
+        _verified_dispatch_handle_corpus(), expected, strict=True
+    ):
+        result = _run_verified_dispatch_corpus_request(request)
+        assert result == _run_verified_dispatch_corpus_request(request, canonical=False)
+        assert (
+            result["decision"],
+            result["attempt_count"],
+            result["escalated"],
+        ) == outcome
 
 
 async def test_model_router_dispatch_returns_routing_result(
