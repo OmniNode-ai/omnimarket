@@ -26,8 +26,14 @@ in ``docker logs omninode-runtime-effects``.
 
 from __future__ import annotations
 
+import json
 import logging
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -254,3 +260,101 @@ def test_loader_refuses_a_ceiling_that_cannot_bind(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="strictly less than"):
         load_inference_call_budget(bad)
+
+
+@contextmanager
+def _chunked_inference_server(*, keep_alive_seconds: float) -> Iterator[str]:
+    stop = Event()
+    body = json.dumps(
+        {
+            "id": "chatcmpl-late",
+            "choices": [{"message": {"content": "late answer"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        }
+    ).encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self) -> None:
+            # The served-model probe gets no evidence from this provider.
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                deadline = time.monotonic() + keep_alive_seconds
+                while time.monotonic() < deadline:
+                    self.wfile.write(b"1\r\n \r\n")
+                    self.wfile.flush()
+                    if stop.wait(0.2):
+                        return
+                self.wfile.write(
+                    f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+                )
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                # The deadline closes the client while keep-alives are arriving.
+                pass
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+    finally:
+        stop.set()
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.unit
+def test_keep_alive_body_cannot_extend_the_total_inference_deadline(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        _chunked_inference_server(keep_alive_seconds=10.0) as base_url,
+        caplog.at_level(logging.WARNING),
+    ):
+        started = time.monotonic()
+        result = HandlerInferenceIntent().handle(
+            _intent(base_url=base_url, timeout_seconds=1.0, model="Qwen3.8-27B")
+        )
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 4.0
+    assert result.content == ""
+    assert "timed out" in result.error_message
+    timeout_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if INFERENCE_TIMEOUT_LOG_TOKEN in record.getMessage()
+    ]
+    assert len(timeout_lines) == 1, caplog.text
+    assert "elapsed_seconds=" in timeout_lines[0]
+
+
+@pytest.mark.unit
+def test_prompt_chunked_body_finishes_inside_the_inference_deadline(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        _chunked_inference_server(keep_alive_seconds=0.0) as base_url,
+        caplog.at_level(logging.WARNING),
+    ):
+        result = HandlerInferenceIntent().handle(
+            _intent(base_url=base_url, timeout_seconds=1.0, model="Qwen3.8-27B")
+        )
+
+    assert result.content == "late answer"
+    assert INFERENCE_TIMEOUT_LOG_TOKEN not in caplog.text
