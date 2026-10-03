@@ -212,3 +212,22 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
         f"infra_version={_lock_version('omnibase-infra')}",
         f"core_version={_lock_version('omnibase-core')}",
     ]
+
+
+def test_core_floor_admits_done_write_decision_model() -> None:
+    """OMN-20368: model_done_write_decision first ships in omnibase-core 0.47.31."""
+    import tomllib
+
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    floor = (0, 47, 31)
+    declared = [
+        *pyproject["project"]["dependencies"],
+        *pyproject["tool"]["uv"]["override-dependencies"],
+    ]
+    specs = [d for d in declared if d.startswith("omnibase-core>=")]
+    assert len(specs) == 2
+    for spec in specs:
+        low = spec.split(">=")[1].split(",")[0]
+        assert tuple(int(p) for p in low.split(".")) >= floor, spec
+    locked = tuple(int(p) for p in _lock_version("omnibase-core").split("."))
+    assert locked >= floor
