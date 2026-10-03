@@ -28,6 +28,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/test_omn18889_call_site_end_to_end.py -q"
+        check_value: "uv run pytest tests/test_omn18889_call_site_end_to_end.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
