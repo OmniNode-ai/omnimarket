@@ -11,9 +11,26 @@ turns is this orchestrator:
     CLAIM -> [TURN -> APPLY(actions) -> (FINISH -> CHECKS)]* -> DIFF -> SCORE -> RECEIPT
 
 * At most ``max_turns`` turns (the tool_use rubric's budget caps it at 40).
-* Writes are confined: a write, edit or replace_in_files whose path is absolute,
-  climbs out with ``..``, touches ``.git``, or matches no writable glob is
-  refused and the refusal is fed back. Nothing is written for it.
+* One turn's reads (view, grep, ls) show at most ``MAX_READ_CHARS_PER_TURN``
+  characters together: a view is shortened to what is left, and a read with
+  less than ``MIN_READ_CHARS`` left is not run and says so. A turn's reads then
+  fit the history whole (OMN-20291).
+* After ``MAX_READ_ONLY_TURNS`` turns in a row that read and change no file,
+  the next turn's prompt says its reads are refused, and they are: it may
+  write, edit, format, run checks or finish. A file change ends the streak; a
+  refused turn that still changes nothing allows one more reading turn.
+* Writes are confined: a write, edit or replace_in_files whose path leaves the
+  worktree (an absolute path outside it, or one that climbs out with ``..``),
+  touches ``.git``, or matches no writable glob is refused and the refusal is
+  fed back. Nothing is written for it. An absolute path inside the worktree is
+  used, and recorded, as its worktree-relative form: the loop itself prints
+  such paths in check commands (OMN-20291).
+* An edit whose old_string is absent is retried once with each line's leading
+  and trailing whitespace free, and applied only when that finds exactly one
+  place whose lines after the first all moved by the same indentation (the
+  first may move on its own); new_string moves back the same way. An edit
+  whose result is already in the file is reported applied and writes nothing
+  (OMN-20291).
 * ``run_check`` runs only a check the request declares, by name; an undeclared
   name is refused. There is no shell tool.
 * ``finish`` runs every declared check. All passing ends the loop
@@ -48,14 +65,19 @@ from typing import Literal, cast
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
     RESPONSE_CONTRACT,
     TOOL_SCHEMAS,
+    HistoryAction,
+    HistoryTurn,
     build_turn_prompt,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_BULK_FILES,
     MAX_OBSERVATION_BYTES,
+    MAX_READ_CHARS_PER_TURN,
+    MAX_READ_ONLY_TURNS,
     MAX_VIEW_BYTES,
     MAX_VIEW_WINDOW_BYTES,
     MAX_WRITE_BYTES,
+    MIN_READ_CHARS,
     VIEW_WINDOW_LINES,
     WRITING_TOOLS,
     EnumCodeEditStatus,
@@ -81,10 +103,24 @@ PROMPT_CHARS = 90_000
 PROMPT_BYTES = 120_000
 
 
-def normalise_path(path: str) -> str | None:
-    """The worktree-relative form of ``path``, or None when it leaves the worktree."""
-    if not path or path.startswith("/") or "\x00" in path:
+def normalise_path(path: str, *, root: str = "") -> str | None:
+    """The worktree-relative form of ``path``, or None when it leaves the worktree.
+
+    An absolute path is accepted only under ``root``, the worktree's absolute
+    path, and comes back relative to it.
+    """
+    if not path or "\x00" in path:
         return None
+    if path.startswith("/"):
+        base = posixpath.normpath(root) if root.startswith("/") else ""
+        norm = posixpath.normpath(path)
+        if not base or base == "/":
+            return None
+        if norm == base:
+            return "."
+        if not norm.startswith(base + "/"):
+            return None
+        path = norm[len(base) + 1 :]
     norm = posixpath.normpath(path)
     if norm == ".." or norm.startswith("../"):
         return None
@@ -153,8 +189,11 @@ def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
 _LINE_PREFIX = re.compile(r"^ *\d+\| ?", re.M)
 
 
-def view_window(text: str, path: str, offset: int) -> str:
-    """One page of a file with line numbers, and how to see the rest."""
+def view_window(
+    text: str, path: str, offset: int, *, limit: int = MAX_VIEW_WINDOW_BYTES
+) -> str:
+    """One page of a file with line numbers, at most ``limit`` characters of
+    rows, and how to see the rest."""
     lines = text.splitlines()
     total = len(lines)
     start = max(offset, 1)
@@ -165,7 +204,7 @@ def view_window(text: str, path: str, offset: int) -> str:
     end = start - 1
     for number in range(start, min(total, start - 1 + VIEW_WINDOW_LINES) + 1):
         row = f"{number:>5}| {lines[number - 1]}"
-        if size + len(row) + 1 > MAX_VIEW_WINDOW_BYTES:
+        if size + len(row) + 1 > min(limit, MAX_VIEW_WINDOW_BYTES):
             break
         shown.append(row)
         size += len(row) + 1
@@ -189,6 +228,91 @@ def _edit_hint(current: str, old: str) -> str:
     )
 
 
+_READING_TOOLS = frozenset(
+    {EnumCodeEditTool.VIEW, EnumCodeEditTool.GREP, EnumCodeEditTool.LS}
+)
+
+
+def _lead(text: str) -> str:
+    """The blanks a line starts with."""
+    return text[: len(text) - len(text.lstrip(" \t"))]
+
+
+def _loose_pattern(old: str) -> re.Pattern[str] | None:
+    """old_string with each line's leading and trailing blanks free."""
+    lines = old.split("\n")
+    if not any(line.strip() for line in lines):
+        return None
+    parts = [r"[ \t]*" + re.escape(line.strip(" \t")) for line in lines]
+    if not lines[-1].strip():
+        # old ends with a newline: the next line's indentation is not part of it.
+        parts[-1] = ""
+    return re.compile(r"[ \t]*\n".join(parts))
+
+
+def _shift(line: str, by: int) -> str | None:
+    """``line`` moved left by ``by`` spaces (right when negative), or None when
+    it does not start with the blanks to remove."""
+    if not line.strip() or by == 0:
+        return line
+    if by > 0:
+        return line[by:] if line.startswith(" " * by) else None
+    return " " * -by + line
+
+
+def _indent_shift_edit(current: str, old: str, new: str) -> str | None:
+    """The file with ``old`` replaced by ``new`` when ``old`` matches exactly one
+    place up to indentation, and its lines after the first all moved by the same
+    number of spaces (the first line may have moved on its own); ``new`` is moved
+    back the same way. Otherwise None.
+
+    A local model copies view rows ``   96|   text`` with one blank too many or
+    too few, on every line or on the first line only; the content is right,
+    only the indentation shifted.
+    """
+    pattern = _loose_pattern(old)
+    if pattern is None:
+        return None
+    matches = list(pattern.finditer(current))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    found = current[match.start() : match.end()].split("\n")
+    wanted = old.split("\n")
+    at_line_start = match.start() == 0 or current[match.start() - 1] == "\n"
+    first: int | None = None
+    rest: set[int] = set()
+    for number, (have, want) in enumerate(zip(found, wanted, strict=True)):
+        if not want.strip() or (number == 0 and not at_line_start):
+            continue
+        have_lead, want_lead = _lead(have), _lead(want)
+        if "\t" in have_lead + want_lead:
+            if have_lead != want_lead:
+                return None
+            shift = 0
+        else:
+            shift = len(want_lead) - len(have_lead)
+        if number == 0:
+            first = shift
+        else:
+            rest.add(shift)
+    if len(rest) > 1:
+        return None
+    later = next(iter(rest)) if rest else (first or 0)
+    moved: list[str] = []
+    for number, line in enumerate(new.split("\n")):
+        shifted = _shift(line, first if number == 0 and first is not None else later)
+        if shifted is None:
+            return None
+        moved.append(shifted)
+    replacement = "\n".join(moved)
+    if not at_line_start or not old[:1].isspace():
+        # The match swallowed the file's own leading blanks of a line old did
+        # not indent; keep them.
+        replacement = _lead(current[match.start() :]) + replacement.lstrip(" \t")
+    return current[: match.start()] + replacement + current[match.end() :]
+
+
 @dataclass
 class _Call:
     """One applied action, as the transcript records it."""
@@ -205,7 +329,7 @@ class _State:
     paths: tuple[str, ...] = ()
     replies: list[ModelTurnReply] = field(default_factory=list)
     calls: list[_Call] = field(default_factory=list)
-    history: list[str] = field(default_factory=list)
+    history: list[HistoryTurn] = field(default_factory=list)
     turns: list[dict[str, object]] = field(default_factory=list)
     refusals: int = 0
     last_checks: tuple[ModelCheckResult, ...] = ()
@@ -215,6 +339,7 @@ class _State:
     good_history_len: int = 0
     superseded: list[dict[str, object]] = field(default_factory=list)
     resumes: int = 0
+    read_only_streak: int = 0
 
     def record_good(self, turn: int) -> None:
         """Snapshot the history boundary after a received reply was processed."""
@@ -386,7 +511,10 @@ class HandlerDelegatedCodeEditOrchestrator:
         result = cast(dict[str, object], receipt["result"])
         state = _State(
             turns=[t for t in turns if cast(int, t["turn"]) <= good_turn],
-            history=list(cast(list[str], block["history"])),
+            history=[
+                HistoryTurn.from_json(entry)
+                for entry in cast(list[object], block["history"])
+            ],
             refusals=cast(int, result["refusals"]),
             summary=cast(str, result["summary"]),
             last_checks=tuple(
@@ -462,14 +590,16 @@ class HandlerDelegatedCodeEditOrchestrator:
                 f"{len(state.turns)} turns used of {request.max_turns}; "
                 "only a delegate_failed loop resumes"
             )
-        history: list[str] = []
+        history: list[dict[str, object]] = []
         size = 0
         if resumable:
-            for block in reversed(state.history[: state.good_history_len]):
-                if size + len(block) > 120_000:
+            for entry in reversed(state.history[: state.good_history_len]):
+                kept = entry.to_json()
+                length = len(json.dumps(kept))
+                if size + length > 120_000:
                     break
-                history.append(block)
-                size += len(block)
+                history.append(kept)
+                size += length
             history.reverse()
         return {
             "resumable": resumable,
@@ -515,7 +645,14 @@ class HandlerDelegatedCodeEditOrchestrator:
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
         for turn in range(start_turn, request.max_turns + 1):
-            prompt = self._prompt(request, index, context, state, turn)
+            prompt = self._prompt(
+                request,
+                index,
+                context,
+                state,
+                turn,
+                reads_paused=state.read_only_streak >= MAX_READ_ONLY_TURNS,
+            )
             reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
             state.replies.append(reply)
             record: dict[str, object] = {
@@ -533,7 +670,11 @@ class HandlerDelegatedCodeEditOrchestrator:
             if not reply.ok and not reply.raw_text:
                 failed_delegates += 1
                 state.history.append(
-                    f"TURN {turn}: the delegate run failed: {reply.invalid_reason[:300]}\n"
+                    HistoryTurn(
+                        turn,
+                        message=f"TURN {turn}: the delegate run failed: "
+                        f"{reply.invalid_reason[:300]}\n",
+                    )
                 )
                 if failed_delegates >= 2:
                     raise _TerminalError(
@@ -547,8 +688,11 @@ class HandlerDelegatedCodeEditOrchestrator:
             if not reply.ok or not reply.actions:
                 reason = reply.invalid_reason or "the reply carried no actions"
                 state.history.append(
-                    f"TURN {turn}: your reply was unusable: {reason[:300]}. "
-                    "Reply with one JSON object with an actions list.\n"
+                    HistoryTurn(
+                        turn,
+                        message=f"TURN {turn}: your reply was unusable: {reason[:300]}. "
+                        "Reply with one JSON object with an actions list.\n",
+                    )
                 )
                 state.record_good(turn)
                 continue
@@ -560,11 +704,14 @@ class HandlerDelegatedCodeEditOrchestrator:
                     if all(c.status == "passed" for c in checks):
                         return EnumCodeEditStatus.ACCEPTED
                     state.history.append(
-                        "FINISH REFUSED: these checks did not pass:\n"
-                        + "".join(
-                            f"- {c.name}: {c.status}\n{_cap(c.output_tail, 2_000)}\n"
-                            for c in checks
-                            if c.status != "passed"
+                        HistoryTurn(
+                            turn,
+                            message="FINISH REFUSED: these checks did not pass:\n"
+                            + "".join(
+                                f"- {c.name}: {c.status}\n{_cap(c.output_tail, 2_000)}\n"
+                                for c in checks
+                                if c.status != "passed"
+                            ),
                         )
                     )
                     self._progress_or_stop(request, checks, state)
@@ -585,6 +732,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         context: tuple[tuple[str, str], ...],
         state: _State,
         turn: int,
+        *,
+        reads_paused: bool = False,
     ) -> str:
         """The turn prompt, shrunk until it fits one argv word."""
         limit = PROMPT_CHARS
@@ -596,6 +745,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 state.history,
                 turn,
                 max_chars=limit,
+                reads_paused=reads_paused,
             )
             if len(prompt.encode("utf-8")) <= PROMPT_BYTES or limit <= 20_000:
                 return prompt
@@ -609,18 +759,45 @@ class HandlerDelegatedCodeEditOrchestrator:
         record: dict[str, object],
         state: _State,
     ) -> bool:
-        block = [f"TURN {turn}\n"]
+        shown: list[HistoryAction] = []
         finished = False
         actions_log: list[dict[str, object]] = []
-        for number, action in enumerate(reply.actions, start=1):
+        read_left = MAX_READ_CHARS_PER_TURN
+        paused = state.read_only_streak >= MAX_READ_ONLY_TURNS
+        read_any = changed_any = False
+        for number, given in enumerate(reply.actions, start=1):
+            action = self._rebased(request, given)
+            reads = action.tool in _READING_TOOLS
             if action.tool == EnumCodeEditTool.FINISH:
                 finished = True
                 state.summary = action.summary
                 observation = ModelObservation(
                     ok=True, output="finish: checks run next"
                 )
+            elif reads and paused:
+                observation = ModelObservation(
+                    ok=False,
+                    output=f"not read: {state.read_only_streak} turns in a row read "
+                    "and change no file, so this turn's reads are refused; write or "
+                    "edit with what HISTORY shows",
+                )
+            elif reads and read_left < MIN_READ_CHARS:
+                observation = ModelObservation(
+                    ok=False,
+                    output=f"not read: this turn's reads already show "
+                    f"{MAX_READ_CHARS_PER_TURN - read_left} characters, the most one "
+                    "turn may; edit what you have read, then read more next turn",
+                )
             else:
-                observation = self._apply(request, action, state)
+                observation = self._apply(request, action, state, read_left)
+            if reads and observation.ok:
+                read_left -= len(observation.output)
+            read_any = read_any or reads
+            changed_any = changed_any or (
+                observation.ok
+                and action.tool in WRITING_TOOLS
+                and not observation.output.startswith("unchanged")
+            )
             arguments = {
                 key: value
                 for key, value in action.model_dump(
@@ -652,19 +829,57 @@ class HandlerDelegatedCodeEditOrchestrator:
                 for k, v in arguments.items()
                 if k not in ("content", "old_string", "new_string")
             )
-            block.append(
-                f"> {action.tool.value}({shown_args}) -> "
-                f"{'ok' if observation.ok else 'REFUSED/ERROR'}\n{observation.output}\n"
+            path = normalise_path(action.target) if action.target else None
+            shown.append(
+                HistoryAction(
+                    header=f"> {action.tool.value}({shown_args}) -> "
+                    f"{'ok' if observation.ok else 'REFUSED/ERROR'}",
+                    output=observation.output,
+                    view_key=(path, max(action.offset, 1))
+                    if observation.ok
+                    and path is not None
+                    and action.tool == EnumCodeEditTool.VIEW
+                    else None,
+                    changed_path=path
+                    if observation.ok
+                    and path is not None
+                    and action.tool in WRITING_TOOLS
+                    and not observation.output.startswith("unchanged")
+                    else "",
+                )
             )
         record["actions"] = actions_log
-        state.history.append("".join(block))
+        state.history.append(HistoryTurn(turn, actions=tuple(shown)))
+        if changed_any:
+            state.read_only_streak = 0
+        elif paused:
+            # One more reading turn, then the pause again.
+            state.read_only_streak = MAX_READ_ONLY_TURNS - 1
+        elif read_any:
+            state.read_only_streak += 1
         return finished
+
+    @staticmethod
+    def _rebased(
+        request: ModelDelegatedCodeEditRequest, action: ModelCodeEditAction
+    ) -> ModelCodeEditAction:
+        """The action with an absolute path inside the worktree made relative, so
+        it is applied, shown and recorded as the path it names."""
+        updates: dict[str, str] = {}
+        for name in ("path", "file_path"):
+            value = getattr(action, name)
+            if value.startswith("/"):
+                rel = normalise_path(value, root=request.workspace_root)
+                if rel is not None:
+                    updates[name] = rel
+        return action.model_copy(update=updates) if updates else action
 
     def _apply(
         self,
         request: ModelDelegatedCodeEditRequest,
         action: ModelCodeEditAction,
         state: _State,
+        read_left: int = MAX_READ_CHARS_PER_TURN,
     ) -> ModelObservation:
         tool = action.tool
         if tool == EnumCodeEditTool.REPLACE_IN_FILES:
@@ -704,16 +919,24 @@ class HandlerDelegatedCodeEditOrchestrator:
             if tool == EnumCodeEditTool.VIEW:
                 text = self._ports.read_file(request, path)
                 return ModelObservation(
-                    ok=True, output=view_window(text, path, action.offset)
+                    ok=True,
+                    output=view_window(text, path, action.offset, limit=read_left),
                 )
             if tool == EnumCodeEditTool.LS:
                 return ModelObservation(
-                    ok=True, output=_cap(self._ports.list_dir(request, path))
+                    ok=True,
+                    output=_cap(
+                        self._ports.list_dir(request, path),
+                        min(MAX_OBSERVATION_BYTES, read_left),
+                    ),
                 )
             if tool == EnumCodeEditTool.GREP:
                 return ModelObservation(
                     ok=True,
-                    output=_cap(self._ports.grep(request, action.pattern, path)),
+                    output=_cap(
+                        self._ports.grep(request, action.pattern, path),
+                        min(MAX_OBSERVATION_BYTES, read_left),
+                    ),
                 )
             if tool == EnumCodeEditTool.WRITE:
                 if len(action.content.encode()) > MAX_WRITE_BYTES:
@@ -738,14 +961,37 @@ class HandlerDelegatedCodeEditOrchestrator:
                 old_string = _LINE_PREFIX.sub("", old_string)
                 new_string = _LINE_PREFIX.sub("", new_string)
             occurrences = current.count(old_string)
-            if occurrences != 1:
+            if (
+                new_string
+                and current.count(new_string) == 1
+                and (
+                    occurrences == 0
+                    or (
+                        old_string in new_string
+                        and occurrences == new_string.count(old_string)
+                    )
+                )
+            ):
+                # The file already holds this edit's result: a model re-sending
+                # an edit it applied in an earlier turn. Applying an insertion
+                # again would duplicate it; reporting it failed is untrue.
+                return ModelObservation(
+                    ok=True,
+                    output=f"unchanged {path}: new_string is already there once "
+                    "(this edit was applied before)",
+                )
+            updated: str | None = None
+            if occurrences == 0:
+                updated = _indent_shift_edit(current, old_string, new_string)
+            if updated is None and occurrences != 1:
                 hint = _edit_hint(current, old_string) if occurrences == 0 else ""
                 return ModelObservation(
                     ok=False,
                     output=f"edit failed: old_string occurs {occurrences} times in "
                     f"{path}; it must occur exactly once.{hint}",
                 )
-            updated = current.replace(old_string, new_string, 1)
+            if updated is None:
+                updated = current.replace(old_string, new_string, 1)
             self._ports.write_file(request, path, updated)
             return ModelObservation(ok=True, output=f"edited {path}")
         except WorkspacePathError as exc:
@@ -762,10 +1008,14 @@ class HandlerDelegatedCodeEditOrchestrator:
         A glob is a scope, not a list: it expands to the manifest files that are
         writable, a matching file outside the writable globs is counted and
         skipped, and a file without old_string is not a failure. A named file
-        that is refused or lacks old_string is.
+        that is refused or lacks old_string is. The file cap counts the files a
+        glob would edit, those holding old_string, not every file it matches
+        (OMN-20291: ``nodes/*/contract.yaml`` matches more than the cap).
         """
         by_glob = not action.file_paths
         outside = 0
+        unmatched = 0
+        scope = 0
         if not by_glob:
             targets = list(
                 dict.fromkeys(
@@ -777,7 +1027,19 @@ class HandlerDelegatedCodeEditOrchestrator:
             matched = sorted(path for path in state.paths if pattern.match(path))
             targets = [path for path in matched if writable(request, path)]
             outside = len(matched) - len(targets)
-        if not targets or len(targets) > MAX_BULK_FILES:
+            scope = len(targets)
+            holding: list[str] = []
+            for name in targets:
+                try:
+                    if action.old_string not in self._ports.read_file(request, name):
+                        unmatched += 1
+                        continue
+                except WorkspacePathError:
+                    pass  # reported per file below
+                holding.append(name)
+            if scope:
+                targets = holding
+        if (not targets and not (by_glob and scope)) or len(targets) > MAX_BULK_FILES:
             state.refusals += 1
             return ModelObservation(
                 ok=False,
@@ -787,7 +1049,6 @@ class HandlerDelegatedCodeEditOrchestrator:
             )
         failures: list[str] = []
         edited: list[str] = []
-        unmatched = 0
         for raw in targets:
             path = normalise_path(raw)
             if path is None:
@@ -820,7 +1081,10 @@ class HandlerDelegatedCodeEditOrchestrator:
             edited.append(f"edited {path} ({occurrences}x)")
         if by_glob and not edited and not failures:
             failures.append("FAILED glob: no matched file contains old_string")
-        header = f"replace_in_files: {len(edited)} edited, {len(failures)} failed of {len(targets)}"
+        header = (
+            f"replace_in_files: {len(edited)} edited, {len(failures)} failed "
+            f"of {scope if by_glob else len(targets)}"
+        )
         if by_glob:
             header += f"; {unmatched} without old_string, {outside} matched outside the writable globs"
         return ModelObservation(
