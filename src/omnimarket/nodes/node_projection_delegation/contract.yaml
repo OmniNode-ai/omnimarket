@@ -22,8 +22,8 @@ handler_routing:
     # OMN-18159 Phase 2. The DelegationProjectionRunner entry is gone. One
     # contract had two handlers for one subscription set, and the surviving one
     # is the only one the runtime can reach: HandlerProjectionDelegation already
-    # branches on every source this node names -- the judge verdict, the
-    # quality-gate result, both node-generation terminals, both delegate-skill
+    # branches on every source this node names -- the quality-gate result,
+    # both node-generation terminals, both delegate-skill
     # terminals, both delegation terminals, and the shadow comparison as the
     # fallthrough. The runner was reachable only because a standalone Deployment
     # ran its module directly as its command, bypassing routing altogether.
@@ -262,16 +262,9 @@ event_bus:
     - onex.evt.omnimarket.delegate-skill-failed.v1
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
-    - onex.evt.omnibase-infra.delegation-judge-verdict.v1
-    # OMN-15850: the deterministic-scoring path (no LLM judge -- the default
-    # path absent a judge-combinable task class) publishes ONLY this topic;
-    # delegation-judge-verdict.v1 above is never emitted for it
-    # (handler_quality_gate_intent.py:198-200: judge_verdict is None unless the
-    # task class is judge-combinable AND carries no explicit response_contract).
-    # Without this subscription the quality verdict for every deterministic-path
-    # delegation had no route into delegation_events, and the business-proof
-    # quality_gate check (which reads that table) failed FAIL "no delegation
-    # projection row" rather than a passed/failed verdict.
+    # OMN-20164: acceptance emits only the deterministic quality-gate result.
+    # Judge-verdict history remains readable in its existing table and exposure,
+    # but there is no subscription to the retired gate event.
     - onex.evt.omnibase-infra.quality-gate-result.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1

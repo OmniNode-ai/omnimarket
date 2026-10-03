@@ -20,9 +20,8 @@ The score is the reducer's ``quality_score`` and the bar is the class's declared
 bar, the same pair the local evidence row persists (seam G.2), and a sample
 passes when the score reaches the bar. Production acceptance also requires the
 reducer's own ``passed`` verdict; this harness measures the response-quality
-statistic of plan section 2b, which is the score against the bar. For task
-classes the local path also scores with the LLM judge, a judge callable may be
-passed; without one both arms are graded deterministic-only, identically.
+statistic of plan section 2b, which is the score against the bar. Both arms
+use the same deterministic grader.
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from omnimarket.delegation.shadow_comparison.grader import (
-    ShadowJudge,
     grade_like_the_local_path,
 )
 from omnimarket.delegation.shadow_comparison.models import (
@@ -136,7 +134,6 @@ def run_shadow_comparison(
 
 __all__ = [
     "ShadowGrader",
-    "ShadowJudge",
     "ShadowRung",
     "grade_like_the_local_path",
     "read_shadow_prompts",

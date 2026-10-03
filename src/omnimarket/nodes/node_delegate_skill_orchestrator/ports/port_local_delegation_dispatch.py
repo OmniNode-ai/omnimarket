@@ -23,7 +23,7 @@ canonical surfaces (OMN-13160):
      deprecated DirectCurl port's bespoke sqlite write is replaced by the same
      canonical projection the bus runtime uses.
 
-OMN-13849 — escalation loop + judge combine on the bus-less path:
+OMN-13849 — escalation loop on the bus-less path:
   * On a quality-gate FAIL the port re-dispatches to the next eligible tier,
     mirroring the bus orchestrator's proven loop
     (``handler_delegation_workflow.handle_gate_result`` :1343-1400 /
@@ -33,12 +33,6 @@ OMN-13849 — escalation loop + judge combine on the bus-less path:
     escalated backend, and retry — bounded by ``escalation_policy.max_escalations``
     from ``task_class_contracts.v1.yaml``. Cheapest-first initial tier and the
     closed-set ``tier_order`` semantics (no unlisted tiers) are preserved.
-  * For judge-combinable task classes the port runs the SAME ``HandlerJudgeAdequacy``
-    EFFECT the bus quality-gate-intent handler runs
-    (``handler_quality_gate_intent.handle_async`` :127-155) and threads the
-    resolved ``judge_adequacy_score`` / ``judge_verdict`` into the gate reducer, so
-    a good code answer can clear the 0.85 bar on the local path exactly as it does
-    on the bus.
   * Every attempt's real metered cost (``result.actual_cost_usd``) is banked into
     the cumulative cost projected on the evidence row — a rejected metered tier's
     spend is never dropped (mirrors the bus ``_bank_attempt_spend``), and cost is
@@ -114,7 +108,6 @@ from omnimarket.enums.enum_delegation_acceptance import (
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
-from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.inference import provider_quota_state
@@ -182,17 +175,6 @@ from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import 
 # answer now projects ``quality_gate_passed=false``.
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as evaluate_quality_gate,
-)
-
-# OMN-13849: the SAME judge EFFECT + combinable task-class set the bus
-# quality-gate-intent handler uses. Reusing both (not re-declaring them) keeps the
-# local path in parity with the bus path — a good code answer clears the bar the
-# same way on both.
-from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
-    JUDGE_COMBINABLE_TASK_TYPES,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
@@ -944,8 +926,7 @@ class LocalDelegationDispatchPort:
 
     OMN-13849: dispatch runs an in-process escalation loop. On a quality-gate FAIL
     it re-dispatches to the next eligible tier (bounded by the task-class
-    ``max_escalations``), and it threads an LLM-judge adequacy score into the gate
-    for judge-combinable task classes — parity with the bus orchestrator.
+    ``max_escalations``). Acceptance uses the deterministic gate on both paths.
     """
 
     def __init__(
@@ -956,7 +937,6 @@ class LocalDelegationDispatchPort:
         evidence_db: DatabaseAdapter | None = None,
         evidence_db_path: Path | None = None,
         effect_process_boundary: bool = True,
-        judge: HandlerJudgeAdequacy | None = None,
         roi_db: DatabaseAdapter | None = None,
         roi_overlay_reader: Callable[[str], ModelRoutingRoiOverlay | None]
         | None = None,
@@ -992,10 +972,6 @@ class LocalDelegationDispatchPort:
         else:
             self._evidence_db = resolve_local_delegation_evidence_db()
         self._effect_process_boundary = effect_process_boundary
-        # The judge wraps the canonical inference bridge; inject a fake/replay
-        # bridge in tests to avoid (or replay) the network call. Same surface the
-        # bus quality-gate-intent handler injects (OMN-13470/OMN-13849).
-        self._judge = judge if judge is not None else HandlerJudgeAdequacy()
         # OMN-14001 — the first closed platform learning loop. The ROI overlay is
         # read from the ``context_roi_scores`` projection and threaded (as a pure
         # input) into the routing authority so a proven-failing tier is demoted
@@ -2192,23 +2168,10 @@ class LocalDelegationDispatchPort:
         ``passed`` is the authority — preserving the pre-OMN-13849 behavior for
         classes without a declared bar.
 
-        OMN-13959 — judge-unavailable degraded acceptance. For a VERIFIABLE task
-        class the reducer records ``score_source=deterministic_acceptance`` (rather
-        than ``combined``) ONLY when the deterministic acceptance FLOOR passed but
-        the LLM-judge adequacy score was NOT combined — i.e. the judge call failed
-        / was unreachable (``JUDGE_FAILED``: e.g. the cloud judge is 429-throttled).
-        In that state the combined-score ``required_bar`` (0.85) is structurally
-        un-meetable, because the judge's semantic-adequacy band (weight 0.4) is
-        absent and the deterministic-only graded score tops out below the bar
-        (~0.733). Applying the combined bar would reject a valid LOCAL artifact that
-        cleared the real DoD floor and escalate it to ladder exhaustion during a
-        cloud-judge outage — defeating local-first. Fall back to the deterministic
-        FLOOR verdict (the real DoD checks: compiles / final-artifact-only /
-        non-refusal / non-empty) instead of a bar the judge band is required to
-        reach. This does NOT weaken the bar: when the judge IS reachable the score
-        is combined (``score_source=combined``) and the full bar still applies; a
-        deterministic-floor REJECTION returns ``fail_deterministic`` and is refused
-        above; a judge FAIL veto returns ``passed=False`` and is refused below.
+        Verifiable task classes use ``score_source=deterministic_acceptance``
+        when their declared deterministic floor passes. That result is accepted
+        without applying a combined-score bar (OMN-13959/OMN-20164). Structural
+        failures and explicit refusals remain rejected.
         """
         if gate_result.fail_category == "fail_deterministic":
             return False
@@ -2951,8 +2914,7 @@ class LocalDelegationDispatchPort:
         #    path runs. HTTP/transport success is NOT a quality verdict: a model
         #    refusal or empty answer returns success here but must NOT be recorded
         #    as a gate PASS. Resolve the task-class DoD checks from the routing
-        #    authority and evaluate the real verdict + graded score, threading the
-        #    LLM-judge adequacy score for combinable task classes (OMN-13849).
+        #    authority and evaluate the deterministic verdict and graded score.
         gate_result = await self._evaluate_quality_gate(
             correlation_id=correlation_id,
             task_type=task_type,
@@ -3081,7 +3043,7 @@ class LocalDelegationDispatchPort:
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
     ) -> ModelQualityGateResult:
-        """Run the canonical quality-gate reducer, combining the LLM-judge score.
+        """Run the canonical deterministic quality-gate reducer.
 
         Resolves the task-class DoD checks (``dod_deterministic`` /
         ``dod_heuristic``) from the routing authority — the SAME contract the bus
@@ -3089,26 +3051,6 @@ class LocalDelegationDispatchPort:
         ``delta`` reducer. When the task class declares no DoD, the reducer falls
         back to its legacy heuristic checks (refusal/empty/length), so a refusal
         still fails the gate.
-
-        OMN-13849: for judge-combinable task classes the SAME ``HandlerJudgeAdequacy``
-        EFFECT the bus quality-gate-intent handler runs
-        (``handle_async`` :127-155) scores the candidate, and its
-        ``judge_adequacy_score`` / ``judge_verdict`` are threaded into ``delta`` —
-        so a good code answer clears the 0.85 bar on the local path exactly as it
-        does on the bus. A ``JUDGE_FAILED`` verdict carries no score and falls back
-        to deterministic-only (never a silent zero); the deterministic refusal/empty
-        hard floor still hard-blocks before any combine.
-
-        OMN-15193: when ``response_contract`` is supplied, ``delta`` validates the
-        candidate structurally against the declared schema and REPLACES the
-        task-class DoD (dod_deterministic/dod_heuristic/acceptance_criteria) and
-        the judge combine for this request -- the schema is threaded through
-        unconditionally, and the (still-resolved) task-class DoD stays available
-        as the ``gate_input`` for the fallback branch ``delta`` takes when
-        ``response_contract`` is ``None``. The judge EFFECT call is skipped when a
-        contract is declared: the caller's own schema is the acceptance
-        authority, so scoring the candidate against task-class judge criteria
-        would be wasted work and cannot influence the verdict.
 
         OMN-15196: when the CALLER passes no ``response_contract`` of its own,
         the task class's own DECLARED default (``response_contract_ref`` in
@@ -3145,28 +3087,6 @@ class LocalDelegationDispatchPort:
             deliverable_evidence=deliverable_evidence,
         )
 
-        judge_score: float | None = None
-        judge_verdict_value: EnumDelegationJudgeVerdict | None = None
-        if (
-            effective_response_contract is None
-            and task_type in JUDGE_COMBINABLE_TASK_TYPES
-        ):
-            judge_verdict = await self._judge.score(
-                correlation_id=correlation_id,
-                task_type=task_type,
-                prompt=prompt,
-                candidate_output=content,
-                acceptance_criteria=acceptance_criteria,
-            )
-            # A judge_failed verdict carries no score — fall back to deterministic
-            # only; never coerce a judge failure into a silent zero (which would
-            # tank an otherwise-acceptable answer). OMN-13642: thread the verdict
-            # itself (alongside the score) so a FAIL verdict vetoes acceptance in
-            # the reducer even when the combined score would clear the bar.
-            if judge_verdict.verdict is not EnumDelegationJudgeVerdict.JUDGE_FAILED:
-                judge_score = judge_verdict.actual_score
-                judge_verdict_value = judge_verdict.verdict
-
         # OMN-18297: the prompt is the grounding source. The gate's declared
         # identifier classes are checked against it, so a response citing a
         # pull request, sha or run id that appears nowhere in its own input
@@ -3175,8 +3095,6 @@ class LocalDelegationDispatchPort:
         # the check as skipped rather than passed.
         return evaluate_quality_gate(
             gate_input,
-            judge_adequacy_score=judge_score,
-            judge_verdict=judge_verdict_value,
             response_contract=effective_response_contract,
             grounding_source=prompt,
             finish_reason=finish_reason,

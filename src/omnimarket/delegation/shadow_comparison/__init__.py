@@ -6,7 +6,6 @@ paired bootstrap interval."""
 
 from omnimarket.delegation.shadow_comparison.harness import (
     ShadowGrader,
-    ShadowJudge,
     ShadowRung,
     grade_like_the_local_path,
     read_shadow_prompts,
@@ -21,7 +20,6 @@ __all__ = [
     "ModelShadowPrompt",
     "ModelShadowRungAnswer",
     "ShadowGrader",
-    "ShadowJudge",
     "ShadowRung",
     "grade_like_the_local_path",
     "read_shadow_prompts",
