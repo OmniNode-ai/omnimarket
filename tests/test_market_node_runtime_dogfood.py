@@ -248,7 +248,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # them rather than counting them as failed: 5 -> 7. The wave-3 compose
     # (OMN-19829) wires the orchestrator, so only the reducer, which the
     # orchestrator calls in process, stays experimental: 7 -> 6.
-    assert summary["skipped"] == 6
+    # OMN-19976's node_local_dashboard_serve_effect is started by
+    # `onex dashboard`, not by a bus command, so it is experimental with no
+    # handler_routing and lands in the same bucket: 6 -> 7.
+    assert summary["skipped"] == 7
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

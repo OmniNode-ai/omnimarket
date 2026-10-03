@@ -29,7 +29,16 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     WorkspacePathError,
     bound_error,
     normalise_path,
+    parse_turn_reply,
     writable,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
+    TOOL_SCHEMAS,
+)
+from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    MAX_BULK_FILES,
+    MAX_OBSERVATION_BYTES,
+    MAX_WRITE_BYTES,
 )
 
 pytestmark = pytest.mark.unit
@@ -926,3 +935,331 @@ def test_repeated_resumes_carry_attempts_and_preserve_check_state() -> None:
     assert receipt["resumes"] == 2
     assert len(cast(list[object], receipt["superseded_turns"])) == 4
     assert ports.archived == [prior, second_receipt]
+
+
+def test_replace_in_files_edits_thirty_files_in_one_action_and_turn() -> None:
+    files = {f"src/m{n}.py": "old\n" for n in range(30)}
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.turns == 1
+    assert ports.writes == list(files)
+    assert ports.files == dict.fromkeys(files, "new\n")
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    assert len(calls) == 1
+    assert calls[0]["status"] == "ok"
+    assert calls[0]["output"].startswith(
+        "replace_in_files: 30 edited, 0 failed of 30\n"
+    )
+    assert json.loads(calls[0]["arguments_json"])["file_paths"] == list(files)
+
+
+def test_replace_in_files_glob_is_a_scope_over_the_writable_manifest() -> None:
+    action = _a("replace_in_files", glob="**/*.py", old_string="old", new_string="new")
+    files = {
+        "src/z.py": "old",
+        "src/sub/a.py": "old",
+        "src/a.py": "old",
+        "src/none.py": "other",
+        "README.md": "old",
+    }
+    ports = FakePorts([_reply(1, action)], files=files, check_passes=[True])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/a.py", "src/z.py"]
+    assert ports.files["src/sub/a.py"] == ports.files["README.md"] == "old"
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "ok"
+    assert "2 edited, 0 failed of 3" in call["output"]
+    assert (
+        "1 without old_string, 1 matched outside the writable globs" in call["output"]
+    )
+    assert json.loads(call["arguments_json"])["glob"] == "**/*.py"
+
+
+def test_replace_in_files_glob_that_edits_nothing_is_an_error() -> None:
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts([_reply(1, action)], files={"src/a.py": "x", "src/b.py": "y"})
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == []
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "no matched file contains old_string" in call["output"]
+
+
+def test_replace_in_files_partial_failure_is_one_error_call_and_feedback() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/missing.py", "src/z.py"),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, _a("finish"))],
+        files={"src/a.py": "old", "src/missing.py": "different", "src/z.py": "old"},
+        check_passes=[True],
+    )
+    request = _request()
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    assert ports.writes == ["src/a.py", "src/z.py"]
+    assert ports.files["src/missing.py"] == "different"
+    assert result.refusals == 0
+    calls = cast(list[dict[str, Any]], ports.transcript["calls"])
+    bulk_calls = [call for call in calls if call["tool_name"] == "replace_in_files"]
+    assert len(bulk_calls) == 1
+    assert bulk_calls[0]["status"] == "error"
+    output = bulk_calls[0]["output"]
+    assert output == (
+        "replace_in_files: 2 edited, 1 failed of 3\n"
+        "FAILED src/missing.py: no match\n"
+        "edited src/a.py (1x)\nedited src/z.py (1x)"
+    )
+    assert output in ports.prompts[1]
+    turns = cast(list[dict[str, Any]], ports.receipts[request.correlation_id]["turns"])
+    assert turns[0]["actions"][0]["ok"] is False
+
+
+def test_replace_in_files_write_error_leaves_one_file_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = _a("replace_in_files", glob="src/*.py", old_string="old", new_string="new")
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={"src/a.py": "old", "src/b.py": "old", "src/c.py": "old"},
+    )
+    write_file = ports.write_file
+
+    def write(request: ModelDelegatedCodeEditRequest, path: str, content: str) -> None:
+        if path == "src/b.py":
+            raise WorkspacePathError("write denied")
+        write_file(request, path, content)
+
+    monkeypatch.setattr(ports, "write_file", write)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.files == {"src/a.py": "new", "src/b.py": "old", "src/c.py": "new"}
+    assert ports.writes == ["src/a.py", "src/c.py"]
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "FAILED src/b.py: write denied" in call["output"]
+
+
+@pytest.mark.parametrize(
+    ("use_paths", "glob"), [(True, ""), (False, "src/*.py"), (False, "missing/*.py")]
+)
+def test_replace_in_files_refuses_too_many_or_zero_targets(
+    use_paths: bool, glob: str
+) -> None:
+    files = {f"src/m{n}.py": "old" for n in range(MAX_BULK_FILES + 1)}
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files) if use_paths else (),
+        glob=glob,
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files=files,
+    )
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert result.refusals == 1
+    assert ports.files == files
+    assert ports.writes == []
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["status"] == "error"
+    assert "refused:" in call["output"]
+
+
+def test_replace_in_files_does_not_strip_view_prefixes() -> None:
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "replace_in_files",
+                    glob="src/*.py",
+                    old_string="  1| old",
+                    new_string="  1| new",
+                ),
+            )
+        ],
+        files={"src/a.py": "old", "src/b.py": "  1| old"},
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/b.py"]
+    assert ports.files == {"src/a.py": "old", "src/b.py": "  1| new"}
+
+
+def test_replace_in_files_normalises_deduplicates_and_replaces_every_occurrence() -> (
+    None
+):
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/./m.py", "src/m.py", "src/z.py"),
+        old_string="old",
+    )
+    ports = FakePorts(
+        [_reply(1, action)], files={"src/m.py": "old old old", "src/z.py": "old"}
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/m.py", "src/z.py"]
+    assert ports.files == {"src/m.py": "  ", "src/z.py": ""}
+    call = cast(list[dict[str, Any]], ports.transcript["calls"])[0]
+    assert call["output"] == (
+        "replace_in_files: 2 edited, 0 failed of 2\n"
+        "edited src/m.py (3x)\nedited src/z.py (1x)"
+    )
+
+
+def test_replace_in_files_feedback_keeps_failures_before_capped_successes() -> None:
+    files = {f"src/{'a' * 210}{n}.py": "old" for n in range(40)}
+    files["src/missing.py"] = "different"
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=tuple(files),
+        old_string="old",
+        new_string="new",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, _a("finish"))], files=files, check_passes=[True]
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request())
+    output = cast(list[dict[str, Any]], ports.transcript["calls"])[0]["output"]
+    assert output.splitlines()[1] == "FAILED src/missing.py: no match"
+    assert output.index("FAILED") < output.index("\nedited")
+    assert "more characters cut" in output
+    assert len(output) <= MAX_OBSERVATION_BYTES + 100
+    assert output in ports.prompts[1]
+
+
+def test_replace_in_files_confines_paths_and_refuses_oversized_content() -> None:
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("../outside.py", "src/absent.py", "src/big.py", "src/m.py"),
+        old_string="old",
+        new_string="x" * MAX_WRITE_BYTES,
+    )
+    files = {"src/big.py": "old old", "src/m.py": "different"}
+    ports = FakePorts([_reply(1, action)], files=files)
+    result = HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == []
+    assert ports.files == files
+    assert result.refusals == 1
+    output = cast(list[dict[str, Any]], ports.transcript["calls"])[0]["output"]
+    assert "FAILED ../outside.py: leaves the worktree" in output
+    assert "FAILED src/absent.py: src/absent.py is not a file" in output
+    assert f"FAILED src/big.py: content over {MAX_WRITE_BYTES} bytes" in output
+
+
+@pytest.mark.parametrize(
+    ("arguments", "reason_fragment"),
+    [
+        ({"file_paths": ["src/m.py"], "glob": "src/*.py"}, "exactly one"),
+        ({}, "exactly one"),
+        ({"file_paths": "src/m.py"}, "non-empty list"),
+        ({"file_paths": None}, "non-empty list"),
+        ({"file_paths": []}, "non-empty list"),
+        ({"file_paths": ["src/m.py", 1]}, "non-empty strings"),
+        ({"file_paths": [""]}, "non-empty strings"),
+        ({"file_paths": ["src/m.py"] * (MAX_BULK_FILES + 1)}, "at most"),
+        ({"glob": "/src/*.py"}, "worktree-relative"),
+        ({"glob": "src/../*.py"}, "worktree-relative"),
+        ({"glob": ""}, "needs a string glob"),
+        ({"glob": None}, "needs a string glob"),
+        ({"glob": "src/*.py", "old_string": ""}, "needs a string old_string"),
+    ],
+)
+def test_replace_in_files_parser_rejects_invalid_arguments(
+    arguments: dict[str, object],
+    reason_fragment: str,
+) -> None:
+    actions, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {"tool": "replace_in_files", "old_string": "old", **arguments}
+                ]
+            }
+        )
+    )
+    assert actions == ()
+    assert reason_fragment in reason
+
+
+def test_replace_in_files_parser_preserves_the_array_and_empty_replacement() -> None:
+    paths = ["src/m.py", "src/z.py"]
+    actions, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "tool": "replace_in_files",
+                        "file_paths": paths,
+                        "old_string": "old",
+                        "new_string": "",
+                    }
+                ]
+            }
+        )
+    )
+    assert reason == ""
+    assert actions[0].file_paths == tuple(paths)
+    assert actions[0].new_string == ""
+    assert actions[0].tool == EnumCodeEditTool.REPLACE_IN_FILES
+
+
+@pytest.mark.parametrize("argument", ["file_paths", "glob"])
+@pytest.mark.parametrize(
+    "tool",
+    [
+        tool.value
+        for tool in EnumCodeEditTool
+        if tool != EnumCodeEditTool.REPLACE_IN_FILES
+    ],
+)
+def test_existing_tools_reject_bulk_arguments(tool: str, argument: str) -> None:
+    _, reason = parse_turn_reply(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "tool": tool,
+                        argument: ["src/m.py"]
+                        if argument == "file_paths"
+                        else "src/*.py",
+                    }
+                ]
+            }
+        )
+    )
+    assert f"takes no {argument}" in reason
+
+
+def test_replace_in_files_schemas_declare_arrays_and_keep_the_turn_limit() -> None:
+    schema = next(
+        schema
+        for schema in TOOL_SCHEMAS
+        if cast(dict[str, Any], schema["function"])["name"] == "replace_in_files"
+    )
+    function = cast(dict[str, Any], schema["function"])
+    assert function["parameters"]["properties"]["file_paths"] == {
+        "type": "array",
+        "items": {"type": "string"},
+    }
+    assert function["parameters"]["required"] == ["old_string"]
+    actions = cast(dict[str, Any], RESPONSE_CONTRACT["properties"])["actions"]
+    assert actions["maxItems"] == 12
+    properties = actions["items"]["properties"]
+    assert "replace_in_files" in properties["tool"]["enum"]
+    assert properties["glob"] == {"type": "string"}
+    assert properties["file_paths"] == {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 1,
+        "maxItems": MAX_BULK_FILES,
+    }

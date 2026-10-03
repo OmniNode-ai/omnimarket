@@ -9,6 +9,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from omnimarket.models.delegation.model_feature_provenance import (
+    ModelFeatureProvenance as ModelFeatureProvenance,
+)
 from omnimarket.nodes.node_routing_complexity_compute.models.model_complexity import (
     ModelComplexityClassification,
     ModelComplexityFeatures,
@@ -42,16 +45,6 @@ class ModelRoutingRequest(BaseModel):
     output_kind: JsonValue = None
     verification: JsonValue = None
     execution_required: JsonValue = None
-
-
-class ModelFeatureProvenance(BaseModel):
-    """The trusted authority and reproducible rule for one feature."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    source: Literal["contract", "text_measurement"]
-    reference: str = Field(min_length=1)
-    rule: str = Field(min_length=1)
 
 
 class ModelTrustedComplexityClassification(ModelComplexityClassification):

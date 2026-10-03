@@ -96,13 +96,13 @@ x-tool-use-criteria: &tool_use_criteria
 - criterion_id: no_phantom_paths
   description: Tool paths and answer citations refer to supplied or successfully created workspace files.
   params:
-    path_argument_names: [path, file_path, notebook_path]
+    path_argument_names: [path, file_path, file_paths, notebook_path]
     creating_tools: [Write, create_file, write]
     line_tolerance: 0
 - criterion_id: edits_apply
   description: Every recorded edit has a successful caller-supplied result.
   params:
-    edit_tools: [Edit, MultiEdit, Write, apply_patch, str_replace_based_edit_tool, edit, multiedit, write]
+    edit_tools: [Edit, MultiEdit, Write, apply_patch, str_replace_based_edit_tool, edit, multiedit, write, replace_in_files]
 - criterion_id: stated_check_passes
   description: Test targets named in the final answer have caller-supplied passing execution results.
   params:

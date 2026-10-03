@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19976"
+title: "The local runtime serves contract-declared projection exposures from the local store through an onex dashboard shim"
+summary: "onex dashboard starts a loopback process that serves this install's contract-declared projection exposures from the local store, every read going through the projection read node. This contract binds AC1, the local-mode test file this change adds. The ticket's AC2 (Runs ids equal the store's set after 20 lab delegations) is a lab readback, not a repo test, and is not claimed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-local-serving-mode"
+    statement: |-
+      The local dashboard process serves only contract-declared exposures from the local store, through the read node, scoped to this install's tenant.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: tests/projection/test_api_server_local_mode.py asserts: every served exposure comes from a contract with projection_api.expose: true; an undeclared topic answers 404; a declared empty table answers 200 with an empty list and as_of: null; no SQL text lives outside the adapter; another tenant's rows answer 422 -- falsifier: that test file run with uv run pytest fails any case
+evidence_requirements:
+  - kind: "tests"
+    description: "The local-mode test file passes against a real two-tenant SQLite store."
+    command: "uv run pytest tests/projection/test_api_server_local_mode.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19976-ac1-local-mode"
+    description: "The local-mode tests: declared-only catalogue, 404 for an undeclared topic, 200 with rows [] and as_of null for an empty table, no SQL outside the adapter, 422 for another tenant."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_api_server_local_mode.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

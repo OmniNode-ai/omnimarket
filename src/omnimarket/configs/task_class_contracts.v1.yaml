@@ -590,6 +590,14 @@ execution_budgets:
   agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
 
+# S is value <= s_max, M is <= m_max, L is above. Every class inherits this
+# default; task_classes.<class>.size_band_thresholds may override the same shape.
+# Thresholds change only through a contract change, never at run time.
+size_band_thresholds:
+  tokens: {s_max: 4000, m_max: 16000}
+  units: {s_max: 3, m_max: 10}
+  steps: {s_max: 3, m_max: 8}
+
 # OMN-19407: the class a prompt resolves to when no class's `selection`
 # predicate claims it. This is a GRADING decision, so the contract owns it: it
 # used to be a constant inside the `onex delegate` CLI, which no contract

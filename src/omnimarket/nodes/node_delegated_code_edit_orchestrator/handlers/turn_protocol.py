@@ -6,7 +6,8 @@
   declares, so the delegation quality gate validates the reply's shape and
   nothing else (OMN-15193: a declared contract is the gate's sole authority).
 * ``TOOL_SCHEMAS`` are the tools as a model is offered them (OpenAI function
-  form). The tool_use rubric reads the same schemas to judge each call.
+  form), including ``replace_in_files`` for bulk edits. The tool_use rubric
+  reads the same schemas to judge each call.
 * ``parse_turn_reply`` turns the reply text into typed actions, or names why it
   cannot.
 * ``build_turn_prompt`` renders one turn's prompt from the request, the file
@@ -23,6 +24,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
     MAX_ACTIONS_PER_TURN,
+    MAX_BULK_FILES,
     EnumCodeEditTool,
     ModelCodeEditAction,
     ModelDelegatedCodeEditRequest,
@@ -40,6 +42,7 @@ REQUIRED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern",),
     EnumCodeEditTool.WRITE: ("file_path",),
     EnumCodeEditTool.EDIT: ("file_path", "old_string"),
+    EnumCodeEditTool.REPLACE_IN_FILES: ("old_string",),
     EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: (),
@@ -52,13 +55,20 @@ ALLOWED_ARGUMENTS: dict[EnumCodeEditTool, tuple[str, ...]] = {
     EnumCodeEditTool.GREP: ("pattern", "path"),
     EnumCodeEditTool.WRITE: ("file_path", "content"),
     EnumCodeEditTool.EDIT: ("file_path", "old_string", "new_string"),
+    EnumCodeEditTool.REPLACE_IN_FILES: (
+        "file_paths",
+        "glob",
+        "old_string",
+        "new_string",
+    ),
     EnumCodeEditTool.FORMAT: ("file_path",),
     EnumCodeEditTool.RUN_CHECK: ("name",),
     EnumCodeEditTool.FINISH: ("summary",),
 }
 
-#: Arguments that are integers; every other argument is a string.
+#: Arguments that are integers or arrays; the rest are strings.
 INTEGER_ARGUMENTS = frozenset({"offset"})
+ARRAY_ARGUMENTS = frozenset({"file_paths"})
 
 _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     EnumCodeEditTool.VIEW: "Show one worktree file with line numbers, 250 lines "
@@ -68,6 +78,12 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     EnumCodeEditTool.WRITE: "Create or replace one writable file with content.",
     EnumCodeEditTool.EDIT: "Replace old_string, which must occur exactly once, "
     "with new_string in one writable file.",
+    EnumCodeEditTool.REPLACE_IN_FILES: "Replace EVERY occurrence of old_string "
+    "with new_string in each writable file; each file is all-or-nothing. "
+    "A named file without old_string is reported and left untouched. Give "
+    "exactly one of file_paths or glob (same syntax as writable globs; it "
+    "covers only writable files, and files without old_string are skipped); "
+    f"at most {MAX_BULK_FILES} files.",
     EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
@@ -83,7 +99,9 @@ TOOL_SCHEMAS: tuple[dict[str, object], ...] = tuple(
             "parameters": {
                 "type": "object",
                 "properties": {
-                    name: {"type": "integer" if name in INTEGER_ARGUMENTS else "string"}
+                    name: {"type": "array", "items": {"type": "string"}}
+                    if name in ARRAY_ARGUMENTS
+                    else {"type": "integer" if name in INTEGER_ARGUMENTS else "string"}
                     for name in ALLOWED_ARGUMENTS[tool]
                 },
                 "required": list(REQUIRED_ARGUMENTS[tool]),
@@ -110,6 +128,13 @@ RESPONSE_CONTRACT: dict[str, object] = {
                     "path": {"type": "string"},
                     "offset": {"type": "integer", "minimum": 1},
                     "file_path": {"type": "string"},
+                    "file_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": MAX_BULK_FILES,
+                    },
+                    "glob": {"type": "string"},
                     "pattern": {"type": "string"},
                     "content": {"type": "string"},
                     "old_string": {"type": "string"},
@@ -165,6 +190,34 @@ def parse_turn_reply(text: str) -> tuple[tuple[ModelCodeEditAction, ...], str]:
             value = raw.get(name)
             if not isinstance(value, str) or (name != "content" and not value):
                 return (), f"action {index} ({tool.value}) needs a string {name}"
+        if tool == EnumCodeEditTool.REPLACE_IN_FILES:
+            if ("file_paths" in raw) == ("glob" in raw):
+                return (), (
+                    f"action {index} (replace_in_files) needs exactly one of "
+                    "file_paths or glob"
+                )
+            if "file_paths" in raw:
+                paths = raw["file_paths"]
+                if (
+                    not isinstance(paths, list)
+                    or not paths
+                    or len(paths) > MAX_BULK_FILES
+                    or any(not isinstance(path, str) or not path for path in paths)
+                ):
+                    return (), (
+                        f"action {index} (replace_in_files) file_paths must be a "
+                        "non-empty list of non-empty strings, at most "
+                        f"{MAX_BULK_FILES} entries"
+                    )
+            else:
+                glob = raw["glob"]
+                if not isinstance(glob, str) or not glob:
+                    return (), f"action {index} (replace_in_files) needs a string glob"
+                if glob.startswith("/") or ".." in glob.split("/"):
+                    return (), (
+                        f"action {index} (replace_in_files) glob must be "
+                        "worktree-relative without '..' segments"
+                    )
         if tool == EnumCodeEditTool.WRITE and not isinstance(
             raw.get("content", ""), str
         ):
@@ -241,6 +294,7 @@ def build_turn_prompt(
 
 __all__ = [
     "ALLOWED_ARGUMENTS",
+    "ARRAY_ARGUMENTS",
     "INTEGER_ARGUMENTS",
     "REQUIRED_ARGUMENTS",
     "RESPONSE_CONTRACT",

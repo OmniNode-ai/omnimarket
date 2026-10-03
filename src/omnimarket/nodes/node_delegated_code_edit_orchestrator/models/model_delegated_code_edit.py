@@ -7,8 +7,8 @@ One loop edits one worktree toward one task. Each model turn is one
 them through its ports, confined to the worktree and to the paths the request
 declares writable, and runs only the checks the request declares. The tool
 names match the ones the crush agent offers (``view``, ``ls``, ``grep``,
-``write``, ``edit``) so the tool_use rubric scores both engines on one
-vocabulary.
+``write``, ``edit``, ``replace_in_files``) so the tool_use rubric scores both
+engines on one vocabulary.
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 MAX_TURNS_CEILING = 40
 #: Actions one turn may carry.
 MAX_ACTIONS_PER_TURN = 12
+#: Files one bulk replacement may target.
+MAX_BULK_FILES = 200
 #: Bytes of one file the loop shows the model.
 MAX_VIEW_BYTES = 60_000
 #: Bytes of one file the model may write.
@@ -65,6 +67,7 @@ class EnumCodeEditTool(StrEnum):
     GREP = "grep"
     WRITE = "write"
     EDIT = "edit"
+    REPLACE_IN_FILES = "replace_in_files"
     FORMAT = "format"
     RUN_CHECK = "run_check"
     FINISH = "finish"
@@ -72,7 +75,12 @@ class EnumCodeEditTool(StrEnum):
 
 #: Tools that change the worktree.
 WRITING_TOOLS = frozenset(
-    {EnumCodeEditTool.WRITE, EnumCodeEditTool.EDIT, EnumCodeEditTool.FORMAT}
+    {
+        EnumCodeEditTool.WRITE,
+        EnumCodeEditTool.EDIT,
+        EnumCodeEditTool.REPLACE_IN_FILES,
+        EnumCodeEditTool.FORMAT,
+    }
 )
 
 
@@ -185,6 +193,8 @@ class ModelCodeEditAction(BaseModel):
         default=0, ge=0, description="view: first line to show (1-based)."
     )
     file_path: str = ""
+    file_paths: tuple[str, ...] = ()
+    glob: str = ""
     pattern: str = ""
     content: str = ""
     old_string: str = ""
@@ -194,8 +204,8 @@ class ModelCodeEditAction(BaseModel):
 
     @property
     def target(self) -> str:
-        """The worktree-relative path the action names, if any."""
-        return self.file_path or self.path
+        """The worktree-relative path (or, for a bulk edit, the glob) the action names, if any."""
+        return self.file_path or self.path or self.glob
 
 
 class ModelTurnReply(BaseModel):
@@ -257,6 +267,7 @@ class ModelCodeEditResult(BaseModel):
 
 __all__ = [
     "MAX_ACTIONS_PER_TURN",
+    "MAX_BULK_FILES",
     "MAX_ERROR_CHARS",
     "MAX_OBSERVATION_BYTES",
     "MAX_TURNS_CEILING",

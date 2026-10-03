@@ -4,9 +4,10 @@
 
 A task and a git worktree in; a verified diff, a loop receipt and a tool_use
 rubric verdict out. Each model turn is one ``onex delegate`` run whose reply is
-a typed list of actions (view, ls, grep, write, edit, run_check, finish); the
-loop applies them confined to the worktree and the declared writable paths,
-runs only declared checks, and ends accepted when every check passes.
+a typed list of actions (view, ls, grep, write, edit, replace_in_files,
+run_check, finish); the loop applies them confined to the worktree and the
+declared writable paths, runs only declared checks, and ends accepted when
+every check passes.
 """
 
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.handler_delegated_code_edit_orchestrator import (
