@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17427"
+title: "Projection schema drift fails readiness and exits non-zero after a bounded retry"
+summary: "A missing column or table (SQLSTATE 42703 or 42P01) is classified SCHEMA, holds the offset, turns /ready to 503 with a diagnostic, and ends the process non-zero after a bounded number of sessions."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-schema-fault"
+    statement: |-
+      A projection writer that meets a missing column or table must not retry without bound while reporting ready.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: UndefinedColumnError and UndefinedTableError classify as SCHEMA, /ready answers 503 while a fault is open, and run() raises ProjectionSchemaError after SCHEMA_FAULT_MAX_ATTEMPTS -- falsifier: uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    command: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-schema-fault-readiness"
+    description: "The schema-fault readiness, wedge and classification tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_projection_schema_fault_readiness.py tests/test_projection_wedge_omn17985.py tests/test_projection_error_classification_omn13634.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
