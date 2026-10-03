@@ -55,7 +55,29 @@ def local_chain(
         extra_headers: dict[str, str] | None = None,
         runtime_profile: str | None = None,
     ) -> transport.ModelTransportResponse:
-        # Every HTTP call counts, even with an identical payload. Without the
+        # The adequacy judge calls the same boundary. Answer it, but do not
+        # count it: only delegated-task calls are billed per delivery.
+        if "Score how adequately" in str(payload.get("messages")):
+            return transport.ModelTransportResponse(
+                status_code=200,
+                json_body={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"adequacy_score": 0.95, "reasoning": "ok"}'
+                            }
+                        }
+                    ],
+                    "model": "Qwen3-Coder-30B",
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 10,
+                        "total_tokens": 20,
+                    },
+                },
+                latency_ms=5,
+            )
+        # Every task call counts, even with an identical payload. Without the
         # delivery claim, two handler invocations would produce two entries.
         captured_payloads.append(payload)
         return transport.ModelTransportResponse(
