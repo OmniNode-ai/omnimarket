@@ -53,6 +53,8 @@ _TERMINAL_OWNED_COLUMNS = (
     "timestamp",
     "routed_model",
     "answering_backend",
+    "backend_id",
+    "host",
 )
 
 

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -50,6 +51,9 @@ from omnimarket.events.topics import (
 )
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -322,6 +326,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     trace_id: str | None = Field(default=None)
     routed_model: str | None = Field(default=None)
     answering_backend: str | None = Field(default=None)
+    # OMN-20162: the backend and host of the attempt that answered.
+    backend_id: str | None = Field(default=None)
+    host: str | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -1004,6 +1011,7 @@ class HandlerProjectionDelegation:
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        _stamp_accepting_attempt(row, reduction.attempt_history)
         # OMN-18889: how many up-tier re-dispatches this terminal took. The
         # terminal model has always carried it (inherited from the response
         # model) and the local port has always sent it; it was dropped here,
@@ -1698,6 +1706,10 @@ def _canonical_result_to_task_delegated_payload(
         ),
         "routed_model": payload.get("model_used") or None,
         "answering_backend": payload.get("route") or None,
+        # OMN-20162: the accepting attempt's backend and host, when the
+        # terminal names them; blank stays NULL, never an empty backend.
+        "backend_id": _blank_to_none(payload.get("backend_id")),
+        "host": _blank_to_none(payload.get("host")),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1998,6 +2010,8 @@ def _preserve_existing_evidence(
         "trace_id",
         "routed_model",
         "answering_backend",
+        "backend_id",
+        "host",
     ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
@@ -2026,6 +2040,39 @@ def _stamp_terminal_trace_and_routing(
         value = getattr(event, key)
         if not _is_blank(value):
             row[key] = value
+    # OMN-20162: the serving backend and host. The accepting attempt names them
+    # on the typed ladder; explicit terminal fields fill what it leaves out.
+    for key in ("backend_id", "host"):
+        value = getattr(event, key)
+        if not _is_blank(value):
+            row[key] = str(value).strip()
+
+
+def _blank_to_none(value: object) -> str | None:
+    """Return a stripped string, or None for a missing or blank value."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _stamp_accepting_attempt(
+    row: dict[str, object],
+    attempts: Iterable[ModelDelegateSkillAttemptRecord],
+) -> None:
+    """Name the backend and host of the attempt that answered (OMN-20162).
+
+    The accepting attempt is the first rung whose quality gate passed and that
+    carries no failure class. A terminal with no accepted rung names neither
+    column, so the row stores NULL, never an empty backend.
+    """
+    for attempt in attempts:
+        if not attempt.quality_gate_passed or (attempt.failure_class or "").strip():
+            continue
+        for key, value in (("backend_id", attempt.backend_id), ("host", attempt.host)):
+            text = _blank_to_none(value)
+            if text is not None:
+                row[key] = text
+        return
 
 
 def _stamp_declared_failure_cause(

@@ -400,6 +400,10 @@ projection_api:
         - trace_id
         - routed_model
         - answering_backend
+        # OMN-20162: the backend and host of the attempt that answered, which
+        # answering_backend (the terminal's route) does not name (migration 0054).
+        - backend_id
+        - host
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model
