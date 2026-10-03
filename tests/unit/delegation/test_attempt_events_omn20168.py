@@ -128,7 +128,7 @@ def _project(
         quality_passed=True,
         failure_message="",
         cost_usd=Decimal("0"),
-        savings_usd=Decimal("0.5"),
+        baseline_savings=None,
         escalation_count=len(attempts) - 1,
         attempts=attempts,
         actual_score=0.9,

@@ -80,6 +80,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 )
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
     apply_terminal_precedence,
+    fold_terminal_ownership,
     supersedes_handler_failure,
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
@@ -1949,6 +1950,10 @@ def _preserve_existing_evidence(
     if not existing_rows:
         return
     existing = existing_rows[0]
+    # OMN-17427: a stored failure terminal is never partly overwritten by a
+    # non-terminal or out-of-order event. Decided from the two events' own
+    # terminal meaning and times, before any column is merged.
+    carry_score = fold_terminal_ownership(existing, row)
     # OMN-20303: a later terminal that states no counterfactual, session or
     # actor keeps the run's stored ones, so a kept saving keeps its baseline.
     row.update(
@@ -1982,6 +1987,8 @@ def _preserve_existing_evidence(
         "actual_score",
         "escalation_count",
     ):
+        if key == "actual_score" and not carry_score:
+            continue
         if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
             row[key] = existing[key]
     # OMN-19448: sparse later terminals keep the recorded trace and routing.

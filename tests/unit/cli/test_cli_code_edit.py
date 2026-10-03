@@ -52,8 +52,22 @@ def _scripted(state: Path, replies: list[dict[str, object]], seen: list[list[str
     return runner
 
 
+@pytest.mark.parametrize(
+    ("formatters", "expected"),
+    [
+        ((), []),
+        (("ruff format",), [["ruff", "format"]]),
+        (
+            ("ruff check --select I --fix", "ruff format"),
+            [["ruff", "check", "--select", "I", "--fix"], ["ruff", "format"]],
+        ),
+    ],
+)
 def test_run_accepts_when_the_declared_check_passes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    formatters: tuple[str, ...],
+    expected: list[list[str]],
 ) -> None:
     tree = _tree(tmp_path)
     task = tmp_path / "task.md"
@@ -96,6 +110,7 @@ def test_run_accepts_when_the_declared_check_passes(
             "lane-y",
             "--ticket",
             "OMN-20290",
+            *[arg for step in formatters for arg in ("--formatter", step)],
         ],
     )
     assert result.exit_code == 0, result.output
@@ -106,6 +121,10 @@ def test_run_accepts_when_the_declared_check_passes(
     argv = seen[0]
     assert argv[argv.index("--lane") + 1] == "dev"
     assert argv[argv.index("--caller-lane") + 1] == "lane-y"
+    receipt = json.loads(
+        (state / "runs" / line["loop_run_id"] / "loop_receipt.json").read_text()
+    )
+    assert receipt["request"]["formatter"] == expected
 
 
 def test_run_exits_3_when_not_accepted(

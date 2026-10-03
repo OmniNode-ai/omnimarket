@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20390
+title: A failed delegate receipt with a null terminal_payload no longer crashes the code-edit loop
+summary: The code-edit loop turns a delegate receipt carrying a null or malformed receipt, result or terminal_payload into a failed turn reply, and an unexpected exception inside a turn ends the loop with infra_error and exactly one written loop receipt.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20390
+  statement: Any failed delegate run must end the loop with a typed terminal status and a written loop receipt, never an escaped AttributeError that leaves only a loop claim.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: loop_ports.delegate returns a failed ModelTurnReply with an invalid_reason for a delegate run whose receipt carries a null receipt, result or terminal_payload -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "null_terminal_payload or malformed_receipts"'
+  - id: AC2
+    statement: 'AC2: an unexpected exception inside a turn ends the loop with a typed terminal status and a written loop_receipt.json, not an escaped exception -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k unexpected_delegate_exception'
+evidence_requirements:
+- kind: tests
+  description: The loop-port tests feed null, list, string and nested-null receipt shapes at exit codes 0 and 1 and assert a failed reply instead of an exception.
+  command: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "null_terminal_payload or malformed_receipts"
+- kind: tests
+  description: The handler test raises from delegate and asserts status infra_error, exactly one receipt write and the receipt stored under the correlation id.
+  command: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "unexpected_delegate_exception_still_writes_exactly_one_receipt or diff_and_score_exceptions_still_write_a_receipt"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20390-ac1
+  description: The loop-port tests feed null, list, string and nested-null receipt shapes at exit codes 0 and 1 and assert a failed reply instead of an exception.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "null_terminal_payload or malformed_receipts"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20390-ac2
+  description: The handler test raises from delegate and asserts status infra_error, exactly one receipt write and the receipt stored under the correlation id.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "unexpected_delegate_exception_still_writes_exactly_one_receipt or diff_and_score_exceptions_still_write_a_receipt"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
