@@ -3176,6 +3176,9 @@ class LocalDelegationDispatchPort:
             "error_message": failure_message,
             "escalation_count": escalation_count,
             "attempts": stamp_attempt_lineage(attempts, correlation_id=correlation_id),
+            # OMN-19448: the deciding inference result's stop reason.
+            "finish_reason": result.finish_reason.value,
+            "truncated": is_truncated_by_output_budget(result.finish_reason),
             # OMN-18889 (score half, plan row G2): the terminal attempt's graded
             # score and the class's declared bar. Keyword-only with no default,
             # so every call site states whether its terminal was scored; the

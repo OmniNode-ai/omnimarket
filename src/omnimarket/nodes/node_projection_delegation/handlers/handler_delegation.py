@@ -51,12 +51,14 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_tic
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
+    _deciding_rung_stop_reason,
     _is_blank,
     _is_zero,
     _judge_verdict_projection_row,
     _measure_actual_cost,
     _preserve_terminal_failure,
     _stamp_declared_failure_cause,
+    _stamp_terminal_stop_reason,
     _stamp_terminal_trace_and_routing,
     compute_generation_proof_fields,
 )
@@ -1520,16 +1522,19 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         ):
             if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
                 row[key] = existing[key]
-        # OMN-19448: same trace and routing preservation as the sync writer.
+        # OMN-19448: same trace, routing and stop reason as the sync writer.
         for key in (
             "authority_source",
             "score_source",
             "trace_id",
             "routed_model",
             "answering_backend",
+            "finish_reason",
         ):
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
                 row[key] = existing[key]
+                if key == "finish_reason" and row.get("truncated") is None:
+                    row["truncated"] = existing.get("truncated")
         if bool(existing.get("request_override_applied")):
             row["request_override_applied"] = True
         if existing.get("override_within_bounds") is False:
@@ -1757,6 +1762,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # OMN-19448: the canonical terminal's own cause, copied unchanged.
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         _stamp_terminal_trace_and_routing(row, event)
+        _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         await self._preserve_existing_evidence_async(row)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
@@ -1917,6 +1923,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-19448: prefer the terminal's stop reason, then its deciding rung.
+        finish_reason, truncated = (
+            (event.finish_reason.value, event.truncated)
+            if event.finish_reason is not None
+            else _deciding_rung_stop_reason(
+                [attempt.model_dump(mode="json") for attempt in event.attempts]
+            )
+        )
+        _stamp_terminal_stop_reason(row, finish_reason, truncated)
         # OMN-15503: the ladder -- not the declared status -- decides. A
         # terminal that says status="completed" while every inner attempt was
         # refused with HTTP 429 projects as ok=false with a typed
