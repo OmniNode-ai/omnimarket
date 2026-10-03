@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20368"
+title: "Raise the omnibase-core floor to 0.47.31 for the Done-write receipt gate"
+summary: "omnimarket requires omnibase-core 0.47.31 or later because model_done_write_decision first ships in that release. The sibling-pin test keeps pyproject.toml and uv.lock consistent with the floor."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-core-floor-0-47-31"
+    statement: |-
+      omnimarket must declare omnibase-core >=0.47.31,<0.48.0 and resolve it in uv.lock so the Done-write receipt gate imports resolve.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: pyproject.toml and uv.lock agree on the omnibase-core floor and sibling pins stay consistent -- falsifier: uv run pytest tests/ci/test_sibling_pins_omn20001.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The sibling pin test passes with omnibase-core 0.47.31 locked."
+    command: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-core-floor-ac1"
+    description: "The sibling pin test passes against the raised omnibase-core floor."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
