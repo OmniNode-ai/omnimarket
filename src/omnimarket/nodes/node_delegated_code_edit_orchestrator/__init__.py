@@ -21,6 +21,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protoc
     parse_turn_reply,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+    MAX_ERROR_CHARS,
     EnumCodeEditStatus,
     EnumCodeEditTool,
     ModelCheckResult,
@@ -30,10 +31,12 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     ModelDelegatedCodeEditRequest,
     ModelObservation,
     ModelTurnReply,
+    bound_error,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.protocols.protocol_delegated_code_edit_ports import (
     LoopReceiptExistsError,
     ProtocolDelegatedCodeEditPorts,
+    ResumeRefusedError,
     WorkspacePathError,
 )
 
@@ -43,6 +46,7 @@ class NodeDelegatedCodeEditOrchestrator(HandlerDelegatedCodeEditOrchestrator):
 
 
 __all__ = [
+    "MAX_ERROR_CHARS",
     "RESPONSE_CONTRACT",
     "TOOL_SCHEMAS",
     "EnumCodeEditStatus",
@@ -58,7 +62,9 @@ __all__ = [
     "ModelTurnReply",
     "NodeDelegatedCodeEditOrchestrator",
     "ProtocolDelegatedCodeEditPorts",
+    "ResumeRefusedError",
     "WorkspacePathError",
+    "bound_error",
     "build_turn_prompt",
     "normalise_path",
     "parse_turn_reply",

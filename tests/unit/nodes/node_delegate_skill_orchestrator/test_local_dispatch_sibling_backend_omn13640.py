@@ -70,9 +70,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
-    HandlerJudgeAdequacy,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
@@ -83,7 +80,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _real_resolve_delegation_backend,
 )
-from tests.fixtures.judge_inference import CannedAdequacyBridge
 
 pytestmark = pytest.mark.unit
 
@@ -323,9 +319,6 @@ def _port(effect: _ScriptedEffect, tmp_path: Path) -> LocalDelegationDispatchPor
         effect_handler=effect,
         evidence_db_path=tmp_path / "d.sqlite",
         effect_process_boundary=False,
-        judge=HandlerJudgeAdequacy(
-            inference_bridge=CannedAdequacyBridge(adequacy_score=0.95)
-        ),
     )
 
 

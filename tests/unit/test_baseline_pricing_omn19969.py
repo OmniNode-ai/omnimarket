@@ -157,6 +157,7 @@ def test_real_manifest_resolves_fixed_default_from_current_pricing_table() -> No
     assert selected.model == "claude-sonnet-5-5"
     assert _load_table().get_entry(selected.model) is not None
     assert selected.state == "RESOLVED"
+    assert selected.selection_case == "fixed_default"
     assert estimate_baseline_cost_usd(
         prompt_tokens=100,
         completion_tokens=50,
@@ -300,16 +301,20 @@ def test_savings_row_persists_manifest_version(
     class CaptureDatabase:
         row: dict[str, object] | None = None
 
-        def query(
-            self, _table: str, _filters: dict[str, object]
-        ) -> list[dict[str, object]]:
-            # A fresh session: the writer's run-identity fold (OMN-20303) finds
-            # no stored row for it.
-            return []
-
-        def upsert(self, _table: str, _key: str, row: dict[str, object]) -> bool:
+        def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
             self.row = row
             return True
+
+        def query(
+            self,
+            table: str,
+            filters: dict[str, object] | None = None,
+            *,
+            order_by: str | None = None,
+            descending: bool = False,
+            limit: int | None = None,
+        ) -> list[dict[str, object]]:
+            return []
 
     monkeypatch.setattr(
         module, "resolve_registry_tenant_uuid_or_none", lambda *_args, **_kwargs: None
@@ -322,7 +327,7 @@ def test_savings_row_persists_manifest_version(
     db = CaptureDatabase()
     result = module.HandlerProjectionSavings().project_delegate_skill_savings(
         projection, db
-    )  # type: ignore[arg-type]
+    )
 
     assert result.rows_upserted == 1
     assert db.row is not None

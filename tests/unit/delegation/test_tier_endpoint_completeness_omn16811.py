@@ -59,9 +59,8 @@ _BIFROST_PATH = _PROJECT_ROOT / "src/omnimarket/configs/bifrost_delegation.yaml"
 
 # Capabilities no plain HTTP chat-completion tier can provide. Mirrors
 # ``test_cloud_routing_contract_integrity_omn15503``'s set (OMN-15961): a
-# ``routing_availability`` declaration is only admissible when the missing
-# capability is genuinely unserveable, never as a way to silence a routable
-# class that someone forgot to wire.
+# pending_capability declaration requires a genuinely unserveable capability.
+# OMN-17427: withheld instead requires an operator ruling and no backend.
 _UNSERVEABLE_CAPABILITIES: frozenset[str] = frozenset({"agent_orchestration"})
 
 
@@ -179,6 +178,15 @@ def _pending_task_types() -> frozenset[str]:
     return frozenset(pending)
 
 
+def _unroutable_task_types() -> frozenset[str]:
+    # OMN-17427: include every contract declaration, including withheld.
+    return frozenset(
+        task_type
+        for task_type in _allowed_task_types()
+        if _routing_availability(task_type) is not None
+    )
+
+
 @pytest.fixture(autouse=True)
 def _paid_tier_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Assert against the default paid posture, not an ambient opt-out."""
@@ -227,11 +235,11 @@ def test_no_routable_task_class_depends_on_a_single_failure_domain() -> None:
     least one rung that runs without a credential (the owned-GPU local tier).
     """
     credentialed = _credentialed_backend_refs()
-    pending = _pending_task_types()
+    declared_unroutable = _unroutable_task_types()
     credential_only: dict[str, tuple[tuple[str, str], ...]] = {}
 
     for task_type in _allowed_task_types():
-        if task_type in pending:
+        if task_type in declared_unroutable:
             continue
         full = _routable_ladder(task_type)
         assert full, f"{task_type} resolves no tier at all"
@@ -244,7 +252,7 @@ def test_no_routable_task_class_depends_on_a_single_failure_domain() -> None:
 
 
 @pytest.mark.unit
-def test_every_admitted_task_class_is_routable_or_declared_pending() -> None:
+def test_every_admitted_task_class_is_routable_or_declared_unroutable() -> None:
     """AC3 drift gate — the two surfaces cannot diverge silently again.
 
     Fails in BOTH directions: an admitted class that resolves no tier without a
@@ -256,11 +264,11 @@ def test_every_admitted_task_class_is_routable_or_declared_pending() -> None:
         for task_type in _allowed_task_types()
         if not _routable_ladder(task_type)
     }
-    pending = _pending_task_types()
+    declared_unroutable = _unroutable_task_types()
 
-    assert unroutable == pending, (
-        "admitted task classes must be routable or contract-declared pending; "
-        f"unroutable={sorted(unroutable)} declared_pending={sorted(pending)}"
+    assert unroutable == declared_unroutable, (
+        "admitted task classes must be routable or contract-declared unavailable; "
+        f"unroutable={sorted(unroutable)} declared_unroutable={sorted(declared_unroutable)}"
     )
 
 
@@ -305,3 +313,19 @@ def test_agent_delegation_is_the_declared_pending_class() -> None:
     """Pin the known gap so removing the declaration cannot pass unnoticed."""
     assert _pending_task_types() == frozenset({"agent_delegation"})
     assert _routable_ladder("agent_delegation") == ()
+
+
+@pytest.mark.unit
+def test_withheld_declarations_name_a_ruling_and_resolve_no_backend() -> None:
+    """OMN-17427: withholding is an operator decision with no serving rung."""
+    for task_type in sorted(_unroutable_task_types()):
+        declared = _routing_availability(task_type)
+        assert declared is not None
+        assert declared["status"] in {"pending_capability", "withheld"}
+        if declared["status"] != "withheld":
+            continue
+        tracking = declared.get("tracking")
+        assert isinstance(tracking, str)
+        assert tracking.strip()
+        assert "RULING" in tracking
+        assert _routable_ladder(task_type) == ()

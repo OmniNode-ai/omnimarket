@@ -36,11 +36,34 @@ _REF_RE = re.compile(
 )
 
 
+def _runs_caller_evidence_mode(path: Path) -> bool:
+    """True for a workflow whose receipt-gate job reads the repo's own contracts.
+
+    Caller mode (``evidence-source: caller``) runs no OCC checkout, so the OCC
+    writer-app exemption this test follows is not part of what it executes, and
+    its pin moves with the reusable's caller-mode change instead.
+    """
+    if path.suffix != ".yml":
+        return False
+    data = yaml.safe_load(path.read_text())
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, dict):
+        return False
+    return any(
+        isinstance(job, dict)
+        and isinstance(job.get("with"), dict)
+        and job["with"].get("evidence-source") == "caller"
+        for job in jobs.values()
+    )
+
+
 def _sha_pins() -> list[tuple[str, str, str]]:
     """Every (source, workflow file, ref) that names an OCC gate reusable by ref."""
     sources = [*sorted(WORKFLOWS_DIR.glob("*.yml")), REQUIRED_CHECKS_PATH]
     found: list[tuple[str, str, str]] = []
     for path in sources:
+        if _runs_caller_evidence_mode(path):
+            continue
         for line in path.read_text().splitlines():
             if line.lstrip().startswith("#"):
                 continue
@@ -90,10 +113,14 @@ def test_workflow_callers_use_yaml_uses_keys() -> None:
         assert len(uses) == 1, f"{name}: expected one {gate} caller, got {uses}"
 
 
-def test_every_gate_pin_is_the_expected_sha() -> None:
-    stale = [p for p in _sha_pins_only() if p[2] != EXPECTED_SHA]
+def test_every_occ_preflight_pin_is_the_expected_sha() -> None:
+    stale = [
+        p
+        for p in _sha_pins_only()
+        if p[1] == "occ-preflight.yml" and p[2] != EXPECTED_SHA
+    ]
     assert not stale, (
-        f"OCC gate pins not at {EXPECTED_SHA}: {stale}. The writer-app pin-only "
+        f"occ-preflight pins not at {EXPECTED_SHA}: {stale}. The writer-app pin-only "
         "exemption (omnibase_core#1820) reaches this repo only when they move."
     )
 
@@ -105,9 +132,13 @@ def test_occ_preflight_pins_move_together() -> None:
 
 @pytest.mark.parametrize("gate", GATE_FILES)
 def test_pinned_workflow_carries_writer_app_pin_only_exemption(gate: str) -> None:
-    text = _fetch_core_file(EXPECTED_SHA, f".github/workflows/{gate}")
-    assert WRITER_APP in text
-    assert PIN_ONLY_PROBE in text
+    # The receipt-gate caller advances past #1820 (OMN-20375): read each gate at its own pins.
+    refs = {ref for _, file, ref in _sha_pins_only() if file == gate}
+    assert refs, f"no sha pin of {gate} found"
+    for ref in sorted(refs):
+        text = _fetch_core_file(ref, f".github/workflows/{gate}")
+        assert WRITER_APP in text, f"{gate}@{ref} lacks the writer app exemption"
+        assert PIN_ONLY_PROBE in text, f"{gate}@{ref} lacks the pin-only probe"
 
 
 @pytest.mark.parametrize("gate", GATE_FILES)

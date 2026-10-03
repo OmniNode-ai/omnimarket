@@ -65,12 +65,30 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
 # producer and are no longer listed among the forthcoming keys.
 #
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset()
+#
+# OMN-20168 adds the attempt lineage and placement keys: the attempt's own id,
+# its kind, the parent attempt it came from, the split that produced it, the
+# host that served it and its size band. The producer and the declared fields
+# land in the change after the release that carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {
+        "attempt_id",
+        "attempt_kind",
+        "parent_attempt_id",
+        "split_id",
+        "host",
+        "size_band",
+    }
+)
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
 )
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
+# OMN-19437 AC4, the consumer-first half: ``command_id`` is the id of the
+# delivering command message the OMN-18887 claim keys on, which the terminal will
+# carry so a served replay and a second command sharing a correlation can be told
+# apart. The second half declares it and the handler stamps it.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"command_id"})
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
