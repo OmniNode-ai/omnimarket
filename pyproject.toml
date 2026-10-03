@@ -123,7 +123,11 @@ dependencies = [
     # OMN-19750: onex local init also needs core>=0.47.24 (core#1786, the
     # runtime lane declaration types) and omnibase_infra>=0.38.60 (infra#4180,
     # the shipped runtime.lane example); both floors above already satisfy it.
-    "omnibase-core>=0.47.28,<0.48.0",
+    # OMN-20368: floor raised 0.47.28 -> 0.47.31, the first release carrying the
+    # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
+    # models.ticket.model_done_write_decision. node_linear_triage imports both
+    # unconditionally, so an older core fails at import. Raised in BOTH places.
+    "omnibase-core>=0.47.31,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -941,7 +945,11 @@ override-dependencies = [
     # shared DoD outcome reducer and goal contract types.
     # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
     # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
-    "omnibase-core>=0.47.28,<0.48.0",
+    # OMN-20368: floor raised 0.47.28 -> 0.47.31, the first release carrying the
+    # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
+    # models.ticket.model_done_write_decision. node_linear_triage imports both
+    # unconditionally, so an older core fails at import. Raised in BOTH places.
+    "omnibase-core>=0.47.31,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
