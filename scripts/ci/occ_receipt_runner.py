@@ -52,6 +52,8 @@ Invariants this module holds
   producer.
 * **A failing check produces FAIL.** The status is derived from a real exit
   status. There is no path here that reports an outcome nothing produced.
+  A check that could not run for lack of a credential produces PENDING (not
+  run), never FAIL.
 * **No machine-specific path escapes.** The runner executes in a CI workspace
   whose absolute path is unreproducible. The contract's declared
   ``check_value`` is carried through verbatim (prefixed only by the
@@ -129,6 +131,13 @@ _PR_SCOPED_SLOT_ID_RE = re.compile(
 )
 
 
+def is_missing_credential(exit_code: int, output: str) -> bool:
+    """Recognize gh's authentication-required exit status and diagnostic together."""
+    return exit_code == 4 and (
+        "GH_TOKEN environment variable" in output or "gh auth login" in output
+    )
+
+
 @dataclass(frozen=True)
 class ExecutedCheck:
     """One real execution of a declared check."""
@@ -142,7 +151,13 @@ class ExecutedCheck:
     duration_ms: int
 
     @property
+    def not_run(self) -> bool:
+        return is_missing_credential(self.exit_code, self.stdout)
+
+    @property
     def status(self) -> EnumReceiptStatus:
+        if self.not_run:
+            return EnumReceiptStatus.PENDING
         return EnumReceiptStatus.PASS if self.exit_code == 0 else EnumReceiptStatus.FAIL
 
 
@@ -160,6 +175,7 @@ class RunnerOutcome:
     wrote: tuple[Path, ...] = ()
     tickets_without_contract: tuple[str, ...] = ()
     failures: tuple[str, ...] = field(default=())
+    not_run: tuple[str, ...] = field(default=())
     # OMN-19050: a key the runner could not record an observation for at all.
     # This is NOT a failed check. A failed check is recorded in a FAIL receipt
     # and the evidence chain carries it; a refusal to write leaves NOTHING
@@ -638,11 +654,16 @@ def build_receipt(
         "probe_command": bound_command,
         "probe_stdout": _receipt_stdout(executed),
         "actual_output": (
-            f"{executed.status.value}: declared check executed in the "
+            f"PENDING: NOT RUN (environment error): the runner's environment held "
+            f"no GitHub credential (GH_TOKEN), so the declared check did not "
+            f"execute in the {repo} checkout at PR #{pr_number} head. "
+            f"This is not a result for the behaviour. Run: {run_url}"
+            if executed.not_run
+            else f"{executed.status.value}: declared check executed in the "
             f"{repo} checkout at PR #{pr_number} head; exit status "
             f"{executed.exit_code}. Run: {run_url}"
         ),
-        "exit_code": executed.exit_code,
+        "exit_code": None if executed.not_run else executed.exit_code,
         "duration_ms": executed.duration_ms,
         "pr_number": pr_number,
         "contract_entry_sha256": compute_contract_entry_sha256(
@@ -957,6 +978,7 @@ def run(
     wrote: list[Path] = []
     missing_contracts: list[str] = []
     failures: list[str] = []
+    not_run: list[str] = []
     write_refusals: list[str] = []
 
     for ticket_id in ticket_ids:
@@ -1007,7 +1029,9 @@ def run(
                 timeout_seconds=timeout_seconds,
             )
             outcome.executed += 1
-            if executed.status is EnumReceiptStatus.FAIL:
+            if executed.not_run:
+                not_run.append(f"{ticket_id}:{item_id}:{check_type}")
+            elif executed.status is EnumReceiptStatus.FAIL:
                 failures.append(f"{ticket_id}:{item_id}:{check_type}")
 
             receipt_body = build_receipt(
@@ -1054,6 +1078,7 @@ def run(
     outcome.wrote = tuple(wrote)
     outcome.tickets_without_contract = tuple(missing_contracts)
     outcome.failures = tuple(failures)
+    outcome.not_run = tuple(not_run)
     outcome.write_refusals = tuple(write_refusals)
     return outcome
 
@@ -1116,12 +1141,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         "wrote": [str(p) for p in outcome.wrote],
         "tickets_without_contract": list(outcome.tickets_without_contract),
         "failures": list(outcome.failures),
+        "not_run": list(outcome.not_run),
         "write_refusals": list(outcome.write_refusals),
         "recorded_everything_executed": outcome.recorded_everything_executed,
     }
     print(json.dumps(summary, indent=2))
     if args.json_out is not None:
         args.json_out.write_text(json.dumps(summary), encoding="utf-8")
+
+    for item in outcome.not_run:
+        print(
+            "::warning::declared check not run, GitHub credential missing in "
+            f"the runner environment: {item}",
+            file=sys.stderr,
+        )
 
     # Exit 0 even when a declared check FAILED. The runner's job is to record
     # what happened; a red check is reported by the FAIL receipt, which keeps

@@ -538,17 +538,22 @@ def within_budget(
     params = criterion.params
     assert isinstance(params, ModelWithinBudgetParams)
     wall_limit = params.wall_time_limit_ms(transcript.engine)
+    # A call the environment refused ran nothing; the budget counts the calls
+    # that ran and reports the refused ones apart (OMN-20291).
+    refused = sum(1 for call in transcript.tool_calls if call.refused)
+    ran = len(transcript.tool_calls) - refused
     facts = (
         f"turns={transcript.turn_count}",
-        f"tool_calls={len(transcript.tool_calls)}",
+        f"tool_calls={ran}",
         f"wall_time_ms={transcript.wall_time_ms if transcript.wall_time_ms is not None else 'absent'}",
         f"engine={transcript.engine or 'absent'}",
         f"wall_time_limit_ms={wall_limit}",
+        *((f"refused_calls={refused}",) if refused else ()),
     )
     exceeded: list[str] = []
     for name, value, limit in (
         ("turns", transcript.turn_count, params.max_turns),
-        ("tool_calls", len(transcript.tool_calls), params.max_tool_calls),
+        ("tool_calls", ran, params.max_tool_calls),
         ("wall_time_ms", transcript.wall_time_ms, wall_limit),
     ):
         if value is not None and value > limit:

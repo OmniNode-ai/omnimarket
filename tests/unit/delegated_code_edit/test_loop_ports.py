@@ -136,6 +136,57 @@ def test_grep_and_ls(tree: Path, tmp_path: Path) -> None:
     assert ports.list_dir(request, ".").splitlines() == ["src/", "tests/"]
 
 
+def test_grep_of_a_path_that_does_not_exist_says_so(tree: Path, tmp_path: Path) -> None:
+    """OMN-20291 replay ab8d7ef6 (loops 1c966a4a and f7c345be on omnimarket
+    dev 32b6f90ce): the model grepped 'omnimarket/nodes/...' in a src-layout
+    repo and was told 'no matches' eight times, so it never learned the path
+    was wrong and never read the contract its tests assert on. view and ls
+    already say a missing path is missing; grep now does too."""
+    ports = _ports(tmp_path)
+    request = _request(tree)
+    with pytest.raises(WorkspacePathError, match="m/nodes does not exist"):
+        ports.grep(request, "def add", "m/nodes")
+    assert "src/m.py:1:def add(a, b):" in ports.grep(request, "def add", "src")
+    assert ports.grep(request, "def add", "src/m.py").startswith("src/m.py:1:")
+
+
+def test_a_missing_path_names_the_worktree_paths_that_end_with_it(
+    tree: Path, tmp_path: Path
+) -> None:
+    """OMN-20291 replay ab8d7ef6 (loop 33cecc23): told 'omnimarket/nodes is
+    not a directory', the model guessed the same src-less path for 20 more
+    turns. A missing view, ls or grep path now names the worktree paths that
+    end with it, so 'src/' is one read away."""
+    ports = _ports(tmp_path)
+    request = _request(tree)
+    (tree / "pkg" / "src").mkdir(parents=True)
+    (tree / "pkg" / "src" / "m.py").write_text("x = 1\n")
+    (tree / "src" / "nodes" / "n1").mkdir(parents=True)
+    (tree / "src" / "nodes" / "n1" / "c.yaml").write_text("a: 1\n")
+    with pytest.raises(WorkspacePathError) as viewed:
+        ports.read_file(request, "m.py")
+    assert str(viewed.value) == (
+        "m.py is not a file; did you mean: src/m.py, pkg/src/m.py?"
+    )
+    with pytest.raises(WorkspacePathError) as listed:
+        ports.list_dir(request, "nodes/n1")
+    assert str(listed.value) == (
+        "nodes/n1 is not a directory; did you mean: src/nodes/n1?"
+    )
+    with pytest.raises(WorkspacePathError) as grepped:
+        ports.grep(request, "a", "./nodes/n1/c.yaml")
+    assert str(grepped.value) == (
+        "./nodes/n1/c.yaml does not exist; did you mean: src/nodes/n1/c.yaml?"
+    )
+    # No hint when nothing ends with the path, or when the path exists.
+    with pytest.raises(WorkspacePathError) as unknown:
+        ports.read_file(request, "zz/none.py")
+    assert str(unknown.value) == "zz/none.py is not a file"
+    with pytest.raises(WorkspacePathError) as wrong_kind:
+        ports.list_dir(request, "src/m.py")
+    assert str(wrong_kind.value) == "src/m.py is not a directory"
+
+
 def test_diff_includes_untracked_files_and_leaves_the_index_alone(
     tree: Path, tmp_path: Path
 ) -> None:
@@ -176,6 +227,83 @@ def test_fingerprint_ignores_timings() -> None:
         1, "1 failed in 3.10s"
     )
     assert check_fingerprint(1, "1 failed") != check_fingerprint(2, "1 failed")
+
+
+def _format_once(
+    tree: Path, tmp_path: Path, formatter: tuple[tuple[str, ...], ...]
+) -> dict[str, object]:
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        run_id = str(uuid.uuid4())
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "result.txt").write_text(
+            json.dumps({"actions": [{"tool": "format", "file_path": "src/m.py"}]})
+        )
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = _ports(tmp_path, runner)
+    request = _request(tree, formatter=formatter, max_turns=1)
+    HandlerDelegatedCodeEditOrchestrator(ports).run(request)
+    receipt = json.loads(
+        (
+            tmp_path / "state" / "runs" / request.correlation_id / "loop_receipt.json"
+        ).read_text()
+    )
+    return receipt["turns"][0]["actions"][0]
+
+
+def test_formatter_chain_sorts_imports_then_formats(tree: Path, tmp_path: Path) -> None:
+    (tree / "src" / "m.py").write_text(
+        "import sys\nimport os\n\ndef add(a,b):\n return a+b\n"
+    )
+    observation = _format_once(
+        tree,
+        tmp_path,
+        (
+            (sys.executable, "-m", "ruff", "check", "--select", "I", "--fix"),
+            (sys.executable, "-m", "ruff", "format"),
+        ),
+    )
+    assert observation["ok"] is True
+    assert (tree / "src" / "m.py").read_text() == (
+        "import os\nimport sys\n\n\ndef add(a, b):\n    return a + b\n"
+    )
+    output = str(observation["output"])
+    assert output.index("check --select I --fix src/m.py") < output.index(
+        "format src/m.py"
+    )
+
+
+def test_formatter_chain_stops_at_first_failure(tree: Path, tmp_path: Path) -> None:
+    original = (tree / "src" / "m.py").read_text()
+    observation = _format_once(
+        tree,
+        tmp_path,
+        (
+            (
+                sys.executable,
+                "-c",
+                "import sys; print('formatter failed'); sys.exit(7)",
+            ),
+            (
+                sys.executable,
+                "-c",
+                "from pathlib import Path; import sys; "
+                "Path(sys.argv[1]).write_text('unexpected')",
+            ),
+        ),
+    )
+    assert observation["ok"] is False
+    assert "failed (exit 7)\nformatter failed" in str(observation["output"])
+    assert "unexpected" not in str(observation["output"])
+    assert (tree / "src" / "m.py").read_text() == original
+
+
+def test_empty_formatter_refusal_text_is_unchanged(tree: Path, tmp_path: Path) -> None:
+    observation = _format_once(tree, tmp_path, ())
+    assert observation["ok"] is False
+    assert observation["refused"] is True
+    assert observation["output"] == "refused: no formatter is declared for this task"
 
 
 def test_delegate_argv_carries_the_contract_lane_ticket_and_deployed_flags(

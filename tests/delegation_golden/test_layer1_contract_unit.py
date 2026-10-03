@@ -153,6 +153,10 @@ class TestU2EveryTierResolvesCompleteBackend:
         raw = yaml.safe_load(_BIFROST_CONFIG.read_text())
         # The ollama block is read by load_ollama_config, not the wire model.
         raw.pop("ollama", None)
+        # The bifrost loader lifts a tier placement off each entry before the wire
+        # model validates the rest (OMN-19215), so this read does the same.
+        for backend in raw["backends"]:
+            backend.pop("placement", None)
         bifrost = ModelBifrostDelegationConfig.model_validate(raw)
         backends_by_id = {b.backend_id: b for b in bifrost.backends}
         return delegation_config, backends_by_id

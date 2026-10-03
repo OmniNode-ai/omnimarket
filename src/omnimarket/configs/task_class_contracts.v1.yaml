@@ -1666,7 +1666,10 @@ task_classes:
   # OMN-17427: the class stays declared; delegation is withheld below.
   code_review:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
-    gateway_exposure: public
+    # OMN-17427: withheld, with no serving tier, so not offered at the public
+    # Gateway. Selection still claims its phrases to refuse code-review prompts
+    # rather than route them to a neighbouring class.
+    gateway_exposure: internal
     # OMN-17427: operator RULING 2026-10-02T19:33:51Z, lane orchestrator-2a21.
     # Order: gpt-oss-120b (local, lab), then GLM glm-5.3 through Claude Code;
     # if neither is adequate, code_review is not delegated and stays with Claude.
@@ -1740,21 +1743,8 @@ task_classes:
         max: 1.0
     escalation_policy:
       max_escalations: 2
-      # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
-      # the operator directive "openrouter can also do work for ... code".
-      # tier_order is a CLOSED set — `_tier_order_from_contract` excludes any
-      # tier absent from it — so this class could not reach the free coder rung
-      # at all before, no matter what routing_tiers.yaml `use_for` declared.
-      # Placement mirrors code_generation/refactor, which have carried this
-      # exact ladder since OMN-13943/OMN-14225 (free before paid: a task that
-      # must escalate off local tries the ZERO-COST frontier rung before any
-      # tier that spends money). max_escalations is raised by one so the ladder
-      # can still be walked to its ceiling now that it is one rung longer —
-      # the same adjustment OMN-13943 made for code_generation.
-      tier_order:
-        - local
-        - cheap_frontier
-        - cheap_cloud
+      # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
+      # Restore the ladder in the same change that restores use_for entries.
   summarization:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
@@ -1961,10 +1951,8 @@ task_classes:
     # (claude), all of which execute over the bus/inference-effect HTTP path.
     escalation_policy:
       max_escalations: 2
-      tier_order:
-        - local
-        - cheap_cloud
-        - claude
+      # OMN-17427: no tier serves agent_orchestration yet, so no tier_order is
+      # declared; declare that ladder in the change that wires the producer.
   escalation:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: internal

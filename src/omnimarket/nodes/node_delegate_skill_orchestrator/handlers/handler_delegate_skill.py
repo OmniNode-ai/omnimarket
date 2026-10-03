@@ -87,9 +87,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
 )
 from omnimarket.pricing import (
-    DEFAULT_BASELINE_MODEL,
     build_premium_counterfactual,
-    estimate_baseline_cost_usd,
+    estimate_baseline_savings_usd,
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
@@ -436,14 +435,12 @@ def _estimate_claude_cost_savings(
     baseline_model: str,
 ) -> float | None:
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
-    counterfactual_cost_usd = estimate_baseline_cost_usd(
+    return estimate_baseline_savings_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        actual_cost_usd=actual_cost_usd,
         baseline_model=baseline_model,
     )
-    if counterfactual_cost_usd is None:
-        return None
-    return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
 def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
@@ -702,18 +699,20 @@ def _response_attempts_count(
 
 def _premium_counterfactual(
     result: dict[str, object],
+    *,
+    baseline_model: str,
 ) -> ModelPremiumCounterfactual | None:
-    """Build the pinned premium counterfactual from measured tokens (OMN-13355)."""
+    """Build the pinned premium counterfactual from measured tokens (OMN-13355).
+
+    OMN-17427: priced against the RESOLVED baseline the receipt's savings figure
+    uses, not a second guess at the model, so the counterfactual a row pins and
+    the saving the receipt states share one baseline.
+    """
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
-    premium_model = str(
-        result.get("model_cloud_baseline")
-        or result.get("baseline_model")
-        or DEFAULT_BASELINE_MODEL
-    )
     return build_premium_counterfactual(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        premium_model=premium_model,
+        premium_model=baseline_model,
     )
 
 
@@ -984,7 +983,9 @@ def _response_from_result(
             cost_usd=actual_cost_usd,
             cost_savings_usd=cost_savings_usd,
             frontier_costs_usd=_frontier_cost_estimates(result),
-            premium_counterfactual=_premium_counterfactual(result),
+            premium_counterfactual=_premium_counterfactual(
+                result, baseline_model=baseline.model
+            ),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
@@ -1050,14 +1051,21 @@ class HandlerDelegateSkill:
         caller lane and UUID session the caller named. Stamp them in one place
         so a future terminal path cannot forget them and the projection can
         join the run to its ticket and identify who issued it.
+
+        OMN-20383: the same place stamps ``command_id``, the id of the delivering
+        command message the OMN-18887 claim keys on, so two commands sharing a
+        correlation yield terminals that differ in it. No bound delivery (a
+        direct call) leaves it absent rather than substituting another id.
         """
         terminal = await self._dispatch_and_build_untagged_terminal(request)
-        attribution = {
+        delivery = current_dispatch_envelope()
+        attribution: dict[str, object] = {
             key: value
             for key, value in (
                 ("ticket_id", _request_ticket_id(request)),
                 ("caller_lane", _request_caller_lane(request)),
                 ("session_id", _request_session_id(request)),
+                ("command_id", None if delivery is None else delivery.envelope_id),
             )
             if value is not None
         }
@@ -1409,6 +1417,11 @@ class HandlerDelegateSkill:
         if not outcome.won and outcome.served_terminal is not None:
             replayed = self._terminal_from_record(outcome.served_terminal)
             if replayed is not None:
+                # OMN-20383: a replay answers the same delivery it was recorded
+                # for, so it keeps that command's id; a record written before
+                # the id existed is filled with this delivery's own.
+                if replayed.command_id is None:
+                    return replayed.model_copy(update={"command_id": delivery_id})
                 return replayed
 
         terminal = await self._dispatch_and_build_terminal(request)

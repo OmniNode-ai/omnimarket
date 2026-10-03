@@ -214,6 +214,7 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_c
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
 )
+from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -1205,7 +1206,6 @@ class LocalDelegationDispatchPort:
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
         cumulative_cost_usd = Decimal("0")
-        cumulative_savings_usd = Decimal("0")
         attempts: list[dict[str, object]] = []
         escalation_count = 0
         # OMN-14220: best authored artifact seen across attempts (highest gate score,
@@ -1489,7 +1489,6 @@ class LocalDelegationDispatchPort:
                 # (typically zero) metered cost directly — mirrors the
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
-                cumulative_savings_usd += transport_result.savings_usd
                 attempts.append(
                     {
                         "tier": current_tier,
@@ -1601,7 +1600,7 @@ class LocalDelegationDispatchPort:
                     quality_passed=False,
                     failure_message=transport_failure_message,
                     cost_usd=cumulative_cost_usd,
-                    savings_usd=cumulative_savings_usd,
+                    baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
                     # Transport failure: the gate never ran, so nothing was scored.
@@ -1668,7 +1667,6 @@ class LocalDelegationDispatchPort:
             # BEFORE deciding pass/fail so a rejected metered tier's spend is
             # counted even if we escalate away from it (OMN-13849).
             cumulative_cost_usd += result.actual_cost_usd
-            cumulative_savings_usd += result.savings_usd
 
             attempt_tier = _routing_tier_name(backend)
 
@@ -1853,6 +1851,16 @@ class LocalDelegationDispatchPort:
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
                 #    never a dropped rejected-attempt cost).
+                # OMN-17427: ONE saving, stated against the resolved baseline,
+                # read by the evidence row below AND the returned terminal the
+                # receipt is built from. The effect's own savings_usd is priced
+                # against a hardcoded Opus rate no receipt names, so it is no
+                # longer a source for either.
+                baseline_savings = compute_baseline_savings(
+                    prompt_tokens=result.tokens_in,
+                    completion_tokens=result.tokens_out,
+                    actual_cost_usd=float(cumulative_cost_usd),
+                )
                 self._project_evidence(
                     correlation_id=correlation_id,
                     task_type=task_type,
@@ -1865,7 +1873,7 @@ class LocalDelegationDispatchPort:
                     quality_passed=True,
                     failure_message="",
                     cost_usd=cumulative_cost_usd,
-                    savings_usd=cumulative_savings_usd,
+                    baseline_savings=baseline_savings,
                     escalation_count=escalation_count,
                     attempts=attempts,
                     actual_score=gate_result.quality_score,
@@ -1917,6 +1925,16 @@ class LocalDelegationDispatchPort:
                     "correlation_id": str(correlation_id),
                     "escalation_count": escalation_count,
                     "cost_usd": float(cumulative_cost_usd),
+                    # OMN-17427: the saving, from the same computation the
+                    # evidence row used. The baseline is left for the handler
+                    # to resolve and name (so the receipt's baseline_source
+                    # still says how it was chosen); it resolves identically
+                    # because a local run carries no overlay or store.
+                    **(
+                        {"cost_savings_usd": baseline_savings.savings_usd}
+                        if baseline_savings.savings_usd is not None
+                        else {}
+                    ),
                     "attempts": attempts,
                     "provenance": (
                         provenance.model_dump(mode="json")
@@ -2075,7 +2093,7 @@ class LocalDelegationDispatchPort:
                     quality_passed=False,
                     failure_message=gate_failure_message,
                     cost_usd=cumulative_cost_usd,
-                    savings_usd=cumulative_savings_usd,
+                    baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
                     actual_score=gate_result.quality_score,
@@ -3135,7 +3153,7 @@ class LocalDelegationDispatchPort:
         quality_passed: bool,
         failure_message: str,
         cost_usd: Decimal,
-        savings_usd: Decimal,
+        baseline_savings: ModelBaselineSavings | None,
         escalation_count: int,
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
@@ -3191,9 +3209,39 @@ class LocalDelegationDispatchPort:
                 "total_tokens": result.tokens_in + result.tokens_out,
                 "latency_ms": result.latency_ms,
                 "cost_usd": float(cost_usd),
-                "cost_savings_usd": float(savings_usd),
+                "cost_savings_usd": (
+                    baseline_savings.savings_usd
+                    if baseline_savings is not None
+                    and baseline_savings.savings_usd is not None
+                    else 0.0
+                ),
+                **(
+                    {
+                        "premium_counterfactual": (
+                            baseline_savings.premium_counterfactual.model_dump(
+                                mode="json"
+                            )
+                        )
+                    }
+                    if baseline_savings is not None
+                    and baseline_savings.premium_counterfactual is not None
+                    else {}
+                ),
             },
         }
+        if baseline_savings is not None:
+            # OMN-17427: the row records the baseline its saving was stated
+            # against, where it used to record a manifest version of 0.
+            payload.update(
+                {
+                    "model_cloud_baseline": baseline_savings.baseline.model,
+                    "baseline_source": baseline_savings.baseline.selection_case,
+                    "baseline_state": baseline_savings.baseline.state,
+                    "pricing_manifest_version": (
+                        baseline_savings.baseline.pricing_manifest_version
+                    ),
+                }
+            )
         # The terminal projection types session_id as UUID | None; only forward a
         # UUID-parseable value so a free-text local session id never fails the
         # evidence write (the row materializes either way).

@@ -65,6 +65,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
+from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
+    fold_terminal_ownership,
+)
 from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
@@ -1489,6 +1492,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if not existing_rows:
             return
         existing = existing_rows[0]
+        # OMN-17427: same terminal ownership decision as the sync preserve step.
+        carry_score = fold_terminal_ownership(existing, row)
         # OMN-20303: same attribution fold as the sync preserve step.
         row.update(
             HandlerDelegationRunAttributionFold()
@@ -1520,6 +1525,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "actual_score",
             "escalation_count",
         ):
+            if key == "actual_score" and not carry_score:
+                continue
             if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
                 row[key] = existing[key]
         # OMN-19448: same trace, routing and stop reason as the sync writer.
@@ -1954,6 +1961,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # Same rule as the sync builder: a terminal that was never scored names
+        # neither column, so the row stores NULL on insert, never zero.
+        for column, value in (
+            ("actual_score", event.actual_score),
+            ("required_bar", event.required_bar),
+        ):
+            if value is not None:
+                row[column] = value
         # OMN-18930 (K3 of OMN-18925): same fold, same columns, as
         # HandlerProjectionDelegation.project_delegate_skill_terminal.
         row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())

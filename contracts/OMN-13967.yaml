@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-13967
+title: A short answer passes only on a declared short shape, never on finish_reason=stop
+summary: A bare say-word prompt declares an exact-literal short answer so the recorded say-ok run passes short_form_adequacy without finish_reason, and finish_reason=stop no longer lifts the single-word rule for a request that declared no short shape.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn13967
+  statement: The quality gate must accept a legitimately terse answer only when the prompt declared a short shape, and must keep refusing a one-word reply to a prose request.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a closed response-shape directive recognises a bare say-word prompt as a declared short answer, so the recorded say-ok run 1aeccaa6 passes through short_form_adequacy with no reliance on finish_reason -- falsifier: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k "bare_say_word or recorded_prompt_declares or declared_short_answer_passes"'
+  - id: AC2
+    statement: 'AC2: finish_reason=stop no longer lifts the single-word rule for a request that declared no short shape, so a one-word reply such as Done to a document-class prose request is refused -- falsifier: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k one_word_reply'
+  - id: AC3
+    statement: 'AC3: the READY probe f037b9be, the dd548066 replay and the OMN-18278 truncation set still behave as committed -- falsifier: uv run pytest over the committed OMN-13967, OMN-19016 and OMN-18278 fixture tests'
+evidence_requirements:
+- kind: tests
+  description: The tests replay the recorded say_ok and READY runs across every finish_reason including absent, and prove a prompt that only mentions saying declares nothing.
+  command: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k "bare_say_word or recorded_prompt_declares or declared_short_answer_passes or only_mentions_saying"
+- kind: tests
+  description: The negative fixture refuses Done, Yes, Sure and ok under every finish_reason and proves stop does not lift the rule on the class band.
+  command: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k "one_word_reply_to_a_prose_request_is_refused or stop_does_not_lift"
+- kind: tests
+  description: The three committed fixture suites pass together.
+  command: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py tests/unit/delegation/test_omn19016_veto_zeroes_score_and_stops_climb.py tests/unit/delegation/test_omn18278_truncated_response_vetoes_gate.py tests/unit/delegation/test_omn18278_bus_path_strips_reasoning_preamble.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-13967-ac1
+  description: The tests replay the recorded say_ok and READY runs across every finish_reason including absent, and prove a prompt that only mentions saying declares nothing.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k "bare_say_word or recorded_prompt_declares or declared_short_answer_passes or only_mentions_saying"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-13967-ac2
+  description: The negative fixture refuses Done, Yes, Sure and ok under every finish_reason and proves stop does not lift the rule on the class band.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py -q -k "one_word_reply_to_a_prose_request_is_refused or stop_does_not_lift"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-13967-ac3
+  description: The three committed fixture suites pass together.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn13967_short_complete_answer_passes.py tests/unit/delegation/test_omn19016_veto_zeroes_score_and_stops_climb.py tests/unit/delegation/test_omn18278_truncated_response_vetoes_gate.py tests/unit/delegation/test_omn18278_bus_path_strips_reasoning_preamble.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

@@ -64,6 +64,21 @@ def delegate_runner() -> Callable[[list[str]], subprocess.CompletedProcess[str]]
     return None
 
 
+def read_file_list(path: Path | None) -> tuple[str, ...]:
+    """The task's files from a ``--file-list`` file: one path per line, blank
+    lines and ``#`` comments skipped, duplicates dropped, order kept."""
+    if path is None:
+        return ()
+    try:
+        lines = path.read_text().splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"unreadable file list {path}: {exc}") from exc
+    names = (line.strip() for line in lines)
+    return tuple(
+        dict.fromkeys(name for name in names if name and not name.startswith("#"))
+    )
+
+
 def parse_check(spec: str) -> ModelDeclaredCheck:
     """``NAME=COMMAND`` as a declared check; its test targets come from the command."""
     name, sep, command = spec.partition("=")
@@ -137,6 +152,15 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     help="A worktree-relative file shown in the first turn (repeatable).",
 )
 @click.option(
+    "--file-list",
+    "file_list_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="A text file naming the task's files, one worktree-relative path per "
+    "line (blank lines and lines starting with # are skipped). replace_in_files "
+    "then reaches only these files; a glob narrows the list, never widens it.",
+)
+@click.option(
     "--check",
     "check_specs",
     multiple=True,
@@ -144,9 +168,10 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
 )
 @click.option(
     "--formatter",
-    default=None,
-    help="COMMAND of the formatter the format tool runs, split with shlex; the "
-    "file path is appended (e.g. 'uv run ruff format'). Omitted: no format tool.",
+    multiple=True,
+    help="COMMAND of a formatter step, split with shlex (repeatable, in order); "
+    "the file path is appended to each (e.g. 'uv run ruff check --select I "
+    "--fix', then 'uv run ruff format'). Omitted: no format tool.",
 )
 @click.option("--max-turns", type=click.IntRange(1, 40), default=20, show_default=True)
 @click.option(
@@ -207,8 +232,9 @@ def run_command(
     task_file: Path | None,
     writable: tuple[str, ...],
     context_paths: tuple[str, ...],
+    file_list_path: Path | None,
     check_specs: tuple[str, ...],
-    formatter: str | None,
+    formatter: tuple[str, ...],
     max_turns: int,
     caller_lane: str | None,
     ticket: str | None,
@@ -228,8 +254,9 @@ def run_command(
             "--task-file": task_file is not None,
             "--writable": bool(writable),
             "--context": bool(context_paths),
+            "--file-list": file_list_path is not None,
             "--check": bool(check_specs),
-            "--formatter": formatter is not None,
+            "--formatter": bool(formatter),
             "--new-correlation": new_correlation,
         }
         for flag, present in conflicts.items():
@@ -262,12 +289,13 @@ def run_command(
         try:
             request = ModelDelegatedCodeEditRequest(
                 correlation_id=str(uuid.uuid4()),
+                file_list=read_file_list(file_list_path),
                 task=task_file.read_text(),
                 workspace_root=str(worktree.resolve()),
                 writable_globs=writable,
                 context_paths=context_paths,
                 checks=tuple(parse_check(spec) for spec in check_specs),
-                formatter=tuple(shlex.split(formatter)) if formatter else (),
+                formatter=tuple(tuple(shlex.split(step)) for step in formatter),
                 max_turns=max_turns,
                 caller_lane=caller_lane,
                 ticket=ticket,
@@ -296,4 +324,4 @@ def run_command(
         sys.exit(EXIT_NOT_ACCEPTED)
 
 
-__all__ = ["code_edit_group", "parse_check"]
+__all__ = ["code_edit_group", "parse_check", "read_file_list"]

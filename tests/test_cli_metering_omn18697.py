@@ -24,6 +24,10 @@ from omnimarket.cli.cli_metering import (
     metering_command,
     render_text,
 )
+from omnimarket.local_deployment.tenant_identity import (
+    mint_local_tenant_identity,
+    read_local_tenant_identity,
+)
 from omnimarket.nodes.node_metering_summary_compute import (
     EnumBaselineState,
     HandlerMeteringSummary,
@@ -92,6 +96,8 @@ def db(tmp_path: Path) -> Path:
     )
     conn.commit()
     conn.close()
+    # OMN-17427: metering keys its summary on the install's own minted identity.
+    mint_local_tenant_identity(db_path=path)
     return path
 
 
@@ -193,6 +199,42 @@ class TestWindows:
             metering_command, ["--db", str(db), "--window", "forever"]
         )
         assert result.exit_code != 0
+
+
+class TestTenantIdentity:
+    """OMN-17427: the summary row belongs to the install, not to a literal."""
+
+    def test_the_summary_row_carries_the_minted_tenant_id(self, db: Path) -> None:
+        identity = read_local_tenant_identity(db_path=db)
+        assert identity is not None
+        payload = json.loads(_run(db, "--json"))
+        assert payload["tenant_id"] == str(identity.tenant_uuid)
+        assert payload["tenant_id"] != "local"
+
+    def test_every_stored_summary_row_carries_it(self, db: Path) -> None:
+        identity = read_local_tenant_identity(db_path=db)
+        assert identity is not None
+        _run(db, "--json")
+        conn = sqlite3.connect(db)
+        try:
+            tenants = {
+                r[0] for r in conn.execute("SELECT tenant_id FROM metering_summary")
+            }
+        finally:
+            conn.close()
+        assert tenants == {str(identity.tenant_uuid)}
+
+    def test_an_install_that_never_minted_one_is_refused_not_labelled_local(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "no-identity.sqlite"
+        conn = sqlite3.connect(path)
+        conn.execute(_DDL)
+        conn.commit()
+        conn.close()
+        result = CliRunner().invoke(metering_command, ["--db", str(path)])
+        assert result.exit_code != 0
+        assert "onex local init" in result.output
 
 
 class TestRefusals:

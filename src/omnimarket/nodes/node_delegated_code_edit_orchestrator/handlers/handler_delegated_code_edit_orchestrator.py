@@ -31,6 +31,15 @@ turns is this orchestrator:
   first may move on its own); new_string moves back the same way. An edit
   whose result is already in the file is reported applied and writes nothing
   (OMN-20291).
+* The request may declare the task's ``file_list``. ``replace_in_files`` then
+  reaches only those files: a glob narrows the list and never widens it, and a
+  named file outside it is refused. A listed file without old_string is skipped
+  and reported, not a failed call, and so is a file the replacement was
+  already applied to. The turn prompt states the file list as the
+  only edit scope and that helper scripts are not available (OMN-20291).
+* A refused action (a write outside the writable scope, a read while reads are
+  paused) is recorded with ``refused`` set: the tool_use budget counts it
+  apart from the calls that ran, because it changed and showed nothing.
 * ``run_check`` runs only a check the request declares, by name; an undeclared
   name is refused. There is no shell tool.
 * ``finish`` runs every declared check. All passing ends the loop
@@ -233,6 +242,20 @@ _READING_TOOLS = frozenset(
 )
 
 
+def _already_applied(current: str, old: str, new: str) -> bool:
+    """Whether every occurrence of ``old`` in ``current`` sits inside an earlier
+    result of the same replacement, so applying it again would only repeat it.
+
+    Only a replacement whose new text contains its old text can be repeated
+    (an insertion after a line); any other leaves no old text behind."""
+    return (
+        bool(new)
+        and old in new
+        and new in current
+        and old not in current.replace(new, "")
+    )
+
+
 def _lead(text: str) -> str:
     """The blanks a line starts with."""
     return text[: len(text) - len(text.lstrip(" \t"))]
@@ -322,6 +345,7 @@ class _Call:
     arguments: dict[str, object]
     ok: bool
     output: str
+    refused: bool = False
 
 
 @dataclass
@@ -558,6 +582,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                         arguments=arguments,
                         ok=cast(bool, action["ok"]),
                         output=cast(str, action["output"]),
+                        refused=bool(action.get("refused", False)),
                     )
                 )
         return state
@@ -780,6 +805,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     output=f"not read: {state.read_only_streak} turns in a row read "
                     "and change no file, so this turn's reads are refused; write or "
                     "edit with what HISTORY shows",
+                    refused=True,
                 )
             elif reads and read_left < MIN_READ_CHARS:
                 observation = ModelObservation(
@@ -787,6 +813,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     output=f"not read: this turn's reads already show "
                     f"{MAX_READ_CHARS_PER_TURN - read_left} characters, the most one "
                     "turn may; edit what you have read, then read more next turn",
+                    refused=True,
                 )
             else:
                 observation = self._apply(request, action, state, read_left)
@@ -812,6 +839,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     arguments=arguments,
                     ok=observation.ok,
                     output=observation.output,
+                    refused=observation.refused,
                 )
             )
             actions_log.append(
@@ -821,6 +849,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     "files": list(action.file_paths),
                     "name": action.name,
                     "ok": observation.ok,
+                    "refused": observation.refused,
                     "output": _cap(observation.output, 2_000),
                 }
             )
@@ -892,6 +921,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 return ModelObservation(
                     ok=False,
                     output=f"refused: {action.name!r} is not a declared check ({names})",
+                    refused=True,
                 )
             result = self._ports.run_check(request, check)
             return ModelObservation(
@@ -906,7 +936,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         if path is None:
             state.refusals += 1
             return ModelObservation(
-                ok=False, output=f"refused: {raw!r} leaves the worktree"
+                ok=False, output=f"refused: {raw!r} leaves the worktree", refused=True
             )
         if tool in WRITING_TOOLS and not writable(request, path):
             state.refusals += 1
@@ -914,6 +944,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 ok=False,
                 output=f"refused: {path} is not writable "
                 f"(writable: {', '.join(request.writable_globs)})",
+                refused=True,
             )
         try:
             if tool == EnumCodeEditTool.VIEW:
@@ -944,6 +975,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     return ModelObservation(
                         ok=False,
                         output=f"refused: content over {MAX_WRITE_BYTES} bytes",
+                        refused=True,
                     )
                 self._ports.write_file(request, path, action.content)
                 lines = action.content.count("\n") + (
@@ -961,6 +993,14 @@ class HandlerDelegatedCodeEditOrchestrator:
                 old_string = _LINE_PREFIX.sub("", old_string)
                 new_string = _LINE_PREFIX.sub("", new_string)
             occurrences = current.count(old_string)
+            if old_string == new_string:
+                # Not a re-sent edit. Replay ab8d7ef6 (OMN-20291) sent this no-op
+                # three times and each time was told it "was applied before".
+                return ModelObservation(
+                    ok=True,
+                    output=f"unchanged {path}: old_string and new_string are the "
+                    "same text, so this edit changes nothing",
+                )
             if (
                 new_string
                 and current.count(new_string) == 1
@@ -1008,14 +1048,27 @@ class HandlerDelegatedCodeEditOrchestrator:
         A glob is a scope, not a list: it expands to the manifest files that are
         writable, a matching file outside the writable globs is counted and
         skipped, and a file without old_string is not a failure. A named file
-        that is refused or lacks old_string is. The file cap counts the files a
-        glob would edit, those holding old_string, not every file it matches
-        (OMN-20291: ``nodes/*/contract.yaml`` matches more than the cap).
+        without old_string is skipped and reported the same way; a named file
+        that is refused or cannot be read is a failure. When the request
+        declares the task's file list, a glob only narrows it (a matching file
+        outside the list is counted and left alone) and a named file outside it
+        is refused (OMN-20291: a glob over every node contract changed files the
+        task did not name). A file whose old_string occurs only inside an
+        earlier result of the same replacement (an insertion sent twice) is
+        skipped as already applied, so a repeated call does not insert again.
+        The file cap counts the files a glob would edit,
+        those holding old_string, not every file it matches (OMN-20291:
+        ``nodes/*/contract.yaml`` matches more than the cap).
         """
         by_glob = not action.file_paths
+        listed = {normalise_path(path) or path for path in request.file_list}
         outside = 0
+        outside_list = 0
         unmatched = 0
         scope = 0
+        skipped: list[str] = []
+        done: list[str] = []
+        applied = 0
         if not by_glob:
             targets = list(
                 dict.fromkeys(
@@ -1025,14 +1078,20 @@ class HandlerDelegatedCodeEditOrchestrator:
         else:
             pattern = glob_regex(action.glob)
             matched = sorted(path for path in state.paths if pattern.match(path))
-            targets = [path for path in matched if writable(request, path)]
-            outside = len(matched) - len(targets)
+            in_list = [path for path in matched if not listed or path in listed]
+            targets = [path for path in in_list if writable(request, path)]
+            outside_list = len(matched) - len(in_list)
+            outside = len(in_list) - len(targets)
             scope = len(targets)
             holding: list[str] = []
             for name in targets:
                 try:
-                    if action.old_string not in self._ports.read_file(request, name):
+                    text = self._ports.read_file(request, name)
+                    if action.old_string not in text:
                         unmatched += 1
+                        continue
+                    if _already_applied(text, action.old_string, action.new_string):
+                        applied += 1
                         continue
                 except WorkspacePathError:
                     pass  # reported per file below
@@ -1046,6 +1105,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 output="refused: replace_in_files has no targets"
                 if not targets
                 else f"refused: replace_in_files targets over {MAX_BULK_FILES} files",
+                refused=True,
             )
         failures: list[str] = []
         edited: list[str] = []
@@ -1053,6 +1113,10 @@ class HandlerDelegatedCodeEditOrchestrator:
             path = normalise_path(raw)
             if path is None:
                 failures.append(f"FAILED {raw}: leaves the worktree")
+                continue
+            if listed and path not in listed:
+                state.refusals += 1
+                failures.append(f"FAILED {path}: not in the task's file list")
                 continue
             if not writable(request, path):
                 state.refusals += 1
@@ -1062,10 +1126,14 @@ class HandlerDelegatedCodeEditOrchestrator:
                 current = self._ports.read_file(request, path)
                 occurrences = current.count(action.old_string)
                 if not occurrences:
-                    if by_glob:
-                        unmatched += 1
-                    else:
-                        failures.append(f"FAILED {path}: no match")
+                    unmatched += 1
+                    if not by_glob:
+                        skipped.append(path)
+                    continue
+                if _already_applied(current, action.old_string, action.new_string):
+                    applied += 1
+                    if not by_glob:
+                        done.append(path)
                     continue
                 updated = current.replace(action.old_string, action.new_string)
                 if len(updated.encode()) > MAX_WRITE_BYTES:
@@ -1079,44 +1147,68 @@ class HandlerDelegatedCodeEditOrchestrator:
                 failures.append(f"FAILED {path}: {exc}")
                 continue
             edited.append(f"edited {path} ({occurrences}x)")
-        if by_glob and not edited and not failures:
-            failures.append("FAILED glob: no matched file contains old_string")
+        if not edited and not failures and not applied:
+            failures.append(
+                "FAILED glob: no matched file contains old_string"
+                if by_glob
+                else "FAILED list: no listed file contains old_string"
+            )
         header = (
             f"replace_in_files: {len(edited)} edited, {len(failures)} failed "
             f"of {scope if by_glob else len(targets)}"
         )
         if by_glob:
             header += f"; {unmatched} without old_string, {outside} matched outside the writable globs"
+            if listed:
+                header += f", {outside_list} matched outside the task's file list"
+            if applied:
+                header += f", {applied} already applied"
+        elif skipped:
+            header += f"; {len(skipped)} skipped without old_string"
+        report = [f"skipped (no old_string): {', '.join(skipped)}"] if skipped else []
+        if done:
+            report.append(f"skipped (already applied): {', '.join(done)}")
+        if not edited and not failures:
+            # Nothing was written: every file already holds this edit's result.
+            header = "unchanged " + header
         return ModelObservation(
             ok=not failures,
-            output=_cap("\n".join([header, *failures, *edited])),
+            output=_cap("\n".join([header, *failures, *report, *edited])),
         )
 
     def _format(
         self, request: ModelDelegatedCodeEditRequest, path: str, state: _State
     ) -> ModelObservation:
-        """Run the declared formatter over one writable file, in place."""
+        """Run the declared formatter chain over one writable file, in place."""
         if not request.formatter:
             state.refusals += 1
             return ModelObservation(
-                ok=False, output="refused: no formatter is declared for this task"
+                ok=False,
+                output="refused: no formatter is declared for this task",
+                refused=True,
             )
         if path.startswith("-"):
             state.refusals += 1
             return ModelObservation(
-                ok=False, output=f"refused: {path!r} reads as a flag"
+                ok=False, output=f"refused: {path!r} reads as a flag", refused=True
             )
         self._ports.read_file(request, path)
-        argv = (*request.formatter, path)
-        result = self._ports.run_check(
-            request, ModelDeclaredCheck(name="format", argv=argv)
-        )
-        return ModelObservation(
-            ok=result.status == "passed",
-            output=_cap(
+        outputs: list[str] = []
+        for formatter in request.formatter:
+            argv = (*formatter, path)
+            result = self._ports.run_check(
+                request, ModelDeclaredCheck(name="format", argv=argv)
+            )
+            output = (
                 f"$ {' '.join(argv)}\n{result.status} (exit {result.exit_code})\n"
                 f"{result.output_tail}"
-            ),
+            )
+            if result.status != "passed":
+                return ModelObservation(ok=False, output=_cap(output))
+            outputs.append(output)
+        return ModelObservation(
+            ok=True,
+            output=_cap("\n".join(outputs)),
         )
 
     @staticmethod
@@ -1201,6 +1293,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     "arguments_json": json.dumps(call.arguments, sort_keys=True),
                     "status": "ok" if call.ok else "error",
                     "output": call.output,
+                    "refused": call.refused,
                 }
                 for call in state.calls
             ],
