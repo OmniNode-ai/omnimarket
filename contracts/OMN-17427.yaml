@@ -31,6 +31,16 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: against a real PostgreSQL 16 delegation_events table the declared bar lands in required_bar as NUMERIC(5,3) and an unscored terminal stores NULL, never zero -- falsifier: uv run pytest tests/test_omn17427_required_bar_real_postgres.py -q
+  - id: "req-one-saving"
+    statement: |-
+      A local run states one saving, computed once against the resolved baseline, on both the row and the receipt, and metering is keyed on the minted tenant.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: The local row's cost_savings_usd equals the receipt's and pins the counterfactual and manifest version it was priced against -- falsifier: the focused pytest finds a row saving that differs from the receipt, or a row without the counterfactual
+      - id: "AC6"
+        statement: |-
+          AC6: onex metering keys metering_summary on the minted tenant id and refuses when none exists -- falsifier: the focused pytest finds a summary row keyed on the literal local, or a run with no identity that does not refuse
 evidence_requirements:
   - kind: "tests"
     description: "The receipt runner GH_TOKEN tests pass."
@@ -41,6 +51,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The unit and real-Postgres tests for the terminal required bar projection pass."
     command: "uv run pytest tests/test_omn17427_terminal_required_bar_projection.py tests/test_omn17427_required_bar_real_postgres.py -q"
+  - kind: "tests"
+    description: "The row and the receipt state the same saving and the row pins its counterfactual."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_row_and_receipt_savings_agree_omn17427.py -q"
+  - kind: "tests"
+    description: "Metering reads the minted tenant identity and refuses without one."
+    command: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -78,3 +94,19 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn17427_required_bar_real_postgres.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn17427-ac1-one-saving"
+    description: "The local row and the receipt state the same baseline-priced saving, and the row pins the counterfactual."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_row_and_receipt_savings_agree_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn17427-ac2-minted-tenant"
+    description: "metering_summary rows carry the minted tenant id and a missing identity is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
