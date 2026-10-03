@@ -114,7 +114,7 @@ def test_local_port_payload_carries_deciding_inference_stop_reason(
         quality_passed=not truncated,
         failure_message="output budget exhausted" if truncated else "",
         cost_usd=Decimal("0"),
-        savings_usd=Decimal("0"),
+        baseline_savings=None,
         escalation_count=0,
         attempts=(),
         actual_score=None,
