@@ -28,11 +28,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 from pathlib import Path
 from queue import Queue
-from threading import Thread
-from typing import TYPE_CHECKING
+from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
 from uuid import UUID
 
 import yaml
@@ -92,14 +93,91 @@ class SecretStoreConfigurationError(RuntimeError):
     """
 
 
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+class _SecretStoreOwnerLoop:
+    """One long-lived event loop on which the cached lane store is driven (OMN-20453).
+
+    The lane store is memoized for the life of the process
+    (:func:`_configured_secret_store`), and it holds asyncio primitives:
+    ``SecretResolver``'s per-key ``asyncio.Lock`` and ``HandlerInfisical``'s
+    circuit-breaker ``asyncio.Lock``. An ``asyncio.Lock`` binds to the first
+    loop that has to wait on it, and this module's callers arrive on many
+    loops: async handlers on the runtime loop, and the sync entry points on a
+    fresh ``asyncio.run`` loop per call, often on a worker thread. Once one
+    loop had contended a lock, the next loop that contended it raised
+    ``RuntimeError: ... is bound to a different event loop`` -- 49 failed
+    tenant delegations in .201 dev-lane runtime-effects on 2026-10-03. A lock
+    released from one thread while a waiter sits on another thread's loop can
+    also leave that waiter with no wakeup, which parks the caller.
+
+    Running every store coroutine on this one loop gives those primitives a
+    single owner whatever loop or thread the caller is on. The loop runs on a
+    daemon thread, started on first use and shared by every store instance in
+    the process.
+    """
+
+    def __init__(self) -> None:
+        self._guard = Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def get(self) -> asyncio.AbstractEventLoop:
+        with self._guard:
+            if self._loop is None or self._loop.is_closed():
+                loop = asyncio.new_event_loop()
+                started = Event()
+
+                def _serve() -> None:
+                    asyncio.set_event_loop(loop)
+                    loop.call_soon(started.set)
+                    loop.run_forever()
+
+                Thread(
+                    target=_serve, name="omnimarket-secret-store-loop", daemon=True
+                ).start()
+                started.wait()
+                self._loop = loop
+            return self._loop
+
+    async def run(
+        self,
+        func: Callable[_P, Awaitable[_T]],
+        *args: _P.args,
+        **kwargs: _P.kwargs,
+    ) -> _T:
+        """Await ``func(*args, **kwargs)`` on the owner loop, from any loop."""
+        owner = self.get()
+        if asyncio.get_running_loop() is owner:
+            return await func(*args, **kwargs)
+
+        async def _call() -> _T:
+            return await func(*args, **kwargs)
+
+        return await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(_call(), owner)
+        )
+
+
+_STORE_OWNER_LOOP = _SecretStoreOwnerLoop()
+
+
 class _MappedSecretStore:
-    """``ProtocolSecretStore`` adapter over infra's logical secret resolver."""
+    """``ProtocolSecretStore`` adapter over infra's logical secret resolver.
+
+    Every read runs on :data:`_STORE_OWNER_LOOP` (OMN-20453), because this
+    store is cached process-wide and the resolver behind it holds
+    loop-bound asyncio locks.
+    """
 
     def __init__(self, resolver: SecretResolver) -> None:
         self._resolver = resolver
 
     async def get_secret(self, key: str) -> str | None:
-        resolved = await self._resolver.get_secret_async(key, required=False)
+        resolved = await _STORE_OWNER_LOOP.run(
+            self._resolver.get_secret_async, key, required=False
+        )
         if resolved is None:
             return None
         return resolved.get_secret_value()
