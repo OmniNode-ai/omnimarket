@@ -562,6 +562,12 @@ def test_request_refuses_relative_root_and_escaping_globs() -> None:
         _request(checks=())
 
 
+@pytest.mark.parametrize("formatter", [((),), ("ruff", "format")])
+def test_request_refuses_empty_formatter_steps_and_flat_argv(formatter: object) -> None:
+    with pytest.raises(ValueError, match="formatter"):
+        _request(formatter=formatter)
+
+
 @pytest.mark.parametrize(
     ("glob", "path", "expected"),
     [
@@ -710,11 +716,17 @@ def test_format_tool_runs_the_declared_formatter_over_a_writable_file() -> None:
         [_reply(1, _a("format", file_path="src/m.py"), _a("finish", summary="s"))],
         check_passes=[True, True],
     )
-    request = _request(formatter=("ruff", "format"))
+    request = _request(formatter=(("ruff", "format"),))
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     assert ports.formatter_argv == [("ruff", "format", "src/m.py")]
     assert result.status == EnumCodeEditStatus.ACCEPTED
     assert result.refusals == 0
+    turns = cast(
+        "list[dict[str, Any]]", ports.receipts[request.correlation_id]["turns"]
+    )
+    assert (
+        turns[0]["actions"][0]["output"] == "$ ruff format src/m.py\npassed (exit 0)\n"
+    )
 
 
 def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter() -> (
@@ -731,7 +743,7 @@ def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter()
         check_passes=[False],
     )
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(
-        _request(max_turns=1, formatter=("ruff", "format"))
+        _request(max_turns=1, formatter=(("ruff", "format"),))
     )
     assert result.refusals == 1
     ports = FakePorts([_reply(1, _a("format", file_path="src/m.py"))])
