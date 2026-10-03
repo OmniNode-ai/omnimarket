@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-13634 (WS-F Phase 2): projection error classification — poison vs recoverable.
+"""OMN-13634 (WS-F Phase 2): projection error classification: poison, schema, recoverable.
 
 Two divergent error paths previously existed in the projection infrastructure:
 
@@ -11,16 +11,18 @@ Two divergent error paths previously existed in the projection infrastructure:
   ALL errors including genuine poison (malformed payload ``ValidationError``).
 
 A migration gap produced ``UndefinedColumn`` errors that were silently
-quarantined as "malformed" — the wrong policy. A missing column is a recoverable
-infra error, not a bad event.
+quarantined as "malformed" — the wrong policy. A missing column is a SCHEMA
+fault that requires a forward migration and bounded retry.
 
 This suite proves the canonical classification taxonomy and that
 ``BaseProjectionRunner._handle_message`` applies it:
 
 * ``ValidationError`` / missing-required-field = POISON -> poison DLQ, offset
   committed, NOT retried.
-* ``UndefinedColumn`` / ``OperationalError`` / connection error = RECOVERABLE ->
-  re-raised, offset NOT committed, surfaces loudly, retried.
+* ``UndefinedColumn`` = SCHEMA -> readiness fails, offset NOT committed,
+  bounded retry before a non-zero exit.
+* ``OperationalError`` / connection error = RECOVERABLE -> re-raised,
+  offset NOT committed, retried.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.projection.error_classification import (
     ProjectionErrorClass,
+    ProjectionSchemaError,
     classify_projection_error,
 )
 from omnimarket.projection.runner import (
@@ -69,11 +72,11 @@ class TestClassifyProjectionError:
         exc = HookLedgerProjectionError("metadata.tags.event_id is missing")
         assert classify_projection_error(exc) is ProjectionErrorClass.POISON
 
-    def test_undefined_column_is_recoverable(self) -> None:
+    def test_undefined_column_is_schema(self) -> None:
         exc = asyncpg.exceptions.UndefinedColumnError(
             'column "corpus_checked" of relation "generation_events" does not exist'
         )
-        assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
+        assert classify_projection_error(exc) is ProjectionErrorClass.SCHEMA
 
     def test_generic_postgres_error_is_recoverable(self) -> None:
         # OperationalError equivalent: any PostgresError is a server/infra signal,
@@ -130,12 +133,8 @@ class TestClassifyProjectionError:
     # deterministic-and-permanent as a wrong-typed value -- retrying the same
     # malformed payload can never succeed.
     #
-    # ``UndefinedColumnError`` is DELIBERATELY excluded, even though the
-    # dispatching prompt's literal enumeration named it: it is the module's
-    # own canonical example of a correctly-RECOVERABLE error (a not-yet-
-    # applied migration -- the schema self-heals, the event was fine) per
-    # the module docstring above and ``test_undefined_column_is_recoverable``
-    # below, which this fix must not regress.
+    # ``UndefinedColumnError`` is SCHEMA rather than POISON: the event is
+    # valid, but the lane database needs the forward migration.
 
     def test_asyncpg_data_error_is_poison(self) -> None:
         # The exact exception class the live pod logs cited for the OMN-15905
@@ -162,14 +161,14 @@ class TestClassifyProjectionError:
         )
         assert classify_projection_error(exc) is ProjectionErrorClass.POISON
 
-    def test_undefined_column_is_still_recoverable_after_data_error_fix(self) -> None:
+    def test_undefined_column_is_schema_after_data_error_fix(self) -> None:
         # Regression guard: adding DataError/NotNullViolationError to POISON
         # must not widen the net to UndefinedColumnError (a different
         # PostgresError subtree -- SyntaxOrAccessError, not DataError).
         exc = asyncpg.exceptions.UndefinedColumnError(
             'column "corpus_checked" of relation "generation_events" does not exist'
         )
-        assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
+        assert classify_projection_error(exc) is ProjectionErrorClass.SCHEMA
 
     # -- OMN-15919 (defect #3 of the OMN-15905 chain): RLS write-context ----
     #
@@ -195,7 +194,7 @@ class TestClassifyProjectionError:
         )
         assert classify_projection_error(exc) is ProjectionErrorClass.POISON
 
-    def test_undefined_column_is_still_recoverable_after_rls_fix(self) -> None:
+    def test_undefined_column_is_schema_after_rls_fix(self) -> None:
         # Regression guard: adding InsufficientPrivilegeError to POISON must
         # not widen the net to its SyntaxOrAccessError sibling
         # UndefinedColumnError -- the two share a base class but only the
@@ -203,7 +202,7 @@ class TestClassifyProjectionError:
         exc = asyncpg.exceptions.UndefinedColumnError(
             'column "corpus_checked" of relation "generation_events" does not exist'
         )
-        assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
+        assert classify_projection_error(exc) is ProjectionErrorClass.SCHEMA
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +245,7 @@ class _ClassifyingRunner(BaseProjectionRunner):
         super().__init__(runtime_binding=binding)
         self._raises = raises
         self.dlq_published: list[tuple[str, bytes]] = []
-        self._consumer = _RecordingConsumer()  # type: ignore[assignment]
+        self._consumer: _RecordingConsumer = _RecordingConsumer()
 
     @property
     def topics(self) -> list[str]:
@@ -283,7 +282,7 @@ class TestHandleMessageClassification:
         runner = _ClassifyingRunner(raises=_validation_error())
         await runner._handle_message(_msg(offset=41))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [42], (
             "a POISON event is durably captured on the DLQ; the offset advances so "
             "it is not retried in a hot loop"
@@ -297,22 +296,21 @@ class TestHandleMessageClassification:
         assert runner.stats.errors_count == 1
 
     @pytest.mark.asyncio
-    async def test_recoverable_reraises_and_does_not_commit(self) -> None:
+    async def test_schema_reraises_and_does_not_commit(self) -> None:
         exc = asyncpg.exceptions.UndefinedColumnError(
             'column "corpus_checked" of relation "generation_events" does not exist'
         )
         runner = _ClassifyingRunner(raises=exc)
-        with pytest.raises(asyncpg.exceptions.UndefinedColumnError):
+        with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(_msg(offset=41))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert commits == [], (
-            "a RECOVERABLE infra error must NOT commit the offset — a missing "
-            "column is a migration gap, retried until the schema catches up, never "
-            "quarantined as malformed"
+            "a SCHEMA error must NOT commit the offset — a missing column "
+            "requires a forward migration, never quarantine as malformed"
         )
         assert runner.dlq_published == [], (
-            "a recoverable error must NOT route to the poison DLQ"
+            "a schema error must NOT route to the poison DLQ"
         )
         assert runner.stats.errors_count == 1
 
@@ -368,7 +366,7 @@ class TestDelegationRunnerSafetyNet:
         assert runner.poison_dlq_topics == [DELEGATION_DLQ_TOPIC]
 
     @pytest.mark.asyncio
-    async def test_escaped_recoverable_db_error_reraises_no_commit(self) -> None:
+    async def test_escaped_schema_db_error_reraises_no_commit(self) -> None:
         published, capture = _capture()
         runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = MagicMock(spec=AsyncpgAdapter)
@@ -378,22 +376,22 @@ class TestDelegationRunnerSafetyNet:
             )
         )
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
             topic,
             5,
             {
-                "correlation_id": "corr-recoverable",
+                "correlation_id": "corr-schema",
                 "task_type": "code-review",
                 "delegated_to": "agent-alpha",
             },
         )
-        with pytest.raises(asyncpg.exceptions.UndefinedColumnError):
+        with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(msg)
 
-        assert runner._consumer.commits == []  # type: ignore[attr-defined]
+        assert runner._consumer.commits == []
         assert [t for t, _ in published if t == DELEGATION_DLQ_TOPIC] == []
 
     @pytest.mark.asyncio
@@ -417,7 +415,7 @@ class TestDelegationRunnerSafetyNet:
             )
         )
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
@@ -431,7 +429,7 @@ class TestDelegationRunnerSafetyNet:
         )
         await runner._handle_message(msg)
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [7], (
             "a POISON DataError must commit the offset (not retried in a hot "
             "loop) -- pre-fix this was RECOVERABLE and never committed"
@@ -471,7 +469,7 @@ class TestDelegationRunnerSafetyNet:
         # classification, not tenant resolution.
         mock_db.fetchval = AsyncMock(return_value=None)
         runner._db = mock_db
-        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+        runner._consumer = _CommitRecordingConsumer()
 
         topic = runner._topic_delegated
         msg = _wrapped_msg(
@@ -486,7 +484,7 @@ class TestDelegationRunnerSafetyNet:
         )
         await runner._handle_message(msg)
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [9], (
             "a POISON InsufficientPrivilegeError must commit the offset (not "
             "retried in a hot loop) -- pre-fix this was RECOVERABLE and never "

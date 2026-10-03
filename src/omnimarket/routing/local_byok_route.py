@@ -67,6 +67,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
+    ByokPlanNotPermittedError,
     ModelByokProviderBackend,
     customer_provider_catalogue,
     resolve_byok_backend_by_id,
@@ -237,6 +238,20 @@ class ByokKeyNotRegisteredError(RuntimeError):
     """
 
 
+class ByokPinNotPermittedError(RuntimeError):
+    """OMN-20157: a pin names a row declared customer_routable false; never a fallback."""
+
+    def __init__(self, row: ModelByokProviderBackend) -> None:
+        refusal = ByokPlanNotPermittedError(row)
+        self.code = refusal.code
+        self.provider = refusal.provider
+        self.plan = refusal.plan
+        super().__init__(
+            f"{self.code}: {refusal.message} The pinned backend {row.backend_id!r} "
+            "is never routed."
+        )
+
+
 def resolve_pinned_byok_route(
     backend_id: str,
     *,
@@ -250,13 +265,17 @@ def resolve_pinned_byok_route(
     platform rung, exactly as before).
 
     Raises:
+        ByokPinNotPermittedError: ``backend_id`` names a catalogue row declared
+            ``customer_routable: false``; the pin never falls back.
         ByokKeyNotRegisteredError: ``backend_id`` is a catalogue backend and the
             customer has registered no key, or one registered under a different
             plan of the provider, for it.
     """
     row = resolve_byok_backend_by_id(backend_id)
-    if row is None or not row.customer_routable:
+    if row is None:
         return None
+    if not row.customer_routable:
+        raise ByokPinNotPermittedError(row)
     plan = resolve_local_byok_credential_plan(row.provider, db_path=db_path)
     registered = resolve_byok_provider_backend(row.provider, plan=plan)
     route = (
@@ -322,6 +341,7 @@ def _missing_key_message(provider: str, backend_id: str) -> str:
 __all__: list[str] = [
     "HOUSE_SECRET_REF_PATTERN",
     "ByokKeyNotRegisteredError",
+    "ByokPinNotPermittedError",
     "house_provider_slug",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",

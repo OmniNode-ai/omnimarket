@@ -1,0 +1,22 @@
+{
+  "branch_coverage_pct": 32.14,
+  "candidate_count": 4,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer",
+  "handler_module_sha256": "sha256:e06c1298fedb51458b3dad63ffd4a894a6e2cfce6aa2db15953ef37550822f97",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_ab_compare_reducer",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-10-03T08:09:06.251756+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 2,
+  "selected_input_hashes": [
+    "sha256:895f45eb4e626cda8816e28daef682a076f684b0e8c14c4230645de8539dc28e",
+    "sha256:84c34f58c91413d1707fc3812e48592cfd34e8ed474c514ce12ef585317f34b8"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-20187 pure adapter-boundary hand-flip: handle(request) delegates to the preserved materialize(request, self._pricing); the new optional constructor supplies pricing. No business-logic method changed. Preserved symbols are re-derived from git at base_ref by the hand-flip gate. build_receipt measures branch-inclusive statement/branch coverage after imports, scoped to this handler file: 32.14% with 6 uncovered branch exits and 32 uncovered statement lines. Import-time def/class/import statements count as uncovered. accumulate is not called by handle and remains byte-identical; its completed, correlation-mismatch, deduplication and accumulation branches are outside this adapter corpus and covered by tests/nodes/node_ab_compare_reducer. The corpus includes completed mixed priced/unpriced results, incomplete partial and empty states, and a completed empty state. Parity also exercises default pricing. This waiver acknowledges the measured gap; it does not claim full business-logic coverage. The declared parity test asserts the new handle entrypoint exists (RED on its own assertion at base_ref) and compares its complete output with the preserved entrypoint over every corpus candidate.",
+    "uncovered_branch_count": 6
+  },
+  "volatile_mask": []
+}

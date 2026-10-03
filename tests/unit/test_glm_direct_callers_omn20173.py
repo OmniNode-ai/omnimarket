@@ -3,7 +3,7 @@
 """OMN-20173: env-driven GLM readers skip Coding Plan before any HTTP."""
 
 import importlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -41,14 +41,26 @@ def no_http() -> Iterator[None]:
         get.assert_not_called()
 
 
-@pytest.mark.parametrize(("url", "blocked"), URL_CASES)
+# The bridge reads its glm endpoint from the bifrost contract (OMN-17103), which
+# refuses the z.ai general-API surface for the paid glm id, so the allowed
+# non-blocked case is a plain host.
+BRIDGE_URL_CASES = [
+    ("https://api.z.ai/api/coding/paas/v4", True),
+    ("http://glm.example/v4", False),
+]
+
+
+@pytest.mark.parametrize(("url", "blocked"), BRIDGE_URL_CASES)
 @pytest.mark.parametrize("async_loader", [False, True])
 @pytest.mark.asyncio
 async def test_bridge_glm_url(
-    monkeypatch: pytest.MonkeyPatch, url: str, blocked: bool, async_loader: bool
+    monkeypatch: pytest.MonkeyPatch,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+    url: str,
+    blocked: bool,
+    async_loader: bool,
 ) -> None:
-    monkeypatch.setenv("LLM_GLM_URL", url)
-    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-test")
+    bind_bifrost_glm_endpoint(url)
 
     def key(ref: str, **_: object) -> SecretStr | None:
         return SecretStr("test-key") if ref == "llm.glm.api_key" else None
@@ -67,8 +79,32 @@ async def test_bridge_glm_url(
         assert "glm" not in config.model_configs
     else:
         assert config.model_configs["glm"]["base_url"] == url
-        assert config.model_configs["glm"]["model_id"] == "glm-test"
+        assert config.model_configs["glm"]["model_id"] == "glm-5.3-flash"
         assert config.model_configs["glm"]["api_key"] == "test-key"
+
+
+@pytest.mark.parametrize("async_loader", [False, True])
+@pytest.mark.asyncio
+async def test_bridge_glm_env_is_not_an_authority(
+    monkeypatch: pytest.MonkeyPatch, async_loader: bool
+) -> None:
+    """The packaged contract parks GLM; LLM_GLM_URL cannot re-open it (OMN-17103)."""
+    monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    monkeypatch.setenv("LLM_GLM_URL", "https://api.z.ai/api/paas/v4")
+    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-test")
+
+    async def no_key(ref: str, **_: object) -> None:
+        return None
+
+    monkeypatch.setattr(bridge, "resolve_api_key", lambda *_a, **_k: None)
+    monkeypatch.setattr(bridge, "resolve_api_key_async", no_key)
+    config = (
+        await bridge.load_inference_bridge_config_from_env_async()
+        if async_loader
+        else bridge.load_inference_bridge_config_from_env()
+    )
+    assert "glm" not in config.model_configs
 
 
 @pytest.mark.parametrize(("url", "blocked"), URL_CASES)
