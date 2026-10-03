@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,6 +14,12 @@ from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
+
+# OMN-20167: the key the change after the next release declares. The wire
+# compatibility gate (OMN-18868) requires a released consumer to decode the new
+# shape before the producer that emits it merges, so this release accepts the
+# measured size band and discards it. No field is declared and nothing emits it.
+_FORTHCOMING_DECISION_KEYS: frozenset[str] = frozenset({"size_band"})
 
 
 class ModelRoutingDecision(BaseModel):
@@ -119,6 +126,18 @@ class ModelRoutingDecision(BaseModel):
             "the legacy/unproven shape."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a decision from a producer one release ahead (OMN-20167)."""
+        if not isinstance(data, dict) or _FORTHCOMING_DECISION_KEYS.isdisjoint(data):
+            return data
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in _FORTHCOMING_DECISION_KEYS
+        }
 
     @model_validator(mode="after")
     def _validate_provenance_pair(self) -> ModelRoutingDecision:
