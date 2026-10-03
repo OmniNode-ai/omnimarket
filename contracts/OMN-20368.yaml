@@ -28,6 +28,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py::test_core_floor_admits_done_write_decision_model -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
