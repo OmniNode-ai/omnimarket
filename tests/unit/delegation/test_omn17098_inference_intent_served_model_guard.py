@@ -111,12 +111,9 @@ class _StubOpenAiServer:
 
 @pytest.fixture(autouse=True)
 def _fresh_served_models_state() -> Iterator[None]:
-    cache = getattr(transport, "_served_models_cache", None)
-    if cache is not None:
-        cache.clear()
+    transport.served_models_cache.clear()
     yield
-    if cache is not None:
-        cache.clear()
+    transport.served_models_cache.clear()
 
 
 def _intent(chat_url: str, model: str) -> ModelInferenceIntent:
