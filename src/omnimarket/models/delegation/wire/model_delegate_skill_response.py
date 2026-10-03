@@ -84,11 +84,10 @@ _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
 )
-# OMN-19437 AC4, the consumer-first half: ``command_id`` is the id of the
-# delivering command message the OMN-18887 claim keys on, which the terminal will
-# carry so a served replay and a second command sharing a correlation can be told
-# apart. The second half declares it and the handler stamps it.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"command_id"})
+# OMN-20383 declared ``command_id`` as a real terminal field below, so it is no
+# longer listed here: the set holds only terminal keys still awaiting their own
+# declared field, and is empty until the next consumer-first key is announced.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -579,6 +578,20 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Session that issued the delegation, as the caller named it, stored "
             "as a canonical UUID string. Absent means no UUID session was named."
+        ),
+    )
+    # OMN-20383 (OMN-19437 AC4): the id of the delivering command message, the
+    # same id the OMN-18887 claim keys on. Correlation is the retry identity and
+    # callers reuse it, so it cannot tell two commands sharing a correlation
+    # apart, nor a served replay from a second run; this can. Absent means no
+    # delivering command was bound (a direct call), never a substitute id.
+    command_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Id of the delivering command message the terminal answers. A served "
+            "replay keeps the id of the command it replays. Absent means the "
+            "terminal was not produced for a bus delivery."
         ),
     )
 
