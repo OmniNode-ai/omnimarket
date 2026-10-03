@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20070"
+title: "Repo-owned DoD evidence contract and the caller-checkout evidence gate for omnimarket"
+summary: "omnimarket owns its DoD evidence contract and delegates verification to the receipt-gate reusable in caller-evidence mode. A focused test checks the base-branch caller wiring and binds every repo contract acceptance criterion to an existing pytest test file."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-repo-evidence-gate"
+    statement: |-
+      omnimarket must wire a base-branch caller evidence gate and bind every repo-owned acceptance criterion to runnable test evidence.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnimarket carries a caller workflow for the receipt-gate's caller-evidence mode that runs from the base branch (pull_request_target), pins the reusable by full sha and sets evidence-source caller -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k caller_workflow
+      - id: "AC2"
+        statement: |-
+          AC2: every acceptance criterion of every contracts/OMN-*.yaml in omnimarket is bound by binds_ac to a test_passes item whose selector names a test file that exists, and the caller workflow that reads those contracts is wired -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds
+evidence_requirements:
+  - kind: "tests"
+    description: "The caller workflow has the required base-branch trigger, immutable pin, inputs and read-only permissions."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k caller_workflow"
+  - kind: "tests"
+    description: "Every repo-owned contract criterion binds to test evidence in an existing test file and the caller workflow exists."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-repo-evidence-ac1"
+    description: "The focused workflow test proves the caller's base-branch trigger, full-SHA reusable pin and caller-evidence input."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k caller_workflow"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-repo-evidence-ac2"
+    description: "The contract binding test proves every repo contract criterion binds to test evidence in an existing test file and the caller workflow exists."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
