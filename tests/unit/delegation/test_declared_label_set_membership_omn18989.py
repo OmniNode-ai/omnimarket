@@ -230,6 +230,30 @@ def test_the_lab_backend_declares_support_on_measured_evidence() -> None:
 
 
 @pytest.mark.unit
+def test_local_coder_declares_support_on_measured_evidence() -> None:
+    """OMN-17427: In the last 24 h on the lab dev lane, 304 local-rung
+    code_generation attempts across 170 events were refused
+    DELIVERABLE_EXTRACTION: no_schema_conforming_json; local-coder 234 of its
+    747 code-edit attempts, local-omnipc2-chat 48 of 485.
+    Replayed on the .201 endpoint, the refused replies are one prose line
+    ("Let me read the remaining sections ...") or empty content instead of
+    the JSON object.
+    Probed 2026-10-03 on that endpoint with response_format json_schema over
+    the code-edit contract: 20 of 20 replies extracted, 0 HTTP errors.
+    """
+
+    from omnimarket.delegation.structured_output import (
+        load_backends_declaring_structured_output,
+    )
+
+    declaring = load_backends_declaring_structured_output()
+    assert "local-coder" in declaring, (
+        "the local-coder backend measured to support json_schema does not declare it, "
+        f"so the constraint is never sent; declaring={sorted(declaring)!r}"
+    )
+
+
+@pytest.mark.unit
 def test_the_capability_travels_onto_the_resolved_backend() -> None:
     """Consumer-first, and the reason the flag lives on the RESOLVED backend.
 

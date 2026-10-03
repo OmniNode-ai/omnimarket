@@ -361,3 +361,41 @@ def test_binding_accepted_by_another_lane_verifies(
     assert state.status is EnumDodVerifyStatus.VERIFIED
     assert state.acceptance_basis is EnumDodAcceptanceBasis.FALSIFIER_CHECKS
     assert state.acceptance_self_accepted_bindings == ()
+
+
+def test_autobind_record_on_the_label_does_not_hide_a_self_accepted_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-17427: OMN-19405's shape -- a person-accepted autobind record shares the label."""
+    autobind = {
+        "id": "dod-OmniNode-ai-omnibase_core-pr-1754",
+        "description": "autobind original",
+        "source": "generated",
+        "checks": [{"check_type": "command", "check_value": "true"}],
+        "binds_ac": ["AC1"],
+        "ac_bindings": [
+            {
+                "label": "AC1",
+                "criterion_hash": "a" * 64,
+                "proposed_by": "occ-autobind",
+                "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+                "accepted_at": "2026-09-24T15:41:02Z",
+            }
+        ],
+    }
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _FALSIFIER_A},
+            proposed_by="evid-B13-2a21",
+            accepted_by="evid-B13-2a21",
+            extra_items=[autobind],
+        ),
+    )
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.error_message is not None
+    assert state.error_message.startswith("AC_BINDING_SELF_ACCEPTED")
+    assert state.acceptance_self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=evid-B13-2a21",
+    )
