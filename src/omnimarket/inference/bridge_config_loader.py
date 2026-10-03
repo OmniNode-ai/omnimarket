@@ -59,9 +59,6 @@ from typing import Final
 
 from pydantic import SecretStr
 
-from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    load_bifrost_delegation_config,
-)
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
@@ -209,6 +206,13 @@ def _register_contract_glm(
     (OMN-20173). A contract that cannot be loaded raises, so a broken routing
     contract is not mistaken for "GLM not configured".
     """
+    # Deferred: the bifrost loader imports ``omnimarket.inference`` (provider
+    # surfaces), whose package ``__init__`` imports this module, so a top-level
+    # import here is a cycle.
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_bifrost_delegation_config,
+    )
+
     binding = resolve_bifrost_path_binding()
     config = load_bifrost_delegation_config(
         config_path=binding.contract_path, overlay_path=binding.overlay_path
