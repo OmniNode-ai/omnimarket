@@ -2,54 +2,43 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20291"
 title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
-summary: "The OMN-20291 replay of 26 crush tasks found failure classes in the delegated code edit node. This change names the writable files that do not exist yet in the turn prompt, so a model does not view a file it is told to create (replays 0192c135, 8d6e9b45, a0cbacca), reports an edit whose old_string equals its new_string as changing nothing, says a grep path that does not exist is missing instead of answering no matches, and names the worktree paths that end with a missing view, ls or grep path (replay ab8d7ef6). Each is bound to the pull request's own tests."
+summary: "The OMN-20291 replay of crush tasks found that a caller's formatter needs import sorting: ruff I001 survives `ruff format`, which does not sort imports. This change makes a task declare an ordered chain of nonempty formatter argvs, runs each against the same writable file, and stops at the first failed command with its output, so `ruff check --select I --fix` can run before `ruff format`. Each criterion is bound to the pull request's own tests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-code-edit-replay-failure-classes"
+  - id: "req-code-edit-formatter-chain"
     statement: |-
-      The delegated code edit node must tell the model which writable files do not exist yet, must not report an edit that changes nothing as applied before, must say a grep path that does not exist is missing, and must name the worktree paths that end with a missing path.
+      The delegated code edit node must run a task's formatter commands as an ordered chain against the written file, stop at the first failed command, and refuse an empty formatter step or a flat argv.
     acceptance:
-      - id: "AC7"
+      - id: "AC10"
         statement: |-
-          AC7: the turn prompt names each literal writable path that is not in the worktree as a new file to create with write, until a turn has written it, and names none when every writable path exists -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "do_not_exist_yet or no_new_files_line"
-      - id: "AC8"
+          AC10: the format tool runs each formatter command in order on the same file, so import sorting followed by ruff format leaves a sorted, formatted file, and a failed first command stops the chain with its output before the second runs -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "formatter_chain"
+      - id: "AC11"
         statement: |-
-          AC8: an edit whose old_string equals its new_string writes nothing and says it changes nothing, not that it was applied before -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "changes_nothing or already_applied"
-      - id: "AC9"
-        statement: |-
-          AC9: grep of a path that is not in the worktree is reported as not existing, not as no matches; a missing view, ls or grep path names up to three worktree paths that end with it; an existing path is still read and a path nothing ends with gets no hint -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "grep or end_with_it"
+          AC11: the request model refuses a formatter chain with an empty step and a flat argv that is not a chain -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "refuses_empty_formatter_steps"
 evidence_requirements:
   - kind: "tests"
-    description: "The delegated code edit node's handler tests pass."
-    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q"
+    description: "The delegated code edit loop port tests pass."
+    command: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-code-edit-new-files-ac7"
-    description: "The prompt tests prove a writable path missing from the worktree is named as a new file until it is written."
+  - id: "dod-code-edit-formatter-chain-ac10"
+    description: "The loop port tests prove the formatter chain sorts imports then formats, and stops at the first failed command."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"do_not_exist_yet or no_new_files_line\""
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"formatter_chain\""
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC7"]
-  - id: "dod-code-edit-noop-edit-ac8"
-    description: "The edit tests prove a no-op edit is reported as changing nothing and a re-sent edit still as applied before."
+    binds_ac: ["AC10"]
+  - id: "dod-code-edit-formatter-shape-ac11"
+    description: "The request model tests prove an empty formatter step and a flat argv are refused."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"changes_nothing or already_applied\""
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"refuses_empty_formatter_steps\""
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC8"]
-  - id: "dod-code-edit-grep-missing-path-ac9"
-    description: "The grep and path-hint tests prove a missing path is reported as missing with the worktree paths that end with it."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"grep or end_with_it\""
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC9"]
+    binds_ac: ["AC11"]
