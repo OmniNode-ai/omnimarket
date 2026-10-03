@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The real ports of the delegated code edit loop (OMN-20290).
 
-* delegate -> the sanctioned ``onex`` wrapper, ``onex delegate <prompt>
-              --task-type code_generation --response-contract <schema>`` with
-              the caller's bus and locus flags, its lane and its ticket. Each
+* delegate -> the sanctioned ``onex`` wrapper, ``onex delegate --prompt-file
+              <file> --task-type code_generation --response-contract
+              <schema>`` with the caller's bus and locus flags, its lane and its ticket. Each
               turn is one delegation run with its own receipt under
               ``<state root>/runs/<run id>/``, exactly as any other caller's.
 * workspace -> the git worktree named by the request, every path resolved and
@@ -27,6 +27,7 @@ import re
 import subprocess
 import tempfile
 import time
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,8 +66,6 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 )
 
 _DELEGATE_TIMEOUT_SECONDS = 900
-#: Linux bounds one argv word at 128 KiB; the prompt travels as one.
-MAX_PROMPT_BYTES = 120_000
 _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
@@ -489,16 +488,28 @@ class DelegatedCodeEditPorts:
         response_contract: dict[str, object],
         turn: int,
     ) -> ModelTurnReply:
-        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-            return ModelTurnReply(
-                run_id="",
-                ok=False,
-                invalid_reason=f"the turn prompt is over {MAX_PROMPT_BYTES} bytes",
-            )
+        # The prompt travels by file: one argv word is bounded at 128 KiB on
+        # Linux, which cut the history of long multi-file tasks short.
+        prompt_dir = self._state_root / "tmp"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        prompt_path = prompt_dir / f"code-edit-prompt-{uuid.uuid4().hex}.md"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        try:
+            return self._delegate_turn(request, prompt_path, response_contract)
+        finally:
+            prompt_path.unlink(missing_ok=True)
+
+    def _delegate_turn(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        prompt_path: Path,
+        response_contract: dict[str, object],
+    ) -> ModelTurnReply:
         argv = [
             str(self._onex),
             "delegate",
-            prompt,
+            "--prompt-file",
+            str(prompt_path),
             "--task-type",
             request.task_type,
             "--response-contract",
@@ -629,7 +640,6 @@ def score_transcript(
 
 __all__ = [
     "IN_PROCESS_DELEGATE_FLAGS",
-    "MAX_PROMPT_BYTES",
     "DelegatedCodeEditPorts",
     "check_fingerprint",
     "deployed_lane_delegate_flags",
