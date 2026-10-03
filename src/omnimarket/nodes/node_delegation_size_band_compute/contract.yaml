@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_size_band_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic delegation size band measurement (OMN-20167).
+  Size is measured from prompt + context pack + sources, never declared.
+  Thresholds come from task_class_contracts.v1.yaml, loaded once at composition.
+  Handle reads no files and mutates no state. Refusals name the field.
+  Every feature carries text measurement and contract threshold provenance.
+input_model:
+  name: ModelSizeBandRequest
+  module: omnimarket.models.delegation.model_size_band
+output_model:
+  name: ModelSizeBandResult
+  module: omnimarket.models.delegation.model_size_band
+handler:
+  module: omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band
+  class: HandlerDelegationSizeBand
+  input_model: omnimarket.models.delegation.model_size_band.ModelSizeBandRequest
+  output_model: omnimarket.models.delegation.model_size_band.ModelSizeBandResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band:HandlerDelegationSizeBand
+  handlers:
+    - operation: measure_size_band
+      handler:
+        name: HandlerDelegationSizeBand
+        module: omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  task_class: {type: str, required: true}
+  prompt: {type: str, required: true}
+  context_pack: {type: str, required: false}
+  sources: {type: tuple, required: false}
+  acceptance_criteria: {type: tuple, required: false}
+  caller_metadata: {type: object, required: false}
+  size_band: {type: object, required: false, description: Presence refuses.}
+  band: {type: object, required: false, description: Presence refuses.}
+  input_tokens: {type: object, required: false, description: Presence refuses.}
+  units: {type: object, required: false, description: Presence refuses.}
+  steps: {type: object, required: false, description: Presence refuses.}
+outputs:
+  status: {type: str, enum: [measured, refused]}
+  task_class: {type: str}
+  band: {type: str}
+  input_tokens: {type: object}
+  units: {type: object}
+  steps: {type: object}
+  reason: {type: str}
+  fields: {type: array}
+terminal_event: onex.evt.omnimarket.delegation-size-band-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-size-band-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-size-band-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-size-band-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-size-band-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Measured delegation size band compute
+  author: OmniNode Team
+  created: "2026-10-02"
+  related_tickets: [OMN-20167]

@@ -706,6 +706,31 @@ class ModelTaskTypeResolution(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class ModelBandEdges(BaseModel):
+    """Inclusive upper edges of the small and medium size bands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    s_max: int = Field(ge=0)
+    m_max: int
+
+    @model_validator(mode="after")
+    def _validate_edges(self) -> ModelBandEdges:
+        if self.m_max <= self.s_max:
+            raise ValueError("m_max must be greater than s_max")
+        return self
+
+
+class ModelSizeBandThresholds(BaseModel):
+    """Contract-owned size edges for each measured feature."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tokens: ModelBandEdges
+    units: ModelBandEdges
+    steps: ModelBandEdges
+
+
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
 
@@ -715,6 +740,7 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
     complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
         description=(
@@ -750,6 +776,7 @@ class ModelTaskClassAuthority(BaseModel):
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
+    size_band_thresholds: ModelSizeBandThresholds | None = None
     selection_fallback: ModelSelectionFallback | None = Field(
         default=None,
         description=(
@@ -815,6 +842,20 @@ class ModelTaskClassAuthority(BaseModel):
             for name, entry in self.task_classes.items()
             if entry.gateway_exposure is exposure
         )
+
+    def size_band_thresholds_for(
+        self, task_class: str
+    ) -> tuple[ModelSizeBandThresholds, str] | None:
+        """Return a class override or the inherited default with its contract path."""
+        entry = self.task_classes.get(task_class)
+        if entry is not None and entry.size_band_thresholds is not None:
+            return (
+                entry.size_band_thresholds,
+                f"task_classes.{task_class}.size_band_thresholds",
+            )
+        if self.size_band_thresholds is not None:
+            return self.size_band_thresholds, "size_band_thresholds"
+        return None
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
         """Return the declared handler budget for ``task_class``, or refuse."""
@@ -1113,6 +1154,7 @@ __all__ = [
     "EnumQualityRuleEnforcement",
     "EnumRoutingAvailabilityStatus",
     "EnumTaskTypeResolution",
+    "ModelBandEdges",
     "ModelDelegationOutputAuthority",
     "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
@@ -1121,6 +1163,7 @@ __all__ = [
     "ModelRoutingAvailability",
     "ModelSelectionFallback",
     "ModelShortPromptSelection",
+    "ModelSizeBandThresholds",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "ModelTaskClassComplexityContract",
