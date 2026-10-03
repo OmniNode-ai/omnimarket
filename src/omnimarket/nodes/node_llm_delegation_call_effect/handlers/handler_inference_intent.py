@@ -58,6 +58,7 @@ from omnimarket.models.model_call_correlation import (
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
     INFERENCE_TIMEOUT_LOG_TOKEN,
     load_inference_call_budget,
@@ -204,6 +205,18 @@ class ModelListUnavailableError(RuntimeError):
 
     OMN-20157. Worded with "unavailable" so the orchestrator reads the retryable
     ``MODEL_UNAVAILABLE``: it is not evidence about the key or the account.
+    """
+
+
+class ModelAttributionMismatchError(RuntimeError):
+    """The configured model is not one the endpoint serves (OMN-17098).
+
+    Raised BEFORE the chat-completion POST, so no model generated anything. The
+    message leads with the ``model_attribution_mismatch`` marker the
+    orchestrator's text classifier reads (the same marker ``HandlerLlmDelegationCall``
+    emits under OMN-16419), and ``handle`` returns the failure response without a
+    ``model_used``: the configured id is exactly the value this guard found to be
+    false, so stamping it would restate the false attribution on the response.
     """
 
 
@@ -784,7 +797,11 @@ class HandlerInferenceIntent:
             return ModelInferenceResponseData(
                 correlation_id=intent.correlation_id,
                 content="",
-                model_used=intent.model,
+                model_used=(
+                    ""
+                    if isinstance(exc, ModelAttributionMismatchError)
+                    else intent.model
+                ),
                 llm_call_id=call_id,
                 latency_ms=latency_ms,
                 prompt_tokens=prompt_tokens,
@@ -861,6 +878,24 @@ class HandlerInferenceIntent:
                 "Non-HTTP backends (shelled-CLI tiers) are not supported — every "
                 "tier including the ceiling must declare a complete chat-completions "
                 "URL (OMN-13215)."
+            )
+
+        # OMN-17098: fail-closed model-attribution guard, the same one OMN-16419
+        # put on ``HandlerLlmDelegationCall`` and the one this handler -- the path
+        # the orchestrator actually dispatches to -- never had. The served-model
+        # read runs BEFORE the POST, never after, because the response body's
+        # echoed ``model`` is not evidence (SGLang echoes whatever was requested).
+        # ``None`` is "no evidence either way" (most cloud backends expose no
+        # ``/v1/models`` at this origin) and leaves behaviour unchanged.
+        served_ids = transport.get_served_model_ids(base_url)
+        if served_ids is not None and intent.model not in served_ids:
+            raise ModelAttributionMismatchError(
+                f"model_attribution_mismatch: configured model_name="
+                f"{intent.model!r} is not in the served ids "
+                f"{sorted(served_ids)!r} reported by "
+                f"{transport.served_models_url(base_url)} (OMN-16419 fail-closed "
+                "guard on the inference-intent path, OMN-17098 -- refusing to "
+                "silently attribute this call to a model that is not running)."
             )
 
         messages, provider_request_options = _build_messages_and_request_options(intent)
@@ -1034,4 +1069,5 @@ __all__ = [
     "CredentialUnresolvedError",
     "HandlerInferenceIntent",
     "InferenceUsageError",
+    "ModelAttributionMismatchError",
 ]
