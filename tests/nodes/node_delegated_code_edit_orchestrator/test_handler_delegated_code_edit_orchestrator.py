@@ -1807,3 +1807,58 @@ def test_refused_calls_are_marked_so_the_budget_counts_them_separately() -> None
     # Turns 2 to 4 read and change nothing, so turn 5's view is refused.
     assert by_id["t5a1"]["refused"] is True
     assert by_id["t4a1"]["refused"] is False
+
+
+def test_replace_in_files_does_not_apply_an_insertion_twice() -> None:
+    """Replay 8e1b5f72 (attempt 2 of the lab re-run): the model sent the same
+    insertion over the whole list in turns 1, 3, 9, 11 and 12, and each repeat
+    inserted the line again in files that already had it; 31 turns went on
+    cleaning up. A file whose old_string occurs only inside an earlier result
+    is already done: skipped and reported, as a single edit reports it."""
+    action = ModelCodeEditAction(
+        tool=EnumCodeEditTool.REPLACE_IN_FILES,
+        file_paths=("src/a.py", "src/b.py"),
+        old_string="node_type: X\n",
+        new_string="node_type: X\nprofiles: [main]\n",
+    )
+    ports = FakePorts(
+        [_reply(1, action), _reply(2, action)],
+        files={
+            "src/a.py": "node_type: X\n",
+            "src/b.py": "node_type: X\nprofiles: [main]\n",
+        },
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=2))
+    assert ports.files["src/a.py"] == ports.files["src/b.py"]
+    assert ports.files["src/a.py"] == "node_type: X\nprofiles: [main]\n"
+    first, second = _calls(ports)
+    assert first["status"] == "ok"
+    assert "1 edited, 0 failed of 2" in first["output"]
+    assert "skipped (already applied): src/b.py" in first["output"]
+    # The repeat changes nothing, and is reported applied, not failed.
+    assert second["status"] == "ok"
+    assert second["output"].startswith("unchanged replace_in_files: 0 edited")
+    assert ports.writes == ["src/a.py"]
+
+
+def test_replace_in_files_glob_counts_files_already_done() -> None:
+    action = _a(
+        "replace_in_files",
+        glob="src/*.py",
+        old_string="node_type: X\n",
+        new_string="node_type: X\nprofiles: [main]\n",
+    )
+    ports = FakePorts(
+        [_reply(1, action)],
+        files={
+            "src/a.py": "node_type: X\n",
+            "src/b.py": "node_type: X\nprofiles: [main]\n",
+            "src/c.py": "other\n",
+        },
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    assert ports.writes == ["src/a.py"]
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert "1 without old_string" in call["output"]
+    assert "1 already applied" in call["output"]

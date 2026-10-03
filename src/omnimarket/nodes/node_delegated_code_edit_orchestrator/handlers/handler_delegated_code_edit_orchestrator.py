@@ -34,7 +34,8 @@ turns is this orchestrator:
 * The request may declare the task's ``file_list``. ``replace_in_files`` then
   reaches only those files: a glob narrows the list and never widens it, and a
   named file outside it is refused. A listed file without old_string is skipped
-  and reported, not a failed call. The turn prompt states the file list as the
+  and reported, not a failed call, and so is a file the replacement was
+  already applied to. The turn prompt states the file list as the
   only edit scope and that helper scripts are not available (OMN-20291).
 * A refused action (a write outside the writable scope, a read while reads are
   paused) is recorded with ``refused`` set: the tool_use budget counts it
@@ -239,6 +240,20 @@ def _edit_hint(current: str, old: str) -> str:
 _READING_TOOLS = frozenset(
     {EnumCodeEditTool.VIEW, EnumCodeEditTool.GREP, EnumCodeEditTool.LS}
 )
+
+
+def _already_applied(current: str, old: str, new: str) -> bool:
+    """Whether every occurrence of ``old`` in ``current`` sits inside an earlier
+    result of the same replacement, so applying it again would only repeat it.
+
+    Only a replacement whose new text contains its old text can be repeated
+    (an insertion after a line); any other leaves no old text behind."""
+    return (
+        bool(new)
+        and old in new
+        and new in current
+        and old not in current.replace(new, "")
+    )
 
 
 def _lead(text: str) -> str:
@@ -1030,7 +1045,10 @@ class HandlerDelegatedCodeEditOrchestrator:
         declares the task's file list, a glob only narrows it (a matching file
         outside the list is counted and left alone) and a named file outside it
         is refused (OMN-20291: a glob over every node contract changed files the
-        task did not name). The file cap counts the files a glob would edit,
+        task did not name). A file whose old_string occurs only inside an
+        earlier result of the same replacement (an insertion sent twice) is
+        skipped as already applied, so a repeated call does not insert again.
+        The file cap counts the files a glob would edit,
         those holding old_string, not every file it matches (OMN-20291:
         ``nodes/*/contract.yaml`` matches more than the cap).
         """
@@ -1041,6 +1059,8 @@ class HandlerDelegatedCodeEditOrchestrator:
         unmatched = 0
         scope = 0
         skipped: list[str] = []
+        done: list[str] = []
+        applied = 0
         if not by_glob:
             targets = list(
                 dict.fromkeys(
@@ -1058,8 +1078,12 @@ class HandlerDelegatedCodeEditOrchestrator:
             holding: list[str] = []
             for name in targets:
                 try:
-                    if action.old_string not in self._ports.read_file(request, name):
+                    text = self._ports.read_file(request, name)
+                    if action.old_string not in text:
                         unmatched += 1
+                        continue
+                    if _already_applied(text, action.old_string, action.new_string):
+                        applied += 1
                         continue
                 except WorkspacePathError:
                     pass  # reported per file below
@@ -1098,6 +1122,11 @@ class HandlerDelegatedCodeEditOrchestrator:
                     if not by_glob:
                         skipped.append(path)
                     continue
+                if _already_applied(current, action.old_string, action.new_string):
+                    applied += 1
+                    if not by_glob:
+                        done.append(path)
+                    continue
                 updated = current.replace(action.old_string, action.new_string)
                 if len(updated.encode()) > MAX_WRITE_BYTES:
                     state.refusals += 1
@@ -1110,7 +1139,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 failures.append(f"FAILED {path}: {exc}")
                 continue
             edited.append(f"edited {path} ({occurrences}x)")
-        if not edited and not failures:
+        if not edited and not failures and not applied:
             failures.append(
                 "FAILED glob: no matched file contains old_string"
                 if by_glob
@@ -1124,9 +1153,16 @@ class HandlerDelegatedCodeEditOrchestrator:
             header += f"; {unmatched} without old_string, {outside} matched outside the writable globs"
             if listed:
                 header += f", {outside_list} matched outside the task's file list"
+            if applied:
+                header += f", {applied} already applied"
         elif skipped:
             header += f"; {len(skipped)} skipped without old_string"
         report = [f"skipped (no old_string): {', '.join(skipped)}"] if skipped else []
+        if done:
+            report.append(f"skipped (already applied): {', '.join(done)}")
+        if not edited and not failures:
+            # Nothing was written: every file already holds this edit's result.
+            header = "unchanged " + header
         return ModelObservation(
             ok=not failures,
             output=_cap("\n".join([header, *failures, *report, *edited])),
