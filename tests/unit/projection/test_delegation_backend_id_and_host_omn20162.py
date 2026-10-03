@@ -167,9 +167,11 @@ def test_null_backend_when_the_value_is_blank(blank: str) -> None:
     assert canonical.get("backend_id") is None
     assert canonical.get("host") is None
     skill = _project(
-        # The attempt model refuses an empty backend_id outright, so a
+        # The attempt model refuses an empty string outright, so a
         # whitespace-only one is the blank it can carry.
-        _skill_terminal([_attempt(backend_id=blank or " ", host=blank, passed=True)]),
+        _skill_terminal(
+            [_attempt(backend_id=blank or " ", host=blank or " ", passed=True)]
+        ),
         InmemoryDatabaseAdapter(),
     )
     assert skill.get("backend_id") is None
