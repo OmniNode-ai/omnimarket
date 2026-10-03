@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19437 AC4, consumer-first half: terminals accept command_id.
+"""OMN-19437 AC4 / OMN-20383 AC2: terminals declare and decode command_id.
 
-OMN-18868 requires a released consumer to decode the delivering command's UUID
-before a producer emits it. Until the wire model declares ``command_id``, the
-forthcoming-key validator must discard exactly that key and preserve
-``extra="forbid"`` for all other unknown keys.
+The consumer-first half (omnimarket#3232) discarded a forthcoming ``command_id``.
+The producer half (OMN-20383) declares it, so a decoded terminal carries the
+delivering command's UUID, while every other unknown key is still refused with
+``extra_forbidden``.
 """
 
 from __future__ import annotations
@@ -29,20 +29,22 @@ pytestmark = pytest.mark.unit
 
 
 def test_the_terminal_accepts_a_command_id() -> None:
-    """RED: the consumer refuses the forthcoming command_id with extra_forbidden."""
+    """A decoded terminal carries the command_id it was given."""
+    command_id = uuid4()
     model = ModelDelegateSkillResponse.model_validate(
         {
             "correlation_id": str(uuid4()),
             "status": "completed",
             "task_type": "document",
-            "command_id": str(uuid4()),
+            "command_id": str(command_id),
         }
     )
-    assert "command_id" not in model.model_dump()
+    assert model.model_dump()["command_id"] == command_id
 
 
 def test_the_completed_and_failed_terminals_accept_a_command_id() -> None:
-    """RED: both terminal topic variants must inherit forthcoming-key acceptance."""
+    """Both terminal topic variants inherit the declared command_id."""
+    completed_id, failed_id = uuid4(), uuid4()
     completed = ModelDelegateSkillCompleted.model_validate(
         {
             "correlation_id": str(uuid4()),
@@ -50,24 +52,25 @@ def test_the_completed_and_failed_terminals_accept_a_command_id() -> None:
             "task_type": "document",
             "quality_gate_passed": True,
             "quality_score": 1.0,
-            "command_id": str(uuid4()),
+            "command_id": str(completed_id),
         }
     )
-    assert "command_id" not in completed.model_dump()
+    assert completed.model_dump()["command_id"] == completed_id
 
     failed = ModelDelegateSkillFailed.model_validate(
         {
             "correlation_id": str(uuid4()),
             "status": "failed",
             "task_type": "document",
-            "command_id": str(uuid4()),
+            "command_id": str(failed_id),
         }
     )
-    assert "command_id" not in failed.model_dump()
+    assert failed.model_dump()["command_id"] == failed_id
 
 
-def test_the_terminal_projection_accepts_a_command_id() -> None:
-    """Control: the projection consumer is extra=ignore, so it already decodes the key."""
+def test_the_terminal_projection_decodes_the_command_id() -> None:
+    """The projection consumer is extra=ignore and inherits the declared field."""
+    command_id = uuid4()
     model = ModelDelegateSkillTerminalProjection.model_validate(
         {
             "correlation_id": str(uuid4()),
@@ -78,10 +81,10 @@ def test_the_terminal_projection_accepts_a_command_id() -> None:
             "emitted_at": datetime.now(UTC).isoformat(),
             "session_id": str(uuid4()),
             "tenant_id": "omninode",
-            "command_id": str(uuid4()),
+            "command_id": str(command_id),
         }
     )
-    assert "command_id" not in model.model_dump()
+    assert model.model_dump()["command_id"] == command_id
 
 
 def test_a_legacy_terminal_without_a_command_id_still_decodes() -> None:
@@ -100,7 +103,7 @@ def test_a_legacy_terminal_without_a_command_id_still_decodes() -> None:
 
 
 def test_two_commands_sharing_a_correlation_decode_with_their_own_ids() -> None:
-    """RED: a shared correlation must not prevent distinct commands decoding."""
+    """A shared correlation must not prevent distinct commands decoding."""
     correlation_id = uuid4()
     command_ids = (uuid4(), uuid4())
     assert command_ids[0] != command_ids[1]
@@ -114,7 +117,7 @@ def test_two_commands_sharing_a_correlation_decode_with_their_own_ids() -> None:
             }
         )
         assert model.correlation_id == correlation_id
-        assert "command_id" not in model.model_dump()
+        assert model.model_dump()["command_id"] == command_id
 
 
 def test_an_unknown_key_is_still_refused() -> None:
