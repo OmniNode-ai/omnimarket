@@ -1071,3 +1071,37 @@ def _session_delegation_claim_store(
         # no-overlay default resolves to, which is a different contract.
         patch.setattr(_port_delegation_claim, "default_claim_db_path", lambda: store)
         yield store
+
+
+@pytest.fixture
+def bind_bifrost_glm_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Callable[[str | None], None]:
+    """Bind a bifrost contract whose ``cloud-glm`` backend declares a given URL.
+
+    OMN-17103: the inference bridge's ``glm`` key comes from the routing
+    contract, not from ``LLM_GLM_URL``. The fixture edits a copy of the packaged
+    contract (the packaged one parks GLM with ``endpoint_url: null``) and binds
+    it through ``BIFROST_CONTRACT_PATH``, with no overlay.
+    """
+    import yaml
+
+    packaged = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "configs"
+        / "bifrost_delegation.yaml"
+    )
+
+    def _bind(url: str | None) -> None:
+        data = yaml.safe_load(packaged.read_text())
+        for backend in data["backends"]:
+            if backend["backend_id"] == "cloud-glm":
+                backend["endpoint_url"] = url
+        contract = tmp_path / "bifrost_delegation.yaml"
+        contract.write_text(yaml.safe_dump(data))
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
+        monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+
+    return _bind
