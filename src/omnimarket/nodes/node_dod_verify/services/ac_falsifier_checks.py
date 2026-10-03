@@ -201,30 +201,66 @@ def _accepted_labels(dod_items: Sequence[Any]) -> frozenset[str]:
     return frozenset(accepted)
 
 
-def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
-    """OMN-17427: self-accepted records without independent label acceptance."""
-    accepted = {
-        label.strip().upper().replace("-", "").replace("_", "")
-        for label in _accepted_labels(dod_items)
+def _canonical_label(label: str) -> str:
+    return label.strip().upper().replace("-", "").replace("_", "")
+
+
+def _same_binding(
+    independent: Mapping[str, Any], binding: Mapping[str, Any], label: str
+) -> bool:
+    """OMN-17427: does ``independent`` re-accept the very binding ``binding`` is?
+
+    The same label, proposed by the same author, over the same criterion text.
+    A record another author proposed on the label (the original ``occ-autobind``
+    one) accepts that author's binding and nothing else.
+    """
+    other = independent.get("label")
+    if not isinstance(other, str) or _canonical_label(other) != label:
+        return False
+    proposer = actor_identities(str(binding.get("proposed_by") or ""))
+    if not proposer & actor_identities(str(independent.get("proposed_by") or "")):
+        return False
+    hashes = {
+        str(record.get("criterion_hash") or "").strip()
+        for record in (independent, binding)
     }
-    bindings: list[str] = []
+    hashes.discard("")
+    return len(hashes) <= 1
+
+
+def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
+    """OMN-17427: every binding no second lane accepted, whatever else shares its label.
+
+    A record whose ``accepted_by`` is its own author, or is absent, is reported
+    unless another record re-accepts that same binding (same label, author and
+    criterion text) by a different actor. Another record on the label, such as
+    the original ``occ-autobind`` one, does not stand in for that acceptance.
+    """
+    records: list[tuple[str, str, Mapping[str, Any]]] = []
     for index, item in enumerate(dod_items):
         if not isinstance(item, Mapping):
             continue
-        records = item.get("ac_bindings")
-        if not isinstance(records, list):
+        raw = item.get("ac_bindings")
+        if not isinstance(raw, list):
             continue
-        item_id = item.get("id") or f"dod_evidence[{index}]"
-        for record in records:
-            if not isinstance(record, Mapping):
-                continue
-            label = record.get("label")
-            if not isinstance(label, str):
-                continue
-            canonical = label.strip().upper().replace("-", "").replace("_", "")
-            accepted_by = self_accepting_actor(record)
-            if accepted_by is not None and canonical not in accepted:
-                bindings.append(f"{item_id}:{label} accepted_by={accepted_by}")
+        item_id = str(item.get("id") or f"dod_evidence[{index}]")
+        records.extend(
+            (item_id, label, record)
+            for record in raw
+            if isinstance(record, Mapping)
+            and isinstance(label := record.get("label"), str)
+        )
+    independent = [record for _, _, record in records if is_accepted_binding(record)]
+    bindings: list[str] = []
+    for item_id, label, record in records:
+        accepted_by = self_accepting_actor(record)
+        if accepted_by is None and str(record.get("accepted_by") or "").strip():
+            continue
+        canonical = _canonical_label(label)
+        if any(_same_binding(other, record, canonical) for other in independent):
+            continue
+        shown = accepted_by or "<none>"
+        bindings.append(f"{item_id}:{label} accepted_by={shown}")
     return tuple(bindings)
 
 
