@@ -314,7 +314,7 @@ def test_binding_accepted_by_a_different_lane_is_admitted() -> None:
     assert summary.self_accepted_bindings == ()
 
 
-def test_missing_acceptance_is_unchanged() -> None:
+def test_missing_acceptance_derives_nothing_and_is_reported() -> None:
     contract = _contract({"AC1": "a -- falsifier: uv run pytest tests/test_a.py -q"})
     record = contract["dod_evidence"][0]["ac_bindings"][0]
     del record["accepted_by"]
@@ -322,7 +322,10 @@ def test_missing_acceptance_is_unchanged() -> None:
     items, summary = _derive(contract)
     assert items == []
     assert summary.declared_falsifier_count == 0
-    assert summary.self_accepted_bindings == ()
+    # OMN-17427: no falsifier runs for it, and nobody accepted it either.
+    assert summary.self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=<none>",
+    )
 
 
 @pytest.mark.parametrize("label", ["AC1", " ac-1 ", "ac_1"])
@@ -398,3 +401,119 @@ def test_self_accepted_records_keep_contract_order_and_fallback_item_ids() -> No
         "first:AC1 accepted_by=LANE@host",
         "dod_evidence[1]:AC2 accepted_by=lane",
     )
+
+
+_OMN_19405_HASHES = {
+    "AC1": "5ae9f09c6cc6b70b5486c94035dbe5c07848137d4b2e850f93c5b283f513e523",
+    "AC2": "c8813e445fe88492e911795b4ce65ba29e5383e53a979b9dc9172dbd35b799ea",
+}
+
+
+def _binding(
+    label: str, *, proposed_by: str, accepted_by: str | None, hash_: str | None = None
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "label": label,
+        "criterion_hash": hash_ or _OMN_19405_HASHES[label],
+        "proposed_by": proposed_by,
+    }
+    if accepted_by is not None:
+        record["accepted_by"] = accepted_by
+        record["accepted_at"] = "2026-10-03T06:25:37Z"
+    return record
+
+
+def _omn_19405_items(*, second_lane: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+    """The binding shape of onex_change_control contracts/OMN-19405.yaml at dev.
+
+    The original occ-autobind record on each label is accepted by a person's
+    uuid; the authoring lane (evid-B13-2a21) then bound its own behavior proof
+    to the same label and accepted it itself; a later lane appends one item per
+    label that re-runs the same check and accepts the author's binding.
+    """
+    autobind_uuid = "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+    items: list[dict[str, Any]] = [
+        {
+            "id": "dod-OmniNode-ai-omnibase_core-pr-1754",
+            "ac_bindings": [
+                _binding("AC1", proposed_by="occ-autobind", accepted_by=autobind_uuid),
+                _binding("AC2", proposed_by="occ-autobind", accepted_by=autobind_uuid),
+            ],
+        },
+        {
+            "id": "dod-b13-19405-ac1-incident-replay-held-and-clear",
+            "ac_bindings": [
+                _binding(
+                    "AC1", proposed_by="evid-B13-2a21", accepted_by="evid-B13-2a21"
+                )
+            ],
+        },
+        {
+            "id": "dod-b13-19405-ac2-fold-equals-reference-exhaustive",
+            "ac_bindings": [
+                _binding(
+                    "AC2", proposed_by="evid-B13-2a21", accepted_by="evid-B13-2a21"
+                )
+            ],
+        },
+    ]
+    items.extend(
+        {
+            "id": f"dod-accept-b-19405-{label.lower()}",
+            "ac_bindings": [
+                _binding(
+                    label, proposed_by="evid-B13-2a21", accepted_by="bind-accept-b-2a21"
+                )
+            ],
+        }
+        for label in second_lane
+    )
+    return items
+
+
+def test_autobind_record_on_the_label_does_not_mask_a_self_accepted_binding() -> None:
+    """OMN-17427: the original autobind acceptance is not the author's binding's."""
+    assert self_accepted_bindings(_omn_19405_items()) == (
+        "dod-b13-19405-ac1-incident-replay-held-and-clear:AC1 accepted_by=evid-B13-2a21",
+        "dod-b13-19405-ac2-fold-equals-reference-exhaustive:AC2 accepted_by=evid-B13-2a21",
+    )
+
+
+def test_second_lane_acceptance_clears_only_the_binding_it_accepted() -> None:
+    """Positive control: bind-accept-b re-accepts AC1's binding, not AC2's."""
+    assert self_accepted_bindings(_omn_19405_items(second_lane=("AC1",))) == (
+        "dod-b13-19405-ac2-fold-equals-reference-exhaustive:AC2 accepted_by=evid-B13-2a21",
+    )
+    assert self_accepted_bindings(_omn_19405_items(second_lane=("AC1", "AC2"))) == ()
+
+
+def test_second_lane_acceptance_of_a_changed_criterion_does_not_clear() -> None:
+    items = _omn_19405_items(second_lane=("AC1",))
+    items[-1]["ac_bindings"][0]["criterion_hash"] = "f" * 64
+    assert len(self_accepted_bindings(items)) == 2
+
+
+def test_a_binding_with_no_acceptance_is_reported_beside_an_accepted_label() -> None:
+    items = _omn_19405_items(second_lane=("AC1", "AC2"))
+    items.append(
+        {
+            "id": "dod-draft",
+            "ac_bindings": [
+                _binding("AC1", proposed_by="batch-lane", accepted_by=None)
+            ],
+        }
+    )
+    assert self_accepted_bindings(items) == ("dod-draft:AC1 accepted_by=<none>",)
+
+
+def test_a_draft_accepted_by_a_person_in_a_later_record_is_cleared() -> None:
+    items = [
+        {
+            "id": "dod-a",
+            "ac_bindings": [
+                _binding("AC1", proposed_by="occ-autobind", accepted_by=None),
+                _binding("AC1", proposed_by="occ-autobind", accepted_by="person-uuid"),
+            ],
+        }
+    ]
+    assert self_accepted_bindings(items) == ()
