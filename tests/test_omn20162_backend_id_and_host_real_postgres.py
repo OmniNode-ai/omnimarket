@@ -10,16 +10,23 @@ migration 0054 is applied), a canonical terminal is projected through the REAL
 The database is the ``INTEGRATION_POSTGRES_*`` one when its password is set
 (CI), and otherwise a disposable native cluster this module starts itself
 (``local_postgres``: initdb into a temporary directory, socket only, removed at
-module end). A host with neither skips, and a skip is not a pass.
+module end). A host with neither FAILS rather than skips: the done gate runs
+this file as ``uv run pytest`` and reads only the exit code, and a skipped
+real-database proof exits 0 there although it proved nothing.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+    DelegationProjectionRunner,
+)
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15359_ac3_replay_real_postgres import (
     local_postgres as _native_cluster,
@@ -57,7 +64,10 @@ async def dsn(request: pytest.FixtureRequest) -> str | None:
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     ):
         return None
-    pg = request.getfixturevalue("local_postgres")[0]
+    try:
+        pg = request.getfixturevalue("local_postgres")[0]
+    except pytest.skip.Exception as exc:
+        pytest.fail(f"a skip is not a pass: no real Postgres to prove on ({exc})")
     url = f"postgresql://{pg.user}@/{pg.database}?host={pg.host}&port={pg.port}"
     admin = await asyncpg.connect(url)
     try:
@@ -66,6 +76,18 @@ async def dsn(request: pytest.FixtureRequest) -> str | None:
     finally:
         await admin.close()
     return url
+
+
+@asynccontextmanager
+async def _runner(
+    dsn: str | None,
+) -> AsyncIterator[tuple[DelegationProjectionRunner, asyncpg.Connection, str]]:
+    """``_provisioned_runner``, with its skip on an unreachable database a failure."""
+    try:
+        async with _provisioned_runner(dsn) as provisioned:
+            yield provisioned
+    except pytest.skip.Exception as exc:
+        pytest.fail(f"a skip is not a pass: no real Postgres to prove on ({exc})")
 
 
 @pytest.mark.integration
@@ -78,7 +100,7 @@ class TestTheRowCarriesBackendIdAndHost:
         payload["host"] = "h202"
         cid = str(terminal.correlation_id)
 
-        async with _provisioned_runner(dsn) as (runner, admin_conn, _schema):
+        async with _runner(dsn) as (runner, admin_conn, _schema):
             assert await runner.project_event(
                 runner._topic_delegation_failed,
                 payload,
@@ -99,7 +121,7 @@ class TestTheRowCarriesBackendIdAndHost:
         blank_payload["backend_id"] = "  "
         blank_payload["host"] = ""
 
-        async with _provisioned_runner(dsn) as (runner, admin_conn, _schema):
+        async with _runner(dsn) as (runner, admin_conn, _schema):
             for offset, payload, terminal in (
                 (1, _wire(bare), bare),
                 (2, blank_payload, blank),
@@ -127,7 +149,7 @@ class TestTheRowCarriesBackendIdAndHost:
         payload["host"] = "h202"
         cid = str(terminal.correlation_id)
 
-        async with _provisioned_runner(dsn) as (runner, admin_conn, _schema):
+        async with _runner(dsn) as (runner, admin_conn, _schema):
             assert await runner.project_event(
                 runner._topic_delegation_failed,
                 payload,
