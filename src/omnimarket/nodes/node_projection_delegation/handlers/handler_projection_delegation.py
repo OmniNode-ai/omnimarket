@@ -329,6 +329,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     # OMN-20162: the backend and host of the attempt that answered.
     backend_id: str | None = Field(default=None)
     host: str | None = Field(default=None)
+    # OMN-19448: the deciding terminal's stop reason and output truncation.
+    finish_reason: str | None = Field(default=None)
+    truncated: bool | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -844,6 +847,7 @@ class HandlerProjectionDelegation:
         }
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         _stamp_terminal_trace_and_routing(row, event)
+        _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         # OMN-14898: refuse the write before it is ever built out further when
         # isolation enforcement is on and no tenant was resolved (raises
         # TenantRequiredError -- no row, no fall-through to the column
@@ -988,6 +992,15 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-19448: prefer the terminal's stop reason, then its deciding rung.
+        finish_reason, truncated = (
+            (event.finish_reason.value, event.truncated)
+            if event.finish_reason is not None
+            else _deciding_rung_stop_reason(
+                [attempt.model_dump(mode="json") for attempt in event.attempts]
+            )
+        )
+        _stamp_terminal_stop_reason(row, finish_reason, truncated)
         # OMN-15503: reduce the typed attempt ladder to an authoritative outer
         # outcome. The ladder — not the declared status — decides: a terminal
         # that says status="completed" while every inner attempt was refused
@@ -1648,6 +1661,8 @@ def _canonical_result_to_task_delegated_payload(
     quality_passed = bool(payload.get("quality_passed"))
     failure_reason = str(payload.get("failure_reason") or "")
     escalation_history = payload.get("escalation_history") or ()
+    # OMN-19448: canonical terminals carry the stop reason on their rungs.
+    finish_reason, truncated = _deciding_rung_stop_reason(escalation_history)
 
     # OMN-13408 (canonical FAILED-terminal cost resolution): the canonical
     # ``delegation-failed.v1`` event (``ModelDelegationResult``) co-writes the same
@@ -1710,6 +1725,8 @@ def _canonical_result_to_task_delegated_payload(
         # terminal names them; blank stays NULL, never an empty backend.
         "backend_id": _blank_to_none(payload.get("backend_id")),
         "host": _blank_to_none(payload.get("host")),
+        "finish_reason": finish_reason,
+        "truncated": truncated,
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2003,7 +2020,7 @@ def _preserve_existing_evidence(
             continue
         if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
             row[key] = existing[key]
-    # OMN-19448: sparse later terminals keep the recorded trace and routing.
+    # OMN-19448: sparse later terminals keep trace, routing and stop reason.
     for key in (
         "authority_source",
         "score_source",
@@ -2012,9 +2029,12 @@ def _preserve_existing_evidence(
         "answering_backend",
         "backend_id",
         "host",
+        "finish_reason",
     ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
+            if key == "finish_reason" and row.get("truncated") is None:
+                row["truncated"] = existing.get("truncated")
     if bool(existing.get("request_override_applied")):
         row["request_override_applied"] = True
     if existing.get("override_within_bounds") is False:
@@ -2025,6 +2045,43 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
+
+
+def _deciding_rung_stop_reason(rungs: object) -> tuple[str | None, bool | None]:
+    """Read the last accepted rung's stop reason, or the last rung (OMN-19448)."""
+    if not isinstance(rungs, list | tuple) or not rungs:
+        return None, None
+    rung = rungs[-1]
+    for candidate in reversed(rungs):
+        if (
+            isinstance(candidate, dict)
+            and candidate.get("acceptance_decision") == "accept"
+        ):
+            rung = candidate
+            break
+    if not isinstance(rung, dict):
+        return None, None
+    finish_reason = rung.get("finish_reason")
+    finish_reason = getattr(finish_reason, "value", finish_reason)
+    if not isinstance(finish_reason, str) or not finish_reason.strip():
+        return None, None
+    truncated = (
+        bool(rung["truncated"]) if "truncated" in rung else finish_reason == "length"
+    )
+    return finish_reason, truncated
+
+
+def _stamp_terminal_stop_reason(
+    row: dict[str, object],
+    finish_reason: str | None,
+    truncated: bool | None,
+) -> None:
+    """Name stop reason columns only when the terminal carries one (OMN-19448)."""
+    if isinstance(finish_reason, str) and finish_reason.strip():
+        row["finish_reason"] = finish_reason
+        row["truncated"] = (
+            truncated if truncated is not None else finish_reason == "length"
+        )
 
 
 def _stamp_terminal_trace_and_routing(
