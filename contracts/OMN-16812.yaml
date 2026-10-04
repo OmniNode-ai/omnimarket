@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-16812
+title: A routing-reducer handler failure produces a declared failure terminal
+summary: The routing reducer declares exactly one failure terminal that is publishable, not the success topic, and awaited by the local ingress route, and the real dispatch seam emits it when the routing handler raises.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn16812
+  statement: A routing handler error must reach the caller as an attributed failure terminal instead of a dispatch timeout.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a delegation whose routing handler raises produces a terminal correlation-exact at the real dispatch seam -- falsifier: uv run pytest tests/unit/delegation/test_omn16812_reducer_failure_terminal.py -q -k real_dispatch_seam'
+evidence_requirements:
+- kind: tests
+  description: The seam tests dispatch through the real boundary and assert the declared failure terminal is emitted for the correlation.
+  command: uv run pytest tests/unit/delegation/test_omn16812_reducer_failure_terminal.py -q -k real_dispatch_seam
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-16812-ac1
+  description: The seam tests dispatch through the real boundary and assert the declared failure terminal is emitted for the correlation.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn16812_reducer_failure_terminal.py -q -k real_dispatch_seam
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
