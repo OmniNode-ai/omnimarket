@@ -20,6 +20,9 @@
 # dispatched per cause (cause caps inside the pool, a two-attempt budget per
 # park episode, a 12-hour park with one operator escalation, a fixer HOLD that
 # revokes and dispatches nothing), with per-PR dispatch suppressed for members.
+# An exit with no result after the spawn window spends an attempt (LC-F2), and the
+# park's operator MSG is deduped against the ledger row, not the state (LC-F3);
+# both from the T1 model, omnibase_internal#144.
 #
 # The landing controller calls it in process, so it has no event_bus; it is
 # addressable through runtime_dispatch like the other directly-invoked compute

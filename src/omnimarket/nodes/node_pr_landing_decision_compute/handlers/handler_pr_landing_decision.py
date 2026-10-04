@@ -97,6 +97,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     FIXER_HOLD_ALL,
     ModelLandingBlockerRef,
+    ModelLandingCauseEscalation,
     ModelLandingCompanionFacts,
     ModelLandingFacts,
     ModelLandingPrFacts,
@@ -887,9 +888,11 @@ def _cover(t: _Tick) -> None:
 def _cause_lease_ended(t: _Tick, lease: ModelLandingLease) -> None:
     """A cause lease confirmed terminated with no result.
 
-    The deadline passing with the process alive spends an attempt; an exit
-    inside the spawn window (a usage limit, a spawn failure) does not, and
-    counts toward the spawn-failure budget; a revoke spends nothing.
+    The deadline passing with the process alive spends an attempt, and so does
+    an exit with no result at or after the spawn window (LC-F2: counted
+    nowhere, a cause whose worker keeps dying was redispatched without bound).
+    Only an exit inside the window (a usage limit, a spawn failure) counts
+    toward the spawn-failure budget instead; a revoke spends nothing.
     """
     if lease.result_recorded_at is not None:
         return
@@ -1301,10 +1304,43 @@ def _upsert_cause(t: _Tick, cause: _Cause) -> None:
     t.formed.add(cause.key)
 
 
+def _covering_escalation(
+    t: _Tick, rec: ModelLandingCauseRecord
+) -> ModelLandingCauseEscalation | None:
+    """The ledger MSG that already escalates this cause's open park episode (LC-F3).
+
+    A row covers the episode when it is younger than a park and no RELEASE row
+    naming the cause is dated at or after it. The newest such row wins, ties by
+    key, so the choice does not depend on input order.
+    """
+    park = timedelta(hours=t.facts.policy.cause_park_hours)
+    rows = [
+        r
+        for r in t.facts.cause_escalations
+        if r.cause == rec.key
+        and t.now < r.at + park
+        and not any(
+            rel.cause == rec.key and rel.at >= r.at for rel in t.facts.cause_releases
+        )
+    ]
+    return max(rows, key=lambda r: (r.at, r.dedupe_key), default=None)
+
+
 def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
-    """A spent cause parks; one escalation per park episode, deduped by its key."""
-    until = t.now + timedelta(hours=t.facts.policy.cause_park_hours)
-    dedupe = f"{rec.key}@{until.isoformat()}"
+    """A spent cause parks; one escalation per park episode, deduped on the ledger row.
+
+    When the ledger already holds this episode's operator MSG (the controller
+    died between the append and the state write), the park adopts that row's
+    time and key and emits nothing: the state file only caches the answer.
+    """
+    park = timedelta(hours=t.facts.policy.cause_park_hours)
+    row = _covering_escalation(t, rec)
+    if row is not None:
+        until = row.at + park
+        dedupe = row.dedupe_key
+    else:
+        until = t.now + park
+        dedupe = f"{rec.key}@{until.isoformat()}"
     t.causes[rec.key] = rec.model_copy(
         update={"parked_until": until, "escalated": dedupe}
     )
@@ -1313,7 +1349,7 @@ def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
             reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED, subject=rec.key
         )
     )
-    if rec.escalated != dedupe:
+    if row is None and rec.escalated != dedupe:
         t.emit(
             ModelLandingAction(
                 kind=EnumLandingActionKind.ESCALATE_OPERATOR,

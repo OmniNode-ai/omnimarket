@@ -258,6 +258,23 @@ class ModelLandingCauseRelease(BaseModel):
     at: datetime
 
 
+class ModelLandingCauseEscalation(BaseModel):
+    """An operator MSG row already on the ledger for a parked cause.
+
+    The row carries the dedupe key ``<cause key>@<parked_until>``. The ledger
+    row, not the controller's state file, is the source of truth for "this park
+    episode was escalated": a crash between the MSG append and the state write
+    loses the state file's copy of the key and not the row (model finding LC-F3,
+    omnibase_internal#144).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cause: str = Field(..., pattern=CAUSE_KEY_PATTERN)
+    at: datetime
+    dedupe_key: str = Field(..., min_length=1)
+
+
 class ModelLandingRepoChecks(BaseModel):
     """The checks red on one repo's base head."""
 
@@ -403,6 +420,13 @@ class ModelLandingFacts(BaseModel):
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
     cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
+    cause_escalations: tuple[ModelLandingCauseEscalation, ...] = Field(
+        default=(),
+        description=(
+            "Operator MSG rows already on the ledger for a parked cause (LC-F3): "
+            "a park whose episode a row covers emits no second escalation."
+        ),
+    )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
     )
