@@ -197,7 +197,12 @@ def _run_emit(
             number = int(path.split("/pulls/")[1].split("/")[0])
             entry = contenders.get(number, {})
             raw_files = entry.get("files", [])
-            return [{"filename": f} for f in raw_files]  # type: ignore[union-attr]
+            # A str is a bare path; a dict is a full /pulls/{n}/files entry
+            # (OMN-20412: carries the ``patch`` the coverage read parses).
+            return [
+                f if isinstance(f, dict) else {"filename": f}
+                for f in raw_files  # type: ignore[union-attr]
+            ]
         if "/files" in path:
             return files if "page=1" in path else []
         if path.endswith("/comments") or "/comments?" in path:
@@ -741,6 +746,132 @@ class TestDeferOnContention:
                     "files": ["docs/evidence/OMN-9999/note.md"],
                 }
             },
+        )
+        assert not action.startswith("skip:")
+        assert rec.pr_open_calls == 1
+
+    def test_defer_applies_only_to_the_prs_the_companion_covers(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-20412: two PRs on one ticket, one hand-authored companion.
+
+        The companion's added evidence ids name omnimarket#322 only. Pre-fix the
+        defer was ticket-wide, so omnimarket#321 (not covered) declined with
+        ``skip:DEFER_HAND_AUTHORED`` and waited behind a companion that could
+        never bind it; ~20 PRs on OMN-17427 queued that way. The covered PR still
+        defers, the uncovered one takes the automatic path.
+        """
+        companion = {
+            5115: {
+                "ref": "jonah/omn-9999-occ",
+                "labels": [],
+                "files": [
+                    {
+                        "filename": "contracts/OMN-9999.yaml",
+                        "patch": (
+                            "@@ -10,3 +10,9 @@\n"
+                            '   - id: "dod-o-r-pr-300"\n'
+                            '+  - id: "dod-o-r-pr-322-ci"\n'
+                            '+    source: "generated"\n'
+                            '+  - id: "dod-o-r-pr-322"\n'
+                        ),
+                    }
+                ],
+            }
+        }
+        action, clone_root, rec = _stable_emit(
+            OccCompanionEmitter(), tmp_path, contending=companion
+        )
+        assert not action.startswith("skip:")
+        assert rec.pr_open_calls == 1
+        assert rec.posted_comments == []
+        assert (clone_root / "contracts" / "OMN-9999.yaml").is_file()
+
+    def test_defer_still_applies_to_a_pr_the_companion_covers(
+        self, tmp_path: Path
+    ) -> None:
+        companion = {
+            5115: {
+                "ref": "jonah/omn-9999-occ",
+                "labels": [],
+                "files": [
+                    {
+                        "filename": "contracts/OMN-9999.yaml",
+                        "patch": (
+                            "@@ -1,1 +1,5 @@\n"
+                            '+  - id: "dod-OmniNode-ai-omnimarket-pr-322"\n'
+                            '+  - id: "dod-OmniNode-ai-omnimarket-pr-321"\n'
+                        ),
+                    }
+                ],
+            }
+        }
+        action, clone_root, rec = _run_emit(
+            OccCompanionEmitter(), tmp_path, contending=companion
+        )
+        assert action.startswith("skip:DEFER_HAND_AUTHORED")
+        assert rec.lease_calls == []
+        assert rec.pr_open_calls == 0
+        assert not clone_root.exists()
+
+    def test_defer_reads_coverage_from_receipt_directories_too(
+        self, tmp_path: Path
+    ) -> None:
+        """A companion that already carries receipts for #322 does not cover #321."""
+        companion = {
+            5115: {
+                "ref": "jonah/omn-9999-occ",
+                "labels": [],
+                "files": [
+                    "contracts/OMN-9999.yaml",
+                    "drift/dod_receipts/OMN-9999/dod-o-r-pr-322/command.yaml",
+                    "drift/dod_receipts/OMN-9999/dod-o-r-pr-322-ci/command.yaml",
+                ],
+            }
+        }
+        action, _clone, rec = _stable_emit(
+            OccCompanionEmitter(), tmp_path, contending=companion
+        )
+        assert not action.startswith("skip:")
+        assert rec.pr_open_calls == 1
+
+    def test_defer_stays_ticket_wide_when_coverage_is_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        """No evidence ids and no receipt dirs: the machine cannot tell what the
+        companion covers, so it keeps the recoverable direction and defers."""
+        companion = {
+            5115: {
+                "ref": "jonah/omn-9999-occ",
+                "labels": [],
+                "files": [{"filename": "contracts/OMN-9999.yaml"}],
+            }
+        }
+        action, _clone, rec = _run_emit(
+            OccCompanionEmitter(), tmp_path, contending=companion
+        )
+        assert action.startswith("skip:DEFER_HAND_AUTHORED")
+        assert rec.pr_open_calls == 0
+
+    def test_a_longer_pr_number_does_not_cover_a_shorter_one(
+        self, tmp_path: Path
+    ) -> None:
+        """``…-pr-3210`` is #3210, never #321: whole-id comparison, not substring.
+        (Uncovered, so #321 mints; the inverse substring bug would defer it.)"""
+        companion = {
+            5115: {
+                "ref": "jonah/omn-9999-occ",
+                "labels": [],
+                "files": [
+                    {
+                        "filename": "contracts/OMN-9999.yaml",
+                        "patch": '+  - id: "dod-o-r-pr-3210"\n',
+                    }
+                ],
+            }
+        }
+        action, _clone, rec = _stable_emit(
+            OccCompanionEmitter(), tmp_path, contending=companion
         )
         assert not action.startswith("skip:")
         assert rec.pr_open_calls == 1

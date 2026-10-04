@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegation_hook_followup_compute.handlers.handler_delegation_hook_followup import (
     HandlerDelegationHookFollowup,
+    fold,
 )
 from omnimarket.nodes.node_delegation_hook_followup_compute.models.model_hook_followup_request import (
     ModelHookEvent,
@@ -393,3 +394,131 @@ def test_reuses_captured_hook_fixture_digest_and_main_thread_identity() -> None:
     assert followup.signal is not None
     assert followup.signal.agent_id is None
     assert followup.signal.tool_calls == 0
+
+
+@pytest.mark.parametrize("call_id", [None, ""])
+def test_events_without_call_id_do_not_create_calls(call_id: str | None) -> None:
+    missing_id = event(300, tool="Edit").model_copy(update={"tool_use_id": call_id})
+    events = (event(100), missing_id, event(400, tool="Write", call="write"))
+    signal = HandlerDelegationHookFollowup().handle(request(events)).followups[0].signal
+    assert signal is not None
+    assert (signal.tool_calls, signal.edit_count, signal.write_count) == (1, 0, 1)
+
+
+def test_unrelated_hook_does_not_complete_pending_call() -> None:
+    events = (
+        event(100),
+        event(300, tool="Edit", call="edit", digest=OTHER),
+        event(310, "Stop", tool="Edit", call="edit", digest=OTHER),
+        event(400, "UserPromptSubmit", tool="Write", call="prompt"),
+    )
+    calls = fold(events)[("session-1", "agent-1")]
+    assert [(call.tool_use_id, call.outcome) for call in calls] == [
+        ("delegate", "pending"),
+        ("edit", "pending"),
+    ]
+    signal = HandlerDelegationHookFollowup().handle(request(events)).followups[0].signal
+    assert signal is not None
+    assert (signal.tool_calls, signal.edit_count, signal.write_count) == (1, 1, 0)
+    assert (signal.failures, signal.refusals, signal.retries) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("hook", "failures", "refusals"),
+    [("PostToolUse", 0, 0), ("PostToolUseFailure", 1, 0), ("PermissionDenied", 0, 1)],
+)
+def test_completion_without_start_has_no_invented_digest(
+    hook: str, failures: int, refusals: int
+) -> None:
+    events = (
+        event(100),
+        event(300, hook, tool="Write", call="orphan", digest=OTHER),
+        event(400, tool="Write", call="next", digest=OTHER),
+        event(410, "PostToolUse", tool="Write", call="next", digest=OTHER),
+    )
+    orphan = fold(events)[("session-1", "agent-1")][1]
+    assert orphan.start == orphan.end == 300
+    assert orphan.sha is None
+    signal = HandlerDelegationHookFollowup().handle(request(events)).followups[0].signal
+    assert signal is not None
+    assert (signal.tool_calls, signal.write_count) == (2, 2)
+    assert (signal.failures, signal.refusals) == (failures, refusals)
+    assert signal.retries == 0
+    assert signal.repeated_digests == ()
+
+
+@pytest.mark.parametrize("missing_tool", [None, ""])
+def test_completion_recovers_missing_tool_name(missing_tool: str | None) -> None:
+    unknown = event(300, call="edit", digest=OTHER).model_copy(
+        update={"tool_name": missing_tool}
+    )
+    events = (event(100), unknown, event(310, "PostToolUse", tool="Edit", call="edit"))
+    signal = HandlerDelegationHookFollowup().handle(request(events)).followups[0].signal
+    assert signal is not None
+    assert (signal.tool_calls, signal.edit_count, signal.write_count) == (1, 1, 0)
+
+
+def test_conflicting_prs_at_first_terminal_make_followup_ambiguous() -> None:
+    rows = (
+        ModelHookLaneRow(
+            timestamp_ms=500, kind="TERMINAL", lane="lane-1", pr="omnimarket#123"
+        ),
+        ModelHookLaneRow(
+            timestamp_ms=500, kind="TERMINAL", lane="lane-1", pr="omnimarket#999"
+        ),
+    )
+    events = (event(100), event(300, tool="Edit", call="edit"))
+    handler = HandlerDelegationHookFollowup()
+    followup = handler.handle(request(events, rows=rows)).followups[0]
+    assert followup.receipt_key == "receipt-1"
+    assert followup.join == "ambiguous"
+    assert followup.signal is None
+    assert handler.handle(request(events, rows=tuple(reversed(rows)))).followups[0] == (
+        followup
+    )
+
+
+def test_same_pr_at_first_terminal_and_different_later_pr_are_unambiguous() -> None:
+    terminal = ModelHookLaneRow(
+        timestamp_ms=500, kind="TERMINAL", lane="lane-1", pr="omnimarket#123"
+    )
+    rows = (
+        terminal.model_copy(update={"timestamp_ms": 800, "pr": "omnimarket#999"}),
+        terminal,
+        terminal,
+    )
+    events = (
+        event(100),
+        event(300, tool="Edit", call="edit"),
+        event(600, tool="Write", call="late"),
+    )
+    followup = (
+        HandlerDelegationHookFollowup().handle(request(events, rows=rows)).followups[0]
+    )
+    assert followup.join == "digest"
+    assert followup.signal is not None
+    assert followup.signal.window_end_ms == 500
+    assert (followup.signal.tool_calls, followup.signal.write_count) == (1, 0)
+
+
+def test_capture_start_after_receipt_start_suppresses_signal() -> None:
+    req = request((event(150), event(300, tool="Edit", call="edit")))
+    req = ModelHookFollowupRequest.model_validate(
+        {**req.model_dump(), "window_start_ms": 125}
+    )
+    followup = HandlerDelegationHookFollowup().handle(req).followups[0]
+    assert followup.join == "digest"
+    assert followup.signal is None
+
+
+def test_receipt_rejects_reversed_window() -> None:
+    with pytest.raises(ValidationError, match="receipt start must not follow its end"):
+        receipt(started_at_ms=201, ended_at_ms=200)
+
+
+def test_capture_rejects_reversed_window() -> None:
+    req = request(())
+    with pytest.raises(ValidationError, match="capture start must not follow its end"):
+        ModelHookFollowupRequest.model_validate(
+            {**req.model_dump(), "window_start_ms": 2001, "window_end_ms": 2000}
+        )

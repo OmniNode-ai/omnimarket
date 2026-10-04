@@ -1,0 +1,215 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation_acceptance_judge_rubric.v1.yaml: the versioned blind acceptance rubric for
+# judging delegated output offline. A judge reads one task and the delegate's output, with no
+# model name, and returns ACCEPT or REJECT, a 0-3 quality, one failure class and a one-line
+# reason. Read by node_delegation_acceptance_judge_compute, which renders it into the judge
+# prompt, validates the judge's reply against it and scores a run against its thresholds.
+#
+# This is the acceptance measurement, not the acceptance gate: the standing ruling that no model
+# judge sits in the gate stands. The two sibling files do other jobs.
+#   - delegation_class_rubrics.v1.yaml: computable per-class checks, no model, run on every attempt.
+#   - delegation_judge_rubrics.v1.yaml: the in-gate scored judge (weighted dimensions, pass bar).
+# Neither has an accept or reject decision a second judge can be compared against, which is what
+# a kappa needs. Changing any word below is a new rubric version (v2), never an edit of v1,
+# because every stored judgment names the version it was made under.
+
+rubric_version: delegation-acceptance-judge.v1
+
+# Where the numbers below came from. Recorded so a later version can be compared with v1 and so a
+# reader can see what the agreement thresholds were set against.
+provenance:
+  source: "the internal judged-acceptance report of 2026-10-03 (OMN-20422), delegation-evals/2026-10-03-judged-acceptance-matrix"
+  calibration_set:
+    description: >
+      76 labelled items: 66 trials of the 2026-09-25 capability matrix (PASS and RIGHT_NO_RECEIPT
+      count as accept, FAIL as reject; 36 accept, 30 reject) and 10 corpus items labelled by hand
+      (6 accept, 4 reject). The hand labeller is the same model family as the Opus judge, which
+      biases the hand-set row upward.
+    n: 76
+  judges:
+    - {judge: opus, item_set: matrix_trials, n: 66, agreement: 0.818, kappa: 0.64, false_accepts: 5, false_rejects: 7}
+    - {judge: opus, item_set: hand_labels, n: 10, agreement: 1.0, kappa: 1.0, false_accepts: 0, false_rejects: 0}
+    - {judge: opus, item_set: all, n: 76, agreement: 0.842, kappa: 0.68, false_accepts: 5, false_rejects: 7}
+    - {judge: codex, item_set: matrix_trials, n: 66, agreement: 0.773, kappa: 0.55, false_accepts: 4, false_rejects: 11}
+    - {judge: codex, item_set: hand_labels, n: 10, agreement: 1.0, kappa: 1.0, false_accepts: 0, false_rejects: 0}
+    - {judge: codex, item_set: all, n: 76, agreement: 0.803, kappa: 0.61, false_accepts: 4, false_rejects: 11}
+    - {judge: opus_vs_codex, item_set: all_calibration, n: 76, agreement: 0.908, kappa: 0.82}
+    - {judge: opus_vs_codex, item_set: corpus_sample, n: 43, agreement: 0.860, kappa: 0.72}
+    - {judge: delegate_quality_gate, item_set: matrix_trials, n: 66, agreement: 0.545, kappa: 0.0, false_accepts: 30, false_rejects: 0}
+  corpus:
+    description: >
+      289 judged outputs across 16 model and task-type cells, drawn from delegation_events.
+      Weighted by event volume, 57 percent of outputs were accepted while terminal_ok read 96
+      percent over the same 7901 events.
+    judged_items: 289
+    cells: 16
+    events: 7901
+    volume_weighted_accept_rate: 0.57
+    volume_terminal_ok_rate: 0.96
+  codex_is_stricter: >
+    Codex rejected 11 labelled-accept items against 7 for Opus. Most of its extra rejects are
+    literal readings of explicit instructions the matrix lanes forgave: an extra assignment outside
+    the one function asked for (t1a), identifiers left outside backticks (T1b), the month name
+    "September" in a paragraph told to use only the supplied names (R1). v1 keeps the literal
+    reading, so Codex as primary judge is the stricter of the two, and the Opus sample is what
+    bounds that.
+  label_noise:
+    description: >
+      On 10 of the 76 items both judges agree with each other against the label, and several of
+      those labels are themselves doubtful. The agreement figures are a lower bound on how often
+      each judge is right.
+    cases:
+      - {item: t12, label: reject, finding: "the answer is the exact cannot-execute reply the task permitted; the failure is the route, not the output"}
+      - {item: t13, label: reject, finding: "same as t12: no execution surface existed and the permitted reply was given"}
+      - {item: R4b, label: accept, finding: "used only after its closing sentence was removed, and it ignored the instruction to open on the first class; both judges rejected it"}
+      - {item: t7, label: accept, finding: "the third listed failure (the missing commit.gpgsign=false) was left unrepaired"}
+      - {item: t1, label: accept, finding: "its test double counts calls only when the coroutine is awaited, so it cannot detect an unawaited coroutine, which is what it was for"}
+      - {item: t1b, label: accept, finding: "an explicit requirement was unmet (identifiers outside backticks)"}
+      - {item: t3, label: accept, finding: "an explicit requirement was unmet"}
+      - {item: t4, label: accept, finding: "an explicit requirement was unmet"}
+      - {item: c1-t2, label: accept, finding: "an explicit requirement was unmet"}
+      - {item: c3-t3, label: reject, finding: "the recorded cause was a repository gate, not the code itself"}
+
+# Run thresholds. A run that misses any of these is FAILED and says so; it is never reported as a
+# matrix without the failure beside it.
+thresholds:
+  # Cohen's kappa between the primary and the second judge on the double-judged sample. Codex
+  # alone scored 0.61 against the labels and the two judges 0.82 against each other, so 0.6 is the
+  # lowest agreement at which a single judge's matrix was still usable in the calibration.
+  kappa_min: 0.6
+  # The second judge re-judges at least this share of the corpus, per cell, with a floor per cell.
+  double_judge_fraction: 0.10
+  double_judge_min_per_cell: 2
+  # A cell with fewer judged items than this is reported as thin and carries no routing weight.
+  min_judged_per_cell: 15
+  accept_min_quality: 2
+  reason_max_chars: 200
+
+# What the judge is shown, and how a long item is shortened for it. The caps are the ones the
+# first run used; an omission is always named in a note on the item so the judge does not call
+# omitted material fabricated.
+batching:
+  max_items_per_batch: 8
+  task_char_cap: 30000
+  task_head_chars: 18000
+  task_tail_chars: 12000
+  answer_char_cap: 16000
+  answer_head_chars: 10000
+  answer_tail_chars: 6000
+
+# Liveness probes are excluded: they test that a backend answers, not whether it does work.
+# A task is a probe when it is short and asks for a single word. Probes are dropped before
+# judging, from the cell event counts as well, and are listed in the result.
+probes:
+  max_task_chars: 200
+  task_patterns:
+    - "^\\s*(?:just\\s+)?say\\s+[\"'`]?[\\w-]+[\"'`]?\\s*[.!]?\\s*$"
+    - "^\\s*(?:please\\s+)?(?:reply|respond|answer)\\s+with\\s+(?:exactly\\s+|only\\s+|just\\s+)?(?:the\\s+|a\\s+|one\\s+)?(?:single\\s+)?word\\b"
+    - "^\\s*(?:please\\s+)?(?:reply|respond|answer)\\s+(?:in|with)\\s+(?:exactly\\s+)?(?:one|a single)\\s+word\\b"
+
+# A turn of the tool-driven editing loop is judged as the next action of the loop, not as finished
+# code. 1982 of the 2106 Qwen3.8-27B code_generation events in the first run were such turns.
+edit_loop:
+  kind: edit_loop_turn
+  task_patterns:
+    - "^\\s*You are editing a git worktree to complete one task"
+
+# The text the judge is given. Sections are joined in this order, then the per-class notes for the
+# classes present in the batch, then the output instructions and the items.
+judge_prompt:
+  preamble: |
+    You are a blind acceptance judge for delegated work. Each item below is one task that an automated caller handed to an AI delegate, and the delegate's output. You do not know which model produced it, and that must not matter. Judge each item independently.
+  decision: |
+    Decide ACCEPT or REJECT for each item:
+
+    ACCEPT when a competent reviewer would use the output for the stated task as-is, or after trivial edits only (a typo, stripping a code-fence wrapper around otherwise-correct content, whitespace).
+  reject_intro: "REJECT when any of these holds:"
+  reject_conditions:
+    - {failure_class: fabrication, text: "the output states facts, numbers, ids, file paths, APIs, results or test outcomes that the task does not support, or alters a given fact. One invented fact is an automatic reject however good the rest is."}
+    - {failure_class: wrong_answer, text: "the decision, classification, answer or conclusion is incorrect for the facts given."}
+    - {failure_class: constraint_violation, text: "an explicit, checkable instruction in the task is not met (an exact count of sentences, words, bullets or items; a word range; a required or forbidden string, section or phrase; \"JSON only\", \"one word\", \"no preamble\", \"no headings\", exact final-line format). Check counts literally."}
+    - {failure_class: incomplete, text: "a required part of the task is missing, including a required step the output says it could not perform, unless the task itself permits that reply (see the permitted-reply rule)."}
+    - {failure_class: off_task, text: "the output answers a different question or does a different job than asked."}
+    - {failure_class: broken_code, text: "code that would not parse or import, uses names or APIs that do not exist in the given context, leaves placeholders where full code was required, or plainly does not implement the stated behaviour; tests that do not test the stated behaviour or could not pass (or, for a RED test, would fail for the wrong reason)."}
+    - {failure_class: malformed_output, text: "a required machine-readable shape (JSON object, schema, single token, tool-call format) is not followed."}
+    - {failure_class: reasoning_leak, text: "thinking, analysis or preamble appears where the task forbade it, or the usable answer is buried so a consumer cannot take it directly."}
+    - {failure_class: false_findings, text: "for a review, most findings are not real defects in the supplied material, or are speculative, or point at code that is not there."}
+    - {failure_class: empty_or_refusal, text: "no usable output, or a refusal the task did not permit."}
+  permitted_reply_rule: |
+    Permitted-reply rule: when the task itself allows a refusal or a "cannot execute" reply (for example it says to answer that exact sentence when no execution surface exists), giving that reply is an ACCEPT, because the output did what the task asked. A refusal or inability the task did not permit is a REJECT as incomplete or empty_or_refusal.
+  omission_rule: |
+    Notes attached to an item tell you when the task or output text was shortened for judging. Do not reject only because text was omitted by the harness; judge what is visible, and do not call something fabricated when it may refer to omitted material.
+  quality_scale: |
+    Quality, 0 to 3: 0 unusable, empty or wrong; 1 major defects; 2 usable with small issues; 3 fully correct and clean. An ACCEPT has quality 2 or 3.
+  failure_class_rule: |
+    failure_class: "none" for an ACCEPT, otherwise the single most important class from: fabrication, wrong_answer, constraint_violation, incomplete, off_task, broken_code, malformed_output, reasoning_leak, false_findings, empty_or_refusal, other.
+  reason_rule: "reason: one line, at most {reason_max_chars} characters, naming the specific defect (or why it is acceptable), concrete enough that another reviewer could check it."
+  closing_rule: |
+    Do not run commands, browse, or read files. Judge from the text only. Return one judgment for every item id, and nothing else.
+  output_shape: |
+    Return one JSON object and nothing else: {"judgments": [{"item_id": "<id>", "accept": true|false, "quality": 0-3, "failure_class": "<class>", "reason": "<one line>"}]} with exactly one entry per item id, each id once.
+
+# Per task class. `routing_labels` are the task-type labels a caller gives; the label is the caller's
+# guess and can be wrong, so every class judges against what the task text actually asks.
+# `edit_loop_turn` is selected by the edit_loop patterns above, ahead of the routing label.
+classes:
+  summarization:
+    routing_labels: [summarization]
+    accept:
+      - "Every number, id, name and claim appears in the supplied facts or source; nothing is added or altered."
+      - "Length and shape limits are met literally: a subject line within its character limit, the stated sentence or bullet count, no commentary after a requested commit message."
+    reject_notes:
+      - "75-character subject line against a 72-character limit; one sentence where two were required; an authorship or ownership rule stated more broadly than the facts."
+  review:
+    routing_labels: [review]
+    accept:
+      - "The decision follows from the facts and the policy the task states, and the rationale does not contradict the task's own premises."
+      - "The required output shape and exact final-line format are met."
+    reject_notes:
+      - "A rationale that invents unique uncommitted content when the facts give an untracked count of 0; an orphan directory called pinnable where the facts call for a human."
+  document:
+    routing_labels: [document]
+    accept:
+      - "Check every number, id, name and claim against the facts in the task. Any invented or altered fact is a reject."
+      - "Word range, section and format instructions are met literally, with no unsolicited preamble."
+      - "The output is complete: not cut off mid-table, and a cause is not reversed."
+    reject_notes:
+      - "Five listed observations counted as three; 'at least 4 times' turned into '4x'; 'CI not green' added to a comment summary; a chronology between two run ids the facts do not give."
+  code_generation:
+    routing_labels: [code_generation]
+    accept:
+      - "The code is complete and syntactically valid, uses only names that exist in the given context, the standard library or the named dependencies, and implements exactly the requested behaviour (names, paths, signatures, imports)."
+      - "A pattern or parser handles every case the task lists, not only the common one."
+    reject_notes:
+      - "A Ruff-code regex that accepts only single-letter codes and drops UP006 and PLR0913; placeholders where full code was required; invented ticket or metadata values."
+  code_review:
+    routing_labels: [code_review]
+    accept:
+      - "Findings are real defects present in the supplied diff or file, each pointing at code that is there."
+      - "A review that reports no findings is accepted only when the material has no defect the task targets."
+    reject_notes:
+      - "Claims no bugs while missing an obvious defect the task targets; findings inferred from code the diff does not show; a proposed fix that is not valid Python; a claim that renaming a directory onto a dangling symlink overwrites it."
+  test:
+    routing_labels: [test]
+    accept:
+      - "The tests exercise the stated behaviour and would pass on a correct implementation of the supplied function; a RED test fails for the stated reason."
+      - "Required structure is present, such as the requested pytestmark, and fixtures pass the supplied model's validation."
+    reject_notes:
+      - "A max_len=10 slug test expecting seven characters; a test expecting 'hello-' where the function strips the hyphen; a test double that counts calls only when awaited and so cannot detect an unawaited coroutine."
+  reasoning:
+    routing_labels: [reasoning, complex_reasoning]
+    accept:
+      - "The classification or conclusion is correct for the facts given and follows the policy the task states."
+      - "The asked-for shape is exact: one word and one sentence means one word and one sentence, not a numbered analysis."
+    reject_notes:
+      - "A change-control cascade classified as flaky; invented links between pull requests; a long analysis where one word was asked for."
+  edit_loop_turn:
+    routing_labels: []
+    accept:
+      - "The output is a well-formed next action under the protocol the task states, including every required field (for example a note)."
+      - "It is a correct, useful step for the history shown: the right file, correct edit content, no invented paths, an edit whose old_string matches exactly once."
+      - "It does not declare done prematurely and does not repeat an action that already failed without changing it."
+    reject_notes:
+      - "Re-reading a refused range instead of editing; an old_string that matches twice; a required note field missing."
