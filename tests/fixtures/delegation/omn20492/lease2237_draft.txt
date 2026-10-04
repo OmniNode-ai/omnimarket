@@ -1,0 +1,3 @@
+fix(OMN-17427): resolve contract conflict and re-pin sha256
+
+Resolved conflict in contracts/OMN-17427.yaml by retaining both the dev dod entry and the two omnimarket PR 3321 entries. Re-pinned the contract_sha256 in the two PR 3321 receipts and self-bind to the new value (8cbebfa3…f791) following the merge.

@@ -52,8 +52,10 @@ turns is this orchestrator:
   is ``budget_exhausted``.
 * An existing loop receipt refuses a fresh run before any turn.
 
-The receipt holds every turn's run id, actions and observations, the diff, the
-check results and the tool_use rubric verdict. The result carries none of the
+The receipt holds every turn's run id, actions with their full arguments and
+observations, the sha256 of each file an action wrote (so
+``handlers.replay`` can rebuild any turn's worktree), the
+diff, the check results and the tool_use rubric verdict. The result carries none of the
 file content. Its ``resume`` block allows ``--resume`` after delegate_failed,
 archiving the prior receipt as ``loop_receipt.<n>.json``; the turn cap spans
 all resumed segments.
@@ -106,6 +108,10 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.protocols.protocol_d
     WorkspacePathError,
 )
 
+#: The loop receipt schema written now. v2 adds each action's full arguments and
+#: the digests of the files it wrote; v1 receipts still resume.
+RECEIPT_SCHEMA = "delegated-code-edit-loop-receipt.v2"
+RECEIPT_SCHEMA_V1 = "delegated-code-edit-loop-receipt.v1"
 #: The turn prompt's character budget before it is shrunk to fit.
 PROMPT_CHARS = 90_000
 #: One argv word on Linux is bounded at 128 KiB; the prompt travels as one.
@@ -478,7 +484,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         self._ports.write_loop_receipt(
             loop_run_id,
             {
-                "schema": "delegated-code-edit-loop-receipt.v1",
+                "schema": RECEIPT_SCHEMA,
                 "loop_run_id": loop_run_id,
                 "correlation_id": request.correlation_id,
                 "request": request.model_dump(mode="json"),
@@ -565,13 +571,16 @@ class HandlerDelegatedCodeEditOrchestrator:
                     tokens_out=cast(int, turn.get("tokens_out", 0)),
                 )
             )
-            # Lossy: receipts retain targets/names and bounded observations,
-            # but omit original content, patterns and other action arguments.
+            # A v1 receipt is lossy: it retains targets/names and bounded
+            # observations, but omits content, patterns and other arguments.
             for number, action in enumerate(
                 cast(list[dict[str, object]], turn["actions"]), start=1
             ):
+                recorded = action.get("arguments")
                 arguments = (
-                    {"path": action["target"]}
+                    cast(dict[str, object], recorded)
+                    if isinstance(recorded, dict)
+                    else {"path": action["target"]}
                     if action.get("target")
                     else ({"name": action["name"]} if action.get("name") else {})
                 )
@@ -793,6 +802,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         for number, given in enumerate(reply.actions, start=1):
             action = self._rebased(request, given)
             reads = action.tool in _READING_TOOLS
+            written: dict[str, str] = {}
             if action.tool == EnumCodeEditTool.FINISH:
                 finished = True
                 state.summary = action.summary
@@ -816,7 +826,9 @@ class HandlerDelegatedCodeEditOrchestrator:
                     refused=True,
                 )
             else:
-                observation = self._apply(request, action, state, read_left)
+                observation, written = self._apply_recorded(
+                    request, action, state, read_left
+                )
             if reads and observation.ok:
                 read_left -= len(observation.output)
             read_any = read_any or reads
@@ -851,6 +863,9 @@ class HandlerDelegatedCodeEditOrchestrator:
                     "ok": observation.ok,
                     "refused": observation.refused,
                     "output": _cap(observation.output, 2_000),
+                    # Full and uncapped: the receipt replays the turn from these.
+                    "arguments": arguments,
+                    "written_sha256": written,
                 }
             )
             shown_args = ", ".join(
@@ -887,6 +902,74 @@ class HandlerDelegatedCodeEditOrchestrator:
         elif read_any:
             state.read_only_streak += 1
         return finished
+
+    def apply_action(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        action: ModelCodeEditAction,
+        paths: tuple[str, ...],
+    ) -> tuple[ModelObservation, dict[str, str]]:
+        """Apply one action the way the loop does, on a worktree whose file list
+        at the start of the loop was ``paths``. Returns the observation and the
+        sha256 of each file the action wrote, keyed by path. Replay drives this
+        same step, so a replayed edit has the live edit's semantics."""
+        return self._apply_recorded(
+            request, action, _State(paths=paths), MAX_READ_CHARS_PER_TURN
+        )
+
+    def _apply_recorded(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        action: ModelCodeEditAction,
+        state: _State,
+        read_left: int,
+    ) -> tuple[ModelObservation, dict[str, str]]:
+        scope = self._write_scope(request, action, state)
+        before = {path: self._digest(request, path) for path in scope}
+        observation = self._apply(request, action, state, read_left)
+        if observation.refused or not scope:
+            return observation, {}
+        written: dict[str, str] = {}
+        for path in scope:
+            after = self._digest(request, path)
+            if after is None:
+                continue
+            if action.tool == EnumCodeEditTool.REPLACE_IN_FILES:
+                if after != before[path]:
+                    written[path] = after
+            elif observation.ok and not observation.output.startswith("unchanged"):
+                written[path] = after
+        return observation, written
+
+    @staticmethod
+    def _write_scope(
+        request: ModelDelegatedCodeEditRequest,
+        action: ModelCodeEditAction,
+        state: _State,
+    ) -> list[str]:
+        """The files a writing action could change: its path, its listed files,
+        or the writable manifest files its glob matches."""
+        if action.tool not in WRITING_TOOLS:
+            return []
+        if action.tool != EnumCodeEditTool.REPLACE_IN_FILES:
+            path = normalise_path(action.file_path or action.path)
+            return [path] if path else []
+        if action.file_paths:
+            named = (normalise_path(path) for path in action.file_paths)
+            return sorted({path for path in named if path})
+        pattern = glob_regex(action.glob)
+        return sorted(
+            path
+            for path in state.paths
+            if pattern.match(path) and writable(request, path)
+        )
+
+    def _digest(self, request: ModelDelegatedCodeEditRequest, path: str) -> str | None:
+        try:
+            text = self._ports.read_file(request, path)
+        except WorkspacePathError:
+            return None
+        return hashlib.sha256(text.encode()).hexdigest()
 
     @staticmethod
     def _rebased(
@@ -1314,6 +1397,8 @@ class HandlerDelegatedCodeEditOrchestrator:
 
 
 __all__ = [
+    "RECEIPT_SCHEMA",
+    "RECEIPT_SCHEMA_V1",
     "HandlerDelegatedCodeEditOrchestrator",
     "glob_regex",
     "normalise_path",

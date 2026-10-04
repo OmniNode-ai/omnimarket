@@ -30,6 +30,7 @@ from omnimarket.occ_contention import (
     EnumCheckBinding,
     EnumCompanionProvenance,
     classify_companion_provenance,
+    companion_may_cover_pr,
     companion_touches_ticket,
     decide_contention,
     find_open_companions,
@@ -266,6 +267,8 @@ class TestFindOpenCompanions:
             tickets=["OMN-15232"],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch="auto/mine-occ-autobind",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=lambda _p: _search_payload(5115, 5129),
             get_pull=lambda n: {
                 "head": {"ref": "jonah/omn-15232-occ" if n == 5115 else "jonah/doc"},
@@ -287,6 +290,8 @@ class TestFindOpenCompanions:
             tickets=["OMN-9999"],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch=own,
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=lambda _p: _search_payload(4242),
             get_pull=lambda _n: {"head": {"ref": own}, "labels": []},
             list_pr_files=lambda _n: [{"filename": "contracts/OMN-9999.yaml"}],
@@ -301,6 +306,8 @@ class TestFindOpenCompanions:
             tickets=["OMN-15232"],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch="auto/mine-occ-autobind",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=_boom,
             get_pull=lambda _n: {},
             list_pr_files=lambda _n: [],
@@ -318,6 +325,8 @@ class TestFindOpenCompanions:
             tickets=["OMN-15232"],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch="auto/mine-occ-autobind",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=lambda _p: _search_payload(5115),
             get_pull=lambda _n: {"head": {"ref": "jonah/x"}, "labels": []},
             list_pr_files=_boom,
@@ -335,6 +344,8 @@ class TestFindOpenCompanions:
             tickets=["OMN-15232"],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch="auto/mine-occ-autobind",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=lambda _p: _search_payload(*range(1, 51)),
             get_pull=_pull,
             list_pr_files=lambda _n: [],
@@ -357,11 +368,121 @@ class TestFindOpenCompanions:
             tickets=[ticket],
             occ_repo="OmniNode-ai/onex_change_control",
             own_branch="auto/omninode-ai-x-pr-1-occ-autobind",
+            repo="OmniNode-ai/omnimarket",
+            pr_number=321,
             search_issues=lambda _p: _search_payload(occ_pr),
             get_pull=lambda _n: {"head": {"ref": head_ref}, "labels": []},
             list_pr_files=lambda _n: [{"filename": f"contracts/{ticket}.yaml"}],
         )
         assert decide_contention(findings)[0] is True
+
+
+# ---------------------------------------------------------------------------
+# companion_may_cover_pr — the defer is per PR, not per ticket (OMN-20412)
+# ---------------------------------------------------------------------------
+
+_REPO = "OmniNode-ai/omnimarket"
+
+
+def _contract_patch(*ids: str) -> list[dict[str, object]]:
+    added = "".join(f'+  - id: "{i}"\n+    source: "generated"\n' for i in ids)
+    return [
+        {
+            "filename": "contracts/OMN-17427.yaml",
+            "patch": f'@@ -1,2 +1,9 @@\n   - id: "dod-OmniNode-ai-omnimarket-pr-1"\n{added}',
+        }
+    ]
+
+
+@pytest.mark.unit
+class TestCompanionMayCoverPr:
+    def test_a_companion_naming_only_other_prs_does_not_cover_this_one(self) -> None:
+        files = _contract_patch("dod-OmniNode-ai-omnimarket-pr-3334")
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+
+    def test_a_companion_naming_this_pr_covers_it(self) -> None:
+        files = _contract_patch(
+            "dod-OmniNode-ai-omnimarket-pr-3334",
+            "dod-OmniNode-ai-omnimarket-pr-3335-ci",
+        )
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+
+    def test_a_context_line_is_not_an_added_id(self) -> None:
+        """Only ADDED lines count; a PR already in the file does not make the
+        companion its evidence."""
+        files = _contract_patch("dod-OmniNode-ai-omnimarket-pr-3334")
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=1
+        )
+
+    def test_the_same_number_in_another_repo_is_not_this_pr(self) -> None:
+        files = _contract_patch("dod-OmniNode-ai-omniclaude-pr-3335")
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+
+    def test_whole_id_comparison_not_substring(self) -> None:
+        files = _contract_patch("dod-OmniNode-ai-omnimarket-pr-33350")
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+
+    def test_receipt_directories_are_read(self) -> None:
+        files = [
+            {"filename": "contracts/OMN-17427.yaml"},
+            {
+                "filename": "drift/dod_receipts/OMN-17427/"
+                "dod-OmniNode-ai-omnimarket-pr-3334-ci/command.yaml"
+            },
+        ]
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3334
+        )
+
+    @pytest.mark.parametrize(
+        "files",
+        [
+            [{"filename": "contracts/OMN-17427.yaml"}],  # patch omitted by GitHub
+            [{"filename": "contracts/OMN-17427.yaml", "patch": "+# comment only\n"}],
+            [],
+        ],
+    )
+    def test_unreadable_coverage_keeps_the_ticket_wide_defer(
+        self, files: list[dict[str, object]]
+    ) -> None:
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3335
+        )
+
+    def test_find_open_companions_drops_a_companion_for_other_prs_only(self) -> None:
+        """Two PRs on one ticket, one open hand-authored companion (for #3334):
+        #3334 defers, #3335 does not. Pre-OMN-20412 both deferred."""
+        files = _contract_patch("dod-OmniNode-ai-omnimarket-pr-3334")
+
+        def _findings(pr_number: int) -> tuple[ContentionFinding, ...]:
+            return find_open_companions(
+                tickets=["OMN-17427"],
+                occ_repo="OmniNode-ai/onex_change_control",
+                own_branch=f"auto/omninode-ai-omnimarket-pr-{pr_number}-occ-autobind",
+                repo=_REPO,
+                pr_number=pr_number,
+                search_issues=lambda _p: _search_payload(12643),
+                get_pull=lambda _n: {
+                    "head": {"ref": "jonah/omn-17427-occ"},
+                    "labels": [],
+                },
+                list_pr_files=lambda _n: files,
+            )
+
+        assert decide_contention(_findings(3334))[0] is True
+        assert decide_contention(_findings(3335))[0] is False
 
 
 # ---------------------------------------------------------------------------
