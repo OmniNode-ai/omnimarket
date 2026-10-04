@@ -165,8 +165,8 @@ async def _subscribe(
 # group outlives the consumer as an Empty group unless it is deleted. Deletion is
 # best effort: a failure is logged and never fails a completed call, and a bus
 # with no ``bootstrap_servers`` string (the in-memory bus) has no broker group.
-_ATTEMPTS = 3
-_RETRY_DELAY_SECONDS = 0.5
+_ATTEMPTS = 5
+_RETRY_DELAY_SECONDS = 1.0
 _RESULT_TIMEOUT_SECONDS = 10.0
 
 
@@ -199,13 +199,36 @@ def _delete_once(admin: Any, group_ids: list[str]) -> list[str]:
         try:
             future.result(timeout=_RESULT_TIMEOUT_SECONDS)
         except Exception as exc:
+            if "GROUP_ID_NOT_FOUND" in str(exc):
+                continue
             logger.warning("consumer group %s not deleted: %s", group_id, exc)
             failed.append(str(group_id))
     return failed
 
 
+def broker_group_ids(bus: object, group_ids: Iterable[str]) -> list[str]:
+    """Name the broker-side groups behind subscription ``group_ids``.
+
+    The Kafka bus scopes each subscription's group per topic (``<id>.__t.<topic>``,
+    plus an instance discriminator), so a group subscribed on two topics is two
+    groups on the broker. Read them while the consumers are still registered:
+    unsubscribing forgets them. A bus that cannot say gets the ids as given.
+    """
+    wanted = set(group_ids)
+    get_groups = getattr(bus, "get_consumer_groups", None)
+    if not callable(get_groups):
+        return sorted(wanted)
+    return sorted(
+        {
+            str(effective)
+            for (_topic, group_id), effective in get_groups().items()
+            if group_id in wanted
+        }
+    )
+
+
 async def delete_consumer_groups(bus: object, group_ids: Iterable[str]) -> None:
-    """Delete ``group_ids`` on the broker ``bus`` is connected to, if it has one."""
+    """Delete broker groups ``group_ids`` (see :func:`broker_group_ids`)."""
     pending = sorted(set(group_ids))
     bootstrap = getattr(bus, "bootstrap_servers", None)
     if not pending or not isinstance(bootstrap, str) or not bootstrap:

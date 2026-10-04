@@ -24,7 +24,11 @@ class FakeGroupBroker:
         self.subscribers: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
         self.published: list[tuple[str, bytes]] = []
         self.on_publish: Callable[[str, bytes], Awaitable[None]] | None = None
+        self.active: dict[tuple[str, str], str] = {}
         self.bootstrap_servers = "fake-broker:9092"
+
+    def get_consumer_groups(self) -> dict[tuple[str, str], str]:
+        return dict(self.active)
 
     @property
     def empty_groups(self) -> set[str]:
@@ -56,13 +60,17 @@ class FakeGroupBroker:
     ) -> Callable[[], Awaitable[None]]:
         assert group_id is not None
         assert on_message is not None
-        self.groups.add(group_id)
-        self.live.add(group_id)
+        # Like the Kafka bus, one broker group per (topic, subscription group).
+        effective = f"{group_id}.__t.{topic}"
+        self.groups.add(effective)
+        self.live.add(effective)
+        self.active[(topic, group_id)] = effective
         self.subscribers.setdefault(topic, []).append(on_message)
 
         async def unsubscribe() -> None:
             self.subscribers[topic].remove(on_message)
-            self.live.discard(group_id)
+            self.live.discard(effective)
+            self.active.pop((topic, group_id), None)
 
         return unsubscribe
 

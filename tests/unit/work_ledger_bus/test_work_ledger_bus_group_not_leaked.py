@@ -49,6 +49,6 @@ def test_work_ledger_bus_group_is_unique_per_client() -> None:
     async def scenario() -> None:
         await first.start()
         await second.start()
-        assert len(broker.live) == 2
+        assert len({group for _, group in broker.active}) == 2
 
     asyncio.run(scenario())

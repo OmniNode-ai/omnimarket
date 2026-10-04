@@ -115,8 +115,9 @@ def test_concurrent_calls_do_not_share_a_group(
     seen: list[set[str]] = []
 
     async def on_publish(topic: str, value: bytes) -> None:
-        if len(broker.live) >= 2 and not seen:
-            seen.append(set(broker.live))
+        subscribed = {group for _, group in broker.active}
+        if len(subscribed) >= 2 and not seen:
+            seen.append(subscribed)
             for cid in (json.loads(v)["correlation_id"] for _, v in broker.published):
                 await broker.deliver(
                     load_runtime_delegation_dispatch_config().topics.completed,

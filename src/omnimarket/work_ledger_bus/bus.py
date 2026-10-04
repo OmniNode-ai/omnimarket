@@ -32,6 +32,7 @@ from omnimarket.lab_work.bus import (
     _bytes,
     _subscribe,
     _uuid_or_none,
+    broker_group_ids,
     delete_consumer_groups,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.models import (
@@ -274,12 +275,13 @@ class WorkLedgerAppendCaller:
         # parent_envelope_id, so a group shared between concurrent callers would
         # split the partitions among them and hand a caller another caller's
         # terminal. A stable group is unsafe; the group is removed on exit.
+        broker_groups = broker_group_ids(self._bus, [self._group])
         try:
             for unsubscribe in self._unsubscribes:
                 await unsubscribe()
             self._unsubscribes.clear()
         finally:
-            await delete_consumer_groups(self._bus, [self._group])
+            await delete_consumer_groups(self._bus, broker_groups)
 
     def _terminal(self, topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
         async def on_message(message: ProtocolBusMessage) -> None:
