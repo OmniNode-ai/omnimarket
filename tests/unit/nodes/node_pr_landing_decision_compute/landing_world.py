@@ -89,6 +89,7 @@ class FakePr:
     ci: EnumLandingCi = EnumLandingCi.PENDING
     red_class: EnumLandingRedClass | None = None
     red_checks: tuple[str, ...] = ()
+    cancelled_checks: tuple[str, ...] = ()
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
     suspensions: set[EnumLandingSuspension] = field(default_factory=set)
     collaborator: bool = False
@@ -193,7 +194,13 @@ class LandingWorld:
 
     def _apply_pr_fields(self, pr: FakePr, raw: dict[str, Any]) -> None:
         if "ci" in raw:
-            self._set_ci(pr, raw["ci"], raw.get("red_class"), raw.get("red_checks"))
+            self._set_ci(
+                pr,
+                raw["ci"],
+                raw.get("red_class"),
+                raw.get("red_checks"),
+                raw.get("cancelled_checks"),
+            )
         if "merge_state" in raw:
             pr.merge_state = EnumLandingMergeState(raw["merge_state"])
         for s in raw.get("suspensions", []):
@@ -206,12 +213,17 @@ class LandingWorld:
 
     @staticmethod
     def _set_ci(
-        pr: FakePr, ci: str, red_class: str | None, red_checks: list[str] | None
+        pr: FakePr,
+        ci: str,
+        red_class: str | None,
+        red_checks: list[str] | None,
+        cancelled_checks: list[str] | None = None,
     ) -> None:
         pr.ci = EnumLandingCi(ci)
+        pr.cancelled_checks = tuple(cancelled_checks or ())
         if pr.ci is EnumLandingCi.RED:
             pr.red_class = EnumLandingRedClass(red_class or "product")
-            pr.red_checks = tuple(red_checks or ["unit"])
+            pr.red_checks = tuple(["unit"] if red_checks is None else red_checks)
         else:
             pr.red_class = None
             pr.red_checks = ()
@@ -229,6 +241,7 @@ class LandingWorld:
         pr.ci = EnumLandingCi.PENDING
         pr.red_class = None
         pr.red_checks = ()
+        pr.cancelled_checks = ()
 
     def _worker_for(self, pr: str, lease: int | None = None) -> FakeWorker:
         if lease is not None:
@@ -254,6 +267,7 @@ class LandingWorld:
             arg["result"],
             arg.get("red_class"),
             arg.get("red_checks"),
+            arg.get("cancelled_checks"),
         )
 
     def _ev_companion_ci(self, arg: dict[str, Any]) -> None:
@@ -362,6 +376,7 @@ class LandingWorld:
         pr.ci = EnumLandingCi.PENDING
         pr.red_class = None
         pr.red_checks = ()
+        pr.cancelled_checks = ()
 
     def _ev_worker_result(self, arg: dict[str, Any]) -> None:
         pr = self.prs.get(arg["pr"])
@@ -432,8 +447,12 @@ class LandingWorld:
                             head_sha=sha(parent, par.head),
                         )
                     )
+            stale = (
+                {"cancelled_checks": pr.cancelled_checks} if pr.cancelled_checks else {}
+            )
             prs.append(
                 ModelLandingPrFacts(
+                    **stale,
                     pr=pr.pr,
                     head_sha=sha(pr.pr, pr.head),
                     state=pr.state,
