@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19441"
+title: "The delegation reaper gives a stranded command one no_terminal terminal"
+summary: "A claimed delegate-skill command with no terminal at its deadline gets exactly one no_terminal terminal from a reaper on the runtime tick. A late real terminal is kept as attempt evidence, a command that already holds a terminal is never reaped, and the reaper keys on the command and not on the correlation."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-reaper"
+    statement: "The delegate-skill orchestrator reaps a claimed command that holds no terminal at its first claim plus the execution timeout plus the terminal delivery margin plus 60 seconds, publishes one failed terminal with cause no_terminal, and never publishes a second terminal for the same command."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a claimed command with no terminal at its budget plus 60 seconds gets exactly one no_terminal terminal -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_claimed_command_with_no_terminal"
+      - id: "AC2"
+        statement: "AC2: a real terminal arriving after the reaper is kept as attempt evidence and publishes no second terminal -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_real_terminal_arriving_after_the_reaper"
+      - id: "AC3"
+        statement: "AC3: the reaper never reaps a command that already holds a terminal, including a handler timeout terminal -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k never_reaps_a_command_that_already_holds_a_terminal"
+      - id: "AC4"
+        statement: "AC4: the reaper keys on the command, so commands sharing a correlation each hold a terminal of their own, and a replay keeps the delivery id and the first deadline -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'shared_correlation or replay_keeps_delivery_id'"
+      - id: "AC5"
+        statement: "AC5: the contract routes the runtime tick and declares the reaper cause and configuration, and a no_terminal terminal round-trips through the projection and the pinned delegate CLI decode -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'contract_routes_tick or no_terminal_round_trip'"
+evidence_requirements:
+  - kind: "tests"
+    description: "The reaper tests, including the three falsifiers named in the ticket, pass against the reaper handler and the claim port."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19441-ac1-one-no-terminal-terminal"
+    description: "A claimed command with no terminal at its deadline gets exactly one no_terminal terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_claimed_command_with_no_terminal"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19441-ac2-late-terminal-is-evidence"
+    description: "A real terminal arriving after the reaper is kept as attempt evidence and publishes no second terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_real_terminal_arriving_after_the_reaper"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19441-ac3-never-reaps-a-terminal-holder"
+    description: "A command that already holds a terminal, including a handler timeout terminal, is never reaped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k never_reaps_a_command_that_already_holds_a_terminal"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19441-ac4-command-keyed"
+    description: "Commands sharing a correlation each hold a terminal of their own, and a replay keeps the delivery id and the first deadline."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'shared_correlation or replay_keeps_delivery_id'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19441-ac5-contract-and-projection"
+    description: "The contract routes the runtime tick and declares the reaper cause and configuration, and a no_terminal terminal round-trips through the projection and the pinned delegate CLI decode."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'contract_routes_tick or no_terminal_round_trip'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
