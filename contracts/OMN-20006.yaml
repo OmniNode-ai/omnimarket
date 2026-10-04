@@ -29,7 +29,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20006-ac1-local-usage-rows-served-per-tenant"
+  - id: "dod-omn20006-ac1-local-usage-rows-per-tenant"
     description: "One local delegate run writes its usage call and rollup rows with the terminal's tokens, equal-token runs stay apart, a failed usage write is swallowed, and the served read carries the reading tenant's rows only."
     source: "manual"
     checks:
