@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     spend_usd TEXT,
     counterfactual_usd TEXT,
     savings_usd TEXT,
+    savings_per_measured_run_usd TEXT,
     summary_json TEXT NOT NULL
 )
 """

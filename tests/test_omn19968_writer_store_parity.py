@@ -323,9 +323,11 @@ _USAGE_MIGRATION = (
     _NODES
     / "node_projection_usage_by_model_day/migrations/0000_create_usage_by_model_day.sql"
 )
-_METERING_MIGRATION = (
+_METERING_MIGRATIONS = (
     _NODES
-    / "node_projection_metering_summary/migrations/0000_create_metering_summary.sql"
+    / "node_projection_metering_summary/migrations/0000_create_metering_summary.sql",
+    _NODES / "node_projection_metering_summary/migrations/"
+    "0002_metering_summary_savings_per_measured_run.sql",
 )
 # Store-generated or wall-clock columns beyond ``_GENERATED``: never compared.
 _ALSO_GENERATED = frozenset({"ingested_at", "projection_cursor"})
@@ -379,13 +381,17 @@ def _write_metering(adapter: Any) -> None:
     )
 
 
-_STORE_CASES: dict[str, tuple[Path, Any, tuple[str, ...]]] = {
+_STORE_CASES: dict[str, tuple[tuple[Path, ...], Any, tuple[str, ...]]] = {
     "usage_by_model_day": (
-        _USAGE_MIGRATION,
+        (_USAGE_MIGRATION,),
         _write_usage,
         ("usage_by_model_day_calls", "usage_by_model_day"),
     ),
-    "metering_summary": (_METERING_MIGRATION, _write_metering, ("metering_summary",)),
+    "metering_summary": (
+        _METERING_MIGRATIONS,
+        _write_metering,
+        ("metering_summary",),
+    ),
 }
 
 
@@ -401,16 +407,17 @@ def _normalize_store(rows: list[dict[str, object]]) -> list[dict[str, object]]:
 async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
     pg: _Postgres, tmp_path: Path, case: str
 ) -> None:
-    migration, writer, tables = _STORE_CASES[case]
+    migrations, writer, tables = _STORE_CASES[case]
     sqlite = _RecordingSqlite(tmp_path / f"{case}.sqlite")
     writer(sqlite)
     sqlite_rows = {t: _normalize_store(sqlite.query(t)) for t in tables}
 
     async with _provisioned(pg) as (admin, schema):
         # The migration names ``public.``; keep the proof inside the throwaway schema.
-        await admin.execute(
-            migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
-        )
+        for migration in migrations:
+            await admin.execute(
+                migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+            )
         postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))
         writer(postgres)
         pg_rows = {t: _normalize_store(postgres.query(t)) for t in tables}
