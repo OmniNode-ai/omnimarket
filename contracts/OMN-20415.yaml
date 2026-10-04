@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20415"
+title: "The landing decision node groups red PRs by shared cause and dispatches one bounded cause worker per cluster"
+summary: "Red PRs in one repo failing one check with one normalized failure signature form a cluster, and the decision node dispatches one bounded cause worker per cause. A spent cause parks with one operator escalation, and its members fall back to per-PR dispatch so red PRs keep getting fixed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-shared-cause-grouping"
+    statement: "The pure landing decision node groups red PRs by shared cause and dispatches one bounded cause worker per cause, with the fixer HOLD, the attempt budget, the park and the fallback of parked members to per-PR dispatch."
+    acceptance:
+      - id: "AC1"
+        statement: "The replay of controller tick 722 dispatches exactly one cause worker for omnimarket with at least 16 members, no per-PR worker for any member, and covers omnimarket#3321 by a cause."
+      - id: "AC2"
+        statement: "The same facts in any input order give a byte-identical decision."
+      - id: "AC3"
+        statement: "Scenarios S21 to S28 from the T1 model each have a test that fails on the pinned node and passes after the change."
+      - id: "AC4"
+        statement: "A cause is dispatched at most twice per park episode and then parked with one escalate_operator action, its members fall back to per-PR dispatch while it is parked, and a fixer HOLD on its repo yields no dispatch and a revoke for every live lease there."
+      - id: "AC5"
+        statement: "An escalated PR alone becomes a singleton cause on the next tick."
+evidence_requirements:
+  - kind: "tests"
+    description: "Execute the shared-cause tests and the unchanged S1 to S20 scenario file against the decision node. S1 to S20 pass at the merge base by design, so they are evidence here and carry no must-fail bound check."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-replay-tick722"
+    description: "The tick 722 replay forms one cause and dispatches no per-PR member worker."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k replay_tick722"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-cause-permutation"
+    description: "Input order does not change the decision."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k cause_permutation"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-cause-scenarios"
+    description: "Scenarios S21 to S28 hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k cause_scenario"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-budget-hold-fallback"
+    description: "The attempt budget, the fixer HOLD and the fallback of parked members hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k 'budget or fixer_hold or fallback'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-escalated-singleton"
+    description: "An escalated PR becomes a singleton cause."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k escalated_singleton"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
