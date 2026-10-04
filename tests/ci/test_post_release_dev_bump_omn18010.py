@@ -39,6 +39,11 @@ def test_uv_lock_pins_the_pyproject_version() -> None:
     assert pinned == [_pyproject_version()]
 
 
+def test_pyproject_version_is_a_plain_semver_triple() -> None:
+    major, minor, patch = _pyproject_version().split(".")
+    assert all(part.isdigit() for part in (major, minor, patch))
+
+
 def test_version_is_ahead_of_every_reachable_release() -> None:
     """Strict mode (no --base) always enforces the version-ahead invariant."""
     env = {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_ENV_VARS}
