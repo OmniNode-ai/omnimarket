@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18978"
+title: "A delegation budget cancellation names the stage it cancelled"
+summary: "Adds request-local typed dispatch progress to node_delegate_skill_orchestrator so a handler budget cancellation reports the innermost observed stage (bus subscribe, publish, terminal wait, local boot, inference, quality gate) in the timeout error, keeps it through cleanup, keeps concurrent requests separate and resets after dispatch. Tests: tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-timeout-names-stage"
+    statement: |-
+      A delegation cancelled by the handler budget must report the stage it was observed in when cancelled, keep that stage through cleanup, keep concurrent requests' stages separate, and leave an accepting dispatch's answer unchanged.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a budget or port-owned timeout names its cancelled stage in the timeout error message on the bus and local paths, the cleanup stage never overwrites it, concurrent dispatches keep distinct stages, an accepting dispatch keeps its answer, and the progress context resets after dispatch -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The timeout-stage tests pass at the head and fail at the merge base, where the dispatch progress module does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-timeout-stage-ac3"
+    description: "The timeout-stage tests prove the cancelled stage is named, survives cleanup, stays per request and resets after dispatch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
