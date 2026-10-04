@@ -43,8 +43,8 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 _DELEGATION_EVENTS = "delegation_events"
 _CLAIMS = "delegate_skill_command_claims"
 _WORKERS = 8
-_STORES = 40
-_PROCESS_STORES = 30
+_STORES = 12
+_PROCESS_STORES = 8
 
 
 class _NullPublisher:

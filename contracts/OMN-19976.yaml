@@ -32,7 +32,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19976-dod1-concurrent-first-writes"
-    description: "DoD1: concurrent first writes on a fresh SQLite store all land; each missing column is added once under the write lock (40 fresh stores, 8 barrier-started writers each, 0 errors and 8 rows per store)."
+    description: "DoD1: concurrent first writes on a fresh SQLite store all land; each missing column is added once under the write lock (12 fresh stores, 8 barrier-started writers each, 0 errors and 8 rows per store)."
     source: "manual"
     checks:
       - check_type: "test_passes"
