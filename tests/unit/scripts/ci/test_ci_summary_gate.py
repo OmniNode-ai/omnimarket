@@ -835,34 +835,34 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
         "evidence but is not a merge gate."
     ),
-    # --- duplicate-name internal "wait for occ-preflight / eligibility"
-    # precondition jobs. Each produces a check-run literally named "OCC
-    # Preflight Dependency" (same display name as ci.yml's own STRICT gate),
+    # --- duplicate-name internal "wait for repo-evidence / dod-verify"
+    # precondition jobs. Each produces a check-run literally named "Repo
+    # Evidence Dependency" (same display name as ci.yml's own STRICT gate),
     # but it is a *local* precondition for that one workflow's own next job,
     # not an independently required context — the actual required gate is
-    # "occ-preflight / eligibility" (L4, asserted).
+    # "repo-evidence / dod-verify" (L4, asserted).
     ("auto-merge.yml", "occ-preflight"): (
         "internal precondition-wait job (blocks this workflow's own "
-        "auto-merge job until occ-preflight / eligibility posts); not "
-        "independently required — occ-preflight / eligibility is the real "
+        "auto-merge job until repo-evidence / dod-verify posts); not "
+        "independently required — repo-evidence / dod-verify is the real "
         "gate and IS asserted (L4)."
     ),
     ("dep-health-gate.yml", "occ-preflight"): (
         "internal precondition-wait job (blocks this workflow's own "
-        "dep-health job); not independently required — occ-preflight / "
-        "eligibility is the real gate and IS asserted (L4)."
+        "dep-health job); not independently required — repo-evidence / "
+        "dod-verify is the real gate and IS asserted (L4)."
     ),
     ("market-skill-baseline.yml", "occ-preflight"): (
         "internal precondition-wait job; not independently required — "
-        "occ-preflight / eligibility is the real gate and IS asserted (L4)."
+        "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
     ("plugin-compat-gate.yml", "occ-preflight"): (
         "internal precondition-wait job; not independently required — "
-        "occ-preflight / eligibility is the real gate and IS asserted (L4)."
+        "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
     ("validator-runtime-profiles.yml", "occ-preflight"): (
         "internal precondition-wait job; not independently required — "
-        "occ-preflight / eligibility is the real gate and IS asserted (L4)."
+        "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
     # --- OMN-18127: the cross-repo CI bus overlay parity gate.
     ("ci-bus-overlay-parity.yml", "ci-bus-overlay-parity"): (

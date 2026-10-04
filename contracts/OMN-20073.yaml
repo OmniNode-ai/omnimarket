@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20073"
+title: "Prepare omnimarket's repo-owned evidence prerequisite"
+summary: "Move PR CI-start pollers to repo-owned evidence and enforce that verdict through CI Summary. Full OCC retirement remains pending OR.2 queue support and cutover proof."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-repo-evidence-prerequisite-preparation"
+    statement: "Prepare the PR evidence prerequisite while retaining existing OCC enforcement until the full cutover is ready."
+    acceptance:
+      - id: "AC1"
+        statement: "The six PR CI-start pollers admit only a successful repo-evidence / dod-verify check from GitHub Actions on the current head; absent, nonpassing and newer pending verdicts refuse admission."
+      - id: "AC2"
+        statement: "CI Summary enforces repo evidence on PR admission and retains the existing OCC queue contexts until OR.2 supports merge_group."
+evidence_requirements:
+  - kind: "tests"
+    description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
+    command: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k poller_admission"
+  - kind: "tests"
+    description: "Exercise CI Summary's repo-owned verdict and queue context policy."
+    command: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k summary"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-repo-prerequisite-pollers"
+    description: "Repo-owned evidence admits PR CI without relying on OCC eligibility."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k poller_admission"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-repo-prerequisite-summary"
+    description: "CI Summary requires the repo-owned PR verdict and preserves current queue enforcement."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k summary"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

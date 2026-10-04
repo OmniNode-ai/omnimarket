@@ -96,14 +96,14 @@ concurrency:
 
 jobs:
   occ-preflight:
-    name: OCC Preflight Dependency
+    name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
       actions: read
       checks: read
       contents: read
     steps:
-      - name: Wait for required OCC preflight
+      - name: Wait for required repo evidence
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -112,7 +112,7 @@ jobs:
           set -uo pipefail
 
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            echo "Repo evidence dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
             exit 0
           fi
 
@@ -124,11 +124,9 @@ jobs:
 
           backoff=5
           elapsed=0
-          # The eligibility check bounds its own wait for the cited OCC companion at
-          # 1500 s, so this poller waits that long plus 180 s of scheduling slack.
-          # At 720 s it gave up on an eligibility run that was still waiting on its
-          # companion, failed, and skipped the test shards behind it.
-          deadline=1680
+          # The repo-owned verifier has a 40-minute job timeout. Allow another
+          # 180 seconds for scheduling; a missing verdict still fails closed.
+          deadline=2580
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -143,8 +141,8 @@ jobs:
             response=""
             status=0
             if response="$(
-              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=occ-preflight%20%2F%20eligibility&per_page=1" \
-                --jq 'first(.check_runs[] | .conclusion) // ""' \
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=repo-evidence%20%2F%20dod-verify&per_page=100" \
+                --jq '[.check_runs[] | select(.app.id == 15368)] | sort_by(.id) | last | .conclusion // ""' \
                 2>&1
             )"; then
               status=0
@@ -154,7 +152,7 @@ jobs:
 
             if [ "$status" -ne 0 ]; then
               if echo "$response" | grep -qi "rate limit"; then
-                echo "::warning::gh api rate-limited waiting for occ-preflight; backing off ${backoff}s."
+                echo "::warning::gh api rate-limited waiting for repo-evidence; backing off ${backoff}s."
                 sleep "$backoff"
                 elapsed=$((elapsed + backoff))
                 backoff=$(( backoff * 2 < 60 ? backoff * 2 : 60 ))
@@ -169,30 +167,30 @@ jobs:
 
             case "$conclusion" in
               success)
-                echo "OCC preflight passed for ${HEAD_SHA}."
+                echo "Repo evidence passed for ${HEAD_SHA}."
                 exit 0
                 ;;
               cancelled)
-                # OMN-20038: a cancelled preflight that a newer run for this head is
+                # OMN-20038: a cancelled verifier that a newer run for this head is
                 # replacing is pending, not refused. With no run queued or in progress the
                 # cancel is final and refuses exactly as before (fail closed on any read error).
-                in_flight="$(gh api "repos/${REPO}/actions/workflows/call-occ-preflight.yml/runs?head_sha=${HEAD_SHA}&per_page=30" --jq '[.workflow_runs[] | select(.status != "completed")] | length')" || in_flight=0
+                in_flight="$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=repo-evidence%20%2F%20dod-verify&per_page=100" --jq '[.check_runs[] | select(.app.id == 15368)] | sort_by(.id) | [last | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")] | length')" || in_flight=0
                 if [ "$in_flight" -gt 0 ] 2>/dev/null; then
-                  echo "OCC preflight was cancelled but ${in_flight} newer run(s) are pending for ${HEAD_SHA}; waiting."
+                  echo "Repo evidence was cancelled but ${in_flight} newer run(s) are pending for ${HEAD_SHA}; waiting."
                 else
-                  echo "::error::OCC preflight concluded cancelled with no newer run pending; refusing to start this workflow."
+                  echo "::error::Repo evidence concluded cancelled with no newer run pending; refusing to start this workflow."
                   exit 1
                 fi
                 ;;
               failure|timed_out|action_required|startup_failure)
-                echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
+                echo "::error::Repo evidence concluded ${conclusion}; refusing to start this workflow."
                 exit 1
                 ;;
               "")
-                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                echo "Waiting for repo-evidence / dod-verify to post for ${HEAD_SHA}..."
                 ;;
               *)
-                echo "OCC preflight is ${conclusion}; waiting."
+                echo "Repo evidence is ${conclusion}; waiting."
                 ;;
             esac
 
@@ -200,7 +198,7 @@ jobs:
             elapsed=$((elapsed + 10))
           done
 
-          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          echo "::error::Timed out waiting for repo-evidence / dod-verify on ${HEAD_SHA}."
           exit 1
   auto-merge:
     needs: occ-preflight
