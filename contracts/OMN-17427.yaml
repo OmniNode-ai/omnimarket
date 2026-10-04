@@ -17,7 +17,13 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: onex metering keys metering_summary on the minted tenant id and refuses when none exists -- falsifier: the focused pytest finds a summary row keyed on the literal local, or a run with no identity that does not refuse
+      - id: "AC7"
+        statement: |-
+          AC7: An inference call whose upstream keeps the body open with keep-alive bytes returns the typed timeout error at the contract ceiling, and a prompt chunked body inside the ceiling still returns its content -- falsifier: the focused pytest finds a call that outlives the ceiling, or a prompt body that is cut off
 evidence_requirements:
+  - kind: "tests"
+    description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
+    command: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
   - kind: "tests"
     description: "The row and the receipt state the same saving and the row pins its counterfactual."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_row_and_receipt_savings_agree_omn17427.py -q"
@@ -45,3 +51,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn17427-ac3-total-inference-deadline"
+    description: "The inference call is bounded by one absolute deadline and a prompt chunked body still completes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
