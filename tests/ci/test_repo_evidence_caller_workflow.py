@@ -127,7 +127,10 @@ def test_every_repo_contract_binds_every_criterion() -> None:
 # OMN-20073: omnibase_core#1884 added the dependency-bot and pin-only writer-app
 # exemption to the caller-evidence dod-verify job. A pin that predates it makes
 # every bot version bump fail for binding no evidence of its own.
-_EXEMPT_REUSABLE_SHA = "a842c9654396d7898a840e54d427e04f7dea8293"
+# OMN-20543: omnibase_core#1886, a descendant of #1884, gives that job a
+# Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
+# test that needs a database runs at the head and in the merge-base control.
+_EXEMPT_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
 
 
 def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
@@ -158,4 +161,20 @@ def test_caller_compares_with_occ_during_the_s5_pilot() -> None:
     assert version >= _DIFFERENCE_CLASSIFIER_FLOOR, (
         "verifier-version must ship node_dod_verify occ-difference "
         f"(>= {'.'.join(map(str, _DIFFERENCE_CLASSIFIER_FLOOR))})"
+    )
+
+
+# OMN-20543 (AC3): the pinned reusable is the one whose dod-verify job gives a
+# database test its database. A pin before omnibase_core#1886 runs that test
+# with none, so a contract can only scope it local_done_gate, which the hosted
+# control refuses as a control that did not run (omnimarket#3369).
+_DATABASE_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
+
+
+def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:
+    uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]["uses"]
+    assert uses.endswith(f"@{_DATABASE_REUSABLE_SHA}"), (
+        "pin the omnibase_core reusable at or past omnibase_core#1886"
     )
