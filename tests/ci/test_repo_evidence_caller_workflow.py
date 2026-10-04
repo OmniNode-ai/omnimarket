@@ -137,3 +137,25 @@ def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
     assert uses.endswith(f"@{_EXEMPT_REUSABLE_SHA}"), (
         "pin the omnibase_core reusable at or past omnibase_core#1884"
     )
+
+
+# OMN-20072 (S5 pilot, AC3): while repo-evidence / dod-verify is required beside
+# the OCC contexts, the caller turns on the reusable's difference step, and the
+# pinned verifier is a release that ships the classifier the step runs
+# (node_dod_verify occ-difference, omnimarket#3277; 0.4.294 is the first release
+# whose published wheel was read to carry services/occ_verdict_difference.py).
+_DIFFERENCE_CLASSIFIER_FLOOR = (0, 4, 294)
+
+
+def test_caller_compares_with_occ_during_the_s5_pilot() -> None:
+    job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]
+    assert job["with"].get("compare-with-occ") == "true", (
+        'the S5 pilot requires compare-with-occ: "true" (a quoted string input)'
+    )
+    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
+    assert version >= _DIFFERENCE_CLASSIFIER_FLOOR, (
+        "verifier-version must ship node_dod_verify occ-difference "
+        f"(>= {'.'.join(map(str, _DIFFERENCE_CLASSIFIER_FLOOR))})"
+    )
