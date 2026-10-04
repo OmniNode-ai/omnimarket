@@ -279,11 +279,23 @@ def _term_re(term: str) -> re.Pattern[str]:
     return _compiled(rf"(?<![a-z0-9]){body}", re.IGNORECASE)
 
 
+def _blank_verb(match: re.Match[str]) -> str:
+    """The matched text with its ``verb`` group blanked, every other char kept."""
+    start, end = match.span("verb")
+    text = match.group(0)
+    offset = match.start()
+    return text[: start - offset] + " " * (end - start) + text[end - offset :]
+
+
 def _clauses(answer: str, policy: ModelClaimGroundingPolicy) -> list[list[str]]:
     """Statements, each cut into clauses. An anchor never crosses a statement."""
     for pattern in policy.excluded_answer_spans:
         answer = _compiled(pattern, re.DOTALL).sub(" ", answer)
     answer = _MARKUP_RE.sub("", answer)
+    for pattern in policy.imperative_subject_patterns:
+        answer = _compiled(pattern, re.IGNORECASE | re.MULTILINE).sub(
+            _blank_verb, answer
+        )
     statements: list[list[str]] = []
     for statement in _compiled(policy.clause_split, re.IGNORECASE).split(answer):
         if not statement or not statement.strip():

@@ -349,7 +349,9 @@ claim_grounding:
   policy_version: "claim-grounding.v1"
   check_name: "claims_grounded"
   anchor_patterns:
-    - '(?<![\w-])OMN-\d{3,6}(?![\w-])'
+    # A ticket id that is a path segment or a file stem (contracts/OMN-17427.yaml)
+    # names a file, not the ticket's state (OMN-20492).
+    - '(?<![\w/-])OMN-\d{3,6}(?![\w/-])(?!\.\w)'
     - '(?:[A-Za-z][A-Za-z0-9._-]*)?#\d{1,7}(?![\w])'
     - '(?<![\w])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![\w])'
     - '(?<![\w-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-])'
@@ -362,6 +364,14 @@ claim_grounding:
   subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
   excluded_answer_spans:
     - '```.*?(?:```|\Z)'
+  # OMN-20492. The first word of a conventional commit subject is an imperative
+  # verb naming the change ("fix(OMN-17427): resolve the conflict"), not a state
+  # asserted about the ticket. E4 (OMN-20422) lost 3 of 19 faithful landing
+  # commit messages to "resolve" read as `completed`. Only a base-form verb is
+  # exempt: "resolved" or "resolving" there still asserts, and so does any state
+  # word later in the subject or in the body.
+  imperative_subject_patterns:
+    - '^[ \t]*[a-z]+(?:\([^)\n]*\))?!?:[ \t]+(?P<verb>(?![a-z]*(?:ed|ing)\b)[a-z]+)\b'
   state_groups:
     completed: [complet, done, finish, merg, resolv, shipp, landed, succe, passed, green]
     in_progress: [in progress, ongoing, underway, active, claim, resum, started, working, wip, taken over]

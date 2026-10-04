@@ -6,7 +6,9 @@ The controller is the single writer of this state. Each tick it passes the
 state it last wrote in with the facts, and writes the ``next_state`` of the
 decision back before it performs any action (write-ahead): a crash after the
 write loses actions, never records. Every record is keyed by ``repo#pr``, and
-a head is always a field, never part of a key (R7).
+a head is always a field, never part of a key (R7). A shared cause is keyed by
+its cause key, ``cause:<owner>/<repo>:<signature>``, and its lease lives in the
+same lease space as a PR's.
 """
 
 from __future__ import annotations
@@ -27,6 +29,12 @@ PR_KEY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*$"
 REPO_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 SHA_PATTERN = r"^[0-9a-f]{40}$"
 KEY_PATTERN = r"^[0-9a-f]{64}$"
+SIGNATURE_PATTERN = r"^[0-9a-f]{12}$"
+CAUSE_KEY_PATTERN = r"^cause:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{12}$"
+SUBJECT_PATTERN = (
+    r"^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*"
+    r"|cause:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{12})$"
+)
 
 
 class ModelLandingMemberRef(BaseModel):
@@ -39,11 +47,15 @@ class ModelLandingMemberRef(BaseModel):
 
 
 class ModelLandingLease(BaseModel):
-    """The one lease of one PR (R7). Released only by confirmed termination."""
+    """The one lease of one PR or one cause (R7). Released only by confirmed termination.
+
+    ``pr`` is the subject: ``repo#pr``, or a cause key for a cause worker,
+    whose dispatch head is the head of its first member.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    pr: str = Field(..., pattern=SUBJECT_PATTERN)
     lease_id: int = Field(..., ge=1)
     brief_class: EnumLandingBriefClass
     engine: EnumLandingEngine
@@ -96,6 +108,11 @@ class ModelLandingPrRecord(BaseModel):
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
+    stale_refreshes: int = Field(
+        default=0,
+        ge=0,
+        description="Update-branch refreshes sent for stale cancelled copies (bounded).",
+    )
 
 
 class ModelLandingRebuildRecord(BaseModel):
@@ -134,6 +151,52 @@ class ModelLandingEligibilityRerun(BaseModel):
     companion: str = Field(..., pattern=PR_KEY_PATTERN)
 
 
+class ModelLandingCausePair(BaseModel):
+    """One (check, signature) a shared cause carries, with one example annotation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(..., min_length=1)
+    signature: str = Field(..., pattern=SIGNATURE_PATTERN)
+    example: str = Field(
+        default="", description="One member's annotation text for this pair."
+    )
+    members: int = Field(default=0, ge=0, description="PRs sharing the pair.")
+
+
+class ModelLandingCauseRecord(BaseModel):
+    """Everything the controller remembers about one shared cause between ticks.
+
+    Upserted by cause key. ``attempts`` and ``spawn_failures`` count within one
+    park episode; a park ends at ``parked_until`` or on a RELEASE row naming
+    the cause, and the next episode starts from zero. ``escalated`` is the
+    dedupe key of the one operator escalation of the current park.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str = Field(..., pattern=CAUSE_KEY_PATTERN)
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    pairs: tuple[ModelLandingCausePair, ...] = ()
+    members: tuple[ModelLandingMemberRef, ...] = Field(..., min_length=1)
+    attempts: int = Field(default=0, ge=0)
+    spawn_failures: int = Field(default=0, ge=0)
+    outcome: EnumLandingOutcome | None = None
+    reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
+    fix_ref: str | None = Field(default=None, pattern=PR_KEY_PATTERN)
+    fix_head: str | None = Field(default=None, pattern=SHA_PATTERN)
+    rerun_at: datetime | None = Field(
+        default=None, description="When the reruns after the fix merged were emitted."
+    )
+    rerun_heads: tuple[ModelLandingMemberRef, ...] = Field(
+        default=(), description="Member heads already rerun for this cause."
+    )
+    parked_until: datetime | None = None
+    escalated: str | None = Field(
+        default=None, description="<cause key>@<parked_until> of the last escalation."
+    )
+
+
 class ModelLandingControllerState(BaseModel):
     """The controller's state file."""
 
@@ -151,13 +214,19 @@ class ModelLandingControllerState(BaseModel):
     uncovered: tuple[ModelLandingUncovered, ...] = ()
     eligibility_reruns: tuple[ModelLandingEligibilityRerun, ...] = ()
     close_requested: tuple[str, ...] = ()
+    causes: tuple[ModelLandingCauseRecord, ...] = ()
 
 
 __all__: list[str] = [
+    "CAUSE_KEY_PATTERN",
     "KEY_PATTERN",
     "PR_KEY_PATTERN",
     "REPO_PATTERN",
     "SHA_PATTERN",
+    "SIGNATURE_PATTERN",
+    "SUBJECT_PATTERN",
+    "ModelLandingCausePair",
+    "ModelLandingCauseRecord",
     "ModelLandingControllerState",
     "ModelLandingEligibilityRerun",
     "ModelLandingLease",

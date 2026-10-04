@@ -400,6 +400,10 @@ projection_api:
         - trace_id
         - routed_model
         - answering_backend
+        # OMN-20162: the backend and host of the attempt that answered, which
+        # answering_backend (the terminal's route) does not name (migration 0054).
+        - backend_id
+        - host
         # OMN-19448: the deciding terminal's stop reason (migration 0053).
         - finish_reason
         - truncated
