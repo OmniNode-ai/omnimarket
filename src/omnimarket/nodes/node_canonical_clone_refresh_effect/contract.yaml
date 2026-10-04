@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Canonical Clone Refresh Effect (OMN-20496)
+#
+# WHO HOSTS THIS NODE. One serve process per host that keeps canonical clones
+# (`clone-refresh serve`): the operator Mac and each lab pool host. Shared
+# runtimes must NEVER attach it: a runtime container holds no canonical clone.
+# The contract therefore declares runtime_dispatch and neither an event_bus
+# block nor handler_routing: runtime auto-wiring attaches only contracts that
+# declare both, and the handler's sync command is a serve-process argument no
+# runtime could inject.
+#
+# ADDRESSING. Each host reads the merge topic in a consumer group of its own
+# (the node group plus the host name), so every host sees every merge, at
+# offset latest; a merge missed while a host was down is the canonical-clone
+# timer's job. A burst of merges to one repository is coalesced into one sync
+# plus at most one more. The sync command is a deployment fact given on the
+# serve command line; nothing here names a machine or a path.
+name: "node_canonical_clone_refresh_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  When a repository merges, syncs this host's canonical clones of it with the
+  host's own sync command and publishes one receipt per run.
+input_model:
+  name: "ModelCanonicalCloneRefreshRequest"
+  module: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh"
+  description: "Repository, the newest merged sha and how many merge events the run covers."
+output_model:
+  name: "ModelCanonicalCloneRefreshReceipt"
+  module: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh"
+  description: "Host, repository, engine result, before and after sha, events covered and duration."
+handler:
+  module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect"
+  class: "HandlerCanonicalCloneRefreshEffect"
+  input_model: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh.ModelCanonicalCloneRefreshRequest"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+runtime_dispatch:
+  subscribe_topic: "onex.evt.omnimarket.repo-merged.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.canonical-clone-refreshed.v1"
+consumed_events:
+  - event_type: ModelRepoMerged
+    topic: onex.evt.omnimarket.repo-merged.v1
+    description: "A pull request merged; published by the landing controller and the PR watcher."
+# Explicit external producer (contract topic graph closure): merges are published
+# by `clone-refresh publish`, which the landing controller runs after its merge
+# readback and the PR watcher runs for a merge it observed and did not make.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.repo-merged.v1
+    producer: "clone-refresh publish, run by the landing controller and the PR watcher on a merge, not a node contract"
+published_events:
+  - event_type: ModelCanonicalCloneRefreshReceipt
+    topic: onex.evt.omnimarket.canonical-clone-refreshed.v1
+    description: "What one sync run did on one host."
+metadata:
+  transport_type: kafka
+  description: "Hosted by one serve process per host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-10-04"
+  tags: ["effect", "canonical-clone", "OMN-20496"]
+  related_tickets: ["OMN-20496"]
