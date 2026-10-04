@@ -59,12 +59,21 @@ RERUNNABLE_RED_CLASSES: frozenset[EnumLandingRedClass] = frozenset(
 
 
 class EnumLandingMergeState(StrEnum):
-    """The head's position against its base."""
+    """The head's position against its base.
+
+    ``blocked`` is GitHub's BLOCKED: a required context is missing or a ruleset
+    holds the merge. A collector that does not send it sends ``unknown``, and
+    ``blocked`` decides like ``unknown`` except for one case: with no failed
+    check and at least one cancelled check copy named in ``cancelled_checks``,
+    the head is refreshed once with update-branch (a stale cancelled copy holds
+    the merge state; see ``ModelLandingPrFacts.cancelled_checks``).
+    """
 
     CLEAN = "clean"
     BEHIND = "behind"
     CONFLICTING = "conflicting"
     UNKNOWN = "unknown"
+    BLOCKED = "blocked"
 
 
 class EnumLandingSuspension(StrEnum):
@@ -249,11 +258,17 @@ class EnumLandingCompanionVerdict(StrEnum):
 
 
 class EnumLandingDegradedReason(StrEnum):
-    """What sets DEGRADED."""
+    """What sets DEGRADED.
+
+    ``stale_refresh_exhausted``: a PR held at BLOCKED by stale cancelled check
+    copies was refreshed ``max_stale_refreshes`` times and the class came back;
+    no further refresh, no fix worker and no escalation (a person looks).
+    """
 
     LEASE_STUCK = "lease_stuck"
     ESCALATION_EXHAUSTED = "escalation_exhausted"
     REBUILD_EXHAUSTED = "rebuild_exhausted"
+    STALE_REFRESH_EXHAUSTED = "stale_refresh_exhausted"
 
 
 __all__: list[str] = [
