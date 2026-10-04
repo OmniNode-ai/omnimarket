@@ -64,6 +64,17 @@ logger = logging.getLogger(__name__)
 
 KAFKA_BROKERS_ENV = "KAFKA_BROKERS"
 PROJECTION_RUNTIME_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY"
+# The read node's own binding, apart from the runtime binding the delegate-skill
+# claim store and evidence store follow, so a reader's credentials never become
+# their write principal. See projection_read_binding_from_overlay_env().
+PROJECTION_READ_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY"
+# Why projection_read_binding_from_overlay_env() returned None, for a refusal an
+# operator reads. Built here so the variable names stay owned by this module.
+PROJECTION_READ_BINDING_UNSET_DETAIL = (
+    f"neither {PROJECTION_READ_BINDING_OVERLAY_ENV} (the projection read binding) "
+    f"nor {PROJECTION_RUNTIME_BINDING_OVERLAY_ENV} (the runtime binding a read "
+    "falls back to) is set"
+)
 DEFAULT_GROUP_ID = "omnimarket-projections-v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
@@ -335,6 +346,26 @@ def projection_runtime_binding_from_overlay_env() -> (
     (the delegation env-read discipline, OMN-10915).
     """
     return _projection_runtime_binding_from_overlay_env()
+
+
+def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding | None:
+    """Resolve the binding projection READS go through, or ``None``.
+
+    The read overlay's binding when ``OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY``
+    is set, otherwise :func:`projection_runtime_binding_from_overlay_env`
+    exactly. Only the read resolvers (the projection read node and the local
+    dashboard) call this. The delegate-skill claim store and evidence store keep
+    calling the runtime resolver, so a read binding that logs in as a reader can
+    never become their write principal (OMN-20159).
+
+    A read variable that is set but names a missing or invalid file raises, as
+    the runtime variable does; it never falls back to the runtime binding. A
+    blank value is unset, as it is for the runtime variable.
+    """
+    overlay_path = os.environ.get(PROJECTION_READ_BINDING_OVERLAY_ENV, "").strip()
+    if not overlay_path:
+        return _projection_runtime_binding_from_overlay_env()
+    return load_projection_runtime_binding_overlay(overlay_path)
 
 
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:
