@@ -20,11 +20,9 @@ requirements:
         statement: "A cause is dispatched at most twice per park episode and then parked with one escalate_operator action, its members fall back to per-PR dispatch while it is parked, and a fixer HOLD on its repo yields no dispatch and a revoke for every live lease there."
       - id: "AC5"
         statement: "An escalated PR alone becomes a singleton cause on the next tick."
-      - id: "AC6"
-        statement: "The existing scenario tests S1 to S20 keep their expected decisions."
 evidence_requirements:
   - kind: "tests"
-    description: "Execute the shared-cause tests and the unchanged S1 to S20 scenario file against the decision node."
+    description: "Execute the shared-cause tests and the unchanged S1 to S20 scenario file against the decision node. S1 to S20 pass at the merge base by design, so they are evidence here and carry no must-fail bound check."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q"
 emergency_bypass:
   enabled: false
@@ -71,11 +69,3 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k escalated_singleton"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
-  - id: "dod-scenarios-s1-s20"
-    description: "S1 to S20 are unchanged."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC6"]
