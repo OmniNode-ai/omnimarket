@@ -47,7 +47,9 @@ def test_poller_cancelled_is_pending_only_with_a_newer_run(name: str) -> None:
     text = (WORKFLOWS / name).read_text(encoding="utf-8")
     assert re.search(r"failure\|cancelled\|", text) is None
     assert re.search(r"^\s+cancelled\)\n", text, re.M)
-    assert "actions/workflows/call-occ-preflight.yml/runs?head_sha=" in text
+    assert "check_name=repo-evidence%20%2F%20dod-verify" in text
+    assert ".app.id == 15368" in text
+    assert "sort_by(.id)" in text
     # Fail closed: a read error or a zero count refuses.
     assert "|| in_flight=0" in text
     cancelled_block = text.split("cancelled)\n", 1)[1].split(";;", 1)[0]
@@ -56,6 +58,6 @@ def test_poller_cancelled_is_pending_only_with_a_newer_run(name: str) -> None:
     assert "2>/dev/null" not in gh_line
     jobs = yaml.safe_load(text)["jobs"]
     poller = next(
-        j for j in jobs.values() if j.get("name") == "OCC Preflight Dependency"
+        j for j in jobs.values() if j.get("name") == "Repo Evidence Dependency"
     )
     assert poller["permissions"]["actions"] == "read"

@@ -26,11 +26,29 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    delivery was recorded (S19, S20).
 6. Companions, before any other selection (R2 rules 1 to 5), then uncovered
    members (``CoverRequest``).
-7. Product PRs: chain roots only (R3), blocked-outcome suppression by
-   fingerprint (R8), update-branch once per head, one rerun per head (R5),
+7. Shared causes, before any per-PR dispatch: a park ends at its time or on
+   a RELEASE row; a verified fix PR that merged gets one rerun per member head,
+   and the members' next grade ends the attempt. Red PRs in one repo sharing a
+   (check, failure signature) form a cluster (3 members, 2 under the landing
+   floor), largest first, absorbing clusters mostly inside an earlier cause; a
+   parked PR no cluster covers is a cause of one. Causes dispatch in floor,
+   size and key order under the cause caps, inside the pool, with a two-attempt
+   budget per park episode; a spent cause parks and escalates once.
+8. Product PRs: chain roots only (R3), update-branch once per head, a head
+   held at BLOCKED only by stale cancelled check copies refreshed once per
+   head and at most ``max_stale_refreshes`` times per PR (then DEGRADED, no
+   worker), blocked-outcome suppression by fingerprint (R8), one rerun per
+   head (R5),
    the escalation ladder and parking (R1), the token (R6), pinned merge under a
    live lease (``PinMerge``), and dispatch in priority order (R4) under the
-   worker pool, the load pause and the available engines (D5).
+   worker pool, the per-repo cap, the load pause and the available engines
+   (D5). No per-PR worker is dispatched for a member of a cause that holds a
+   live lease or an open fix PR, or a park an owner's CLAIM covers; a park
+   alone releases its members to per-PR dispatch (the fallback).
+
+A fixer HOLD (a repo, or all) dispatches no worker in its scope and revokes
+every live lease there through the kill sequence; merges, reruns and branch
+updates go on.
 
 Actions for an observe-only repo are returned in ``observed_actions`` and never
 performed; no worker is dispatched in a draining repo.
@@ -39,11 +57,13 @@ performed; no worker is dispatched in a draining repo.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
+    CAUSE_EXCLUDED_SUSPENSIONS,
     RERUNNABLE_RED_CLASSES,
     EnumLandingActionKind,
     EnumLandingBriefClass,
@@ -62,10 +82,12 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingRedClass,
     EnumLandingRefUpdateKind,
     EnumLandingResultKind,
+    EnumLandingSuspension,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     BRIEF_INSTRUCTIONS,
     ModelLandingAction,
+    ModelLandingCauseBrief,
     ModelLandingCompanionVerdictRow,
     ModelLandingDecision,
     ModelLandingDegraded,
@@ -74,7 +96,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
     ModelLandingWorkerBrief,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
+    FIXER_HOLD_ALL,
     ModelLandingBlockerRef,
+    ModelLandingCauseEscalation,
     ModelLandingCompanionFacts,
     ModelLandingFacts,
     ModelLandingPrFacts,
@@ -83,6 +107,8 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingWorkerResult,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+    ModelLandingCausePair,
+    ModelLandingCauseRecord,
     ModelLandingControllerState,
     ModelLandingEligibilityRerun,
     ModelLandingLease,
@@ -99,11 +125,75 @@ _INVALID_REASON: dict[EnumLandingResultKind, EnumLandingOutcomeReason] = {
     EnumLandingResultKind.BLOCKED: EnumLandingOutcomeReason.BARE_BLOCKED,
     EnumLandingResultKind.UNPARSEABLE: EnumLandingOutcomeReason.UNPARSEABLE,
 }
+_CAUSE_RESULT_KINDS: frozenset[EnumLandingResultKind] = frozenset(
+    {
+        EnumLandingResultKind.CAUSE_FIX_SUBMITTED,
+        EnumLandingResultKind.CAUSE_NOT_SHARED,
+    }
+)
+
+
+CAUSE_PREFIX = "cause:"
+UNREAD = "unread"
+SIGNATURE_TEXT_LIMIT = 300
+
+_GENERIC_EXIT = re.compile(r"^Process completed with exit code \d+\.?$")
+_TIMESTAMP = re.compile(
+    r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"
+)
+_SHA = re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,64}\b")
+_PR_NUMBER = re.compile(r"#\d+")
+_BRACKETED = re.compile(r"\[[^\[\]]*\]")
+_DIGITS = re.compile(r"\d+")
+_SPACE = re.compile(r"\s+")
+
+
+def is_cause(subject: str) -> bool:
+    """Whether a subject is a cause key rather than a PR."""
+    return subject.startswith(CAUSE_PREFIX)
 
 
 def repo_of(subject: str) -> str:
-    """The ``owner/name`` of a ``repo#pr`` subject (a repo subject is itself)."""
+    """The ``owner/name`` of a ``repo#pr`` subject or a cause key (a repo is itself)."""
+    if is_cause(subject):
+        return subject[len(CAUSE_PREFIX) :].rsplit(":", 1)[0]
     return subject.split("#", 1)[0]
+
+
+def cause_key(repo: str, signature: str) -> str:
+    """``cause:<owner>/<repo>:<signature>``."""
+    return f"{CAUSE_PREFIX}{repo}:{signature}"
+
+
+def normalize_annotation(text: str) -> str:
+    """A failure annotation with everything that varies per PR or per run replaced.
+
+    The generic "Process completed with exit code N" line is skipped;
+    timestamps, shas, ``#n`` references, bracketed id lists and digit runs are
+    replaced; whitespace is collapsed; the result is cut to 300 characters.
+    """
+    lines = (line.strip() for line in text.splitlines())
+    out = " ".join(line for line in lines if line and not _GENERIC_EXIT.match(line))
+    out = _TIMESTAMP.sub("<ts>", out)
+    out = _SHA.sub("<sha>", out)
+    out = _PR_NUMBER.sub("#<n>", out)
+    out = _BRACKETED.sub("[<ids>]", out)
+    out = _DIGITS.sub("<n>", out)
+    return _SPACE.sub(" ", out).strip()[:SIGNATURE_TEXT_LIMIT]
+
+
+def normalize_signature(check: str, text: str | None) -> str:
+    """The failure signature of one red check: 12 hex of sha256(check, normalized text).
+
+    A check with no annotation, or one that normalizes to nothing, is
+    ``unread`` and never clusters.
+    """
+    if text is None:
+        return UNREAD
+    normalized = normalize_annotation(text)
+    if not normalized:
+        return UNREAD
+    return hashlib.sha256(f"{check}\n{normalized}".encode()).hexdigest()[:12]
 
 
 def rebuild_key(target_repo: str, members: tuple[ModelLandingMemberRef, ...]) -> str:
@@ -162,6 +252,10 @@ class _Tick:
     token: str | None
     next_lease_id: int
     close_requested: set[str]
+    causes: dict[str, ModelLandingCauseRecord] = field(default_factory=dict)
+    hold: set[str] = field(default_factory=set)
+    formed: set[str] = field(default_factory=set)
+    suppressed: set[str] = field(default_factory=set)
     elig_reruns: list[ModelLandingEligibilityRerun] = field(default_factory=list)
     actions: list[ModelLandingAction] = field(default_factory=list)
     observed: list[ModelLandingAction] = field(default_factory=list)
@@ -193,6 +287,10 @@ class _Tick:
     def fingerprint(self, pr: str) -> str:
         facts = self.prs.get(pr)
         return blocker_fingerprint(facts.blocker_refs) if facts is not None else ""
+
+    def held(self, repo: str) -> bool:
+        """Under a fixer HOLD: no dispatch, and every live lease is revoked."""
+        return FIXER_HOLD_ALL in self.hold or repo in self.hold
 
 
 # ---------------------------------------------------------------- escalation
@@ -306,6 +404,9 @@ def _read_result(t: _Tick, result: ModelLandingWorkerResult) -> None:
     ):
         t.emit(discard)
         return
+    if is_cause(lease.pr):
+        _read_cause_result(t, lease, result)
+        return
     pr = lease.pr
     subj = t.subject(pr)
     kind = result.kind
@@ -333,6 +434,8 @@ def _read_result(t: _Tick, result: ModelLandingWorkerResult) -> None:
             outcome = EnumLandingOutcome.EXTERNAL_BLOCKER
         else:
             reason = EnumLandingOutcomeReason.BARE_BLOCKED
+    elif kind in _CAUSE_RESULT_KINDS:  # a cause result from a per-PR worker
+        reason = EnumLandingOutcomeReason.UNVERIFIED_CLAIM
     else:  # fix_submitted
         reason = _verify_fix(lease, result, subj)
         if reason is EnumLandingOutcomeReason.NONE:
@@ -387,6 +490,9 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
     alive = probe is None or probe.group_alive or probe.tagged_alive
     if not alive:
         del t.leases[pr]
+        if is_cause(pr):
+            _cause_lease_ended(t, lease)
+            return
         if lease.result_recorded_at is None:
             if lease.revoked:
                 why = EnumLandingOutcomeReason.REVOKED
@@ -399,7 +505,7 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
                 _escalate(t, pr)
         return
     if (
-        repo_of(pr) in t.draining
+        (repo_of(pr) in t.draining or t.held(repo_of(pr)))
         and lease.result_recorded_at is None
         and not lease.revoked
     ):
@@ -555,11 +661,14 @@ def _try_dispatch(
 ) -> bool:
     """Dispatch one worker, when the pool, the load and the engines allow (D5, P7)."""
     policy = t.facts.policy
-    if repo_of(subject) in t.draining or subject in t.leases:
+    repo = repo_of(subject)
+    if repo in t.draining or t.held(repo) or subject in t.leases:
         return False
     if t.facts.load1 > policy.load_pause_threshold:
         return False
     if len(t.leases) >= policy.max_workers:
+        return False
+    if sum(1 for s in t.leases if repo_of(s) == repo) >= policy.max_workers_per_repo:
         return False
     rec = t.record_of(subject)
     available = set(t.facts.available_engines)
@@ -776,6 +885,597 @@ def _cover(t: _Tick) -> None:
         _request(t, unc.target_repo, members, None)
 
 
+# ------------------------------------------------------------------- causes
+def _cause_lease_ended(t: _Tick, lease: ModelLandingLease) -> None:
+    """A cause lease confirmed terminated with no result.
+
+    The deadline passing with the process alive spends an attempt, and so does
+    an exit with no result at or after the spawn window (LC-F2: counted
+    nowhere, a cause whose worker keeps dying was redispatched without bound).
+    Only an exit inside the window (a usage limit, a spawn failure) counts
+    toward the spawn-failure budget instead; a revoke spends nothing.
+    """
+    if lease.result_recorded_at is not None:
+        return
+    policy = t.facts.policy
+    if lease.revoked:
+        why = EnumLandingOutcomeReason.REVOKED
+    elif t.now >= lease.deadline_at:
+        why = EnumLandingOutcomeReason.DEADLINE
+    else:
+        why = EnumLandingOutcomeReason.EXITED
+    t.recorded.append(
+        ModelLandingRecordedOutcome(
+            pr=lease.pr,
+            lease_id=lease.lease_id,
+            outcome=EnumLandingOutcome.TIMED_OUT,
+            reason=why,
+        )
+    )
+    rec = t.causes.get(lease.pr)
+    if rec is None:
+        return
+    update: dict[str, object] = {"outcome": EnumLandingOutcome.TIMED_OUT, "reason": why}
+    window = timedelta(seconds=policy.cause_spawn_failure_seconds)
+    if why is EnumLandingOutcomeReason.EXITED and t.now - lease.dispatched_at < window:
+        update["spawn_failures"] = rec.spawn_failures + 1
+    elif why is not EnumLandingOutcomeReason.REVOKED:
+        update["attempts"] = rec.attempts + 1
+    t.causes[lease.pr] = rec.model_copy(update=update)
+
+
+def _read_cause_result(
+    t: _Tick, lease: ModelLandingLease, result: ModelLandingWorkerResult
+) -> None:
+    """A cause worker's one result: recorded, verified, and one attempt spent."""
+    key = lease.pr
+    kind = result.kind
+    outcome = EnumLandingOutcome.INVALID
+    reason = EnumLandingOutcomeReason.NONE
+    if kind is EnumLandingResultKind.CAUSE_FIX_SUBMITTED:
+        fix = t.prs.get(result.fix_ref) if result.fix_ref else None
+        verified = (
+            fix is not None
+            and result.fix_head is not None
+            and (
+                fix.state is EnumLandingPrState.MERGED
+                or (
+                    fix.state is EnumLandingPrState.OPEN
+                    and fix.head_sha == result.fix_head
+                )
+            )
+        )
+        if verified:
+            outcome = EnumLandingOutcome.CAUSE_FIX_SUBMITTED
+        else:
+            reason = EnumLandingOutcomeReason.UNVERIFIED_CLAIM
+    elif kind is EnumLandingResultKind.CAUSE_NOT_SHARED:
+        outcome = EnumLandingOutcome.CAUSE_NOT_SHARED
+    elif kind is EnumLandingResultKind.EXTERNAL_BLOCKER:
+        if result.blocker_kind is not None and result.blocker_ref:
+            outcome = EnumLandingOutcome.EXTERNAL_BLOCKER
+        else:
+            reason = EnumLandingOutcomeReason.BARE_BLOCKED
+    elif kind in _INVALID_REASON:
+        reason = _INVALID_REASON[kind]
+    else:  # a per-PR result from a cause worker
+        reason = EnumLandingOutcomeReason.UNVERIFIED_CLAIM
+    t.leases[key] = lease.model_copy(update={"result_recorded_at": t.now})
+    t.recorded.append(
+        ModelLandingRecordedOutcome(
+            pr=key, lease_id=lease.lease_id, outcome=outcome, reason=reason
+        )
+    )
+    if outcome is EnumLandingOutcome.INVALID:
+        t.violations.append(
+            ModelLandingViolation(pr=key, lease_id=lease.lease_id, reason=reason)
+        )
+    rec = t.causes.get(key)
+    if rec is None:
+        return
+    update: dict[str, object] = {
+        "attempts": rec.attempts + 1,
+        "outcome": outcome,
+        "reason": reason,
+    }
+    if outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED:
+        update.update(fix_ref=result.fix_ref, fix_head=result.fix_head, rerun_at=None)
+    elif outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
+        # back to the per-PR path at rung 0; the key stays blocked for this set
+        current = tuple(
+            ModelLandingMemberRef(pr=m.pr, head_sha=t.prs[m.pr].head_sha)
+            for m in rec.members
+            if m.pr in t.prs
+        )
+        if current:
+            update["members"] = current
+        for m in current:
+            t.put_record(
+                m.pr,
+                ladder_index=0,
+                parked_head=None,
+                parked_fingerprint="",
+                awaiting_head=None,
+            )
+    t.causes[key] = rec.model_copy(update=update)
+
+
+def _parked(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    return rec.parked_until is not None and t.now < rec.parked_until
+
+
+def _leased_or_fixing(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    leased = (
+        rec.key in t.leases and rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED
+    )
+    fixing = rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED
+    return leased or fixing
+
+
+def _active(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """A live cause: a live lease, a fix PR in flight, or a park."""
+    return _leased_or_fixing(t, rec) or _parked(t, rec)
+
+
+def _holds_members(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """A cause holding its members off per-PR dispatch.
+
+    A live lease, a fix PR in flight, or a park that an owner's CLAIM still
+    covers. A park alone does not: its members take the per-PR path.
+    """
+    return _leased_or_fixing(t, rec) or (_parked(t, rec) and _owned(t, rec))
+
+
+def _blocks(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """cause_not_shared blocks its key until a member's head moves or it leaves."""
+    if rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED:
+        return False
+    for m in rec.members:
+        p = t.prs.get(m.pr)
+        if p is None or p.state is not EnumLandingPrState.OPEN:
+            return False
+        if p.head_sha != m.head_sha:
+            return False
+    return True
+
+
+def _owned(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """Owned by a live CLAIM naming the cause (by key, or by its repo and a check)."""
+    checks = {pair.check for pair in rec.pairs}
+    return any(
+        owner.cause == rec.key
+        or (owner.cause is None and owner.repo == rec.repo and owner.check in checks)
+        for owner in t.facts.cause_owners
+    )
+
+
+def _keep_cause(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    return (
+        rec.key in t.formed or rec.key in t.leases or _active(t, rec) or _blocks(t, rec)
+    )
+
+
+def _regraded(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """Every member rerun after the fix merged has graded again (or moved on)."""
+    assert rec.rerun_at is not None
+    for m in rec.members:
+        p = t.prs.get(m.pr)
+        if p is None or p.state is not EnumLandingPrState.OPEN:
+            continue
+        if ModelLandingMemberRef(pr=m.pr, head_sha=p.head_sha) not in rec.rerun_heads:
+            continue  # its head moved: its own change, graded with the clusters
+        if p.ci is EnumLandingCi.PENDING:
+            return False
+        if not any(
+            run.head_sha == p.head_sha and run.created_at >= rec.rerun_at
+            for run in p.rerun_runs
+        ):
+            return False
+    return True
+
+
+def _advance_causes(t: _Tick) -> None:
+    """Parks end; a merged fix reruns each member head once; a re-grade ends the attempt."""
+    park = timedelta(hours=t.facts.policy.cause_park_hours)
+    for key in sorted(t.causes):
+        rec = t.causes[key]
+        if rec.parked_until is not None:
+            start = rec.parked_until - park
+            released = any(
+                r.cause == key and r.at >= start for r in t.facts.cause_releases
+            )
+            if t.now >= rec.parked_until or released:
+                rec = rec.model_copy(
+                    update={
+                        "parked_until": None,
+                        "attempts": 0,
+                        "spawn_failures": 0,
+                        "outcome": None,
+                        "reason": EnumLandingOutcomeReason.NONE,
+                    }
+                )
+            else:
+                t.degraded.append(
+                    ModelLandingDegraded(
+                        reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED, subject=key
+                    )
+                )
+        if rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED and rec.fix_ref:
+            fix = t.prs.get(rec.fix_ref)
+            ended = False
+            if fix is None or fix.state is EnumLandingPrState.OPEN:
+                pass  # members wait on the fix PR (an unread fix PR fails closed)
+            elif fix.state is EnumLandingPrState.CLOSED:
+                ended = True  # closed unmerged: the attempt failed
+            elif rec.rerun_at is None:
+                heads: list[ModelLandingMemberRef] = []
+                for m in sorted(rec.members, key=lambda m: m.pr):
+                    p = t.prs.get(m.pr)
+                    if p is None or p.state is not EnumLandingPrState.OPEN:
+                        continue
+                    ref = ModelLandingMemberRef(pr=m.pr, head_sha=p.head_sha)
+                    if ref in rec.rerun_heads:
+                        continue
+                    heads.append(ref)
+                    t.emit(
+                        ModelLandingAction(
+                            kind=EnumLandingActionKind.RERUN,
+                            subject=m.pr,
+                            head_sha=p.head_sha,
+                        )
+                    )
+                rec = rec.model_copy(
+                    update={
+                        "rerun_at": t.now,
+                        "rerun_heads": (*rec.rerun_heads, *heads),
+                    }
+                )
+            else:
+                ended = _regraded(t, rec)
+            if ended:
+                rec = rec.model_copy(
+                    update={
+                        "outcome": None,
+                        "reason": EnumLandingOutcomeReason.NONE,
+                        "rerun_at": None,
+                    }
+                )
+        t.causes[key] = rec
+
+
+def _cause_candidate(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    """A red PR that may join a cluster.
+
+    A person's hold, a draft and do-not-land never join; a lane's CLAIM
+    (``owned``) does; a ``gate`` joins once it is older than the stall window.
+    A head whose one rerun is still unused reruns first.
+    """
+    if (
+        p.state is not EnumLandingPrState.OPEN
+        or p.ci is not EnumLandingCi.RED
+        or p.collaborator
+    ):
+        return False
+    if any(s in CAUSE_EXCLUDED_SUSPENSIONS for s in p.suspensions):
+        return False
+    if EnumLandingSuspension.GATE in p.suspensions:
+        stall = timedelta(minutes=t.facts.policy.wait_stall_minutes)
+        if p.gate_since is None or t.now - p.gate_since <= stall:
+            return False
+    return not (
+        p.red_class in RERUNNABLE_RED_CLASSES
+        and p.head_sha not in t.record_of(p.pr).rerun_heads
+    )
+
+
+def _pairs_of(t: _Tick, p: ModelLandingPrFacts) -> list[tuple[str, str, str]]:
+    """The (check, signature, annotation) of each readable, clusterable red check."""
+    excluded = set(t.facts.policy.cluster_excluded_checks)
+    out = []
+    for check in sorted(set(p.red_checks)):
+        if check in excluded:
+            continue
+        text = p.red_annotations.get(check)
+        signature = normalize_signature(check, text)
+        if signature != UNREAD and text is not None:
+            out.append((check, signature, text))
+    return out
+
+
+@dataclass
+class _Cause:
+    key: str
+    repo: str
+    pairs: list[ModelLandingCausePair]
+    members: set[str]
+
+
+def _parked_pr(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    rec = t.record_of(p.pr)
+    return (
+        rec.parked_head is not None
+        and rec.parked_head == p.head_sha
+        and rec.parked_fingerprint == t.fingerprint(p.pr)
+    )
+
+
+def _form_causes(t: _Tick) -> None:
+    """Clusters, largest first with absorption, then escalated singletons; upserted by key."""
+    policy = t.facts.policy
+    floor = set(t.facts.floor_breached_repos)
+    held_members = {
+        m.pr for rec in t.causes.values() if _active(t, rec) for m in rec.members
+    }
+    groups: dict[tuple[str, str, str], set[str]] = {}
+    examples: dict[tuple[str, str, str], str] = {}
+    for p in sorted(t.prs.values(), key=lambda p: p.pr):
+        if p.pr in held_members or not _cause_candidate(t, p):
+            continue
+        for check, signature, text in _pairs_of(t, p):
+            group = (repo_of(p.pr), check, signature)
+            groups.setdefault(group, set()).add(p.pr)
+            examples.setdefault(group, text)
+
+    def need(repo: str) -> int:
+        if repo in floor:
+            return policy.cluster_min_members_floor
+        return policy.cluster_min_members
+
+    clusters = sorted(
+        ((g, frozenset(m)) for g, m in groups.items() if len(m) >= need(g[0])),
+        key=lambda c: (-len(c[1]), c[0]),
+    )
+    chosen: list[_Cause] = []
+    taken: dict[str, str] = {}
+    for (repo, check, signature), members in clusters:
+        pair = ModelLandingCausePair(
+            check=check,
+            signature=signature,
+            example=examples[(repo, check, signature)],
+            members=len(members),
+        )
+        host = next(
+            (
+                c
+                for c in chosen
+                if c.repo == repo
+                and len(members & c.members)
+                >= policy.cluster_absorb_ratio * len(members)
+            ),
+            None,
+        )
+        if host is not None:
+            host.pairs.append(pair)
+            for pr in sorted(members - taken.keys()):
+                host.members.add(pr)
+                taken[pr] = host.key
+            continue
+        free = set(members - taken.keys())
+        if len(free) < need(repo):
+            continue
+        cause = _Cause(cause_key(repo, signature), repo, [pair], free)
+        chosen.append(cause)
+        taken.update(dict.fromkeys(free, cause.key))
+    for p in sorted(t.prs.values(), key=lambda p: p.pr):
+        if (
+            p.pr in taken
+            or p.pr in held_members
+            or p.state is not EnumLandingPrState.OPEN
+            or p.collaborator
+            or any(s in CAUSE_EXCLUDED_SUSPENSIONS for s in p.suspensions)
+            or not _parked_pr(t, p)
+        ):
+            continue
+        pairs = [
+            ModelLandingCausePair(check=c, signature=s, example=x, members=1)
+            for c, s, x in _pairs_of(t, p)
+        ]
+        if not pairs:
+            continue  # unread: no signature to key a cause by; it stays parked
+        cause = _Cause(
+            cause_key(repo_of(p.pr), pairs[0].signature), repo_of(p.pr), pairs, {p.pr}
+        )
+        if any(c.key == cause.key for c in chosen):
+            continue
+        chosen.append(cause)
+        taken[p.pr] = cause.key
+    for cause in chosen:
+        _upsert_cause(t, cause)
+
+
+def _upsert_cause(t: _Tick, cause: _Cause) -> None:
+    members = tuple(
+        ModelLandingMemberRef(pr=pr, head_sha=t.prs[pr].head_sha)
+        for pr in sorted(cause.members)
+    )
+    rec = t.causes.get(cause.key)
+    if rec is not None and rec.outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
+        if _blocks(t, rec):
+            return  # not shared for this member set: no cause, members stay per-PR
+        rec = None  # a member moved: a fresh cause
+    if rec is None:
+        rec = ModelLandingCauseRecord(
+            key=cause.key, repo=cause.repo, pairs=tuple(cause.pairs), members=members
+        )
+    elif _active(t, rec):  # new PRs failing an active cause join it
+        known = {(p.check, p.signature) for p in rec.pairs}
+        pairs = (
+            *rec.pairs,
+            *(p for p in cause.pairs if (p.check, p.signature) not in known),
+        )
+        joined = {m.pr: m for m in rec.members}
+        for m in members:
+            joined.setdefault(m.pr, m)
+        rec = rec.model_copy(
+            update={
+                "pairs": pairs,
+                "members": tuple(joined[pr] for pr in sorted(joined)),
+            }
+        )
+    else:
+        rec = rec.model_copy(update={"pairs": tuple(cause.pairs), "members": members})
+    t.causes[cause.key] = rec
+    t.formed.add(cause.key)
+
+
+def _covering_escalation(
+    t: _Tick, rec: ModelLandingCauseRecord
+) -> ModelLandingCauseEscalation | None:
+    """The ledger MSG that already escalates this cause's open park episode (LC-F3).
+
+    A row covers the episode when it is younger than a park and no RELEASE row
+    naming the cause is dated at or after it. The newest such row wins, ties by
+    key, so the choice does not depend on input order.
+    """
+    park = timedelta(hours=t.facts.policy.cause_park_hours)
+    rows = [
+        r
+        for r in t.facts.cause_escalations
+        if r.cause == rec.key
+        and t.now < r.at + park
+        and not any(
+            rel.cause == rec.key and rel.at >= r.at for rel in t.facts.cause_releases
+        )
+    ]
+    return max(rows, key=lambda r: (r.at, r.dedupe_key), default=None)
+
+
+def _park(t: _Tick, rec: ModelLandingCauseRecord) -> None:
+    """A spent cause parks; one escalation per park episode, deduped on the ledger row.
+
+    When the ledger already holds this episode's operator MSG (the controller
+    died between the append and the state write), the park adopts that row's
+    time and key and emits nothing: the state file only caches the answer.
+    """
+    park = timedelta(hours=t.facts.policy.cause_park_hours)
+    row = _covering_escalation(t, rec)
+    if row is not None:
+        until = row.at + park
+        dedupe = row.dedupe_key
+    else:
+        until = t.now + park
+        dedupe = f"{rec.key}@{until.isoformat()}"
+    t.causes[rec.key] = rec.model_copy(
+        update={"parked_until": until, "escalated": dedupe}
+    )
+    t.degraded.append(
+        ModelLandingDegraded(
+            reason=EnumLandingDegradedReason.CAUSE_EXHAUSTED, subject=rec.key
+        )
+    )
+    if row is None and rec.escalated != dedupe:
+        t.emit(
+            ModelLandingAction(
+                kind=EnumLandingActionKind.ESCALATE_OPERATOR,
+                subject=rec.key,
+                members=rec.members,
+                dedupe_key=dedupe,
+            )
+        )
+
+
+def _try_dispatch_cause(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """One lease per cause key, under the cause caps and inside the pool (D5)."""
+    policy = t.facts.policy
+    key = rec.key
+    if key in t.leases or _parked(t, rec) or _active(t, rec) or _owned(t, rec):
+        return False
+    if rec.repo in t.draining or t.held(rec.repo):
+        return False
+    if (
+        rec.attempts >= policy.cause_attempt_budget
+        or rec.spawn_failures >= policy.cause_spawn_failure_budget
+    ):
+        _park(t, rec)
+        return False
+    if t.facts.load1 > policy.load_pause_threshold:
+        return False
+    if len(t.leases) >= policy.max_workers:
+        return False
+    cause_leases = [s for s in t.leases if is_cause(s)]
+    if len(cause_leases) >= policy.max_cause_workers:
+        return False
+    if sum(1 for s in cause_leases if repo_of(s) == rec.repo) >= (
+        policy.max_cause_workers_per_repo
+    ):
+        return False
+    if (
+        sum(1 for s in t.leases if repo_of(s) == rec.repo)
+        >= policy.max_workers_per_repo
+    ):
+        return False
+    ladder = policy.cause_engine_ladder
+    available = set(t.facts.available_engines)
+    engine = next(
+        (e for e in ladder[min(rec.attempts, len(ladder) - 1) :] if e in available),
+        None,
+    )
+    if engine is None:
+        return False
+    lease_id = t.next_lease_id
+    t.next_lease_id += 1
+    deadline = t.now + timedelta(seconds=policy.cause_lease_seconds)
+    head = rec.members[0].head_sha
+    checks = tuple(sorted({pair.check for pair in rec.pairs}))
+    t.leases[key] = ModelLandingLease(
+        pr=key,
+        lease_id=lease_id,
+        brief_class=EnumLandingBriefClass.SHARED_CAUSE,
+        engine=engine,
+        dispatched_at=t.now,
+        deadline_at=deadline,
+        dispatch_head=head,
+        seen_heads=(head,),
+        last_seen_head=head,
+        dispatch_red_checks=checks,
+    )
+    t.causes[key] = rec.model_copy(
+        update={"outcome": None, "reason": EnumLandingOutcomeReason.NONE}
+    )
+    base = {
+        check
+        for repo_checks in t.facts.base_red_checks
+        if repo_checks.repo == rec.repo
+        for check in repo_checks.checks
+    }
+    t.emit(
+        ModelLandingAction(
+            kind=EnumLandingActionKind.DISPATCH_WORKER,
+            subject=key,
+            head_sha=head,
+            lease_id=lease_id,
+            members=rec.members,
+            cause_brief=ModelLandingCauseBrief(
+                cause=key,
+                repo=rec.repo,
+                pairs=rec.pairs,
+                members=rec.members,
+                base_failing_checks=tuple(c for c in checks if c in base),
+                attempt=rec.attempts + 1,
+                lease_id=lease_id,
+                engine=engine,
+                deadline_at=deadline,
+                instructions=BRIEF_INSTRUCTIONS[EnumLandingBriefClass.SHARED_CAUSE],
+            ),
+        )
+    )
+    return True
+
+
+def _dispatch_causes(t: _Tick) -> None:
+    """Causes go before per-PR workers: floor-breached repos first, then size, then key."""
+    floor = set(t.facts.floor_breached_repos)
+    order = sorted(
+        (t.causes[k] for k in t.formed),
+        key=lambda r: (r.repo not in floor, -len(r.members), r.key),
+    )
+    for rec in order:
+        _try_dispatch_cause(t, t.causes[rec.key])
+    for rec in t.causes.values():
+        if _holds_members(t, rec) or (rec.key in t.formed and _owned(t, rec)):
+            t.suppressed.update(m.pr for m in rec.members)
+
+
 # ----------------------------------------------------------------------- PRs
 def _mergeable(p: ModelLandingPrFacts) -> bool:
     return p.ci is EnumLandingCi.GREEN and p.merge_state is EnumLandingMergeState.CLEAN
@@ -799,6 +1499,42 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     t.emit(
         ModelLandingAction(
             kind=EnumLandingActionKind.MERGE, subject=p.pr, head_sha=p.head_sha
+        )
+    )
+
+
+def _stale_cancelled(p: ModelLandingPrFacts) -> bool:
+    """BLOCKED with cancelled check copies and no failed check: a stale copy holds it."""
+    return (
+        p.merge_state is EnumLandingMergeState.BLOCKED
+        and p.ci is not EnumLandingCi.PENDING
+        and bool(p.cancelled_checks)
+        and not p.red_checks
+    )
+
+
+def _refresh_stale_cancelled(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> None:
+    """One update-branch per head, at most ``max_stale_refreshes`` per PR; never a worker."""
+    if p.head_sha in rec.update_heads:  # refreshed already: wait for the new head
+        return
+    if rec.stale_refreshes >= t.facts.policy.max_stale_refreshes:
+        t.degraded.append(
+            ModelLandingDegraded(
+                reason=EnumLandingDegradedReason.STALE_REFRESH_EXHAUSTED,
+                subject=p.pr,
+            )
+        )
+        return
+    t.put_record(
+        p.pr,
+        update_heads=(*rec.update_heads, p.head_sha),
+        stale_refreshes=rec.stale_refreshes + 1,
+    )
+    t.emit(
+        ModelLandingAction(
+            kind=EnumLandingActionKind.UPDATE_BRANCH, subject=p.pr, head_sha=p.head_sha
         )
     )
 
@@ -876,6 +1612,9 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
     if _mergeable(p):
         _merge(t, p)
         return
+    if _stale_cancelled(p):
+        _refresh_stale_cancelled(t, p, rec)
+        return
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:
         return
@@ -890,6 +1629,8 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
                 kind=EnumLandingActionKind.RERUN, subject=pr, head_sha=p.head_sha
             )
         )
+        return
+    if pr in t.suppressed:  # a member of a leased, fixing or owned parked cause
         return
     if _brief_class(p, rec.ladder_index) is None:
         return
@@ -943,6 +1684,8 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         token=state.token_holder,
         next_lease_id=state.next_lease_id,
         close_requested=set(state.close_requested),
+        causes={c.key: c for c in state.causes},
+        hold=set(facts.fixer_hold),
     )
     holder = t.prs.get(t.token) if t.token is not None else None
     if t.token is not None and (
@@ -963,6 +1706,9 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         if comp.state is EnumLandingPrState.OPEN:
             _companion(t, comp)
     _cover(t)
+    _advance_causes(t)
+    _form_causes(t)
+    _dispatch_causes(t)
     for p in sorted(t.prs.values(), key=lambda p: _priority(t, p)):
         _product_pr(t, p)
     return _decision(t)
@@ -995,6 +1741,9 @@ def _decision(t: _Tick) -> ModelLandingDecision:
             ModelLandingEligibilityRerun(pr=pr, companion=c) for pr, c in reruns
         ),
         close_requested=tuple(sorted(t.close_next)),
+        causes=tuple(
+            t.causes[k] for k in sorted(t.causes) if _keep_cause(t, t.causes[k])
+        ),
     )
     return ModelLandingDecision(
         tick=t.facts.tick,
@@ -1017,9 +1766,15 @@ class HandlerPrLandingDecision:
 
 
 __all__: list[str] = [
+    "CAUSE_PREFIX",
+    "UNREAD",
     "HandlerPrLandingDecision",
     "blocker_fingerprint",
+    "cause_key",
     "decide_landing",
+    "is_cause",
+    "normalize_annotation",
+    "normalize_signature",
     "rebuild_key",
     "repo_of",
 ]

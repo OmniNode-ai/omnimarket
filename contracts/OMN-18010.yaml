@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18010"
+title: "Post-release dev version bump disarms the release-identity gate"
+summary: "After a release is tagged on dev, the automated bump PR moves pyproject.toml and uv.lock to the next patch so dev's version is ahead of every published release it descends from."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-post-release-dev-bump"
+    statement: "Dev's package version is strictly above the highest published release tag reachable from it, and uv.lock pins the same version."
+    acceptance:
+      - id: "AC1"
+        statement: "scripts/check_release_identity.py in strict mode exits 0 on the bumped tree and uv.lock pins the pyproject.toml version."
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the release-identity gate in strict mode against the tree and compare the uv.lock pin with pyproject.toml."
+    command: "uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-post-release-dev-bump"
+    description: "The bumped version is ahead of every reachable release and uv.lock agrees."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
