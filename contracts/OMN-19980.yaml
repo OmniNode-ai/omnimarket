@@ -6,6 +6,14 @@ summary: "Adds tests/test_single_savings_definition.py, which fails on a string 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-single-savings-guard"
+    statement: |-
+      A CI guard fails a baseline-model literal in a savings view and SQL that multiplies tokens by a price outside node_metering_summary_compute. The ticket's AC2 (the six pages read savings only from metering-summary.v1) is omnidash page work and is not claimed here.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The guard fails on a planted `'claude-opus-4.1' AS baseline_model` and on SQL multiplying tokens by a price outside `node_metering_summary_compute` -- falsifier: uv run pytest tests/test_single_savings_definition.py passes with the planted positive control
 evidence_requirements:
   - kind: tests
     description: "AC1: the single-savings-definition guard passes with its planted positive controls and asserts that ci.yml runs it as a named blocking step"
@@ -19,5 +27,7 @@ dod_evidence:
     description: "AC1: the guard fails on a planted 'claude-opus-4.1' AS baseline_model and on SQL multiplying tokens by a price outside node_metering_summary_compute; it passes on this tree and requires ci.yml to run it as a named blocking step"
     source: manual
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: "uv run pytest tests/test_single_savings_definition.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
