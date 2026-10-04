@@ -147,7 +147,8 @@ classes:
   code_review: *review_criteria
   review: *review_criteria
   summarization:
-  - criterion_id: claims_traceable
+  - &claims_traceable
+    criterion_id: claims_traceable
     description: Ticket ids, PR refs, paths, backticked tokens, long quotes and multi-digit numbers in each answer unit occur in the source.
     params:
       ticket_id_pattern: *ticket_id_pattern
@@ -161,6 +162,27 @@ classes:
       trigger_patterns:
       - '\b(?:every|all|each)\s+(?:concrete\s+)?(?:commitments?|ticket(?:\s+ids?)?s?)\b'
       - '\bkeeping ticket ids\b'
+  # OMN-20552: document answers are written from supplied facts, so their
+  # identifiers, refs, paths, quotes and numbers are checked against them the
+  # way a summary's are; before this every document attempt recorded
+  # UNDETERMINED no_rubric_for_class. The gate floor already refuses invented
+  # ids and numbers (OMN-18297); this adds paths, backticked tokens and long
+  # quotes, and records a verdict the false-pass line can be measured on.
+  # Measured on the local accepted corpus before shipping (labels blind, by
+  # Codex): this criterion refused 265 of 1242 accepted document answers and
+  # 7 of a sample of 25 were real fabrications, the rest checker misses
+  # (escaped quotes, a bare number written as a ref, derived ranges). A
+  # lexical check of stated causes was also built and not shipped: over 604
+  # accepted fact-supplied document and summarization answers stating a
+  # cause it refused 73 at its loosest setting, 14 of them real, and at best
+  # 6 of 16 at any stricter one. Both are far under the 0.8 false-refusal
+  # floor below. A cause misstated in the facts' own words, as in onex
+  # delegate run de6357ab-d4e3-42de-b6a9-3ba186160860, is caught by the
+  # offline acceptance judge (delegation_acceptance_judge_rubric.v1.yaml),
+  # where model grading lives (OMN-20164), and counts against this class's
+  # false-pass line.
+  document:
+  - *claims_traceable
   code_generation: *code_criteria
   test: *code_criteria
 
@@ -171,6 +193,7 @@ false_pass_status:
   code_review: refused
   review: refused
   summarization: refused
+  document: refused
   code_generation: refused
   test: refused
 false_pass_lines:
@@ -220,6 +243,19 @@ false_pass_lines:
     declared_case_ids: []
     floor: 0.9
     window: 'summarization: trailing 30 days'
+    method:
+      sample_size: 100
+      confidence: 0.95
+      power: 0.8
+      margin: 0.07
+      incomplete_run_treatment: count_as_failure
+  document:
+    check_id: delegation.rubric.document.false_pass
+    statistic: pass_rate
+    case_set: 'document: rubric-accepted answers'
+    declared_case_ids: []
+    floor: 0.9
+    window: 'document: trailing 30 days'
     method:
       sample_size: 100
       confidence: 0.95
@@ -299,6 +335,19 @@ false_refusal_lines:
     declared_case_ids: []
     floor: 0.8
     window: 'summarization: trailing 30 days'
+    method:
+      sample_size: 60
+      confidence: 0.95
+      power: 0.8
+      margin: 0.12
+      incomplete_run_treatment: count_as_failure
+  document:
+    check_id: delegation.rubric.document.false_refusal
+    statistic: pass_rate
+    case_set: 'document: rubric-refused answers'
+    declared_case_ids: []
+    floor: 0.8
+    window: 'document: trailing 30 days'
     method:
       sample_size: 60
       confidence: 0.95
