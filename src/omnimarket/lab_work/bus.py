@@ -172,15 +172,22 @@ _RESULT_TIMEOUT_SECONDS = 10.0
 
 def _new_admin(bootstrap_servers: str) -> Any:
     from confluent_kafka.admin import AdminClient
-    from omnibase_infra.event_bus.kafka_auth import (
-        build_confluent_auth_config_from_env,
+    from omnibase_infra.event_bus.kafka_auth import build_confluent_auth_config
+    from omnibase_infra.event_bus.lane_client_transport_binding import (
+        resolve_lane_client_transport,
+    )
+    from omnibase_infra.event_bus.models.config import (
+        ModelKafkaEventBusConfig,
     )
 
+    # Authenticate as the principal the bus itself uses: a bound lane transport
+    # for this broker wins over the ambient environment.
+    config = ModelKafkaEventBusConfig.default()
+    lane_transport = resolve_lane_client_transport(bootstrap_servers)
+    if lane_transport is not None:
+        config = config.model_copy(update=lane_transport.as_client_config_overrides())
     return AdminClient(
-        {
-            **build_confluent_auth_config_from_env(),
-            "bootstrap.servers": bootstrap_servers,
-        }
+        {**build_confluent_auth_config(config), "bootstrap.servers": bootstrap_servers}
     )
 
 

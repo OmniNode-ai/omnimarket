@@ -20,6 +20,7 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
+from omnimarket.lab_work.bus import delete_consumer_groups
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
 )
@@ -219,26 +220,32 @@ class RuntimeDelegationDispatchPort:
                 return
             await queue.put(terminal)
 
-        unsubscribe_completed = await self._event_bus.subscribe(
-            self._config.topics.completed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
-        unsubscribe_failed = await self._event_bus.subscribe(
-            self._config.topics.failed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
+        # One group per call, deleted on exit. The terminal topics are shared by
+        # every caller and a reply is matched to its caller only by the
+        # correlation id above, so a group shared between concurrent callers
+        # would split the partitions among them and hand a caller another
+        # caller's reply (and drop its own). A stable group is therefore unsafe
+        # here; the group is removed instead once both consumers have left it.
+        group_id = f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+        unsubscribes: list[Callable[[], Awaitable[None]]] = []
 
         async def unsubscribe() -> None:
-            await unsubscribe_completed()
-            await unsubscribe_failed()
+            try:
+                for leave in unsubscribes:
+                    await leave()
+            finally:
+                await delete_consumer_groups(self._event_bus, [group_id])
+
+        try:
+            for topic in (self._config.topics.completed, self._config.topics.failed):
+                unsubscribes.append(
+                    await self._event_bus.subscribe(
+                        topic, None, on_message, group_id=group_id
+                    )
+                )
+        except BaseException:
+            await unsubscribe()
+            raise
 
         return unsubscribe, queue
 

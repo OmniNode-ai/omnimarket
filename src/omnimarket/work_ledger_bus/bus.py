@@ -28,7 +28,12 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
+from omnimarket.lab_work.bus import (
+    _bytes,
+    _subscribe,
+    _uuid_or_none,
+    delete_consumer_groups,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.models import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -264,9 +269,17 @@ class WorkLedgerAppendCaller:
             )
 
     async def stop(self) -> None:
-        for unsubscribe in self._unsubscribes:
-            await unsubscribe()
-        self._unsubscribes.clear()
+        # One group per client, deleted here. The terminal topics are shared by
+        # every caller and a terminal is matched to its caller only by
+        # parent_envelope_id, so a group shared between concurrent callers would
+        # split the partitions among them and hand a caller another caller's
+        # terminal. A stable group is unsafe; the group is removed on exit.
+        try:
+            for unsubscribe in self._unsubscribes:
+                await unsubscribe()
+            self._unsubscribes.clear()
+        finally:
+            await delete_consumer_groups(self._bus, [self._group])
 
     def _terminal(self, topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
         async def on_message(message: ProtocolBusMessage) -> None:
