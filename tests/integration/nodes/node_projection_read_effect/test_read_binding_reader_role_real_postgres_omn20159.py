@@ -111,7 +111,9 @@ def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
     except Exception as exc:
         # Worded for the skip guard (scripts/ci/integration_skip_guard.yaml),
         # so a provisioned but unreachable server fails the job, not passes.
-        pytest.skip(f"no reachable Postgres: {exc}")
+        # Raised explicitly (what pytest.skip does) so a reader, and static
+        # analysis, sees that conn is always bound below.
+        raise pytest.skip.Exception(f"no reachable Postgres: {exc}") from exc
     conn.autocommit = True
     database: str | None = None
     try:
