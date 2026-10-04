@@ -13,11 +13,11 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the pre-commit config pins omnibase_core to f50d00fc7918d0b12ccd0d3497160325e32e7ac5 exactly once and no old-rev reference remains in either file -- falsifier: test "$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml
+          AC1: the canonical-file-shape hook pins omnibase_core to f50d00fc7918d0b12ccd0d3497160325e32e7ac5, every omnibase_core pin in ci.yml names that rev, and no old-rev reference remains in either file -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_canonical_file_shape_pin_omn20460.py -q
 evidence_requirements:
   - kind: "tests"
-    description: "The pre-commit config names the new omnibase_core rev once and no old-rev reference remains."
-    command: "test \"$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)\" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml"
+    description: "The pin tests pass at the head and fail at the merge base."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_canonical_file_shape_pin_omn20460.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -27,6 +27,7 @@ dod_evidence:
     description: "The new omnibase_core rev appears once in the pre-commit config and the old rev appears in neither changed file."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "test \"$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)\" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_canonical_file_shape_pin_omn20460.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
