@@ -122,3 +122,18 @@ def test_every_repo_contract_binds_every_criterion() -> None:
         assert criteria <= bound, (
             f"{path.name}: acceptance criteria missing binds_ac: {sorted(criteria - bound)}"
         )
+
+
+# OMN-20073: omnibase_core#1884 added the dependency-bot and pin-only writer-app
+# exemption to the caller-evidence dod-verify job. A pin that predates it makes
+# every bot version bump fail for binding no evidence of its own.
+_EXEMPT_REUSABLE_SHA = "a842c9654396d7898a840e54d427e04f7dea8293"
+
+
+def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
+    uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]["uses"]
+    assert uses.endswith(f"@{_EXEMPT_REUSABLE_SHA}"), (
+        "pin the omnibase_core reusable at or past omnibase_core#1884"
+    )
