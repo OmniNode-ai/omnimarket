@@ -150,6 +150,7 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.model_usage_call_event import ModelUsageCallEvent
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
 )
@@ -219,9 +220,6 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
     apply_usage_call,
-)
-from omnimarket.nodes.node_projection_usage_by_model_day.models import (
-    ModelUsageCallEvent,
 )
 from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
