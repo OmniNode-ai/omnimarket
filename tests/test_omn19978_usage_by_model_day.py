@@ -383,9 +383,11 @@ def test_exposure_is_bus_backed_at_the_model_day_grain() -> None:
 def test_exposure_is_tenant_scoped() -> None:
     """AC-T: a read for one tenant never carries another tenant's rows."""
     contract = _contract()
-    (exposure,) = load_projection_exposures_from_contract(
+    exposures = load_projection_exposures_from_contract(
         contract, str(contract["name"]), CONTRACT_PATH
     )
+    assert len(exposures) == 1
+    exposure = exposures[0]
     assert exposure.tenant_column == "tenant_id"
 
 
