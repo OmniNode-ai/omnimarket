@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20460"
+title: "The omnibase_core hook pins move to the temp-file blob read fix"
+summary: "Moves the omnibase_core rev in .pre-commit-config.yaml and the four omnibase_core git pins in .github/workflows/ci.yml from 7f20b97895f01996c5858dde385ba8991c06e708 to f50d00fc7918d0b12ccd0d3497160325e32e7ac5. No source change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-core-hook-pin-moved"
+    statement: |-
+      The omnibase_core rev in .pre-commit-config.yaml must name f50d00fc7918d0b12ccd0d3497160325e32e7ac5 exactly once, and neither .pre-commit-config.yaml nor .github/workflows/ci.yml may still reference the old rev 7f20b97895f01996c5858dde385ba8991c06e708.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the pre-commit config pins omnibase_core to f50d00fc7918d0b12ccd0d3497160325e32e7ac5 exactly once and no old-rev reference remains in either file -- falsifier: test "$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml
+evidence_requirements:
+  - kind: "tests"
+    description: "The pre-commit config names the new omnibase_core rev once and no old-rev reference remains."
+    command: "test \"$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)\" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-core-hook-pin-moved-ac1"
+    description: "The new omnibase_core rev appears once in the pre-commit config and the old rev appears in neither changed file."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "test \"$(grep -c 'rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5' .pre-commit-config.yaml)\" = 1 && ! grep -q 7f20b97895f01996c5858dde385ba8991c06e708 .pre-commit-config.yaml .github/workflows/ci.yml"
+    binds_ac: ["AC1"]
