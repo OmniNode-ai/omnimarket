@@ -1,24 +1,22 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Live readback: the facts-first prompt reaches a real model and is read (OMN-19432).
+"""Facts-first HTTP delivery, with opt-in live readback (OMN-19432).
 
-Opt-in only; CI never runs this. The hermetic suite
-(``test_facts_first_reaches_the_model_omn19432.py``) proves the bytes handed to
-the effect. That does not show a served model reads the numbered lines, so this
-module drives the real chain, ``HandlerDelegateSkill`` ->
+CI runs against a locally served endpoint through ``HandlerDelegateSkill`` ->
 ``LocalDelegationDispatchPort`` -> ``HandlerLlmDelegationCall`` -> a real HTTP
-POST, on three code-review prompts whose defect sits on a known new-file line
-the diff header places well away from 1. Each prompt runs once per arm:
+POST. The facts arm POSTs the facts, the plain arm does not, and every local
+delegation terminates completed. The deterministic answer says nothing about
+what a real model does with the facts; that is the opt-in live mode.
+
+Three code-review prompts place a defect on a known new-file line well away
+from 1. Each prompt runs under both arms:
 
 * ``plain``: the contract's ``review`` shape is flipped to ``plain`` for the run;
 * ``facts_first``: the shipped contract.
 
-For each draw it prints one ``FACTS-FIRST-LIVE`` line with the status, the line
-numbers the answer cites, and whether the known line is among them. What it
-asserts is what does not depend on sampling: the facts arm POSTs the facts, the
-plain arm does not, and every delegation reaches a terminal. The comparison is
-the evidence, read from the printed lines; a served model's answers are not an
-assertion.
+Each draw prints a ``FACTS-FIRST-LIVE`` line with the mode, status, cited lines,
+and whether the known line is among them. Live outcomes depend on sampling;
+the printed comparison is evidence, not an assertion about the model's answer.
 
 Enable with::
 
@@ -32,7 +30,10 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 from uuid import uuid4
 
@@ -58,11 +59,7 @@ from omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_fir
 )
 from omnimarket.routing import delegation_backend_resolution
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("OMN_ALLOW_LIVE_LADDER") != "1",
-    reason="live LLM call; set OMN_ALLOW_LIVE_LADDER=1 and FACTS_FIRST_LIVE_ENDPOINT_URL",
-)
-
+_LOCAL_MODEL = "facts-first-test"
 _DRAWS = 3
 _INSTRUCTION = (
     "Review this change. List each defect with the line number in the new file "
@@ -128,15 +125,97 @@ def _cited(answer: str) -> set[int]:
     return {int(n) for n in re.findall(r"(?i)\blines?\s*#?(\d{1,5})\b", answer)}
 
 
-def _backends() -> list[dict[str, Any]]:
+class _ChatCompletionHandler(BaseHTTPRequestHandler):
+    def _send_json(self, body: dict[str, Any]) -> None:
+        encoded = json.dumps(body).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def do_GET(self) -> None:
+        if self.path == "/health":
+            self._send_json({"status": "ok"})
+        elif self.path == "/v1/models":
+            self._send_json(
+                {
+                    "object": "list",
+                    "data": [{"id": _LOCAL_MODEL, "object": "model"}],
+                }
+            )
+        else:
+            self.send_error(404)
+
+    def do_POST(self) -> None:
+        if self.path != "/v1/chat/completions":
+            self.send_error(404)
+            return
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        user_turn = next(
+            message["content"]
+            for message in reversed(payload["messages"])
+            if message["role"] == "user"
+        )
+        hunk = re.search(r"@@ -\d+,\d+ \+(\d+)", user_turn)
+        if hunk is None:
+            self.send_error(400, "Expected a diff hunk")
+            return
+        answer = f"### ANSWER\nReview the change at line {hunk[1]} for a defect."
+        prompt_tokens = len(user_turn.split())
+        completion_tokens = len(answer.split())
+        self._send_json(
+            {
+                "id": "chatcmpl-local-test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": payload["model"],
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": answer},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+            }
+        )
+
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
+
+
+@pytest.fixture
+def endpoint() -> Iterator[tuple[str, str, str]]:
     url = os.environ.get("FACTS_FIRST_LIVE_ENDPOINT_URL", "").strip()
-    if not url:
-        pytest.skip("FACTS_FIRST_LIVE_ENDPOINT_URL is unset; no model to ask")
+    if os.environ.get("OMN_ALLOW_LIVE_LADDER") == "1" and url:
+        yield url, os.environ.get("FACTS_FIRST_LIVE_MODEL", "Qwen3.8-27B"), "live"
+        return
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _ChatCompletionHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield (
+            f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+            _LOCAL_MODEL,
+            "served-locally",
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def _backends(url: str, model: str) -> list[dict[str, Any]]:
     return [
         {
             "backend_id": "live-facts-first",
             "endpoint_url": url,
-            "model_name": os.environ.get("FACTS_FIRST_LIVE_MODEL", "Qwen3.8-27B"),
+            "model_name": model,
             "tier": "local",
             "max_tokens": 8192,
             "timeout_ms": 200000,
@@ -146,14 +225,16 @@ def _backends() -> list[dict[str, Any]]:
 
 
 async def _delegate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str, url: str, model: str
 ) -> tuple[str, str, dict[str, Any]]:
     from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
         handler_llm_delegation_call as effect_module,
     )
 
     monkeypatch.setattr(
-        delegation_backend_resolution, "load_bifrost_backends", lambda **_: _backends()
+        delegation_backend_resolution,
+        "load_bifrost_backends",
+        lambda **_: _backends(url, model),
     )
     posted: dict[str, Any] = {}
     real_post = effect_module.transport.post_chat_completion
@@ -189,11 +270,14 @@ def _with_review_shape(monkeypatch: pytest.MonkeyPatch, shape: str) -> None:
     monkeypatch.setattr(authority, "_delegation_task_class_authority", lambda: flipped)
 
 
-@pytest.mark.live_model
 @pytest.mark.parametrize("arm", ["plain", "facts_first"])
 async def test_a_served_model_reviews_a_diff_under_each_prompt_shape(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arm: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arm: str,
+    endpoint: tuple[str, str, str],
 ) -> None:
+    url, model, mode = endpoint
     _with_review_shape(monkeypatch, arm)
     delivered = 0
     right = 0
@@ -202,7 +286,9 @@ async def test_a_served_model_reviews_a_diff_under_each_prompt_shape(
         known = _defect_line(start, rows, row_index)
         prompt = f"{_INSTRUCTION}\n\n{_diff(start, rows)}"
         for draw in range(_DRAWS):
-            status, answer, posted = await _delegate(tmp_path, monkeypatch, prompt)
+            status, answer, posted = await _delegate(
+                tmp_path, monkeypatch, prompt, url, model
+            )
             user_turn = posted["messages"][-1]["content"]
             assert (FACTS_FIRST_HEADER in user_turn) is (arm == "facts_first")
             cited = _cited(answer)
@@ -210,12 +296,14 @@ async def test_a_served_model_reviews_a_diff_under_each_prompt_shape(
             delivered += status == "completed"
             right += known in cited
             print(
-                f"FACTS-FIRST-LIVE arm={arm} case={case_id} draw={draw} "
+                f"FACTS-FIRST-LIVE mode={mode} arm={arm} case={case_id} draw={draw} "
                 f"status={status} known_line={known} cited={sorted(cited)} "
                 f"hit={known in cited}"
             )
     print(
-        f"FACTS-FIRST-LIVE-TOTAL arm={arm} draws={draws} completed={delivered} "
+        f"FACTS-FIRST-LIVE-TOTAL mode={mode} arm={arm} draws={draws} completed={delivered} "
         f"known_line_cited={right}"
     )
     assert draws == len(_CASES) * _DRAWS
+    if mode == "served-locally":
+        assert delivered == draws
