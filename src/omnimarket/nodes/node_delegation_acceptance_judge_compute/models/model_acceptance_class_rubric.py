@@ -12,6 +12,6 @@ class ModelAcceptanceClassRubric(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_types: tuple[str, ...]
+    routing_labels: tuple[str, ...]
     accept: tuple[str, ...] = Field(min_length=1)
     reject_notes: tuple[str, ...] = Field(min_length=1)

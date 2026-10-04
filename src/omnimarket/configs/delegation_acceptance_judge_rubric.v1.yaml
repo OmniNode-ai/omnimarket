@@ -151,26 +151,26 @@ judge_prompt:
   output_shape: |
     Return one JSON object and nothing else: {"judgments": [{"item_id": "<id>", "accept": true|false, "quality": 0-3, "failure_class": "<class>", "reason": "<one line>"}]} with exactly one entry per item id, each id once.
 
-# Per task class. `task_types` are the routing labels a caller gives; the label is the caller's
+# Per task class. `routing_labels` are the task-type labels a caller gives; the label is the caller's
 # guess and can be wrong, so every class judges against what the task text actually asks.
 # `edit_loop_turn` is selected by the edit_loop patterns above, ahead of the routing label.
 classes:
   summarization:
-    task_types: [summarization]
+    routing_labels: [summarization]
     accept:
       - "Every number, id, name and claim appears in the supplied facts or source; nothing is added or altered."
       - "Length and shape limits are met literally: a subject line within its character limit, the stated sentence or bullet count, no commentary after a requested commit message."
     reject_notes:
       - "75-character subject line against a 72-character limit; one sentence where two were required; an authorship or ownership rule stated more broadly than the facts."
   review:
-    task_types: [review]
+    routing_labels: [review]
     accept:
       - "The decision follows from the facts and the policy the task states, and the rationale does not contradict the task's own premises."
       - "The required output shape and exact final-line format are met."
     reject_notes:
       - "A rationale that invents unique uncommitted content when the facts give an untracked count of 0; an orphan directory called pinnable where the facts call for a human."
   document:
-    task_types: [document]
+    routing_labels: [document]
     accept:
       - "Check every number, id, name and claim against the facts in the task. Any invented or altered fact is a reject."
       - "Word range, section and format instructions are met literally, with no unsolicited preamble."
@@ -178,35 +178,35 @@ classes:
     reject_notes:
       - "Five listed observations counted as three; 'at least 4 times' turned into '4x'; 'CI not green' added to a comment summary; a chronology between two run ids the facts do not give."
   code_generation:
-    task_types: [code_generation]
+    routing_labels: [code_generation]
     accept:
       - "The code is complete and syntactically valid, uses only names that exist in the given context, the standard library or the named dependencies, and implements exactly the requested behaviour (names, paths, signatures, imports)."
       - "A pattern or parser handles every case the task lists, not only the common one."
     reject_notes:
       - "A Ruff-code regex that accepts only single-letter codes and drops UP006 and PLR0913; placeholders where full code was required; invented ticket or metadata values."
   code_review:
-    task_types: [code_review]
+    routing_labels: [code_review]
     accept:
       - "Findings are real defects present in the supplied diff or file, each pointing at code that is there."
       - "A review that reports no findings is accepted only when the material has no defect the task targets."
     reject_notes:
       - "Claims no bugs while missing an obvious defect the task targets; findings inferred from code the diff does not show; a proposed fix that is not valid Python; a claim that renaming a directory onto a dangling symlink overwrites it."
   test:
-    task_types: [test]
+    routing_labels: [test]
     accept:
       - "The tests exercise the stated behaviour and would pass on a correct implementation of the supplied function; a RED test fails for the stated reason."
       - "Required structure is present, such as the requested pytestmark, and fixtures pass the supplied model's validation."
     reject_notes:
       - "A max_len=10 slug test expecting seven characters; a test expecting 'hello-' where the function strips the hyphen; a test double that counts calls only when awaited and so cannot detect an unawaited coroutine."
   reasoning:
-    task_types: [reasoning, complex_reasoning]
+    routing_labels: [reasoning, complex_reasoning]
     accept:
       - "The classification or conclusion is correct for the facts given and follows the policy the task states."
       - "The asked-for shape is exact: one word and one sentence means one word and one sentence, not a numbered analysis."
     reject_notes:
       - "A change-control cascade classified as flaky; invented links between pull requests; a long analysis where one word was asked for."
   edit_loop_turn:
-    task_types: []
+    routing_labels: []
     accept:
       - "The output is a well-formed next action under the protocol the task states, including every required field (for example a note)."
       - "It is a correct, useful step for the history shown: the right file, correct edit content, no invented paths, an edit whose old_string matches exactly once."
