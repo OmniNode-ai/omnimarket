@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_canonical_clone_refresh_effect
+version: "0.1.0"
+description: "Effect: when a repository merges, sync this host's canonical clones of it and publish a receipt. Hosted by one serve process per host, never by a shared runtime."
+pack: pipeline
+node_role: effect
+display_name: "Canonical Clone Refresh Effect (per host)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_canonical_clone_refresh_effect: "omnimarket.nodes.node_canonical_clone_refresh_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "click>=8.1.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "canonical-clone"]
