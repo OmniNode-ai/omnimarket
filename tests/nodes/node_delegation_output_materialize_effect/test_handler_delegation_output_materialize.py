@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 import pytest
@@ -19,6 +20,7 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDeclaredOutputFile,
     ModelDeclaredOutputs,
     ModelDelegationOutputFile,
+    ModelDelegationOutputFileRefusal,
     ModelDelegationOutputManifest,
     ModelDelegationOutputManifestEntry,
     compute_manifest_sha256,
@@ -30,6 +32,8 @@ from omnimarket.nodes.node_delegation_output_extract_compute import (
 from omnimarket.nodes.node_delegation_output_materialize_effect import (
     HandlerDelegationOutputMaterialize,
     ModelDelegationOutputMaterializeRequest,
+    ModelDelegationOutputMaterializeResult,
+    ModelMaterializedOutputFile,
 )
 
 pytestmark = pytest.mark.unit
@@ -343,3 +347,295 @@ def test_every_directory_descriptor_the_walk_opens_is_closed(
     assert _open_fds() == before
     assert [w.path for w in result.written] == ["deep/er/still/x.py"]
     assert {r.path for r in result.refusals} == {"a/b/c.py", "linked/y.py"}
+
+
+@pytest.mark.parametrize(
+    ("path", "reason"),
+    [
+        ("../escape.txt", _R.PATH_UNSAFE),
+        ("src/../../escape.txt", _R.PATH_UNSAFE),
+        ("outside/extra.txt", _R.UNDECLARED_PATH),
+    ],
+)
+def test_refused_output_paths_are_not_materialized(
+    tmp_path: Path,
+    store: ArtifactStore,
+    path: str,
+    reason: EnumDelegationOutputFileRefusalReason,
+) -> None:
+    declared = ModelDeclaredOutputs(
+        files=(ModelDeclaredOutputFile(path="allowed/a.txt", kind="doc"),)
+    )
+    extracted = HandlerDelegationOutputExtract().handle(
+        ModelDelegationOutputExtractRequest(
+            response_text=json.dumps(
+                {
+                    "files": [
+                        {"path": path, "content": "refuse me\n"},
+                        {"path": "allowed/a.txt", "content": "keep me\n"},
+                    ]
+                }
+            ),
+            declared_outputs=declared,
+        )
+    )
+    target = tmp_path / "target"
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.correlation_id == _CORRELATION
+    assert result.refusals == extracted.manifest.refusals
+    assert isinstance(result.refusals[0], ModelDelegationOutputFileRefusal)
+    assert [(r.path, r.reason) for r in result.refusals] == [(path, reason)]
+    assert isinstance(result.written[0], ModelMaterializedOutputFile)
+    assert [w.path for w in result.written] == ["allowed/a.txt"]
+    assert result.manifest_sha256 == extracted.manifest.manifest_sha256
+    assert (target / "allowed/a.txt").read_text() == "keep me\n"
+    assert sorted(p.relative_to(target).as_posix() for p in target.rglob("*")) == [
+        "allowed",
+        "allowed/a.txt",
+    ]
+    assert not (tmp_path / "escape.txt").exists()
+
+
+@pytest.mark.parametrize(
+    ("response_text", "reason", "path"),
+    [
+        ("", _R.NO_FILES_OBJECT, None),
+        ("```python\nx = 1\n```", _R.NO_FILES_OBJECT, None),
+        ('```json\n{"unrelated": []}\n```', _R.NO_FILES_OBJECT, None),
+        ('```json\n{"files": []}\n```', _R.MISSING, "a.txt"),
+    ],
+)
+def test_an_extraction_miss_returns_typed_refusals_without_writes(
+    tmp_path: Path,
+    store: ArtifactStore,
+    response_text: str,
+    reason: EnumDelegationOutputFileRefusalReason,
+    path: str | None,
+) -> None:
+    extracted = HandlerDelegationOutputExtract().handle(
+        ModelDelegationOutputExtractRequest(
+            response_text=response_text,
+            declared_outputs=ModelDeclaredOutputs(
+                files=(ModelDeclaredOutputFile(path="a.txt", kind="doc"),)
+            ),
+        )
+    )
+    target = tmp_path / "target"
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.correlation_id == _CORRELATION
+    assert result.target_root == str(target)
+    assert result.written == ()
+    assert result.refusals == extracted.manifest.refusals
+    assert [(r.path, r.reason) for r in result.refusals] == [(path, reason)]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert list(target.iterdir()) == []
+    assert not (tmp_path / "artifacts").exists()
+
+
+@pytest.mark.parametrize("overwrite", ["refuse", "replace_declared"])
+def test_an_existing_directory_cannot_be_replaced_by_an_output_file(
+    tmp_path: Path,
+    store: ArtifactStore,
+    overwrite: Literal["refuse", "replace_declared"],
+) -> None:
+    target = tmp_path / "target"
+    collision = target / "a.txt"
+    collision.mkdir(parents=True)
+    sentinel = collision / "keep.txt"
+    sentinel.write_text("keep\n")
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted, overwrite=overwrite)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.written == ()
+    assert [(r.path, r.reason) for r in result.refusals] == [
+        ("a.txt", _R.EXISTS_WITH_DIFFERENT_CONTENT)
+    ]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert sentinel.read_text() == "keep\n"
+    assert list(target.iterdir()) == [collision]
+
+
+def test_a_manifest_entry_without_supplied_bytes_is_missing(
+    tmp_path: Path, store: ArtifactStore
+) -> None:
+    target = tmp_path / "target"
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        ModelDelegationOutputMaterializeRequest(
+            correlation_id=_CORRELATION,
+            target_root=str(target),
+            files=(),
+            manifest=extracted.manifest,
+        )
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.written == ()
+    assert [(r.path, r.reason) for r in result.refusals] == [("a.txt", _R.MISSING)]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("failure", ["partial_write", "fsync", "rename"])
+def test_a_failed_atomic_write_cleans_up_and_can_be_retried(
+    tmp_path: Path,
+    store: ArtifactStore,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+    failure: str,
+) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    destination = target / "a.txt"
+    if existing:
+        destination.write_bytes(b"original\n")
+    extracted = _extracted(("a.txt", "doc", "replacement\n"))
+    request = _request(target, extracted, overwrite="replace_declared")
+    handler = HandlerDelegationOutputMaterialize(artifact_store=store)
+    real_write = os.write
+    writes: list[bytes] = []
+    descriptors: list[int] = []
+
+    def write_then_fail(fd: int, data: bytes | memoryview) -> int:
+        descriptors.append(fd)
+        if not writes:
+            written = real_write(fd, data[:3])
+            writes.append(bytes(data[:written]))
+            return written
+        raise OSError("injected partial_write failure")
+
+    def fail_operation(*args: object, **kwargs: object) -> None:
+        raise OSError(f"injected {failure} failure")
+
+    with monkeypatch.context() as patch:
+        if failure == "partial_write":
+            patch.setattr(os, "write", write_then_fail)
+        else:
+            patch.setattr(os, failure, fail_operation)
+        with pytest.raises(OSError, match=f"injected {failure} failure"):
+            handler.handle(request)
+
+    if failure == "partial_write":
+        assert writes == [b"rep"]
+        for fd in descriptors:
+            with pytest.raises(OSError, match="Bad file descriptor"):
+                os.fstat(fd)
+    assert list(target.glob(".onex-output-*.tmp")) == []
+    if existing:
+        assert destination.read_bytes() == b"original\n"
+        assert list(target.iterdir()) == [destination]
+    else:
+        assert list(target.iterdir()) == []
+
+    result = handler.handle(request)
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.refusals == ()
+    assert len(result.written) == 1
+    written = result.written[0]
+    assert isinstance(written, ModelMaterializedOutputFile)
+    assert written.path == "a.txt"
+    assert written.created is True
+    assert written.sha256 == written.on_disk_sha256 == _sha(b"replacement\n")
+    assert result.manifest_sha256 == extracted.manifest.manifest_sha256
+    assert destination.read_bytes() == b"replacement\n"
+    assert list(target.iterdir()) == [destination]
+
+
+def test_the_default_store_materializes_using_the_configured_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_ARTIFACT_STORE_ROOT", str(tmp_path / "artifacts"))
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    result = HandlerDelegationOutputMaterialize().handle(
+        _request(tmp_path / "target", extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.refusals == ()
+    assert isinstance(result.written[0], ModelMaterializedOutputFile)
+    assert result.written[0].on_disk_sha256 == _sha(b"hello\n")
+    assert (
+        ArtifactStore().read_blob(ModelArtifactRef(ref=result.written[0].artifact_ref))
+        == b"hello\n"
+    )
+
+
+def test_a_store_quota_refusal_does_not_write_to_the_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_ARTIFACT_STORE_ROOT", str(tmp_path / "artifacts"))
+    store = ArtifactStore(max_artifact_bytes=1)
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    target = tmp_path / "target"
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.written == ()
+    assert [(r.path, r.reason) for r in result.refusals] == [("a.txt", _R.TOO_LARGE)]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert list(target.iterdir()) == []
+
+
+def test_an_inconsistent_store_reference_is_refused_before_the_target_write(
+    tmp_path: Path, store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def wrong_reference(data: bytes, **kwargs: object) -> ModelArtifactRef:
+        return ModelArtifactRef.from_bytes(b"different\n")
+
+    monkeypatch.setattr(store, "write_blob", wrong_reference)
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    target = tmp_path / "target"
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.written == ()
+    assert [(r.path, r.reason) for r in result.refusals] == [
+        ("a.txt", _R.MANIFEST_MISMATCH)
+    ]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert list(target.iterdir()) == []
+
+
+def test_changed_bytes_after_rename_are_refused_by_the_disk_rehash(
+    tmp_path: Path, store: ArtifactStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "target"
+    real_rename = os.rename
+
+    def rename_then_change(
+        src: str, dst: str, *, src_dir_fd: int, dst_dir_fd: int
+    ) -> None:
+        real_rename(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        (target / dst).write_bytes(b"changed\n")
+
+    monkeypatch.setattr(os, "rename", rename_then_change)
+    extracted = _extracted(("a.txt", "doc", "hello\n"))
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted)
+    )
+
+    assert isinstance(result, ModelDelegationOutputMaterializeResult)
+    assert result.written == ()
+    assert [(r.path, r.reason) for r in result.refusals] == [
+        ("a.txt", _R.MANIFEST_MISMATCH)
+    ]
+    assert result.manifest_sha256 == compute_manifest_sha256(())
+    assert (target / "a.txt").read_bytes() == b"changed\n"
+    entry = extracted.manifest.entries[0]
+    assert store.read_blob(ModelArtifactRef(ref=entry.artifact_ref)) == b"hello\n"

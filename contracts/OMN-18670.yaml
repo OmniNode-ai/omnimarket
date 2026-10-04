@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-18670
+title: A stale machine-local overlay can no longer silently outrank the tracked routing contract
+summary: The model_attribution_mismatch refusal names the overlay file and key that supplied the literal, an overlay write over a declared model_name is logged at WARN with its path on every load, and an explain surface prints the merged result with a source per key.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18670
+  statement: A stale local overlay must not be able to make delegation dark without saying so.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the model_attribution_mismatch refusal names the file and key that supplied the mismatching literal -- falsifier: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "refusal_message_carries or model_id_source or guard_still_fails_closed"'
+  - id: AC2
+    statement: 'AC2: an overlay override of an authoritative model_name is logged at WARN with its path on every load -- falsifier: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "shadow or warn"'
+  - id: AC3
+    statement: 'AC3: the explain surface prints the merged result with a per-key source -- falsifier: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k explain'
+  - id: AC4
+    statement: 'AC4: a test drives a fixture overlay overriding a tracked key and asserts the refusal, log and explain surfaces all name it -- falsifier: the whole OMN-18670 module run'
+evidence_requirements:
+- kind: tests
+  description: The tests assert the refusal carries the overlay path and key and still fails closed when no source is known.
+  command: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "refusal_message_carries or model_id_source or guard_still_fails_closed"
+- kind: tests
+  description: The tests assert the WARN names the path, key and both values on every load, and that an overlay filling a null field is not flagged.
+  command: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "shadow or warn or no_overlay_means_no_warning"
+- kind: tests
+  description: The tests assert a source for every key, a flagged shadow and the exit-code contract.
+  command: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k explain
+- kind: tests
+  description: The whole module passes; each surface test builds a fixture overlay that overrides a tracked key.
+  command: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-18670-ac1
+  description: The tests assert the refusal carries the overlay path and key and still fails closed when no source is known.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "refusal_message_carries or model_id_source or guard_still_fails_closed"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-18670-ac2
+  description: The tests assert the WARN names the path, key and both values on every load, and that an overlay filling a null field is not flagged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k "shadow or warn or no_overlay_means_no_warning"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-18670-ac3
+  description: The tests assert a source for every key, a flagged shadow and the exit-code contract.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q -k explain
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn-18670-ac4
+  description: The whole module passes; each surface test builds a fixture overlay that overrides a tracked key.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_overlay_authoritative_shadow_omn18670.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4

@@ -38,7 +38,8 @@ description: >
   no_progress, two failed delegate runs in a row stop with delegate_failed, and
   the turn cap ends budget_exhausted unless the checks pass. Writes
   <state root>/runs/<correlation id>/loop_receipt.json with every delegate run
-  id, every action and observation, the diff, the check results and the
+  id, every action with its full arguments and observation, the sha256 of each
+  file the action wrote, the diff, the check results and the
   tool_use rubric verdict, refusing a second loop for the same correlation id,
   and returns a compact result that carries no file content. The receipt resume
   block permits --resume after delegate_failed, archiving the prior receipt as

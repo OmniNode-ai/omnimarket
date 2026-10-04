@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20242
+title: A typed delegation disposition event and a rule-7a projection make delegate output disposition queryable
+summary: The disposition wire model refuses malformed dispositions and any prompt or answer field, the fold is order independent, and the writer declares in-process dispatch and never reports zero rows for non-empty input.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20242
+  statement: Whether a delegate's answer was used, edited, rejected or ignored must be recorded content-free and be queryable per model, class and lane.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the event model refuses an unknown disposition, a reason code that does not belong to the disposition, an edit ratio on a non-edited disposition, an artifact kind without a matching reference and any prompt or answer field -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_model_delegation_disposition_recorded.py -v'
+  - id: AC2
+    statement: 'AC2: the fold is order independent and a redelivered or older disposition never replaces a newer one -- falsifier: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -k "order_independent or older_never_replaces"'
+  - id: AC3
+    statement: 'AC3: the writer declares in-process dispatch and never reports zero rows for a non-empty input -- falsifier: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -k "inprocess or row_count"'
+evidence_requirements:
+- kind: tests
+  description: The wire model tests cover each refusal.
+  command: uv run pytest tests/unit/models/delegation/wire/test_model_delegation_disposition_recorded.py -q
+- kind: tests
+  description: The golden-chain tests deliver dispositions in permuted and redelivered order.
+  command: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -q -k "order_independent or older_never_replaces"
+- kind: tests
+  description: The golden-chain tests assert the dispatch flag and the written row count.
+  command: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -q -k "inprocess or row_count"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20242-ac1
+  description: The wire model tests cover each refusal.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/delegation/wire/test_model_delegation_disposition_recorded.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20242-ac2
+  description: The golden-chain tests deliver dispositions in permuted and redelivered order.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -q -k "order_independent or older_never_replaces"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-20242-ac3
+  description: The golden-chain tests assert the dispatch flag and the written row count.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_delegation_disposition.py -q -k "inprocess or row_count"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

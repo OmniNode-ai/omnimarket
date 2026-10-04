@@ -34,6 +34,7 @@ Related:
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -269,7 +270,13 @@ def _build_feedback_event(
         success = bool(payload.get("success", False))
         is_escalation = False
         latency_raw = payload.get("latency_ms", 0)
-        latency_ms = int(latency_raw) if isinstance(latency_raw, int | float) else 0
+        latency_ms = (
+            int(latency_raw)
+            if isinstance(latency_raw, int | float)
+            and not isinstance(latency_raw, bool)
+            and math.isfinite(latency_raw)
+            else 0
+        )
     elif event_type == EnumDelegationFeedbackEventType.ESCALATION_TRIGGERED:
         success = False
         is_escalation = True

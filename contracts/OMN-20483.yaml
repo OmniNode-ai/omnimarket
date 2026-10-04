@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20483"
+title: "Edit-loop receipts keep per-turn action arguments and replay rebuilds the worktree"
+summary: "The delegated code-edit loop receipt (schema v2) carries every action's full arguments and the sha256 of each file written, and handlers/replay.py rebuilds the worktree from a v2 receipt. Covered by the receipt-arguments and replay tests under tests/nodes/node_delegated_code_edit_orchestrator/."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-receipt-keeps-arguments"
+    statement: |-
+      Every action in a loop receipt turn must carry its full arguments and the digest of each file it wrote.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: each receipt action carries untruncated arguments and written_sha256, and a resumed v2 receipt restores them -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q
+  - id: "req-replay-rebuilds-worktree"
+    statement: |-
+      A v2 receipt must replay into a fresh directory with the same file digests, and refuse a v1 receipt or a forged digest.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: replay_worktree reproduces the live per-file sha256 after each turn, raises ReplayMismatchError on a forged digest and ReplayRefusedError on a v1 receipt -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The receipt-arguments and replay tests pass."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-receipt-keeps-arguments-ac1"
+    description: "The receipt tests prove every action carries arguments and write digests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-replay-rebuilds-worktree-ac2"
+    description: "The replay tests prove the worktree rebuilds with matching digests and refuses forged or v1 receipts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

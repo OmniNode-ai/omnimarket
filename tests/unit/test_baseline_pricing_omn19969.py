@@ -152,7 +152,7 @@ def test_fixed_default_resolves_with_fixture_manifest_and_provenance(
 def test_real_manifest_resolves_fixed_default_from_current_pricing_table() -> None:
     selected = pricing.resolve_baseline_model(overlay={}, store={})
 
-    # The installed manifest prices the default from omnibase-infra 0.38.61
+    # The installed manifest prices the default from omnibase-infra 0.38.64
     # (omnibase_infra#4400), the floor this repo pins; below it this fails.
     assert selected.model == "claude-sonnet-5-5"
     assert _load_table().get_entry(selected.model) is not None

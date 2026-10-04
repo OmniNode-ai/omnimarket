@@ -45,7 +45,10 @@ _DEFAULT_EVIDENCE_DB_PATH = (
 _DELEGATION_EVENTS_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_events (
     id                      INTEGER PRIMARY KEY,
-    correlation_id          TEXT    NOT NULL UNIQUE
+    correlation_id          TEXT    NOT NULL UNIQUE,
+    -- OMN-19448: nullable terminal stop reason and truncation evidence.
+    finish_reason           TEXT,
+    truncated               INTEGER
 )
 """
 
@@ -73,6 +76,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "delegated_to",
     "delegation_latency_ms",
     "escalation_count",
+    "finish_reason",
     "latency_ms",
     "model_name",
     "override_within_bounds",
@@ -95,6 +99,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "tokens_output",
     "tokens_to_compliance",
     "trace_id",
+    "truncated",
     "writer_identity",
     "written_at",
 )

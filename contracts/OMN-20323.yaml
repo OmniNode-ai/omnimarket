@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20323
+title: The code-edit node offers a format tool that applies the repo formatter
+summary: The code-edit node exposes a format tool that runs the declared formatter over writable files, refuses non-writable paths and undeclared formatters, and is offered in the tool list.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20323
+  statement: A code-edit task must be able to converge on a ruff format check.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the code-edit node exposes a tool that applies the repo formatter to edited files -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "format_tool or format_is_offered"'
+evidence_requirements:
+- kind: tests
+  description: The node tests run the declared formatter over a writable file, refuse out-of-glob and formatterless calls, and assert format is in the offered tools.
+  command: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "format_tool or format_is_offered"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20323-ac1
+  description: The node tests run the declared formatter over a writable file, refuse out-of-glob and formatterless calls, and assert format is in the offered tools.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "format_tool or format_is_offered"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

@@ -12,7 +12,7 @@ resolution-markers = [
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.61,<0.39.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.64,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
 
@@ -3067,7 +3067,7 @@ wheels = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.61"
+version = "0.38.64"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -3122,9 +3122,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/cc/827813d48abfee83c99e78f665f5f09577ddf5e2800e346db16f43cd1b4c/omnibase_infra-0.38.61.tar.gz", hash = "sha256:471a633956af2a624690eee9a21c4120d89b5d8a266217b9f010462df2a5b862", size = 20954946, upload-time = "2026-10-01T08:54:16.041Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/e8/e0bb08fda6990c28e7936e22411cabc01c6a6abc7213623f47365123fbdd/omnibase_infra-0.38.64.tar.gz", hash = "sha256:5729a33809087896a124374bd82813e4b04e8a6a6005c9696153a11b7829e4c5", size = 21191028, upload-time = "2026-10-03T20:36:14.079Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/83/01d37f06023b6dc1ce62ab41713e33e35b87467ff0fd79a08010ee897f02/omnibase_infra-0.38.61-py3-none-any.whl", hash = "sha256:71ab720e4fba9ab88f9360e8c5eb05eee008adfd0b44e08c07e43f13780da97b", size = 7426491, upload-time = "2026-10-01T08:54:13.289Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/da/d394654b9dc2048f9dac1f57de2b632d0e63c4417c40ca68cb0291eb69f1/omnibase_infra-0.38.64-py3-none-any.whl", hash = "sha256:12f8e78657493fdc147100405a05e1bb1caaf4c5381237f94263595a371b594d", size = 7460299, upload-time = "2026-10-03T20:36:11.691Z" },
 ]
 
 [[package]]
@@ -3143,7 +3143,7 @@ wheels = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.284"
+version = "0.4.287"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
@@ -3221,7 +3221,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.61,<0.39.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.64,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
     { name = "packaging", specifier = ">=24.0" },

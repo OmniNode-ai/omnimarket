@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19017
+title: A prose enumeration is not a code request
+summary: The words test cases no longer claim a prompt for the test class unconditionally, so the captured enumeration prompts are not graded by a code definition of done, a genuine code request still routes to a code class, and a gate-decided ladder ending in a 429 names the gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19017
+  statement: A prompt whose requested output is prose must never be graded by a code-class definition of done, and the terminal must name the rung that decided the run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an enumeration prompt requesting prose does not resolve to a code-oriented task class -- falsifier: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "captured_prompt or test_case_is_no_longer or bare_singular"'
+  - id: AC2
+    statement: 'AC2: a terminal whose earlier rungs failed for a different reason than the last names those reasons and does not report the last rung''s transport error as the cause -- falsifier: uv run pytest tests/unit/delegation/test_omn19004_the_deciding_rung_sets_the_cause.py -q -k "final_429 or recorded_ladder or handler_replay"'
+  - id: AC3
+    statement: 'AC3: a genuine code-generation prompt still routes to a code class -- falsifier: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "genuine_code_request or unambiguous_test_phrases"'
+  - id: AC4
+    statement: 'AC4: RED taken first against the captured prompts -- falsifier: a pull request whose evidence shows no red run'
+evidence_requirements:
+- kind: tests
+  description: The selection tests replay the captured 04ac362b and e811f3e5 prompts against the live contract.
+  command: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "captured_prompt or test_case_is_no_longer or bare_singular"
+- kind: tests
+  description: The OMN-19004 tests replay the recorded gate-refused-then-429 ladders (73aba966, 6ce51f77) through the terminal and the workflow handler and assert the gate is named. This is the OMN-19004 half of the scope; the OMN-19017 pull request itself carries the classifier half only.
+  command: uv run pytest tests/unit/delegation/test_omn19004_the_deciding_rung_sets_the_cause.py -q -k "final_429_after_gate_refusals or gate_decided_final_429 or recorded_ladder_resolves or handler_replay_names_the_gate or real_429_stays_on_its_own_rung"
+- kind: tests
+  description: The positive controls prove add test cases to the pytest module still reaches the test class and the unambiguous test phrases stay unconditional.
+  command: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "genuine_code_request or unambiguous_test_phrases"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-19017-ac1
+  description: The selection tests replay the captured 04ac362b and e811f3e5 prompts against the live contract.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "captured_prompt or test_case_is_no_longer or bare_singular"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-19017-ac2
+  description: The OMN-19004 tests replay the recorded gate-refused-then-429 ladders (73aba966, 6ce51f77) through the terminal and the workflow handler and assert the gate is named. This is the OMN-19004 half of the scope; the OMN-19017 pull request itself carries the classifier half only.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn19004_the_deciding_rung_sets_the_cause.py -q -k "final_429_after_gate_refusals or gate_decided_final_429 or recorded_ladder_resolves or handler_replay_names_the_gate or real_429_stays_on_its_own_rung"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-19017-ac3
+  description: The positive controls prove add test cases to the pytest module still reaches the test class and the unambiguous test phrases stay unconditional.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/inference/test_task_class_selection_omn19017.py -q -k "genuine_code_request or unambiguous_test_phrases"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn-19017-ac4
+  description: The merged pull request body states the red-first run (six of eight new tests failing against the parent, two controls passing).
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh pr view 2765 --repo OmniNode-ai/omnimarket --json body --jq .body | grep -Eq 'Red first. Six of the eight new tests fail against the parent'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
