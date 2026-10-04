@@ -23,7 +23,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20159-ac2-read-binding-apart-from-claim-store"
+  - id: "dod-omn20159-ac2-read-binding-apart-from-claims"
     description: "The read node takes its database from the projection read binding (the read overlay, else the runtime overlay), and no module of the node reads the environment. A broken read overlay is the refusal projection_binding_invalid and never falls back. The claim and evidence stores and the projection writers keep the runtime binding. Only projection/runner.py reads either overlay variable. This check fails at the merge base (27 of its 53 tests), where the read resolver does not exist and the read node follows the runtime overlay only."
     source: "manual"
     checks:
