@@ -30,6 +30,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 )
 from omnimarket.projection.runner import (
     PROJECTION_READ_BINDING_UNSET_DETAIL,
+    ProjectionReadBindingOverlayError,
     projection_read_binding_from_overlay_env,
 )
 from omnimarket.projection.sqlite_database import (
@@ -48,25 +49,34 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
     """A row source over the database the projection read binding names.
 
     Raises :class:`ProjectionReadError` ``projection_binding_unconfigured`` when
-    the runtime carries neither a read nor a runtime binding, and
+    the runtime carries neither a read nor a runtime binding,
+    ``projection_binding_invalid`` when the read overlay is set but its file
+    did not load (it never falls back to the runtime binding), and
     ``projection_binding_unsupported`` when the bound database is neither
-    Postgres nor a SQLite file. A read overlay that is set but missing or
-    invalid raises its load error rather than falling back.
+    Postgres nor a SQLite file. With the read overlay unset, a runtime overlay
+    that did not load raises its own load error, as it always has.
     """
-    binding = projection_read_binding_from_overlay_env()
+    try:
+        binding = projection_read_binding_from_overlay_env()
+    except ProjectionReadBindingOverlayError as exc:
+        # Its message names the variable, the file and the error's class only,
+        # never the file's contents, so it is safe for an external caller.
+        raise ProjectionReadError("projection_binding_invalid", str(exc)) from exc
     if binding is None:
         raise ProjectionReadError(
             "projection_binding_unconfigured",
             f"{PROJECTION_READ_BINDING_UNSET_DETAIL}, so this runtime has no "
             "projection tables to read",
         )
+    # binding.source is where the binding came from (overlay:<path>), never a
+    # credential, so the operator is sent to the file that was in effect.
     try:
         database_url = binding.resolve_database_url()
     except RuntimeError as exc:
         raise ProjectionReadError(
             "projection_binding_unconfigured",
-            "the projection read binding (the read overlay's, else the runtime "
-            "overlay's) names a database reference that did not resolve",
+            f"the projection read binding ({binding.source}) names a database "
+            "reference that did not resolve",
         ) from exc
     scheme = urlsplit(database_url).scheme.lower()
     if scheme in _POSTGRES_SCHEMES:
@@ -75,8 +85,8 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
         return SqliteTableRowSource(sqlite_path_from_dsn(database_url))
     raise ProjectionReadError(
         "projection_binding_unsupported",
-        "the projection read binding (the read overlay's, else the runtime "
-        "overlay's) names a database that is neither Postgres nor a SQLite file",
+        f"the projection read binding ({binding.source}) names a database that "
+        "is neither Postgres nor a SQLite file",
     )
 
 

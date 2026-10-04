@@ -108,7 +108,9 @@ def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
     try:
         conn = psycopg2.connect(superuser_dsn)
     except Exception as exc:
-        pytest.skip(f"Postgres unreachable: {exc}")
+        # Worded for the skip guard (scripts/ci/integration_skip_guard.yaml),
+        # so a provisioned but unreachable server fails the job, not passes.
+        pytest.skip(f"no reachable Postgres: {exc}")
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
@@ -152,11 +154,24 @@ def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
             "claims_schema": claims_schema,
         }
     finally:
-        with conn.cursor() as cur:
-            cur.execute(f"DROP SCHEMA IF EXISTS {read_schema} CASCADE")
-            cur.execute(f"DROP SCHEMA IF EXISTS {claims_schema} CASCADE")
-            cur.execute(f"DROP ROLE IF EXISTS {role}")
-        conn.close()
+        # Each DROP runs on its own, so one failure does not leave the login
+        # role or the other schema behind; the first failure is raised after.
+        failures: list[Exception] = []
+        try:
+            for statement in (
+                f"DROP SCHEMA IF EXISTS {read_schema} CASCADE",
+                f"DROP SCHEMA IF EXISTS {claims_schema} CASCADE",
+                f"DROP ROLE IF EXISTS {role}",
+            ):
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(statement)
+                except Exception as exc:
+                    failures.append(exc)
+        finally:
+            conn.close()
+        if failures:
+            raise failures[0]
 
 
 def _cfg(schema: str) -> ProjectionTableConfig:

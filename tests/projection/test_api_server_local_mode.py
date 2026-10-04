@@ -479,9 +479,10 @@ def test_the_node_serves_rows_from_the_read_binding_alone(
 
 
 # OMN-20159 F5, on the dashboard: a read variable that names a missing or
-# invalid file raises. It falls back neither to the runtime binding nor to the
-# default writers' store, both of which are set up here and hold rows, so a
-# silent fallback would serve them instead of failing.
+# invalid file stops start-up with an error naming the variable and the file.
+# It falls back neither to the runtime binding nor to the default writers'
+# store, both of which are set up here and hold rows, so a silent fallback
+# would serve them instead of failing.
 
 
 @pytest.mark.parametrize(
@@ -519,8 +520,17 @@ def test_a_broken_read_binding_raises_and_never_falls_back(
     )
     monkeypatch.setenv(_READ_OVERLAY_ENV, str(broken[case]))
 
-    with pytest.raises(error):
+    try:
         resolve_local_row_source()
+    except Exception as exc:
+        raised: BaseException = exc
+    else:
+        pytest.fail("resolve_local_row_source raised nothing")
+
+    assert type(raised).__name__ == "ProjectionReadBindingOverlayError", repr(raised)
+    assert getattr(raised, "variable", None) == _READ_OVERLAY_ENV
+    assert getattr(raised, "path", None) == str(broken[case])
+    assert isinstance(raised.__cause__, error)
 
 
 # -- the command exists ----------------------------------------------------------

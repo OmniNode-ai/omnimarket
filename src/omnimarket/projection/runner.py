@@ -348,6 +348,24 @@ def projection_runtime_binding_from_overlay_env() -> (
     return _projection_runtime_binding_from_overlay_env()
 
 
+class ProjectionReadBindingOverlayError(RuntimeError):
+    """The read overlay variable is set, and the file it names did not load.
+
+    Carries the variable, its value (the file's path) and the class name of the
+    load error, which is chained as ``__cause__``. The message is built from
+    those three only: a load error can quote the file, and a validation error
+    quotes its input, which can be a database URL with its password.
+    """
+
+    def __init__(self, variable: str, path: str, cause_type: str) -> None:
+        super().__init__(
+            f"{variable} names the file {path}, which did not load ({cause_type})"
+        )
+        self.variable = variable
+        self.path = path
+        self.cause_type = cause_type
+
+
 def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding | None:
     """Resolve the binding projection READS go through, or ``None``.
 
@@ -358,14 +376,22 @@ def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding 
     calling the runtime resolver, so a read binding that logs in as a reader can
     never become their write principal (OMN-20159).
 
-    A read variable that is set but names a missing or invalid file raises, as
-    the runtime variable does; it never falls back to the runtime binding. A
-    blank value is unset, as it is for the runtime variable.
+    A read variable that is set but names a missing or invalid file raises
+    :class:`ProjectionReadBindingOverlayError`; it never falls back to the
+    runtime binding. With the read variable unset, a broken runtime overlay
+    raises its own load error, as it always has. A blank value is unset, as it
+    is for the runtime variable.
     """
     overlay_path = os.environ.get(PROJECTION_READ_BINDING_OVERLAY_ENV, "").strip()
     if not overlay_path:
         return _projection_runtime_binding_from_overlay_env()
-    return load_projection_runtime_binding_overlay(overlay_path)
+    try:
+        return load_projection_runtime_binding_overlay(overlay_path)
+    except (OSError, yaml.YAMLError, RuntimeError, ValueError) as exc:
+        # ValueError covers pydantic's ValidationError.
+        raise ProjectionReadBindingOverlayError(
+            PROJECTION_READ_BINDING_OVERLAY_ENV, overlay_path, type(exc).__name__
+        ) from exc
 
 
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:
