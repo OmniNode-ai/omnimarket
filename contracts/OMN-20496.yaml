@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20496"
+title: "A merge event refreshes each host's canonical clones through one serve process per host"
+summary: "Adds node_canonical_clone_refresh_effect, whose serve process hears a repo-merged event and runs the host's own sync command for that repository, coalescing a burst to at most two syncs and publishing one receipt per run. Tests: tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py and the runtime dogfood bucket."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-clone-refresh-serve"
+    statement: |-
+      A merged-repository event must run one sync of that repository's canonical clone on the host and publish a receipt; a burst of events for one repository must run at most two syncs; an event that is not a merge of an allowed owner's repository must run no sync.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: one merge event runs one sync and publishes one receipt in a per-host consumer group, and the handler reads the engine's advanced, up to date, refused, failed and no-clone results -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: a burst of five merge events for one repository runs at most two syncs and two repositories sync independently -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus -q -k coalesce
+      - id: "AC3"
+        statement: |-
+          AC3: an event that is not a merge, an unreadable event and a repository outside the allowed owner run no sync -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus -q -k skip
+evidence_requirements:
+  - kind: "tests"
+    description: "The clone-refresh bus tests pass at the head and fail at the merge base, where the node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-clone-refresh-bus-ac1"
+    description: "The tests prove one merge runs one sync with a receipt and every engine result is read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-clone-refresh-bus-ac2"
+    description: "The coalesce tests prove a burst of five runs at most two syncs and repositories are independent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/clone_refresh_bus -q -k coalesce"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-clone-refresh-bus-ac3"
+    description: "The skip tests prove a non-merge, an unreadable event and a foreign owner run no sync."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/clone_refresh_bus -q -k skip"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
