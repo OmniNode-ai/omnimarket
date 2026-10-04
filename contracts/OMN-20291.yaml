@@ -2,54 +2,43 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20291"
 title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
-summary: "The OMN-20291 replay of 26 crush tasks found failure classes in the delegated code edit node. This change names the writable files that do not exist yet in the turn prompt, so a model does not view a file it is told to create (replays 0192c135, 8d6e9b45, a0cbacca), reports an edit whose old_string equals its new_string as changing nothing, says a grep path that does not exist is missing instead of answering no matches, and names the worktree paths that end with a missing view, ls or grep path (replay ab8d7ef6). Each is bound to the pull request's own tests."
+summary: "The OMN-20291 replay comparison found that the delegated code edit loop passed each turn's prompt to onex delegate as one argv word, capped near 128 KiB on Linux, and refused prompts over 120,000 bytes, so long multi-file tasks truncated their history. This change writes each turn's prompt to a file under the state root, passes it as onex delegate --prompt-file, and removes the file after the turn. Each behavior is bound to the pull request's own tests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-code-edit-replay-failure-classes"
+  - id: "req-code-edit-prompt-by-file"
     statement: |-
-      The delegated code edit node must tell the model which writable files do not exist yet, must not report an edit that changes nothing as applied before, must say a grep path that does not exist is missing, and must name the worktree paths that end with a missing path.
+      The delegated code edit node must pass each turn's prompt to onex delegate by file, not as an argv word, so a prompt longer than one argv word reaches the delegate intact.
     acceptance:
-      - id: "AC7"
+      - id: "AC10"
         statement: |-
-          AC7: the turn prompt names each literal writable path that is not in the worktree as a new file to create with write, until a turn has written it, and names none when every writable path exists -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "do_not_exist_yet or no_new_files_line"
-      - id: "AC8"
+          AC10: the delegate argv carries --prompt-file and a path whose file holds the turn prompt at call time, carries no prompt word, and the file is gone after the turn -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "prompt_by_file_and_carries"
+      - id: "AC11"
         statement: |-
-          AC8: an edit whose old_string equals its new_string writes nothing and says it changes nothing, not that it was applied before -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k "changes_nothing or already_applied"
-      - id: "AC9"
-        statement: |-
-          AC9: grep of a path that is not in the worktree is reported as not existing, not as no matches; a missing view, ls or grep path names up to three worktree paths that end with it; an existing path is still read and a path nothing ends with gets no hint -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "grep or end_with_it"
+          AC11: a prompt over 200 KB reaches the delegate runner intact by file, no argv word is near 128 KiB, the prompt is not refused as over a size cap, and the file is gone after the turn -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "prompt_over_one_argv_word"
 evidence_requirements:
   - kind: "tests"
-    description: "The delegated code edit node's handler tests pass."
-    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q"
+    description: "The delegated code edit loop port tests pass."
+    command: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-code-edit-new-files-ac7"
-    description: "The prompt tests prove a writable path missing from the worktree is named as a new file until it is written."
+  - id: "dod-code-edit-prompt-file-argv-ac10"
+    description: "The delegate argv test proves the turn prompt is passed by --prompt-file and the file is removed after the turn."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"do_not_exist_yet or no_new_files_line\""
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_by_file_and_carries\""
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC7"]
-  - id: "dod-code-edit-noop-edit-ac8"
-    description: "The edit tests prove a no-op edit is reported as changing nothing and a re-sent edit still as applied before."
+    binds_ac: ["AC10"]
+  - id: "dod-code-edit-long-prompt-by-file-ac11"
+    description: "The long prompt test proves a prompt over 200 KB reaches the delegate intact with no argv word near 128 KiB."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -q -k \"changes_nothing or already_applied\""
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_over_one_argv_word\""
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC8"]
-  - id: "dod-code-edit-grep-missing-path-ac9"
-    description: "The grep and path-hint tests prove a missing path is reported as missing with the worktree paths that end with it."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"grep or end_with_it\""
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC9"]
+    binds_ac: ["AC11"]
