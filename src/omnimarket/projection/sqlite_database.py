@@ -318,11 +318,26 @@ class SqliteDatabaseAdapter:
     def _ensure_columns(
         self, conn: sqlite3.Connection, table: str, row: dict[str, object]
     ) -> None:
-        existing = self._existing_columns(conn, table)
-        for column in row:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
-        conn.commit()
+        # OMN-19976: several writers, threads or processes, can reach a fresh
+        # store together, and each one's first write adds columns. Reading the
+        # columns with no lock and then altering let two writers both see one
+        # missing; the second ALTER failed with "duplicate column name" and
+        # that writer's row was lost. So the columns are read again under the
+        # write lock and only those still missing are added, in one
+        # transaction that rolls back whole. A row whose columns all exist,
+        # which is every steady-state write, returns before taking the lock.
+        if set(row) <= self._existing_columns(conn, table):
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._existing_columns(conn, table)
+            for column in row:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @staticmethod
     def _encode(column: str, value: object) -> object:
