@@ -11,6 +11,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    ModelDelegationReapContext,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     ModelDelegateSkillHandlerBudget,
     load_handler_execution_budget,
@@ -25,6 +28,7 @@ __all__ = [
     "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "ModelDelegationReapContext",
     "ModelRuntimeDelegationDispatchConfig",
     "ModelRuntimeDelegationDispatchTopics",
     "load_handler_execution_budget",

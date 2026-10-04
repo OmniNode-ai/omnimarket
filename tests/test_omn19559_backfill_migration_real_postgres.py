@@ -44,8 +44,7 @@ _ROLLBACK = (
 _AUDIT = "delegation_events_outcome_backfill_omn20276"
 _TENANT = "820272f9-4aaf-5add-a2df-0af942852ab2"
 
-# Every cause the core vocabulary carries, plus one it does not (the mapping's
-# fallback branch), each on a row that reads completed/usable.
+# Causes covered by historical migration 0051, plus its fallback branch.
 _CAUSES = (
     "timeout",
     "runtime_shutdown",
@@ -53,7 +52,6 @@ _CAUSES = (
     "quality_gate_refused",
     "provider_error",
     "auth_failed",
-    "no_terminal",
     "something_new",
 )
 
@@ -158,6 +156,7 @@ async def _contradictory(conn: asyncpg.Connection) -> int:
 
 
 async def test_backfill_maps_each_cause_like_the_projection() -> None:
+    """Parity covers migration 0051 causes; the later reaper mapping is not backfilled."""
     async with _migrated_schema() as (conn, schema):
         await _seed(conn)
         assert await _contradictory(conn) == len(_CAUSES) + 2

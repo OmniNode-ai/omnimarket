@@ -46,6 +46,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ModelDelegationClaimOutcome,
+    ModelDelegationTerminalOutcome,
 )
 
 pytestmark = pytest.mark.unit
@@ -76,7 +77,11 @@ class _MemoryClaimPort:
         self.rows: dict[UUID, dict[str, object] | None] = {}
 
     def claim(
-        self, *, delivery_id: UUID, correlation_id: UUID
+        self,
+        *,
+        delivery_id: UUID,
+        correlation_id: UUID,
+        reap_context: object | None = None,
     ) -> ModelDelegationClaimOutcome:
         if delivery_id not in self.rows:
             self.rows[delivery_id] = None
@@ -87,8 +92,9 @@ class _MemoryClaimPort:
 
     def record_terminal(
         self, *, delivery_id: UUID, terminal: dict[str, object]
-    ) -> None:
+    ) -> ModelDelegationTerminalOutcome:
         self.rows[delivery_id] = terminal
+        return ModelDelegationTerminalOutcome(won=True, held=None)
 
 
 def _request() -> ModelDelegateSkillRequest:
