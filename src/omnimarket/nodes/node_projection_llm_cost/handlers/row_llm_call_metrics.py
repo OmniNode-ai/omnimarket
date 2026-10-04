@@ -18,6 +18,7 @@ import json
 import uuid
 from typing import Any
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.projection.runner import safe_parse_date
 
 # Ordered tuple of llm_call_metrics columns this node writes. Asserted equal to
@@ -43,16 +44,24 @@ LLM_CALL_METRICS_COLUMNS: tuple[str, ...] = (
     "created_at",
 )
 
-# DB enum usage_source_type accepts only these values. The upstream event uses
-# MEASURED (token usage measured via the provider's usage response) which maps to
-# the DB's API provenance; UNKNOWN/absent maps to MISSING.
-_USAGE_SOURCE_MAP: dict[str, str] = {
-    "MEASURED": "API",
-    "API": "API",
-    "ESTIMATED": "ESTIMATED",
-    "MISSING": "MISSING",
-    "UNKNOWN": "MISSING",
+# OMN-19968: rows carry the shared usage-source vocabulary (EnumUsageSource:
+# measured / estimated / unknown), the values omnibase_infra migration 077
+# (OMN-10382) gave the shared ``usage_source_type``. The retired provenance
+# labels an event may still send (API, MISSING, upper-case spellings) are
+# folded onto it here; anything unrecognised is ``unknown``.
+_USAGE_SOURCE_SYNONYMS: dict[str, EnumUsageSource] = {
+    "measured": EnumUsageSource.MEASURED,
+    "api": EnumUsageSource.MEASURED,
+    "estimated": EnumUsageSource.ESTIMATED,
+    "unknown": EnumUsageSource.UNKNOWN,
+    "missing": EnumUsageSource.UNKNOWN,
 }
+
+
+def _usage_source(raw: object) -> EnumUsageSource:
+    if not raw:
+        return EnumUsageSource.UNKNOWN
+    return _USAGE_SOURCE_SYNONYMS.get(str(raw).strip().lower(), EnumUsageSource.UNKNOWN)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -102,8 +111,9 @@ def build_llm_call_metrics_row(data: dict[str, Any]) -> dict[str, Any]:
     """Map an inbound llm-call-completed event to an llm_call_metrics row.
 
     The returned dict has exactly the keys in ``LLM_CALL_METRICS_COLUMNS``.
-    ``usage_source`` is honest: MEASURED→API, anything else→ESTIMATED/MISSING,
-    with ``usage_is_estimated`` derived from it.
+    ``usage_source`` is honest and uses the shared vocabulary: ``measured``
+    when the provider reported the usage, else ``estimated`` or ``unknown``
+    (see ``_usage_source``), with ``usage_is_estimated`` derived from it.
     """
     model_id = str(data.get("model_id") or data.get("model_name") or "unknown")
     session_id = data.get("session_id") or data.get("sessionId")
@@ -149,15 +159,14 @@ def build_llm_call_metrics_row(data: dict[str, Any]) -> dict[str, Any]:
     # ContractLlmCallMetrics wire format nests it as usage_normalized.source
     # (values: "api" / "estimated" / "missing") — no top-level usage_source
     # field.  Fall back to that nested path when the flat field is absent so
-    # exp0/generation-consumer rows are not silently written as MISSING.
+    # exp0/generation-consumer rows are not silently written as unknown.
     _top_level = data.get("usage_source") or data.get("usageSource")
     if not _top_level:
         _normalized = data.get("usage_normalized")
         if isinstance(_normalized, dict):
             _top_level = _normalized.get("source")
-    usage_source_raw = str(_top_level or "MISSING").upper()
-    usage_source = _USAGE_SOURCE_MAP.get(usage_source_raw, "MISSING")
-    usage_is_estimated = usage_source != "API"
+    usage_source = _usage_source(_top_level).value
+    usage_is_estimated = usage_source != EnumUsageSource.MEASURED.value
 
     input_hash = _compute_input_hash(
         reporting_source=str(reporting_source) if reporting_source else None,

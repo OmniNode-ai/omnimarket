@@ -10,7 +10,9 @@ performed.
 
 A worker brief is fixed per class: the text a worker receives is chosen by
 the class and never composed by a model. The brief names the four outcomes a
-result may carry and the push rule its evidence is verified against.
+result may carry and the push rule its evidence is verified against. A cause
+brief is the same idea for one shared cause: fixed text, the cause's (check,
+signature, example) pairs and its members, and the three results it may carry.
 """
 
 from __future__ import annotations
@@ -31,10 +33,13 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingResultKind,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
+    CAUSE_KEY_PATTERN,
     KEY_PATTERN,
     PR_KEY_PATTERN,
     REPO_PATTERN,
     SHA_PATTERN,
+    SUBJECT_PATTERN,
+    ModelLandingCausePair,
     ModelLandingControllerState,
     ModelLandingMemberRef,
 )
@@ -63,6 +68,28 @@ RESULT_RULE: Final[str] = (
     "production_gate, hold_row, collaborator, upstream_open. waiting_ci, "
     "waiting_order, report_only and a bare blocked are invalid results. Do not "
     "write the ledger and do not choose other work."
+)
+
+CAUSE_RESULT_KINDS: Final[tuple[EnumLandingResultKind, ...]] = (
+    EnumLandingResultKind.CAUSE_FIX_SUBMITTED,
+    EnumLandingResultKind.CAUSE_NOT_SHARED,
+    EnumLandingResultKind.EXTERNAL_BLOCKER,
+)
+
+CAUSE_PUSH_RULE: Final[str] = (
+    "Fix once at the source, in one pull request in the source repository. Never "
+    "push to a member PR's branch; list the members that need their own change "
+    "in the fix PR's body instead."
+)
+
+CAUSE_RESULT_RULE: Final[str] = (
+    "Write exactly one result file, with exactly one of: cause_fix_submitted"
+    "{fix_ref, fix_head} naming the one fix PR and its head; cause_not_shared"
+    "{reason} when the members only share an annotation by coincidence; "
+    "external_blocker{kind, ref} with kind one of operator_decision, "
+    "production_gate, hold_row, collaborator, upstream_open. Any other result is "
+    "invalid and spends the attempt. Do not write the ledger and do not choose "
+    "other work."
 )
 
 BRIEF_INSTRUCTIONS: Final[dict[EnumLandingBriefClass, str]] = {
@@ -102,6 +129,16 @@ BRIEF_INSTRUCTIONS: Final[dict[EnumLandingBriefClass, str]] = {
         "This runtime PR is red. Fix it and prove the fix on the lab runtime before "
         "pushing; name the lab readback in the result."
     ),
+    EnumLandingBriefClass.SHARED_CAUSE: (
+        "These PRs in one repository fail the same check with the same failure "
+        "signature. In a detached worktree of the source repository at its base: "
+        "read one member's failing job log and the base head's run of the same "
+        "check; classify the source (the base head is red; the gate itself produces "
+        "the message for PRs that did nothing wrong; a sibling pin; change-control "
+        "companion contention, minimal unblock only; or not shared); fix it once at "
+        "the source; draft code through the code delegation step and text through "
+        "the landing text step."
+    ),
 }
 
 
@@ -134,6 +171,43 @@ class ModelLandingWorkerBrief(BaseModel):
         return self
 
 
+class ModelLandingCauseBrief(BaseModel):
+    """The fixed brief one headless cause worker is dispatched with."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    brief_class: EnumLandingBriefClass = EnumLandingBriefClass.SHARED_CAUSE
+    cause: str = Field(..., pattern=CAUSE_KEY_PATTERN)
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    pairs: tuple[ModelLandingCausePair, ...] = ()
+    members: tuple[ModelLandingMemberRef, ...] = Field(..., min_length=1)
+    base_failing_checks: tuple[str, ...] = Field(
+        default=(), description="The cause's checks that also fail on the base head."
+    )
+    attempt: int = Field(..., ge=1, description="This attempt's number in the episode.")
+    lease_id: int = Field(..., ge=1)
+    engine: EnumLandingEngine
+    deadline_at: datetime
+    allowed_results: tuple[EnumLandingResultKind, ...] = CAUSE_RESULT_KINDS
+    push_rule: str = CAUSE_PUSH_RULE
+    result_rule: str = CAUSE_RESULT_RULE
+    instructions: str = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def _fixed_text(self) -> ModelLandingCauseBrief:
+        if self.brief_class is not EnumLandingBriefClass.SHARED_CAUSE:
+            raise ValueError("a cause brief is the shared_cause class")
+        if self.instructions != BRIEF_INSTRUCTIONS[self.brief_class]:
+            raise ValueError("a brief's instructions are fixed by its class")
+        if (
+            self.allowed_results != CAUSE_RESULT_KINDS
+            or self.push_rule != CAUSE_PUSH_RULE
+            or self.result_rule != CAUSE_RESULT_RULE
+        ):
+            raise ValueError("a cause brief's result and push rules are fixed")
+        return self
+
+
 class ModelLandingAction(BaseModel):
     """One controller action. ``subject`` is the PR, companion or repo it acts on."""
 
@@ -152,14 +226,25 @@ class ModelLandingAction(BaseModel):
     members: tuple[ModelLandingMemberRef, ...] = ()
     replacement: str | None = Field(default=None, pattern=PR_KEY_PATTERN)
     brief: ModelLandingWorkerBrief | None = None
+    cause_brief: ModelLandingCauseBrief | None = None
+    dedupe_key: str | None = Field(
+        default=None,
+        description="escalate_operator: <cause key>@<parked_until>, one per park.",
+    )
 
     @model_validator(mode="after")
     def _shape(self) -> ModelLandingAction:
         kind = self.kind
         if kind is EnumLandingActionKind.MERGE and self.head_sha is None:
             raise ValueError("merge is always pinned to a head")
-        if kind is EnumLandingActionKind.DISPATCH_WORKER and self.brief is None:
-            raise ValueError("dispatch_worker carries its brief")
+        if kind is EnumLandingActionKind.DISPATCH_WORKER and (
+            (self.brief is None) == (self.cause_brief is None)
+        ):
+            raise ValueError("dispatch_worker carries exactly one brief")
+        if kind is EnumLandingActionKind.ESCALATE_OPERATOR and (
+            self.dedupe_key is None or not self.members
+        ):
+            raise ValueError("escalate_operator carries its dedupe key and members")
         if kind is EnumLandingActionKind.COMPANION_REBUILD and (
             self.rebuild_key is None or not self.members or self.target_repo is None
         ):
@@ -174,11 +259,14 @@ class ModelLandingAction(BaseModel):
 
 
 class ModelLandingRecordedOutcome(BaseModel):
-    """An outcome this tick recorded (for the ledger row and the scorecard)."""
+    """An outcome this tick recorded (for the ledger row and the scorecard).
+
+    ``pr`` is the subject: a PR, or a cause key for a cause worker's outcome.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    pr: str = Field(..., pattern=SUBJECT_PATTERN)
     lease_id: int | None = Field(default=None, ge=1)
     outcome: EnumLandingOutcome
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
@@ -199,7 +287,7 @@ class ModelLandingViolation(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    pr: str = Field(..., pattern=SUBJECT_PATTERN)
     lease_id: int = Field(..., ge=1)
     reason: EnumLandingOutcomeReason
 
@@ -236,10 +324,14 @@ class ModelLandingDecision(BaseModel):
 
 __all__: list[str] = [
     "BRIEF_INSTRUCTIONS",
+    "CAUSE_PUSH_RULE",
+    "CAUSE_RESULT_KINDS",
+    "CAUSE_RESULT_RULE",
     "PUSH_RULE",
     "RESULT_RULE",
     "VALID_RESULT_KINDS",
     "ModelLandingAction",
+    "ModelLandingCauseBrief",
     "ModelLandingCompanionVerdictRow",
     "ModelLandingDecision",
     "ModelLandingDegraded",

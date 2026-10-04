@@ -174,9 +174,9 @@ DETECT_CHANGES_JOB = "Detect Changes"
 # — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
 # legitimate if:" derivation above is otherwise unchanged for every other row.
 STRICT_GATE_JOBS: tuple[str, ...] = (
-    # OCC preflight dependency — step short-circuits to exit 0 on non-PR events;
+    # Repo-owned evidence dependency — non-PR events keep their existing gates;
     # no ``if:``, so the job is always present + completed.
-    "OCC Preflight Dependency",
+    "Repo Evidence Dependency",
     # zone-filter reusable — it IS the docs-only classifier, so it always runs
     # (it never skips itself); only ``needs: occ-preflight``.
     "zone-filter / Zone Filter (docs-only check)",
@@ -481,6 +481,9 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # receipt exits 1, real committed receipt exits 0). Pinned by
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
+    # OMN-20073: repo-owned evidence is enforced beside OCC during cutover.
+    # Retiring the OCC contexts requires OR.2 queue support and pilot proof.
+    "repo-evidence / dod-verify",
     # OMN-18434: git-env-scrub.yml, standalone and unconditional on
     # pull_request, so it carries no paths filter and is always present. A test
     # that shells out to git inherits GIT_DIR from the hook running it and
@@ -1590,6 +1593,23 @@ def external_layer_applies(event: str | None) -> bool:
     return event in MERGE_ADMISSION_EVENTS or event not in _KNOWN_NON_ADMISSION_EVENTS
 
 
+def expected_external_contexts(event: str | None) -> tuple[str, ...]:
+    """Keep existing queue enforcement until OR.2 supports caller evidence there.
+
+    The pinned repo-evidence reusable currently refuses merge_group, and its
+    caller does not trigger on that event. Only that explicit event keeps the
+    previous required set; missing or unknown events require repo evidence.
+    """
+
+    if event == "merge_group":
+        return tuple(
+            context
+            for context in EXPECTED_EXTERNAL_CONTEXTS
+            if context != "repo-evidence / dod-verify"
+        )
+    return EXPECTED_EXTERNAL_CONTEXTS
+
+
 def evaluate_external(
     check_runs: list[dict[str, object]] | None,
     *,
@@ -1863,6 +1883,7 @@ def main(argv: list[str] | None = None) -> int:
         # test green.
         ext_code, ext_report = evaluate_external(
             check_runs,
+            expected=expected_external_contexts(args.event),
             actor=args.actor,
             now=observation_time,
             head_workflow_runs=_load_workflow_runs(args.head_workflow_runs_file),

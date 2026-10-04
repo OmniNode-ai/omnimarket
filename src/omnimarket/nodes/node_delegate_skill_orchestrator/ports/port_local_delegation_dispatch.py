@@ -73,6 +73,7 @@ from omnimarket.delegation.acceptance_directives import (
     acceptance_rule_names,
     compose_user_prompt_with_output_directives,
     render_acceptance_directives,
+    state_prompt_for_task_class,
 )
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
@@ -2726,8 +2727,14 @@ class LocalDelegationDispatchPort:
         dod_deterministic_for_prompt, dod_heuristic_for_prompt = (
             resolve_task_class_dod_checks(task_type, prompt=prompt)
         )
+        # OMN-19432: a class that declares ``prompt_shape: facts_first`` states
+        # the facts computed from the prompt before the prompt, which follows
+        # unchanged. The gate still resolves the DoD from ``prompt`` itself,
+        # and grades against ``stated_prompt`` so a count or line number the
+        # model was told is grounded.
+        stated_prompt = state_prompt_for_task_class(prompt=prompt, task_class=task_type)
         outbound_user_prompt = compose_user_prompt_with_output_directives(
-            prompt=prompt,
+            prompt=stated_prompt,
             acceptance_directives=(
                 render_acceptance_directives(
                     acceptance_rule_names(
@@ -2957,6 +2964,7 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation_id,
             task_type=task_type,
             prompt=prompt,
+            grounding_source=stated_prompt,
             content=gate_content
             if gate_content is not None
             else (result.content or ""),
@@ -3080,6 +3088,7 @@ class LocalDelegationDispatchPort:
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
+        grounding_source: str | None = None,
     ) -> ModelQualityGateResult:
         """Run the canonical deterministic quality-gate reducer.
 
@@ -3125,6 +3134,11 @@ class LocalDelegationDispatchPort:
             deliverable_evidence=deliverable_evidence,
         )
 
+        # OMN-19432: ``grounding_source`` is the prompt as it was stated to the
+        # model, facts included, when the task class states facts first. The
+        # facts are computed from the prompt, so a count or line number the
+        # model was given is grounded, and an identifier in them already occurs
+        # in the prompt. ``None`` grounds on ``prompt`` as before.
         # OMN-18297: the prompt is the grounding source. The gate's declared
         # identifier classes are checked against it, so a response citing a
         # pull request, sha or run id that appears nowhere in its own input
@@ -3134,7 +3148,9 @@ class LocalDelegationDispatchPort:
         return evaluate_quality_gate(
             gate_input,
             response_contract=effective_response_contract,
-            grounding_source=prompt,
+            grounding_source=grounding_source
+            if grounding_source is not None
+            else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
         )

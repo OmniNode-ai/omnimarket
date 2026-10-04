@@ -84,7 +84,32 @@ def load_handler_execution_budget(
     return budget
 
 
+class ModelDelegationReaperConfig(BaseModel):
+    """Contract-owned grace, scan cadence and bounded work per scan."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    grace_seconds: int = Field(strict=True, ge=1)
+    max_reaps_per_tick: int = Field(strict=True, ge=1)
+    scan_interval_seconds: int = Field(strict=True, ge=1)
+
+
+def load_delegation_reaper_config(
+    contract_path: Path = _DEFAULT_CONTRACT_PATH,
+) -> ModelDelegationReaperConfig:
+    """Refuse missing or invalid reaper configuration rather than guess a deadline."""
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"{contract_path} must contain a mapping")
+    declared = raw.get("delegation_reaper")
+    if not isinstance(declared, dict):
+        raise ValueError(f"{contract_path} missing delegation_reaper mapping")
+    return ModelDelegationReaperConfig.model_validate(declared)
+
+
 __all__ = [
     "ModelDelegateSkillHandlerBudget",
+    "ModelDelegationReaperConfig",
+    "load_delegation_reaper_config",
     "load_handler_execution_budget",
 ]

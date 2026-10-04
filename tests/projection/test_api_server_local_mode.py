@@ -17,7 +17,9 @@ query service. Each test names the failure it exists to catch:
 * with no projection binding configured, the shim reads anything but the store
   the local writers fill;
 * with only the read binding configured (OMN-20159), the shim reads anything but
-  the store that binding names.
+  the store that binding names;
+* a store the real delegation writer created cannot serve the Runs exposure
+  (it must answer 200 with the written row and every declared column).
 """
 
 from __future__ import annotations
@@ -49,6 +51,9 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     resolve_dashboard_bind,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    HandlerProjectionDelegation,
+)
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
 )
@@ -59,8 +64,12 @@ from omnimarket.nodes.node_projection_read_effect.models import (
 from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
     SqliteTableRowSource,
 )
-from omnimarket.projection.discovery import parse_order_by_clauses
+from omnimarket.projection.discovery import (
+    build_projection_topic_map,
+    parse_order_by_clauses,
+)
 from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 _OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY"
 _READ_OVERLAY_ENV = "OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY"
@@ -548,3 +557,53 @@ def test_the_shim_never_starts_the_standalone_api() -> None:
     source = Path(cli_dashboard.__file__).read_text(encoding="utf-8")
     assert not re.search(r"projection\.api_server", source)
     assert 'uvicorn.run("omnimarket' not in source
+
+
+# -- AC1 on a store the real writer created ---------------------------------------
+
+
+class _NullPublisher:
+    """No broker here; the snapshot republish is not what this case proves."""
+
+    def publish(self, *args: object, **kwargs: object) -> bool:
+        return True
+
+
+def test_a_store_the_real_writer_created_serves_runs_with_every_declared_column(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "delegation.sqlite"
+    HandlerProjectionDelegation(publisher=_NullPublisher()).handle(
+        {
+            "status": "completed",
+            "correlation_id": "19976000-0000-4000-8000-0000000003a1",
+            "task_type": "research",
+            # A slug the writer resolves without a tenant registry row; the
+            # dashboard serves the UUID the writer stored, as `onex local init`
+            # would mint it.
+            "tenant_id": "omninode",
+            "metrics": {"cost_usd": 0.0},
+            "timestamp": "2026-10-03T12:00:00+00:00",
+            "_db": SqliteDatabaseAdapter(db_path),
+        }
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        (tenant,) = conn.execute("SELECT tenant_id FROM delegation_events").fetchone()
+    finally:
+        conn.close()
+    cfg = build_projection_topic_map()[_DECISIONS]
+    topics = {_DECISIONS: cfg}
+    handler = HandlerProjectionRead(
+        topic_map=topics, row_source=SqliteTableRowSource(db_path)
+    )
+    client = TestClient(
+        create_dashboard_app(handler=handler, topic_map=topics, tenant=str(tenant))
+    )
+    response = client.get(f"/projection/{_DECISIONS}")
+    assert response.status_code == 200, response.json()
+    rows = response.json()["rows"]
+    assert [row["correlation_id"] for row in rows] == [
+        "19976000-0000-4000-8000-0000000003a1"
+    ]
+    assert set(rows[0]) == set(cfg.columns)

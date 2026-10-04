@@ -122,3 +122,59 @@ def test_every_repo_contract_binds_every_criterion() -> None:
         assert criteria <= bound, (
             f"{path.name}: acceptance criteria missing binds_ac: {sorted(criteria - bound)}"
         )
+
+
+# OMN-20073: omnibase_core#1884 added the dependency-bot and pin-only writer-app
+# exemption to the caller-evidence dod-verify job. A pin that predates it makes
+# every bot version bump fail for binding no evidence of its own.
+# OMN-20543: omnibase_core#1886, a descendant of #1884, gives that job a
+# Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
+# test that needs a database runs at the head and in the merge-base control.
+_EXEMPT_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
+
+
+def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
+    uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]["uses"]
+    assert uses.endswith(f"@{_EXEMPT_REUSABLE_SHA}"), (
+        "pin the omnibase_core reusable at or past omnibase_core#1884"
+    )
+
+
+# OMN-20072 (S5 pilot, AC3): while repo-evidence / dod-verify is required beside
+# the OCC contexts, the caller turns on the reusable's difference step, and the
+# pinned verifier is a release that ships the classifier the step runs
+# (node_dod_verify occ-difference, omnimarket#3277; 0.4.294 is the first release
+# whose published wheel was read to carry services/occ_verdict_difference.py).
+_DIFFERENCE_CLASSIFIER_FLOOR = (0, 4, 294)
+
+
+def test_caller_compares_with_occ_during_the_s5_pilot() -> None:
+    job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]
+    assert job["with"].get("compare-with-occ") == "true", (
+        'the S5 pilot requires compare-with-occ: "true" (a quoted string input)'
+    )
+    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
+    assert version >= _DIFFERENCE_CLASSIFIER_FLOOR, (
+        "verifier-version must ship node_dod_verify occ-difference "
+        f"(>= {'.'.join(map(str, _DIFFERENCE_CLASSIFIER_FLOOR))})"
+    )
+
+
+# OMN-20543 (AC3): the pinned reusable is the one whose dod-verify job gives a
+# database test its database. A pin before omnibase_core#1886 runs that test
+# with none, so a contract can only scope it local_done_gate, which the hosted
+# control refuses as a control that did not run (omnimarket#3369).
+_DATABASE_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
+
+
+def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:
+    uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]["uses"]
+    assert uses.endswith(f"@{_DATABASE_REUSABLE_SHA}"), (
+        "pin the omnibase_core reusable at or past omnibase_core#1886"
+    )

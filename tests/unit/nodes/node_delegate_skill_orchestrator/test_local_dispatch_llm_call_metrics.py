@@ -127,7 +127,7 @@ def test_local_dispatch_materializes_llm_call_metrics_row(
     assert row["prompt_tokens"] == delegation[0]["tokens_input"] == 11
     assert row["completion_tokens"] == delegation[0]["tokens_output"] == 22
     assert row["total_tokens"] == 33
-    assert row["usage_source"] == "API"
+    assert row["usage_source"] == "measured"
 
 
 def test_two_local_runs_with_equal_tokens_are_two_rows(
