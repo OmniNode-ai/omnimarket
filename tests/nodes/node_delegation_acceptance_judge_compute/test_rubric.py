@@ -149,3 +149,61 @@ def test_rubric_file_has_no_unrendered_placeholder() -> None:
     result = render([item("a")])
     assert not re.search(r"\{reason_max_chars\}", result.batches[0].prompt)
     assert "200 characters" in result.batches[0].prompt
+
+
+def _mapping_keys(value: object) -> list[str]:
+    if isinstance(value, dict):
+        return [str(k) for k in value] + [
+            key for child in value.values() for key in _mapping_keys(child)
+        ]
+    if isinstance(value, list):
+        return [key for child in value for key in _mapping_keys(child)]
+    return []
+
+
+def test_rubric_names_no_key_the_task_class_authority_oracle_reads_as_a_task_class_list() -> (
+    None
+):
+    """OMN-20507: the omninode_infra OMN-15651 oracle treats a mapping key whose
+    normalised name contains tasktype or taskclass as a task-class candidate; this
+    rubric is a per-class routing-label map for an offline measurement, not an
+    admission list, so no key may read that way."""
+    import yaml
+
+    document = yaml.safe_load(RUBRIC_YAML)
+    offenders = sorted(
+        {
+            key
+            for key in _mapping_keys(document)
+            if any(
+                word in re.sub(r"[^a-z0-9]", "", key.lower())
+                for word in ("tasktype", "taskclass")
+            )
+        }
+    )
+    assert not offenders, offenders
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("summarization", "summarization"),
+        ("review", "review"),
+        ("document", "document"),
+        ("code_generation", "code_generation"),
+        ("code_review", "code_review"),
+        ("test", "test"),
+        ("reasoning", "reasoning"),
+        ("complex_reasoning", "reasoning"),
+        ("not_a_label", None),
+    ],
+)
+def test_rubric_routing_labels_resolve_to_their_class(
+    label: str, expected: str | None
+) -> None:
+    from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.classify import (
+        TASK_KIND,
+        class_key,
+    )
+
+    assert class_key(label, TASK_KIND, RUBRIC) == expected
