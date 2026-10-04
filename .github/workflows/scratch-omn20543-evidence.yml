@@ -1,0 +1,22 @@
+# OMN-20543 SCRATCH BASE ONLY, never merged. pull_request_target always reads the
+# default branch's definition, so an unmerged reusable can only be exercised
+# before merge through a pull_request caller on a scratch base. Same inputs as
+# call-repo-evidence-gate.yml, with the OCC difference step off.
+name: Scratch Repo Evidence (OMN-20543)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+    branches: [jonah/omn-20543-scratch-base]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  repo-evidence:
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@bedfe5be6365a77871b6769b727c67e3e9603eb2
+    with:
+      evidence-source: caller
+      verifier-version: 0.4.294
+      compare-with-occ: "false"
