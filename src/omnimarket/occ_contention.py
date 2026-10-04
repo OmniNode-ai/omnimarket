@@ -104,6 +104,7 @@ __all__ = [
     "EnumCompanionProvenance",
     "ModelOccProducerPolicy",
     "classify_companion_provenance",
+    "companion_may_cover_pr",
     "companion_touches_ticket",
     "decide_contention",
     "find_open_companions",
@@ -127,6 +128,17 @@ _MACHINE_BRANCH_RE = re.compile(r"auto/.+-occ-autobind")
 # ``/pulls/{n}/files`` call; a ticket with more than this many open companions is
 # already pathological and the cap keeps the mint path bounded.
 _MAX_CANDIDATES = 10
+
+
+# An evidence id the gate binds a product PR by: ``dod-<repo-slug>-pr-<n>`` or its
+# ``-ci`` sibling, where the slug is the repo with ``/`` turned into ``-``. The
+# same shape ``OccCompanionEmitter`` mints and ``ci_check_evidence_id`` extends.
+_EVIDENCE_ID_RE = re.compile(r"dod-(?P<slug>.+?)-pr-(?P<number>\d+)(?:-ci)?")
+
+# An evidence id added to a contract file: ``+  - id: "dod-…-pr-<n>"`` in a patch.
+_ADDED_EVIDENCE_ID_RE = re.compile(
+    r"""^\+\s*-\s*id:\s*["']?(?P<id>[^"'\s]+)["']?\s*$"""
+)
 
 
 class EnumCompanionProvenance(StrEnum):
@@ -275,6 +287,60 @@ def companion_touches_ticket(*, changed_paths: Sequence[str], ticket_id: str) ->
     return False
 
 
+def companion_may_cover_pr(
+    *,
+    files: Sequence[Mapping[str, object]],
+    ticket_id: str,
+    repo: str,
+    pr_number: int,
+) -> bool:
+    """Pure: could this open companion be the evidence for ``repo#pr_number``?
+
+    OMN-20412. The defer is about *displacement*: a machine mint for a PR that
+    a hand-authored companion already covers would hollow that companion out.
+    That reason holds only for the PRs the companion covers. Deferring the whole
+    ticket made every other PR citing it wait behind a companion that can never
+    bind them (about 20 omnimarket PRs on one ticket queued one OCC CI cycle each).
+
+    A companion's coverage is the set of ``dod-<repo-slug>-pr-<n>`` evidence ids
+    it carries for ``ticket_id``, read from two places: the receipt directories
+    ``drift/dod_receipts/<ticket>/<evidence-id>/…`` it changes, and the ids it
+    ADDS to ``contracts/<ticket>.yaml`` (the ``patch`` of that file entry).
+    Whole-id comparison, never a substring: ``…-pr-3210`` is not ``…-pr-321``.
+
+    Fails toward deferring (``True``) whenever coverage cannot be read: no ids
+    found, or a contract file entry with no ``patch`` (GitHub omits it for a
+    large diff) and no receipt directory. A needless defer is recoverable on the
+    next ``synchronize``; a wrong mint over a hand-authored companion is not.
+    """
+    subject = (repo.replace("/", "-").casefold(), pr_number)
+    contract_path = f"contracts/{ticket_id}.yaml"
+    receipt_prefix = f"drift/dod_receipts/{ticket_id}/"
+    evidence_ids: set[str] = set()
+    for entry in files:
+        path = str(entry.get("filename") or "").strip()
+        if path.startswith(receipt_prefix):
+            segment = path[len(receipt_prefix) :].split("/", 1)[0]
+            if segment:
+                evidence_ids.add(segment)
+        elif path == contract_path:
+            patch = entry.get("patch")
+            if not isinstance(patch, str):
+                continue
+            for line in patch.splitlines():
+                added = _ADDED_EVIDENCE_ID_RE.match(line)
+                if added:
+                    evidence_ids.add(added.group("id"))
+    covered: set[tuple[str, int]] = set()
+    for evidence_id in evidence_ids:
+        match = _EVIDENCE_ID_RE.fullmatch(evidence_id)
+        if match:
+            covered.add((match.group("slug").casefold(), int(match.group("number"))))
+    if not covered:
+        return True
+    return subject in covered
+
+
 def decide_contention(
     findings: Sequence[ContentionFinding],
 ) -> tuple[bool, str]:
@@ -310,12 +376,18 @@ def find_open_companions(
     tickets: Iterable[str],
     occ_repo: str,
     own_branch: str,
+    repo: str,
+    pr_number: int,
     search_issues: Callable[[str], dict[str, object]],
     get_pull: Callable[[int], dict[str, object]],
     list_pr_files: Callable[[int], list[dict[str, object]]],
     max_candidates: int = _MAX_CANDIDATES,
 ) -> tuple[ContentionFinding, ...]:
     """Index open OCC PRs that already carry evidence for any of ``tickets``.
+
+    ``repo`` / ``pr_number`` name the product PR being minted for. A companion
+    that carries evidence for the ticket but demonstrably covers OTHER PRs only
+    is not a contender for this one (OMN-20412, :func:`companion_may_cover_pr`).
 
     The I/O halves are injected as callables so the emitter supplies real
     ``rest_json``/``rest_json_array`` closures and tests supply fakes:
@@ -404,6 +476,10 @@ def find_open_companions(
             paths = [str(f.get("filename", "")) for f in files]
             if not companion_touches_ticket(changed_paths=paths, ticket_id=ticket):
                 continue
+            if not companion_may_cover_pr(
+                files=files, ticket_id=ticket, repo=repo, pr_number=pr_number
+            ):
+                continue  # evidence for other PRs on this ticket only
             provenance = classify_companion_provenance(labels=labels, head_ref=head_ref)
             findings.append(
                 ContentionFinding(

@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-17427"
-title: "A local run states one saving on row and receipt, and metering keys on the minted tenant"
-summary: "The local delegation_events row priced its saving against a hardcoded Opus rate while the receipt priced it against the resolved baseline, and onex metering keyed metering_summary on the literal tenant local. The saving is now computed once against the resolved baseline and written to both the row and the receipt with its pinned counterfactual and manifest version, and metering reads the minted tenant identity and refuses when none exists."
+title: "A local run states one saving on row and receipt, metering keys on the minted tenant, and the routing feedback reducer ignores an unusable latency"
+summary: "The local delegation_events row priced its saving against a hardcoded Opus rate while the receipt priced it against the resolved baseline, and onex metering keyed metering_summary on the literal tenant local. The saving is now computed once against the resolved baseline and written to both the row and the receipt with its pinned counterfactual and manifest version, and metering reads the minted tenant identity and refuses when none exists. A terminal event whose latency_ms was NaN or infinite raised out of the routing feedback reducer, and a boolean latency was counted as one millisecond; the reducer now treats a non-finite or boolean latency as no latency, so the event still counts and the running average is unchanged."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -17,13 +17,59 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: onex metering keys metering_summary on the minted tenant id and refuses when none exists -- falsifier: the focused pytest finds a summary row keyed on the literal local, or a run with no identity that does not refuse
+      - id: "AC8"
+        statement: |-
+          AC8: An inference call whose upstream keeps the body open with keep-alive bytes returns the typed timeout error at the contract ceiling, and a prompt chunked body inside the ceiling still returns its content -- falsifier: the focused pytest finds a call that outlives the ceiling, or a prompt body that is cut off
+  - id: "req-infra-pin-0-38-64"
+    statement: |-
+      The omnibase-infra dependency floors and every literal CI sibling checkout of omnibase_infra must name the 0.38.64 release.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.64 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired
+  - id: "req-unusable-latency"
+    statement: |-
+      A delegation terminal whose latency is not a real measurement must be counted without raising and without moving the running average latency.
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: a completed terminal with latency_ms of NaN, positive or negative infinity, or a boolean is accumulated as an event with no latency (total_count advances, avg_latency_ms is unchanged) and handle() does not raise -- falsifier: uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q
+  - id: "req-swe-client-smoke-coverage"
+    statement: |-
+      The swe_discriminator model client and smoke runner are exercised offline by focused unit tests that block real HTTP.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: routing, transport, grading, aggregation and smoke CLI behaviour of the swe_discriminator client is asserted offline -- falsifier: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q
+  - id: "req-ab-runner-branches"
+    statement: |-
+      The delegation A/B runner handler's default HTTP adapter, model boundary and contract-output branches are pinned by tests.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: the delegation A/B runner handler branch tests pass, covering the default HTTP adapter, the refusal and timeout outcomes and the completed-output topic contract -- falsifier: uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q
 evidence_requirements:
+  - kind: "tests"
+    description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
+    command: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
   - kind: "tests"
     description: "The row and the receipt state the same saving and the row pins its counterfactual."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_row_and_receipt_savings_agree_omn17427.py -q"
   - kind: "tests"
     description: "Metering reads the minted tenant identity and refuses without one."
     command: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
+  - kind: "tests"
+    description: "The omnibase_infra 0.38.64 pin parity tests pass."
+    command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
+  - kind: "tests"
+    description: "An unusable latency is counted as no latency and never raises."
+    command: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
+  - kind: "tests"
+    description: "The SWE discriminator model client and smoke runner offline tests pass."
+    command: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
+  - kind: "tests"
+    description: "The delegation A/B runner handler branch tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +91,43 @@ dod_evidence:
         check_value: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn17427-ac3-total-inference-deadline"
+    description: "The inference call is bounded by one absolute deadline and a prompt chunked body still completes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-infra-pin-0-38-64"
+    description: "The omnibase_infra 0.38.64 pin parity tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn17427-unusable-latency"
+    description: "The reducer counts a NaN, infinite or boolean latency as no latency and does not raise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn17427-swe-client-smoke"
+    description: "The SWE discriminator model client and smoke runner offline tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn17427-ac10-ab-runner-branches"
+    description: "The delegation A/B runner handler branch tests pass against the default HTTP adapter and contract outputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]

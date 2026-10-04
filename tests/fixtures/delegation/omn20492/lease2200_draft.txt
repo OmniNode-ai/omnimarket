@@ -1,0 +1,3 @@
+fix(OMN-17427): resolve contract conflict and update sha256 pins
+
+Kept both sides of the contracts/OMN-17427.yaml conflict. Updated contract_sha256 to 820472a451bf in the two omnimarket-pr-3323 receipts and the occ-self-bind-pr-12625 binding. Entry hashes are unchanged.

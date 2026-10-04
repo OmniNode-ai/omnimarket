@@ -1,0 +1,11 @@
+Write the git commit message (a subject line of the form type(OMN-17427): summary, then a short body) for the commit described by the facts below. Facts only: use no PR number, sha, check name, test name or file name that is not listed.
+
+FACTS
+Pull request: OmniNode-ai/omniclaude-internal#307
+Ticket: OMN-17427
+Files changed by the commit: .claude-plugin/marketplace.json, .github/workflows/validate-plugin.yml, plugins/omni/.claude-plugin/plugin.json, plugins/omni/skills/delegation-health/scripts/delegation_health.py, plugins/omni/skills/delegation-health/tests/test_delegation_health.py, plugins/omni/skills/ledger-write/SKILL.md, plugins/omni/skills/pr-handoff/SKILL.md, plugins/omni/skills/pr-handoff/scripts/handoff.sh, plugins/omni/skills/pr-handoff/tests/test_handoff.py, plugins/omni/skills/pr-handoff/tests/test_lane_closeout.py, plugins/omni/skills/remote-lane/SKILL.md, plugins/omni/skills/remote-lane/scripts/onex_remote_lane.py, tests/test_remote_lane_ledger_bus.py
+What the worker reported about the change:
+- **Conflict:** it was confined to the two version lines in `plugins/omni/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`. I took main's `0.4.304` in both.
+- **Version bump:** `python3 scripts/validate_plugin.py --base origin/main --bump-to-base` raised both to `0.4.305`. `python3 scripts/validate_plugin.py --base origin/main` then exited 0, and the commit hooks passed, including `validate-plugin`.
+Facts the worker recorded for the commit body:
+Version conflict in plugin.json and marketplace.json resolved to main's 0.4.304, then bumped to 0.4.305 with validate_plugin.py --bump-to-base.
