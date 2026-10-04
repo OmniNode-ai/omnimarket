@@ -90,6 +90,14 @@ class ModelLandingPrFacts(BaseModel):
     red_checks: tuple[str, ...] = Field(
         default=(), description="Names of the red check-runs on the head."
     )
+    cancelled_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Names of the check-runs on the head whose newest copy is cancelled "
+            "(not failed). With merge_state blocked, no red_checks and ci not "
+            "pending, a stale cancelled copy holds the merge: refresh once."
+        ),
+    )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
     suspensions: tuple[EnumLandingSuspension, ...] = ()
     collaborator: bool = Field(
@@ -219,6 +227,11 @@ class ModelLandingPolicy(BaseModel):
     )
     rebuild_backoff_ticks: tuple[int, ...] = Field(
         default=(1, 2), min_length=1, description="Backoff before retry n (R2)."
+    )
+    max_stale_refreshes: int = Field(
+        default=2,
+        ge=1,
+        description="Update-branch refreshes per PR for stale cancelled copies.",
     )
     engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(

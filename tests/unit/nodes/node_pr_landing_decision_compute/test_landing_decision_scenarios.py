@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The review scenarios S1 to S20, replayed tick by tick against the decision.
+"""The review scenarios S1 to S21, replayed tick by tick against the decision.
 
 Each fixture under ``tests/fixtures/pr_landing_decision/review_scenarios/`` is
 written from the TLC trace that reaches its scenario in ``LandingController.tla``
@@ -10,6 +10,11 @@ interleaving; ``test_fixture_follows_its_tla_trace`` checks the correspondence
 mechanically. The scenario run itself checks every tick's expected actions and
 records, and the model's safety properties (P1, P2, P3, P7, P8, P9 and the
 pinned-merge property) after every tick.
+
+S1 to S20 are the scenarios the model checks. A fixture the model does not
+cover says ``tla_modeled: false`` (S21, the stale-cancelled refresh) and names
+no trace: it is replayed and property-checked here only, and it never lowers
+the floor of S1 to S20 that G-ACT's scenario receipt requires.
 """
 
 from __future__ import annotations
@@ -220,6 +225,10 @@ def _trace_ref(spec: dict[str, Any]) -> str:
     return str(spec.get("trace_ref") or "S_" + spec["scenario"][1:])
 
 
+def _modeled(spec: dict[str, Any]) -> bool:
+    return bool(spec.get("tla_modeled", True))
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("spec", SPECS, ids=[s["id"] for s in SPECS])
 def test_review_scenario(spec: dict[str, Any]) -> None:
@@ -229,12 +238,18 @@ def test_review_scenario(spec: dict[str, Any]) -> None:
 @pytest.mark.unit
 def test_every_review_scenario_has_a_fixture() -> None:
     covered = {spec["scenario"] for spec in SPECS}
-    assert covered == {f"S{n}" for n in range(1, 21)}
+    assert covered >= {f"S{n}" for n in range(1, 21)}
+
+
+@pytest.mark.unit
+def test_only_the_stale_cancelled_refresh_is_outside_the_model() -> None:
+    unmodeled = {spec["scenario"] for spec in SPECS if not _modeled(spec)}
+    assert unmodeled == {"S21"}
 
 
 @pytest.mark.unit
 def test_every_tlc_trace_has_a_fixture() -> None:
-    used = {_trace_ref(spec) for spec in SPECS}
+    used = {_trace_ref(spec) for spec in SPECS if _modeled(spec)}
     assert used == set(TLC_TRACES)
 
 
@@ -259,6 +274,10 @@ def _reachable(
 @pytest.mark.unit
 @pytest.mark.parametrize("spec", SPECS, ids=[s["id"] for s in SPECS])
 def test_fixture_follows_its_tla_trace(spec: dict[str, Any]) -> None:
+    if not _modeled(spec):
+        assert "tla_trace" not in spec
+        assert not any(tick.get("tla") for tick in spec["ticks"])
+        return
     trace = TLC_TRACES[_trace_ref(spec)]
     assert spec["tla_trace"] == trace, "the fixture's trace is not the TLC trace"
     steps = [step for tick in spec["ticks"] for step in tick.get("tla", [])]
