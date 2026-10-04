@@ -17,21 +17,26 @@ database proves:
   one -- or with only a partial or an invalid unique index -- still gets one
   row per key, and a unique key over a nullable column never serves the rows
   whose key is NULL;
-* F9 one row with a NULL freshness value does not hide the newest one, and a
-  newest window holding only such rows still reports the newest dated value;
-* F10 the unique-index lookup reads the real catalogue, and a relation that
-  does not exist is still refused by name;
+* F9 a newest window serves its dated rows before any undated one (Postgres
+  reads ``DESC`` as NULLS FIRST), holds undated rows only where the dated
+  ones leave room, and never runs the undated read when they fill it; its
+  ``latest_event_at`` is the newest dated value, or ``None`` when the scope
+  has no dated row;
+* F10 the unique-index lookup reads the real catalogue and counts only a
+  unique index, and a relation that does not exist is still refused by name;
 * F11 a unique index that compares the key under another collation or
   operator class than the column's own does not count (the real catalogue
   prints its key column as the bare column name);
-* F12 a unique index dropped while the reader runs stops the fast path once
-  the cached catalogue answer has aged out;
+* F12 a unique index dropped while the reader runs still takes the fast path
+  59 s later and stops it 61 s later, once the cached catalogue answer has
+  aged out;
 * F13 a cursor exposure's ``latest_event_at`` is read from its newest rows by
   cursor, not by ordering the relation on its freshness column.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -49,6 +54,7 @@ from omnimarket.projection.table_reader import (
     ProjectionReadError,
     TableRowSource,
     UniqueKeyCatalogue,
+    build_window_query,
 )
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres
 
@@ -58,6 +64,11 @@ _LIMIT = 5
 _RETAIN = _LIMIT * RETAINED_WINDOW_FACTOR
 _ROWS = _RETAIN * 3
 _NULL_KEYED = 3
+# decisions_few_dated: more dated rows than a page, and with its undated rows
+# still fewer than the window keeps. decisions_undated: undated rows only.
+_FEW_DATED = _LIMIT + 2
+_FEW_UNDATED = 5
+_ONLY_UNDATED = _LIMIT + 3
 _EPOCH = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
 
@@ -246,6 +257,14 @@ async def seeded(dsn: str) -> AsyncIterator[None]:
             f"CREATE UNIQUE INDEX flow_revisions_open_key ON {_SCHEMA}.flow_revisions"
             " (consumer_group, topic) WHERE window_end > '2030-01-01'"
         )
+        # A plain, NON-unique index over the same key: valid, whole and over
+        # plain columns, so a catalogue lookup that stopped asking for
+        # indisunique would count it, and the catalogue and one-row-per-key
+        # assertions on flow_revisions below would fail.
+        await conn.execute(
+            f"CREATE INDEX flow_revisions_key ON {_SCHEMA}.flow_revisions"
+            " (consumer_group, topic)"
+        )
         await conn.executemany(
             f"INSERT INTO {_SCHEMA}.flow_revisions"
             " (consumer_group, topic, window_start, window_end)"
@@ -329,6 +348,40 @@ async def seeded(dsn: str) -> AsyncIterator[None]:
                 )
                 for i in range(_ROWS)
             ],
+        )
+        # The same shape with few dated rows, and with undated rows only. All
+        # three carry the real table's index on written_at, which the dated
+        # read of a newest window goes through.
+        for table in ("decisions_few_dated", "decisions_undated"):
+            await conn.execute(
+                f"CREATE TABLE {_SCHEMA}.{table} ("
+                " correlation_id text NOT NULL UNIQUE, tenant_id text NOT NULL,"
+                " model_name text NOT NULL, written_at timestamptz)"
+            )
+        for table in (
+            "decisions_null_written_at",
+            "decisions_few_dated",
+            "decisions_undated",
+        ):
+            await conn.execute(
+                f"CREATE INDEX {table}_written_at ON {_SCHEMA}.{table} (written_at)"
+            )
+        await conn.executemany(
+            f"INSERT INTO {_SCHEMA}.decisions_few_dated VALUES ($1, $2, $3, $4)",
+            [
+                *(
+                    (f"dated-{i:04d}", _TENANT, "qwen", _EPOCH + timedelta(minutes=i))
+                    for i in range(_FEW_DATED)
+                ),
+                *(
+                    (f"undated-{i:04d}", _TENANT, "qwen", None)
+                    for i in range(_FEW_UNDATED)
+                ),
+            ],
+        )
+        await conn.executemany(
+            f"INSERT INTO {_SCHEMA}.decisions_undated VALUES ($1, $2, $3, $4)",
+            [(f"undated-{i:04d}", _TENANT, "qwen", None) for i in range(_ONLY_UNDATED)],
         )
         # live-events' shape under a unique index that compares the key with
         # another collation, and under one with a non-default operator class.
@@ -533,42 +586,188 @@ async def test_f8_a_nullable_unique_key_never_serves_its_null_keyed_rows(
     ]
 
 
+def _minutes(*offsets: int) -> list[str]:
+    """``written_at`` values as a page serialises them."""
+    return [(_EPOCH + timedelta(minutes=offset)).isoformat() for offset in offsets]
+
+
 @pytest.mark.integration
-async def test_f9_a_null_freshness_value_does_not_hide_the_newest_one(
+async def test_f9_the_bounded_read_and_the_newest_window_agree_on_the_newest_value(
     seeded: None, dsn: str
 ) -> None:
+    # Even minutes carry a value, odd ones NULL. The bounded read (no window
+    # in hand) skips the NULLs; the newest window serves its dated rows
+    # first, so the window alone gives the same answer.
     cfg = _decisions_cfg("decisions_null_written_at")
     source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
     try:
-        latest = await source.latest_event_at(cfg, tenant_id=_TENANT)
+        bounded = await source.latest_event_at(cfg, tenant_id=_TENANT)
+        window = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
+        from_window = await source.latest_event_at(
+            cfg, tenant_id=_TENANT, window_rows=window
+        )
     finally:
         await source.close()
 
-    # Even minutes carry a value, odd ones NULL; the newest valued row is the
-    # last even index.
     newest_valued = max(i for i in range(_ROWS) if i % 2 == 0)
-    assert latest == _EPOCH + timedelta(minutes=newest_valued)
+    assert bounded == _EPOCH + timedelta(minutes=newest_valued)
+    assert from_window == bounded
 
 
 @pytest.mark.integration
-async def test_f9_a_window_of_only_undated_rows_still_reports_the_newest_dated_value(
+async def test_f9_the_newest_window_serves_its_newest_dated_rows_before_undated_ones(
     seeded: None, dsn: str
 ) -> None:
-    # Half the rows carry no written_at, more than the window keeps, and DESC
-    # puts them first: the newest window holds no dated row at all.
+    # More undated rows than the window keeps, and more dated ones. Postgres
+    # reads DESC as NULLS FIRST, so a window cut by written_at DESC alone
+    # would hold undated rows only.
     cfg = _decisions_cfg("decisions_null_written_at")
+    dated = sorted((i for i in range(_ROWS) if i % 2 == 0), reverse=True)
+    undated = _ROWS - len(dated)
+    assert len(dated) > _RETAIN, "the premise: the dated rows fill the window"
+    assert undated > _RETAIN, "the premise: so would the undated rows"
+    source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+    try:
+        window = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
+    finally:
+        await source.close()
 
     status, body = await _page(dsn, cfg, tenant=_TENANT)
 
+    assert [row["written_at"] for row in window] == _minutes(*dated[:_RETAIN])
     assert status == 200, body
-    # The premise, read back: page one holds rows and none of them is dated.
+    assert [row["written_at"] for row in body["rows"]] == _minutes(*dated[:_LIMIT])
+    assert body["latest_event_at"] == _minutes(dated[0])[0]
+
+
+@pytest.mark.integration
+async def test_f9_a_window_with_room_holds_every_row_and_serves_undated_rows_last(
+    seeded: None, dsn: str
+) -> None:
+    cfg = _decisions_cfg("decisions_few_dated")
+    assert _FEW_DATED + _FEW_UNDATED <= _RETAIN, "the premise: every row fits"
+    source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+    try:
+        window = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
+        latest = await source.latest_event_at(
+            cfg, tenant_id=_TENANT, window_rows=window
+        )
+    finally:
+        await source.close()
+
+    # Under the page's written_at DESC order the undated rows come last.
+    assert [row["written_at"] for row in window] == [
+        *_minutes(*range(_FEW_DATED - 1, -1, -1)),
+        *([None] * _FEW_UNDATED),
+    ]
+    assert sorted(row["correlation_id"] for row in window[_FEW_DATED:]) == [
+        f"undated-{i:04d}" for i in range(_FEW_UNDATED)
+    ]
+    assert latest == _EPOCH + timedelta(minutes=_FEW_DATED - 1)
+
+
+@pytest.mark.integration
+async def test_f9_a_scope_of_only_undated_rows_serves_them_with_no_latest_value(
+    seeded: None, dsn: str
+) -> None:
+    cfg = _decisions_cfg("decisions_undated")
+    source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+    try:
+        window = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
+    finally:
+        await source.close()
+
+    status, body = await _page(dsn, cfg, tenant=_TENANT)
+
+    assert sorted(row["correlation_id"] for row in window) == [
+        f"undated-{i:04d}" for i in range(_ONLY_UNDATED)
+    ]
+    assert status == 200, body
     assert len(body["rows"]) == _LIMIT
     assert all(row["written_at"] is None for row in body["rows"])
-    newest_valued = max(i for i in range(_ROWS) if i % 2 == 0)
-    assert (
-        body["latest_event_at"]
-        == (_EPOCH + timedelta(minutes=newest_valued)).isoformat()
+    assert body["latest_event_at"] is None
+
+
+def _undated_branch_scan(plan: dict[str, Any]) -> dict[str, Any]:
+    """The relation scan under the undated branch of a newest window's plan.
+
+    The ``Append``'s child ``Limit`` that is not the CTE scan, then that
+    ``Limit``'s scan child; at both levels a child whose ``Parent
+    Relationship`` is ``InitPlan`` (the CTE itself, the count of its rows) is
+    skipped.
+    """
+
+    def find_append(node: dict[str, Any]) -> dict[str, Any] | None:
+        if node["Node Type"] == "Append":
+            return node
+        for child in node.get("Plans", []):
+            found = find_append(child)
+            if found is not None:
+                return found
+        return None
+
+    append = find_append(plan)
+    assert append is not None, plan
+    limits = [
+        child
+        for child in append.get("Plans", [])
+        if child.get("Parent Relationship") != "InitPlan"
+        and child["Node Type"] == "Limit"
+    ]
+    assert len(limits) == 1, append
+    scans = [
+        child
+        for child in limits[0].get("Plans", [])
+        if child.get("Parent Relationship") != "InitPlan"
+    ]
+    assert len(scans) == 1, limits[0]
+    return scans[0]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("table", "loops"),
+    [
+        # 30 dated rows fill the 20-row window: the undated read never runs.
+        ("decisions_null_written_at", 0),
+        # 7 dated rows leave room: the undated read runs once.
+        ("decisions_few_dated", 1),
+    ],
+)
+async def test_f9_the_undated_read_runs_only_when_the_dated_rows_leave_room(
+    seeded: None, dsn: str, table: str, loops: int
+) -> None:
+    cfg = _decisions_cfg(table)
+    source = TableRowSource(environ={DEFAULT_DSN_ENV: dsn})
+    try:
+        # The statement the reader builds from the real catalogue.
+        await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=_TENANT)
+        catalogue = _catalogue(source, table)
+        relation_columns = source._relation_columns[f'"{_SCHEMA}"."{table}"']
+    finally:
+        await source.close()
+    query = build_window_query(
+        cfg,
+        order_spec=cfg.order_by_spec,
+        tenant_id=_TENANT,
+        relation_columns=relation_columns,
+        unique_keys=catalogue.unique_keys,
+        not_null_columns=catalogue.not_null_columns,
     )
+    assert "newest_dated" in query.sql, "the window is cut from the relation"
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        explained = await conn.fetchval(
+            "EXPLAIN (ANALYZE, FORMAT JSON) " + query.sql, *query.params
+        )
+    finally:
+        await conn.close()
+
+    (root,) = json.loads(explained) if isinstance(explained, str) else explained
+    scan = _undated_branch_scan(root["Plan"])
+    assert scan["Relation Name"] == table, scan
+    assert scan["Actual Loops"] == loops, scan
 
 
 @pytest.mark.integration
@@ -623,7 +822,14 @@ async def test_f12_a_dropped_unique_index_stops_the_fast_path_without_a_restart(
             "tool",
             _EPOCH + timedelta(seconds=_ROWS),
         )
-        now[0] += 86_400.0
+        # 59 s on, the cached answer still holds: the window is still cut
+        # straight from the relation and serves both revisions of the key.
+        now[0] = 1_059.0
+        cached = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=None)
+        assert frozenset({"event_id"}) in _catalogue(source, "live_events").unique_keys
+        assert [row["event_id"] for row in cached].count(f"evt-{_ROWS - 1:04d}") == 2
+        # 61 s on, the catalogue is read again.
+        now[0] = 1_061.0
         rows = await source.rows(cfg, order_spec=cfg.order_by_spec, tenant_id=None)
         assert (
             frozenset({"event_id"}) not in _catalogue(source, "live_events").unique_keys

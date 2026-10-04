@@ -245,6 +245,33 @@ def _latest_per_key_sql(
     )
 
 
+def _dated_first_sql(
+    columns: str,
+    relation: str,
+    *,
+    scope: list[str],
+    recency: str,
+    retain: int,
+) -> str:
+    """The newest ``retain`` rows of ``relation`` by ``recency``, NULLs last.
+
+    The dated rows are one bounded read through the recency column's index
+    (``IS NOT NULL`` is an index condition); the undated rows only fill what
+    the dated rows leave, and their read is never run when that is nothing.
+    ``scope`` is the window's WHERE list, applied to both reads with the same
+    bound parameters.
+    """
+    column = quote_identifier(recency)
+    where = "".join(f"{clause} AND " for clause in scope)
+    return (
+        f"WITH newest_dated AS (SELECT {columns} FROM {relation} "
+        f"WHERE {where}{column} IS NOT NULL ORDER BY {column} DESC LIMIT {retain}) "
+        "SELECT * FROM newest_dated UNION ALL "
+        f"(SELECT {columns} FROM {relation} WHERE {where}{column} IS NULL "
+        f"LIMIT {retain} - (SELECT count(*) FROM newest_dated))"
+    )
+
+
 def physical_key_columns(
     cfg: ProjectionTableConfig, relation_columns: frozenset[str] | None
 ) -> tuple[str, ...]:
@@ -370,48 +397,55 @@ def build_window_query(
         )
 
     recency = recency_column(cfg)
+    newest_by_recency = False
     if since is not None or (selection == "walk" and cfg.cursor_column is not None):
         window_order = (
             f"{quote_identifier(recency)} ASC"
             if recency is not None
             else order_clause(order_spec)
         )
-    elif selection == "ranked":
+    elif selection == "ranked" or recency is None:
         window_order = order_clause(order_spec)
     else:
-        # No NULLS clause on the window's recency order: Postgres serves
-        # ``DESC`` (implicitly NULLS FIRST) as a backward scan of the column's
-        # ascending index, while ``DESC NULLS LAST`` forces a full sort -- on
-        # the dev lane's 20M-row consumer_flow_windows that was a 15 s timeout
-        # against a 5 ms index scan. The cost is that rows with a NULL recency
-        # enter the window first: with N of them in scope and a window of
-        # ``limit * 4`` rows, the window holds min(N, limit * 4) of them and
-        # only the newest max(0, limit * 4 - N) dated rows. Under a ``DESC``
-        # page order on the recency column (NULLS LAST, as the cache served),
-        # a full page of ``limit`` rows loses dated rows once N exceeds
-        # ``limit * 3``, and holds none once N reaches ``limit * 4``; the
-        # page's ``latest_event_at`` then comes from the bounded read
-        # (OMN-19971).
-        window_order = (
-            f"{quote_identifier(recency)} DESC"
-            if recency is not None
-            else order_clause(order_spec)
-        )
+        # The newest rows by the recency column, rows without a value last,
+        # as the cache served them and the SQLite store still does. Postgres
+        # reads ``DESC`` as NULLS FIRST, so ``ORDER BY <recency> DESC LIMIT n``
+        # filled the window with undated rows before any dated one and a page
+        # lost its dated rows. ``DESC NULLS LAST`` cannot be served from the
+        # column's ascending index and sorts the whole relation -- on the dev
+        # lane's 20M-row consumer_flow_windows that was a 15 s timeout against
+        # a 5 ms index scan -- so a window cut straight from the relation is
+        # read in two branches: the newest dated rows, one bounded backward
+        # scan of that index, then undated rows only to fill what the dated
+        # rows leave. When the dated rows fill the window the second branch's
+        # LIMIT is 0 and Postgres never runs its scan. The latest row of each
+        # key is sorted in memory whatever the clause, so that window states
+        # ``NULLS LAST`` outright (OMN-19971).
+        newest_by_recency = True
+        window_order = f"{quote_identifier(recency)} DESC NULLS LAST"
 
     key_columns = physical_key_columns(cfg, relation_columns)
-    if (
-        key_columns
+    latest_per_key = (
+        bool(key_columns)
         and recency is not None
         and not key_is_unique_per_row(cfg, key_columns, unique_keys, not_null_columns)
-    ):
+    )
+    if latest_per_key:
+        assert recency is not None
         source = f"({_latest_per_key_sql(cfg, relation, key_columns=key_columns, tenant_where=tenant_where, order_column=cfg.latest_by or recency)}) AS latest"
     else:
         if tenant_where:
             where.insert(0, tenant_where)
         source = relation
-    where_sql = f" WHERE {' AND '.join(where)}" if where else ""
-    inner_order = f" ORDER BY {window_order}" if window_order else ""
-    inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
+    if newest_by_recency and not latest_per_key:
+        assert recency is not None
+        inner = _dated_first_sql(
+            columns, relation, scope=where, recency=recency, retain=retain
+        )
+    else:
+        where_sql = f" WHERE {' AND '.join(where)}" if where else ""
+        inner_order = f" ORDER BY {window_order}" if window_order else ""
+        inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
     sql = f"SELECT * FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
@@ -935,15 +969,18 @@ class TableRowSource:
         """Newest ``freshness_column`` value of the exposure.
 
         ``window_rows`` is the unfiltered newest-rows window when the caller
-        already read it, and the answer comes from those rows. A walk, a
-        ranked read or a filtered read holds other rows, so the newest value
-        is read with one bounded query rather than a second window
-        (OMN-19971: the second window doubled every read's cost).
+        already read it, and the answer comes from those rows with nothing
+        read. A walk, a ranked read or a filtered read holds other rows, so
+        the newest value is read with one bounded query rather than a second
+        window (OMN-19971: the second window doubled every read's cost).
 
-        Rows with no freshness value enter the newest window first, so a
-        window can hold rows and no value while older dated rows exist; the
-        bounded query answers then too. An empty window means the scope holds
-        no row, and nothing is read.
+        The newest window serves rows with no recency value last, so for an
+        exposure without a cursor (whose recency column is its freshness
+        column) it holds an undated row only when the scope has no further
+        dated row: the newest value among its rows is the exposure's newest,
+        and a window of only undated rows, or of none, means the scope holds
+        no dated row. For an exposure with a cursor the newest value is the
+        largest among its newest rows by cursor, which is that window.
         """
         if cfg.freshness_column is None:
             return None
@@ -955,8 +992,6 @@ class TableRowSource:
             for parsed in (_parse_timestamp(row.get(column)) for row in window_rows)
             if parsed is not None
         ]
-        if not values and window_rows:
-            return await self._newest_freshness(cfg, tenant_id=tenant_id)
         return max(values, default=None)
 
     def unavailable(self, topic: str) -> tuple[str, str] | None:
@@ -996,18 +1031,21 @@ class TableRowSource:
 
         async def read_one(topic: str, cfg: ProjectionTableConfig) -> None:
             scoped = tenant_id if cfg.tenant_column is not None else None
+            # Both reads inside the one ``try``: a refusal from either names
+            # this exposure failed, and the page still renders every other.
             try:
                 rows = await self.rows(
                     cfg, order_spec=cfg.order_by_spec, tenant_id=scoped
+                )
+                latest = await self.latest_event_at(
+                    cfg, tenant_id=scoped, window_rows=rows
                 )
             except ProjectionReadError as exc:
                 view.failures[topic] = (exc.code, exc.detail)
                 return
             view.rows[topic] = rows
             view.tenants[topic] = scoped
-            view.latest[topic] = await self.latest_event_at(
-                cfg, tenant_id=scoped, window_rows=rows
-            )
+            view.latest[topic] = latest
 
         await asyncio.gather(
             *(
