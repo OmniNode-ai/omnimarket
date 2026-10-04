@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20543"
+title: "The repo-evidence dod-verify job gives database tests a real Postgres at the head and in the merge-base control"
+summary: "Scratch proof only, never merged: a real-Postgres binding with the default execution scope runs in repo-evidence / dod-verify against the job's Postgres service, at the head and in the merge-base control."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-database-evidence-runs-in-the-check"
+    statement: |-
+      A bound test that needs Postgres runs in repo-evidence / dod-verify at the head and in the merge-base control, against the job's Postgres service.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a database-backed test-only binding passes repo-evidence / dod-verify while an always-pass binding is refused -- falsifier: uv run pytest tests/test_omn20162_backend_id_and_host_real_postgres.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The real-Postgres twin passes against the job's database."
+    command: "uv run pytest tests/test_omn20162_backend_id_and_host_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20543-ac3-real-postgres-in-the-check"
+    description: "The OMN-20162 real-Postgres twin, bound with the default execution scope, runs against the dod-verify job's Postgres service and passes; a skipped or missing real-database test exits non-zero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20162_backend_id_and_host_real_postgres.py::TestTheRowCarriesBackendIdAndHost::test_a_terminal_stores_backend_id_and_host tests/test_omn20162_backend_id_and_host_real_postgres.py::TestTheRowCarriesBackendIdAndHost::test_a_terminal_without_them_and_a_blank_one_store_nulls tests/test_omn20162_backend_id_and_host_real_postgres.py::TestTheRowCarriesBackendIdAndHost::test_null_backend_for_a_row_written_before_the_columns -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
