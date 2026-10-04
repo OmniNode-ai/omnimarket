@@ -16,10 +16,10 @@ requirements:
           AC1: one merge event runs one sync and publishes one receipt in a per-host consumer group, and the handler reads the engine's advanced, up to date, refused, failed and no-clone results -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q
       - id: "AC2"
         statement: |-
-          AC2: a burst of five merge events for one repository runs at most two syncs and two repositories sync independently -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus -q -k coalesce
+          AC2: a burst of five merge events for one repository runs at most two syncs and two repositories sync independently -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q -k coalesce
       - id: "AC3"
         statement: |-
-          AC3: an event that is not a merge, an unreadable event and a repository outside the allowed owner run no sync -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus -q -k skip
+          AC3: an event that is not a merge, an unreadable event and a repository outside the allowed owner run no sync -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q -k skip
 evidence_requirements:
   - kind: "tests"
     description: "The clone-refresh bus tests pass at the head and fail at the merge base, where the node does not exist."
@@ -42,7 +42,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/clone_refresh_bus -q -k coalesce"
+        check_value: "uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q -k coalesce"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-clone-refresh-bus-ac3"
@@ -50,6 +50,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/clone_refresh_bus -q -k skip"
+        check_value: "uv run pytest tests/unit/clone_refresh_bus/test_canonical_clone_refresh_bus.py -q -k skip"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
