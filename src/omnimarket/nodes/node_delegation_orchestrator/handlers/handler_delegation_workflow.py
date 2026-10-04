@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
 from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import yaml
 from omnibase_core.enums.enum_agent_task_lifecycle_type import (
@@ -1413,7 +1413,11 @@ def _evaluate_compliance(
     workflow.inference_intent_in_flight = True
     # OMN-15542: the repair self-loop is a NEW attempt on the same route — mint a
     # fresh identity so the superseded attempt's response cannot be re-accepted.
-    workflow.current_inference_attempt_id = uuid4()
+    workflow.inference_attempt_ordinal += 1
+    workflow.current_inference_attempt_id = uuid5(
+        workflow.correlation_id,
+        f"inference-attempt:{workflow.inference_attempt_ordinal}",
+    )
     temperature = _resolve_call_temperature(
         request_temperature=workflow.request.temperature,
         model=workflow.routing_decision.selected_model,
@@ -2189,6 +2193,11 @@ class DelegationWorkflowState:
     # the rest of the workflow state so the binding survives a leg replayed in a
     # different process.
     current_inference_attempt_id: UUID | None = None
+    # Monotonic across all inference attempts, including same-tier retries and
+    # compliance repairs. Persisted so a resumed workflow continues the sequence;
+    # the default lets older rows decode. Together with correlation_id this makes
+    # attempt identity deterministic when recorded inputs are replayed (OMN-19560).
+    inference_attempt_ordinal: int = 0
     # OMN-15542: typed, durable evidence for every response rejected as
     # superseded. A silent drop would leave the route-honesty guard unfalsifiable
     # from the control plane — this list is what proves a stale response was
@@ -2641,7 +2650,11 @@ class HandlerDelegationWorkflow:
         # a NEW inference attempt. Minting the identity here (immediately after the
         # in-flight dedup guard, so a deduped duplicate decision cannot rotate it)
         # is what makes the previous attempt's late response identifiable as stale.
-        workflow.current_inference_attempt_id = uuid4()
+        workflow.inference_attempt_ordinal += 1
+        workflow.current_inference_attempt_id = uuid5(
+            workflow.correlation_id,
+            f"inference-attempt:{workflow.inference_attempt_ordinal}",
+        )
 
         assert workflow.request is not None
         temperature = _resolve_call_temperature(

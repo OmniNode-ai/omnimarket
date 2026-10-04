@@ -95,7 +95,7 @@ _DESCRIPTIONS: dict[EnumCodeEditTool, str] = {
     "covers only writable files, and files without old_string are skipped); "
     "when the task has a file list, only those files are reached and a glob "
     f"only narrows it; at most {MAX_BULK_FILES} files.",
-    EnumCodeEditTool.FORMAT: "Run the declared formatter over one writable file, "
+    EnumCodeEditTool.FORMAT: "Run the declared formatter chain over one writable file, "
     "rewriting it in place. Use it instead of hand-formatting.",
     EnumCodeEditTool.RUN_CHECK: "Run one declared check by name.",
     EnumCodeEditTool.FINISH: "Declare the task done; every declared check then runs.",
@@ -473,6 +473,41 @@ def _scope_rules(request: ModelDelegatedCodeEditRequest) -> str:
     )
 
 
+_WILDCARD = re.compile(r"[*?\[]")
+
+
+def _new_writable_paths(
+    request: ModelDelegatedCodeEditRequest,
+    file_index: Sequence[str],
+    history: Sequence[HistoryTurn],
+) -> list[str]:
+    """The literal writable paths that are not in the worktree yet (OMN-20291).
+
+    The FILES index is cut to fit, so on a large worktree the model cannot see
+    that a test file it is told to write does not exist, views it first, and
+    the rubric scores that view as a phantom path. A path a turn has since
+    written is no longer new.
+    """
+    present = set(file_index)
+    present.update(
+        action.changed_path
+        for entry in history
+        for action in entry.actions
+        if action.changed_path
+    )
+    # A literal that names a directory of the worktree is not a new file.
+    present.update(
+        "/".join(parts[:depth])
+        for parts in [path.split("/") for path in list(present)]
+        for depth in range(1, len(parts))
+    )
+    return [
+        glob
+        for glob in request.writable_globs
+        if not _WILDCARD.search(glob) and glob.removeprefix("./") not in present
+    ]
+
+
 def build_turn_prompt(
     request: ModelDelegatedCodeEditRequest,
     file_index: Sequence[str],
@@ -488,6 +523,13 @@ def build_turn_prompt(
     scope = _scope_rules(request)
     checks = "\n".join(f"- {c.name}: {' '.join(c.argv)}" for c in request.checks)
     globs = ", ".join(request.writable_globs)
+    new_files = _new_writable_paths(request, file_index, history)
+    created = (
+        "NEW FILES (not in the worktree yet: create each with write; viewing, "
+        f"grepping or listing one before then fails): {', '.join(new_files)}\n"
+        if new_files
+        else ""
+    )
     tools = "\n".join(
         f"- {tool.value}({', '.join(ALLOWED_ARGUMENTS[tool])}): {_DESCRIPTIONS[tool]}"
         for tool in EnumCodeEditTool
@@ -506,7 +548,8 @@ def build_turn_prompt(
         f"{MAX_READ_ONLY_TURNS} turns in a row that read and change no file, the "
         "next turn's reads are refused.\n\n"
         f"TOOLS\n{tools}\n\n"
-        f"WRITABLE (only these paths may be written): {globs}\n\n"
+        f"WRITABLE (only these paths may be written): {globs}\n"
+        f"{created}\n"
         f"CHECKS (run_check by name; finish runs all of them)\n{checks}\n\n"
         f"TURN {turn} of {request.max_turns}. Call finish once the checks should pass.\n"
         + (

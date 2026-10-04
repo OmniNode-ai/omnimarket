@@ -276,7 +276,7 @@ def test_the_accepted_classes_are_the_ten_routable_public_classes() -> None:
     """Pinned so the sweep below cannot shrink silently."""
     assert _ACCEPTED == [
         "code_generation",
-        # OMN-17427: code_review remains public but is withheld from delegation.
+        # OMN-17427: code_review is internal and withheld from delegation.
         "complex_reasoning",
         "document",
         "planning",

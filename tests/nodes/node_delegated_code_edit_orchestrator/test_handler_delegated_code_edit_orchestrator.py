@@ -507,6 +507,41 @@ def test_first_turn_prompt_shows_the_context_files_and_rails() -> None:
     assert "- tests: pytest tests/test_m.py" in prompt
 
 
+def test_prompt_names_the_writable_paths_that_do_not_exist_yet() -> None:
+    """OMN-20291 replay 0192c135 (loop df4d5ca5) and 8d6e9b45 (loop 692d96fe),
+    and a0cbacca before them: the FILES index is cut at 12,000 characters on a
+    7,211-file worktree, so the model could not tell that the test file it was
+    told to write did not exist, viewed it first, and the rubric scored that
+    view as a phantom path. A literal writable path missing from the worktree
+    is now named as a new file until a turn has written it."""
+    ports = FakePorts(
+        [
+            _reply(1, _a("view", path="src/m.py")),
+            _reply(2, _a("write", file_path="tests/test_new.py", content="x = 1\n")),
+            _reply(3, _a("finish", summary="s")),
+        ],
+        check_passes=[True],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(writable_globs=("src/m.py", "tests/test_new.py", "docs/*.md"))
+    )
+    new_line = (
+        "NEW FILES (not in the worktree yet: create each with write; viewing, "
+        "grepping or listing one before then fails): tests/test_new.py"
+    )
+    assert new_line in ports.prompts[0]
+    assert new_line in ports.prompts[1]
+    assert "NEW FILES" not in ports.prompts[2]
+
+
+def test_prompt_has_no_new_files_line_when_every_writable_path_exists() -> None:
+    ports = FakePorts([], check_passes=[True])
+    HandlerDelegatedCodeEditOrchestrator(ports).run(
+        _request(max_turns=1, writable_globs=("src/m.py", "src/*.py", "src"))
+    )
+    assert "NEW FILES" not in ports.prompts[0]
+
+
 def test_path_rules() -> None:
     assert normalise_path("src/./m.py") == "src/m.py"
     assert normalise_path("../x") is None
@@ -525,6 +560,12 @@ def test_request_refuses_relative_root_and_escaping_globs() -> None:
         _request(writable_globs=("../*.py",))
     with pytest.raises(ValueError, match="at least 1 item"):
         _request(checks=())
+
+
+@pytest.mark.parametrize("formatter", [((),), ("ruff", "format")])
+def test_request_refuses_empty_formatter_steps_and_flat_argv(formatter: object) -> None:
+    with pytest.raises(ValueError, match="formatter"):
+        _request(formatter=formatter)
 
 
 @pytest.mark.parametrize(
@@ -675,11 +716,17 @@ def test_format_tool_runs_the_declared_formatter_over_a_writable_file() -> None:
         [_reply(1, _a("format", file_path="src/m.py"), _a("finish", summary="s"))],
         check_passes=[True, True],
     )
-    request = _request(formatter=("ruff", "format"))
+    request = _request(formatter=(("ruff", "format"),))
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     assert ports.formatter_argv == [("ruff", "format", "src/m.py")]
     assert result.status == EnumCodeEditStatus.ACCEPTED
     assert result.refusals == 0
+    turns = cast(
+        "list[dict[str, Any]]", ports.receipts[request.correlation_id]["turns"]
+    )
+    assert (
+        turns[0]["actions"][0]["output"] == "$ ruff format src/m.py\npassed (exit 0)\n"
+    )
 
 
 def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter() -> (
@@ -696,7 +743,7 @@ def test_format_tool_is_refused_outside_writable_globs_and_without_a_formatter()
         check_passes=[False],
     )
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(
-        _request(max_turns=1, formatter=("ruff", "format"))
+        _request(max_turns=1, formatter=(("ruff", "format"),))
     )
     assert result.refusals == 1
     ports = FakePorts([_reply(1, _a("format", file_path="src/m.py"))])
@@ -1530,6 +1577,31 @@ def test_an_edit_already_applied_is_reported_applied_not_failed() -> None:
     assert [c["status"] for c in calls] == ["ok", "ok"]
     assert "already" in calls[1]["output"]
     assert ports.writes == ["src/m.py"]
+
+
+def test_an_edit_whose_old_and_new_string_match_says_it_changes_nothing() -> None:
+    """OMN-20291 replay ab8d7ef6 (loop 1c966a4a), turns 10, 12 and 13: the model
+    sent old_string == new_string while chasing a ruff import-order failure and
+    was told the edit 'was applied before', so it kept re-sending it."""
+    ports = FakePorts(
+        [
+            _reply(
+                1,
+                _a(
+                    "edit",
+                    file_path="src/m.py",
+                    old_string="return 0",
+                    new_string="return 0",
+                ),
+            ),
+        ],
+    )
+    HandlerDelegatedCodeEditOrchestrator(ports).run(_request(max_turns=1))
+    call = _calls(ports)[0]
+    assert call["status"] == "ok"
+    assert "applied before" not in call["output"]
+    assert "old_string and new_string are the same" in call["output"]
+    assert ports.writes == []
 
 
 def test_an_insertion_already_applied_is_not_inserted_twice() -> None:

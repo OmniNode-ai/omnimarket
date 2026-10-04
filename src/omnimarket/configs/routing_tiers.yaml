@@ -452,23 +452,9 @@ tiers:
           - documentation
           - summarization
         fast_path_threshold_tokens: 8192
-      # OMN-19432: the third free OpenRouter model, declared last; code_review is left
-      # off because it passed 2 of 5 of those tasks on the delegate gate.
-      - id: cohere/north-mini-code:free
-        backend_id: openrouter-north-mini-code
-        max_context_tokens: 256000
-        use_for:
-          - code_generation
-          - review
-          - reasoning
-          - research
-          - refactor
-          - test
-          - validator_generation
-          - document
-          - documentation
-          - summarization
-        fast_path_threshold_tokens: 8192
+      # north-mini-code is a spread peer of openrouter-nemotron-ultra via its
+      # placement in bifrost_delegation.yaml. The mirrored entry copies the
+      # ultra rung's use_for, so it still serves every class that rung serves.
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1

@@ -33,6 +33,7 @@ import pytest
 
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
+    EnumRoutingAvailabilityStatus,
     load_task_class_authority,
 )
 
@@ -73,11 +74,18 @@ class TestEveryClassDeclaresItsPredicate:
             entry.selection is not None for entry in authority.task_classes.values()
         )
 
-    def test_internal_classes_are_never_selected_from_a_prompt(self) -> None:
+    def test_only_withheld_internal_classes_can_claim_a_prompt(self) -> None:
         authority = load_task_class_authority()
         for name, entry in authority.task_classes.items():
             if entry.gateway_exposure is EnumGatewayExposure.INTERNAL:
-                assert entry.selection.phrases == (), name
+                if (
+                    entry.routing_availability is not None
+                    and entry.routing_availability.status
+                    is EnumRoutingAvailabilityStatus.WITHHELD
+                ):
+                    assert entry.selection.phrases, name
+                else:
+                    assert entry.selection.phrases == (), name
 
 
 class TestShapeGatesTheKeyword:

@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18889"
+title: "End-to-end call site tests for the delegation evidence projection"
+summary: "Adds tests/test_omn18889_call_site_end_to_end.py, which drives LocalDelegationDispatchPort.dispatch() through each _project_evidence call site and reads the stored delegation_events row back. No source change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-call-site-evidence-ladder"
+    statement: |-
+      Every _project_evidence call site in the local delegation dispatch port must pass the attempt ladder and the escalation count through to the stored delegation_events row.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: for the transport-failure, quality-pass and quality-fail terminals, the stored row carries one attempt_history element per rung in order and escalation_count 1 -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn18889_call_site_end_to_end.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The six call-site end-to-end tests pass against a real SQLite store."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn18889_call_site_end_to_end.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-call-site-evidence-ladder-ac1"
+    description: "The call-site end-to-end tests prove each terminal's stored row carries the attempt ladder and escalation count."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18889_call_site_end_to_end.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

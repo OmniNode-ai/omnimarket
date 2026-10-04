@@ -993,6 +993,14 @@ class HandlerDelegatedCodeEditOrchestrator:
                 old_string = _LINE_PREFIX.sub("", old_string)
                 new_string = _LINE_PREFIX.sub("", new_string)
             occurrences = current.count(old_string)
+            if old_string == new_string:
+                # Not a re-sent edit. Replay ab8d7ef6 (OMN-20291) sent this no-op
+                # three times and each time was told it "was applied before".
+                return ModelObservation(
+                    ok=True,
+                    output=f"unchanged {path}: old_string and new_string are the "
+                    "same text, so this edit changes nothing",
+                )
             if (
                 new_string
                 and current.count(new_string) == 1
@@ -1171,7 +1179,7 @@ class HandlerDelegatedCodeEditOrchestrator:
     def _format(
         self, request: ModelDelegatedCodeEditRequest, path: str, state: _State
     ) -> ModelObservation:
-        """Run the declared formatter over one writable file, in place."""
+        """Run the declared formatter chain over one writable file, in place."""
         if not request.formatter:
             state.refusals += 1
             return ModelObservation(
@@ -1185,16 +1193,22 @@ class HandlerDelegatedCodeEditOrchestrator:
                 ok=False, output=f"refused: {path!r} reads as a flag", refused=True
             )
         self._ports.read_file(request, path)
-        argv = (*request.formatter, path)
-        result = self._ports.run_check(
-            request, ModelDeclaredCheck(name="format", argv=argv)
-        )
-        return ModelObservation(
-            ok=result.status == "passed",
-            output=_cap(
+        outputs: list[str] = []
+        for formatter in request.formatter:
+            argv = (*formatter, path)
+            result = self._ports.run_check(
+                request, ModelDeclaredCheck(name="format", argv=argv)
+            )
+            output = (
                 f"$ {' '.join(argv)}\n{result.status} (exit {result.exit_code})\n"
                 f"{result.output_tail}"
-            ),
+            )
+            if result.status != "passed":
+                return ModelObservation(ok=False, output=_cap(output))
+            outputs.append(output)
+        return ModelObservation(
+            ok=True,
+            output=_cap("\n".join(outputs)),
         )
 
     @staticmethod

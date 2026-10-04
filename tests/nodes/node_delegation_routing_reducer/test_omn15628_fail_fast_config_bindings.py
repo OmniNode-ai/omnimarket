@@ -191,6 +191,15 @@ class TestDelegationRoutingTiersPathRefusal:
                         use_for: [code_generation]
                     eval_before_accept: false
                     max_retries: 1
+                  - name: cheap_frontier
+                    cost_per_1k_tokens: 0.0
+                    models:
+                      - id: seam-test-ultra
+                        backend_id: openrouter-nemotron-ultra
+                        max_context_tokens: 256000
+                        use_for: [code_generation]
+                    eval_before_accept: false
+                    max_retries: 1
                 """
             )
         )
@@ -198,7 +207,7 @@ class TestDelegationRoutingTiersPathRefusal:
 
         config = routing._get_config()
 
-        assert [tier.name for tier in config.tiers] == ["local"]
+        assert [tier.name for tier in config.tiers] == ["local", "cheap_frontier"]
 
 
 class TestResolveRequiredPathConfig:

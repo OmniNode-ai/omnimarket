@@ -44,6 +44,18 @@ from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
 from omnimarket.events.delegation_gate_eval.model_wilson_interval import (
     ModelWilsonInterval,
 )
+from omnimarket.models.delegation_gate_eval.model_generation_stability_group import (
+    ModelGenerationStabilityGroup,
+)
+from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+    ModelGenerationStabilityRequest,
+)
+from omnimarket.models.delegation_gate_eval.model_generation_stability_result import (
+    ModelGenerationStabilityResult,
+)
+from omnimarket.models.delegation_gate_eval.model_generation_stability_row import (
+    ModelGenerationStabilityRow,
+)
 from omnimarket.models.ranges import (
     EnumIncompleteRunTreatment,
     EnumRangeSampleOutcome,
@@ -98,6 +110,34 @@ def wilson_interval(errors: int, n: int) -> ModelWilsonInterval:
     return ModelWilsonInterval(
         low=max(0.0, center - half_width), high=min(1.0, center + half_width)
     )
+
+
+def compute_generation_stability(
+    request: ModelGenerationStabilityRequest,
+) -> ModelGenerationStabilityResult:
+    """Count any verdict disagreement once per supplied three-generation group.
+
+    This measures generation stability, independently of gate determinism. No
+    generation or grading occurs here; each group is one Bernoulli observation.
+    """
+    groups_by_class: dict[str, list[ModelGenerationStabilityGroup]] = defaultdict(list)
+    for group in request.groups:
+        groups_by_class[group.task_class].append(group)
+    rows: list[ModelGenerationStabilityRow] = []
+    for task_class, groups in sorted(groups_by_class.items()):
+        flips = sum(len(set(group.verdicts)) > 1 for group in groups)
+        n = len(groups)
+        rows.append(
+            ModelGenerationStabilityRow(
+                task_class=task_class,
+                groups_n=n,
+                flips_n=flips,
+                flip_rate=flips / n,
+                flip_rate_wilson=wilson_interval(flips, n),
+                measured_backend_id=groups[0].backend_id,
+            )
+        )
+    return ModelGenerationStabilityResult(rows=tuple(rows))
 
 
 def _rubric_gate_verdict(item: ModelGateEvalItem) -> EnumGateVerdict:
@@ -381,6 +421,25 @@ class HandlerDelegationGateEval:
                 else _ARMS
             )
         )
+        if request.generation_stability is not None:
+            stability_by_class = {
+                measurement.task_class: measurement
+                for measurement in compute_generation_stability(
+                    request.generation_stability
+                ).rows
+            }
+            rows = tuple(
+                row.model_copy(
+                    update={
+                        "flip_rate": measurement.flip_rate,
+                        "flip_rate_wilson": measurement.flip_rate_wilson,
+                        "measured_backend_id": measurement.measured_backend_id,
+                    }
+                )
+                if (measurement := stability_by_class.get(row.task_class)) is not None
+                else row
+                for row in rows
+            )
         return ModelDelegationGateEvalResult(
             run_id=request.run_id,
             status=EnumGateEvalRunStatus.COMPLETED,
@@ -405,4 +464,9 @@ class HandlerDelegationGateEval:
         )
 
 
-__all__ = ["GateReplay", "HandlerDelegationGateEval", "wilson_interval"]
+__all__ = [
+    "GateReplay",
+    "HandlerDelegationGateEval",
+    "compute_generation_stability",
+    "wilson_interval",
+]

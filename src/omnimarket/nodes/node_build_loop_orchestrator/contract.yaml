@@ -108,27 +108,18 @@ outputs:
     description: "Total tickets dispatched across all cycles"
 
 env_dependencies:
-  LLM_CODER_URL:
+  BIFROST_CONTRACT_PATH:
     required: false
-    description: "Primary local coder endpoint URL"
-  LLM_CODER_MODEL_NAME:
+    description: "Canonical Bifrost routing contract path (packaged default when unset)"
+  BIFROST_OVERLAY_PATH:
     required: false
-    description: "Served model ID for LLM_CODER_URL"
+    description: "Endpoint/model overlay bound to the Bifrost contract"
   LLM_CODER_FAST_URL:
     required: false
     description: "Fast local endpoint URL used for ticket classification"
   LLM_CODER_FAST_MODEL_NAME:
     required: false
     description: "Served model ID for LLM_CODER_FAST_URL"
-  LLM_GLM_URL:
-    required: false
-    description: "Cloud frontier API base URL"
-  LLM_GLM_MODEL_NAME:
-    required: false
-    description: "Primary frontier served model ID for LLM_GLM_URL"
-  LLM_GLM_REVIEW_MODEL_NAME:
-    required: false
-    description: "Review frontier served model ID for LLM_GLM_URL"
   LLM_DEEPSEEK_R1_URL:
     required: false
     description: "Local reasoning endpoint URL"
@@ -167,26 +158,17 @@ env_dependencies:
     description: "Root directory for git worktrees; used by assemble_live to locate per-ticket worktrees"
 
 config:
-  LLM_CODER_URL:
-    description: "Primary local coder endpoint URL"
+  BIFROST_CONTRACT_PATH:
     required: false
-  LLM_CODER_MODEL_NAME:
-    description: "Served model ID for LLM_CODER_URL"
+    description: "Canonical Bifrost routing contract path (packaged default when unset)"
+  BIFROST_OVERLAY_PATH:
     required: false
+    description: "Endpoint/model overlay bound to the Bifrost contract"
   LLM_CODER_FAST_URL:
     description: "Fast local endpoint URL used for ticket classification"
     required: false
   LLM_CODER_FAST_MODEL_NAME:
     description: "Served model ID for LLM_CODER_FAST_URL"
-    required: false
-  LLM_GLM_URL:
-    description: "Cloud frontier API base URL"
-    required: false
-  LLM_GLM_MODEL_NAME:
-    description: "Primary frontier served model ID for LLM_GLM_URL"
-    required: false
-  LLM_GLM_REVIEW_MODEL_NAME:
-    description: "Review frontier served model ID for LLM_GLM_URL"
     required: false
   LLM_DEEPSEEK_R1_URL:
     description: "Local reasoning endpoint URL"

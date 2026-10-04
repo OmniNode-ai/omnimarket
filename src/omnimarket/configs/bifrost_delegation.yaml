@@ -651,14 +651,22 @@ backends:
   # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
   # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
   # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
-  # weak on code_review (2 of 5), so the tier entry leaves that class off. Declared last
-  # in the free tier: a refusal on the first two retries it before any metered tier.
+  # weak on code_review (2 of 5), so the mirrored entry leaves that class off.
+  # A spread peer of the ultra rung (OMN-17427: it had 0 attempts in 7 days as a
+  # last fallback), with default weight 1.0 from the delegate-gate measurement
+  # (25 of 29 passed). A refusal on the pick still retries the other member.
   - backend_id: openrouter-north-mini-code
     provider: openrouter
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "cohere/north-mini-code:free"
     secret_ref: llm.openrouter.api_key
     tier: cheap_frontier
+    placement:
+      tier: cheap_frontier
+      fallback_for:
+        - openrouter-nemotron-ultra
+      max_context_tokens: 256000
+      mode: spread
     timeout_ms: 300000
     max_tokens: 64000
     capabilities:

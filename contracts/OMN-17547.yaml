@@ -1,0 +1,91 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-17547
+title: A length-constrained prose prompt resolves to its own declared response shape
+summary: A prompt that constrains its answer length in prose resolves to the length_constrained shape, whose override drops the citation and analysis checks and keeps the adequacy failures, and the unclassified fallback is the contract-declared document class.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn17547
+  statement: A correct one-sentence answer to a length-constrained research prompt must pass the research gate, and ordinary prose that merely mentions a length must not match.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a prompt that constrains its answer length in prose (in one sentence, in a sentence or two, briefly, in N words or fewer) resolves to the declared length_constrained shape rather than unconstrained -- falsifier: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k resolves'
+  - id: AC2
+    statement: 'AC2: the shape''s override drops the citation and analysis-structure checks and keeps the non-length adequacy failures, with EXACT_LITERAL keeping precedence -- falsifier: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k override'
+  - id: AC3
+    statement: 'AC3: the live one-sentence Bifrost-overlay answer passes the research gate -- falsifier: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k bifrost'
+  - id: AC4
+    statement: 'AC4: ordinary prose that merely mentions a sentence count does not match the shape -- falsifier: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k mentions'
+  - id: AC5
+    statement: 'AC5: the unclassified-prompt fallback is decided and declared, not implicit -- falsifier: the live task-class contract declares no fallback, or declares research'
+evidence_requirements:
+- kind: tests
+  description: The resolver tests prove each length-constraining phrasing resolves to LENGTH_CONSTRAINED with a stable wire value.
+  command: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k resolves
+- kind: tests
+  description: The override tests prove the research heuristic band for the shape is no_refusal plus short_form_adequacy and that EXACT_LITERAL still wins.
+  command: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k override
+- kind: tests
+  description: The regression test pins the live correlation 109c2285 case through the research quality gate.
+  command: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k bifrost
+- kind: tests
+  description: The negative tests prove three prompts that only mention a length resolve unconstrained.
+  command: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k mentions
+- kind: tests
+  description: The live contract declares its selection fallback, and the declared fallback class is document, not research.
+  command: uv run pytest tests/unit/inference/test_task_class_resolution_omn19407.py -q -k live_contract_declares_its_fallback
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-17547-ac1
+  description: The resolver tests prove each length-constraining phrasing resolves to LENGTH_CONSTRAINED with a stable wire value.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k resolves
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-17547-ac2
+  description: The override tests prove the research heuristic band for the shape is no_refusal plus short_form_adequacy and that EXACT_LITERAL still wins.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k override
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-17547-ac3
+  description: The regression test pins the live correlation 109c2285 case through the research quality gate.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k bifrost
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn-17547-ac4
+  description: The negative tests prove three prompts that only mention a length resolve unconstrained.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_length_constrained_shape_omn17547.py -q -k mentions
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn-17547-ac5
+  description: The live contract declares its selection fallback, and the declared fallback class is document, not research.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/inference/test_task_class_resolution_omn19407.py -q -k live_contract_declares_its_fallback
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: uv run python -c "from omnimarket.inference.task_class_authority import load_task_class_authority as load; a = load(); assert a.selection_fallback is not None and a.selection_fallback.task_class == 'document', a.selection_fallback"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5

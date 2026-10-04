@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -153,10 +153,11 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         "widens it); the writable globs still apply. Empty: no list.",
     )
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
-    formatter: tuple[str, ...] = Field(
+    formatter: tuple[Annotated[tuple[str, ...], Field(min_length=1)], ...] = Field(
         default=(),
-        description="argv of the formatter the format tool runs; the file's "
-        "worktree-relative path is appended as the last word. Empty: no format tool.",
+        description="Ordered formatter argvs the format tool runs; the file's "
+        "worktree-relative path is appended to each. Stop at the first failed "
+        "command. Empty: no format tool.",
     )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
     task_type: Literal["code_generation"] = "code_generation"

@@ -880,7 +880,7 @@ class LiveBuildDispatchHandler:
                 target.ticket_id,
             )
             impl = await self._call_llm(
-                url=f"{LLM_GLM_URL}/chat/completions",
+                url=LLM_GLM_URL,
                 model=LLM_GLM_MODEL_NAME,
                 prompt=prompt,
                 max_tokens=4096,
@@ -893,7 +893,7 @@ class LiveBuildDispatchHandler:
         if LOCAL_CODER_URL and LOCAL_CODER_MODEL_NAME:
             coder_model = LOCAL_CODER_MODEL_NAME
             impl = await self._call_llm(
-                url=f"{LOCAL_CODER_URL}/v1/chat/completions",
+                url=LOCAL_CODER_URL,
                 model=coder_model,
                 prompt=prompt,
                 max_tokens=4096,
