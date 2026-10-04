@@ -114,7 +114,8 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
     occurred_at TEXT NOT NULL,
-    ingested_at TEXT NOT NULL
+    ingested_at TEXT NOT NULL,
+    usage_source TEXT NOT NULL DEFAULT 'unknown'
 )
 """
 
@@ -126,11 +127,63 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day (
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
+    measured_cost_usd REAL,
+    unmeasured_call_count INTEGER NOT NULL DEFAULT 0,
     call_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
+    projection_cursor INTEGER,
     PRIMARY KEY (tenant_id, usage_day, model_id)
 )
 """
+
+# OMN-20006: columns the usage-by-model-day exposure serves that a store written
+# before them lacks. The read node refuses an exposure whose declared column the
+# table lacks (projection_column_missing), so they are added on connect, with the
+# same defaults as migration 0002: an old call reads 'unknown', an old aggregate
+# NULL measured cost and 0 unmeasured calls until its key is recounted.
+_USAGE_BY_MODEL_DAY_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("usage_by_model_day_calls", "usage_source", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("usage_by_model_day", "measured_cost_usd", "REAL"),
+    ("usage_by_model_day", "unmeasured_call_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("usage_by_model_day", "projection_cursor", "INTEGER"),
+)
+
+# The exposure's cursor. On Postgres it is a BIGSERIAL that every recount
+# re-stamps from its sequence, so a row read again after a recount sorts after
+# the rows read before it. SQLite gets the same from a one-row sequence table
+# and two triggers: each insert and each recount (which always sets updated_at)
+# takes the next value. SQLite does not fire triggers recursively by default, so
+# the trigger's own UPDATE does not re-enter. A row stored before the cursor
+# existed has none until its key is next recounted; no local path wrote usage
+# rows before this change, so a local store has none in practice.
+_USAGE_BY_MODEL_DAY_CURSOR_SEQ_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day_projection_cursor_seq (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_value INTEGER NOT NULL
+)
+"""
+_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED = (
+    "INSERT OR IGNORE INTO usage_by_model_day_projection_cursor_seq "
+    "(id, last_value) VALUES (1, 0)"
+)
+_USAGE_BY_MODEL_DAY_CURSOR_STAMP = """
+    UPDATE usage_by_model_day_projection_cursor_seq SET last_value = last_value + 1;
+    UPDATE usage_by_model_day
+    SET projection_cursor = (
+        SELECT last_value FROM usage_by_model_day_projection_cursor_seq
+    )
+    WHERE rowid = NEW.rowid;
+"""
+_USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS = (
+    "CREATE TRIGGER IF NOT EXISTS usage_by_model_day_cursor_on_insert "
+    "AFTER INSERT ON usage_by_model_day BEGIN"
+    + _USAGE_BY_MODEL_DAY_CURSOR_STAMP
+    + "END",
+    "CREATE TRIGGER IF NOT EXISTS usage_by_model_day_cursor_on_recount "
+    "AFTER UPDATE OF updated_at ON usage_by_model_day BEGIN"
+    + _USAGE_BY_MODEL_DAY_CURSOR_STAMP
+    + "END",
+)
 
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
@@ -293,6 +346,7 @@ class SqliteDatabaseAdapter:
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_DDL)
+        self._reconcile_usage_by_model_day(conn)
         conn.execute(_METERING_SUMMARY_DDL)
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)
@@ -301,6 +355,40 @@ class SqliteDatabaseAdapter:
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
         return conn
+
+    @classmethod
+    def _usage_by_model_day_reconciled(cls, conn: sqlite3.Connection) -> bool:
+        for table, column, _ in _USAGE_BY_MODEL_DAY_ADDED_COLUMNS:
+            if column not in cls._existing_columns(conn, table):
+                return False
+        triggers = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN "
+            "('usage_by_model_day_cursor_on_insert', "
+            "'usage_by_model_day_cursor_on_recount')"
+        ).fetchone()[0]
+        return bool(triggers == len(_USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS))
+
+    @classmethod
+    def _reconcile_usage_by_model_day(cls, conn: sqlite3.Connection) -> None:
+        if cls._usage_by_model_day_reconciled(conn):
+            return
+        # Two first opens of one store can race: the check and the ALTERs run in
+        # one write transaction, so the second never adds a column twice.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for table, column, declaration in _USAGE_BY_MODEL_DAY_ADDED_COLUMNS:
+                if column not in cls._existing_columns(conn, table):
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+                    )
+            conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_DDL)
+            conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
+            for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
+                conn.execute(trigger)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @classmethod
     def _reconcile_legacy_llm_call_metrics(cls, conn: sqlite3.Connection) -> None:

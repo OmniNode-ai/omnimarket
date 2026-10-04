@@ -214,6 +214,15 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_c
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
 )
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
+    HandlerProjectionUsageByModelDay,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
+    apply_usage_call,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.models import (
+    ModelUsageCallEvent,
+)
 from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
@@ -3341,6 +3350,32 @@ class LocalDelegationDispatchPort:
             except Exception:
                 logger.warning(
                     "Failed to project local LLM call metrics for correlation_id=%s",
+                    correlation_id,
+                    exc_info=True,
+                )
+            # OMN-20006: the same call, folded into the usage-by-model-day tables
+            # the Usage page reads, keyed by this run's correlation id and dated
+            # by the terminal's own emitted_at, so its UTC day is the delegation
+            # row's. Its own guard: a failed usage write must neither break the
+            # response nor take the call-metrics row down with it.
+            try:
+                usage_event = ModelUsageCallEvent(
+                    call_id=str(correlation_id),
+                    model_name=model_id,
+                    tenant_id=tenant_id,
+                    prompt_tokens=result.tokens_in,
+                    completion_tokens=result.tokens_out,
+                    estimated_cost_usd=float(cost_usd),
+                    usage_source=EnumUsageSource.MEASURED,
+                    timestamp=terminal.emitted_at,
+                )
+                apply_usage_call(
+                    HandlerProjectionUsageByModelDay().handle(usage_event),
+                    self._evidence_db,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to project local usage-by-model-day for correlation_id=%s",
                     correlation_id,
                     exc_info=True,
                 )

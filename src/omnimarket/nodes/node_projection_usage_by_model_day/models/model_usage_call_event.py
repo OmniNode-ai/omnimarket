@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+
 
 class ModelUsageCallEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
@@ -32,6 +34,9 @@ class ModelUsageCallEvent(BaseModel):
         allow_inf_nan=False,
         validation_alias=AliasChoices("estimated_cost_usd", "cost_usd"),
     )
+    # How the call's cost was obtained. A call that does not say is UNKNOWN, never
+    # assumed measured: only a measured cost may reach measured_cost_usd.
+    usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     session_id: str | None = None
     timestamp: datetime = Field(
         validation_alias=AliasChoices("timestamp", "emitted_at", "created_at")

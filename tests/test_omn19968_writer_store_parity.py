@@ -323,6 +323,10 @@ _USAGE_MIGRATION = (
     _NODES
     / "node_projection_usage_by_model_day/migrations/0000_create_usage_by_model_day.sql"
 )
+_USAGE_MEASURED_MIGRATION = (
+    _NODES
+    / "node_projection_usage_by_model_day/migrations/0002_usage_by_model_day_measured_cost.sql"
+)
 _METERING_MIGRATION = (
     _NODES
     / "node_projection_metering_summary/migrations/0000_create_metering_summary.sql"
@@ -332,10 +336,47 @@ _ALSO_GENERATED = frozenset({"ingested_at", "projection_cursor"})
 _METERING_NOW = datetime(2026, 9, 28, 12, tzinfo=__import__("datetime").UTC)
 
 
+# OMN-20006: every usage source on both stores, so the measured-cost and
+# unmeasured-count columns are compared, not only the token and cost sums. The
+# 2026-09-28 qwen3-coder key (c01-c03) has no measured call, so its measured
+# cost is NULL on both stores; ``_normalize`` drops None values, so that key is
+# compared explicitly in the test below.
+_USAGE_SOURCES = {
+    "c01": "estimated",
+    "c02": "unknown",
+    "c03": "unknown",
+    "c04": "measured",
+    "c05": "estimated",
+    "c06": "measured",
+    "c07": "unknown",
+    "c08": "measured",
+    "c09": "measured",
+    "c10": "estimated",
+}
+
+
 def _write_usage(adapter: Any) -> None:
     fold = HandlerProjectionUsageByModelDay()
     for call in CALLS:
-        apply_usage_call(fold.handle(_event(call)), adapter)
+        event = _event(call).model_copy(
+            update={"usage_source": _USAGE_SOURCES[call[0]]}
+        )
+        apply_usage_call(fold.handle(event), adapter)
+
+
+def _measured_by_key(
+    rows: list[dict[str, object]],
+) -> dict[tuple[str, str], tuple[object, int]]:
+    """(day, model) -> (measured cost as Decimal or None, unmeasured count)."""
+    return {
+        (str(r["usage_day"])[:10], str(r["model_id"])): (
+            None
+            if r["measured_cost_usd"] is None
+            else Decimal(str(r["measured_cost_usd"])).normalize(),
+            int(str(r["unmeasured_call_count"])),
+        )
+        for r in rows
+    }
 
 
 def _metering_request() -> ModelMeteringSummaryFoldRequest:
@@ -408,12 +449,21 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
 
     async with _provisioned(pg) as (admin, schema):
         # The migration names ``public.``; keep the proof inside the throwaway schema.
-        await admin.execute(
-            migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+        migrations = (
+            (migration, _USAGE_MEASURED_MIGRATION)
+            if migration == _USAGE_MIGRATION
+            else (migration,)
         )
+        for each in migrations:
+            await admin.execute(
+                each.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+            )
         postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))
         writer(postgres)
         pg_rows = {t: _normalize_store(postgres.query(t)) for t in tables}
+        pg_usage = (
+            postgres.query("usage_by_model_day") if case == "usage_by_model_day" else []
+        )
 
     for table in tables:
         assert sqlite_rows[table], f"SQLite path wrote no {table} rows"
@@ -452,6 +502,11 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
         assert set().union(*sqlite_rows[table]) <= (
             set().union(*pg_rows[table]) | _GENERATED | _ALSO_GENERATED
         )
+    if case == "usage_by_model_day":
+        sqlite_measured = _measured_by_key(sqlite.query("usage_by_model_day"))
+        assert sqlite_measured == _measured_by_key(pg_usage)
+        # The key with no measured call is NULL on both stores, never 0.
+        assert sqlite_measured[("2026-09-28", "qwen3-coder")] == (None, 3)
     offending = [s for s in sqlite.statements if _POSTGRES_ONLY_SQL.search(s)]
     assert offending == []
 
