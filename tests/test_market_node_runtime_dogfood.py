@@ -251,7 +251,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19976's node_local_dashboard_serve_effect is started by
     # `onex dashboard`, not by a bus command, so it is experimental with no
     # handler_routing and lands in the same bucket: 6 -> 7.
-    assert summary["skipped"] == 7
+    # OMN-20496's node_canonical_clone_refresh_effect is hosted by one
+    # `clone-refresh serve` process per host, not by a runtime, so it is
+    # experimental with no handler_routing and lands there too: 7 -> 8.
+    assert summary["skipped"] == 8
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
