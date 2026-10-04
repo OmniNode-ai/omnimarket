@@ -42,5 +42,5 @@ jobs:
   repo-evidence:
     uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@a842c9654396d7898a840e54d427e04f7dea8293 # OMN-20073: immutable full-SHA pin, the squash commit of omnibase_core#1884 on that repo's dev branch. Over omnibase_core#1867, the caller-evidence dod-verify job honours the same dependency-bot and pin-only writer-app exemption as the OCC path, so a bot release bump no longer fails for binding no evidence of its own.
     with:
-      evidence-source: caller
+      evidence-source: occ
       verifier-version: 0.4.280
