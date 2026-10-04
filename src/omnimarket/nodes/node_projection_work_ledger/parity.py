@@ -19,6 +19,16 @@ parity over one full UTC day.
 
 Rows the emit path can never carry (a legacy or tool-internal type) are counted
 apart, never as mismatches, and never silently dropped.
+
+``--explain`` (OMN-20535) adds an ``explain`` object that classifies each row missing
+from the projection by the evidence on the emitting host's state directory
+(``--state-dir``, else ``ONEX_STATE_DIR``, else ``$OMNI_HOME/.onex_state``; none of
+them is an error): ``journal-pending`` when the hook-emit journal still holds it,
+``journal-dead-letter`` when the drainer's quarantine or its loss log
+(``hook_emit_journal_losses.jsonl``) names it, ``failure-log`` when the dual write's
+``work-ledger-emit-failures.jsonl`` names it, else ``unexplained``. Each evidence
+source is reported with its path, or as ``absent:`` when it is not there, so a
+missing source is never read as an empty one. The exit code is unchanged.
 """
 
 from __future__ import annotations
@@ -44,10 +54,20 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_
     ModelWorkLedgerFoldRequest,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (
+    EnumParityLossClass,
     EnumParityMismatchKind,
+    ModelParityExplain,
+    ModelParityExplainedRow,
+    ModelParityExplainEvidence,
     ModelParityMismatch,
     ModelWorkLedgerParityReport,
 )
+
+FAILURE_LOG_NAME = "work-ledger-emit-failures.jsonl"
+JOURNAL_DIR_NAME = "hook_emit_journal"
+QUARANTINE_DIR_NAME = "quarantine"
+LOSS_LOG_NAME = "hook_emit_journal_losses.jsonl"
+_LEDGER_EVENT_PREFIX = "work.ledger."
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
@@ -172,6 +192,149 @@ def compare(
     )
 
 
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    return entries
+
+
+def _journal_row_ids(directory: Path) -> dict[str, str]:
+    """``row_id`` -> file name for each work-ledger record directly under ``directory``."""
+    found: dict[str, str] = {}
+    for path in sorted(directory.glob("*.json")):
+        if path.name.endswith(".reason.json"):
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        event_type = record.get("event_type")
+        payload = record.get("payload")
+        if not (
+            isinstance(event_type, str) and event_type.startswith(_LEDGER_EVENT_PREFIX)
+        ):
+            continue
+        row_id = payload.get("row_id") if isinstance(payload, dict) else None
+        if isinstance(row_id, str) and row_id:
+            found[row_id] = path.name
+    return found
+
+
+def load_explain_evidence(*, state_dir: Path) -> ModelParityExplainEvidence:
+    """Read the four evidence sources under ``state_dir``. Never raises on an absent source."""
+    journal = state_dir / JOURNAL_DIR_NAME
+    quarantine = journal / QUARANTINE_DIR_NAME
+    failure_log = state_dir / FAILURE_LOG_NAME
+    loss_log = state_dir / LOSS_LOG_NAME
+    sources: dict[str, str] = {}
+    pending: dict[str, str] = {}
+    dead_letter: dict[str, str] = {}
+    failures: dict[str, str] = {}
+
+    for name, path in (("journal", journal), ("quarantine", quarantine)):
+        if not path.is_dir():
+            sources[name] = f"absent:{path}"
+            continue
+        sources[name] = str(path)
+        for row_id, file_name in _journal_row_ids(path).items():
+            if name == "journal":
+                pending[row_id] = f"queued in the journal as {file_name}"
+            else:
+                dead_letter[row_id] = (
+                    f"dead-lettered to {QUARANTINE_DIR_NAME}/{file_name}"
+                )
+
+    if loss_log.is_file():
+        sources["loss_log"] = str(loss_log)
+        for entry in _jsonl(loss_log):
+            lost_id = entry.get("row_id")
+            if isinstance(lost_id, str) and lost_id:
+                dead_letter.setdefault(
+                    lost_id,
+                    f"drainer loss log: {entry.get('disposition')} "
+                    f"{entry.get('journal_file') or ''}".strip(),
+                )
+    else:
+        sources["loss_log"] = f"absent:{loss_log}"
+
+    if failure_log.is_file():
+        sources["failure_log"] = str(failure_log)
+        for entry in _jsonl(failure_log):
+            skipped_id = entry.get("row_id")
+            if isinstance(skipped_id, str) and skipped_id:
+                failures.setdefault(
+                    skipped_id,
+                    f"dual write skipped it: {str(entry.get('reason', ''))[:160]}",
+                )
+    else:
+        sources["failure_log"] = f"absent:{failure_log}"
+
+    return ModelParityExplainEvidence(
+        pending=pending, dead_letter=dead_letter, failure_log=failures, sources=sources
+    )
+
+
+def explain_missing(
+    missing_row_ids: list[str], evidence: ModelParityExplainEvidence
+) -> ModelParityExplain:
+    """Classify each missing row. Pure.
+
+    Precedence: a record still queued is pending whatever else is recorded about it; a
+    drainer loss outranks a dual-write failure line, because the record reached the journal.
+    """
+    rows: list[ModelParityExplainedRow] = []
+    for row_id in missing_row_ids:
+        if row_id in evidence.pending:
+            loss_class, detail = (
+                EnumParityLossClass.JOURNAL_PENDING,
+                evidence.pending[row_id],
+            )
+        elif row_id in evidence.dead_letter:
+            loss_class = EnumParityLossClass.JOURNAL_DEAD_LETTER
+            detail = evidence.dead_letter[row_id]
+        elif row_id in evidence.failure_log:
+            loss_class, detail = (
+                EnumParityLossClass.FAILURE_LOG,
+                evidence.failure_log[row_id],
+            )
+        else:
+            loss_class, detail = EnumParityLossClass.UNEXPLAINED, ""
+        rows.append(
+            ModelParityExplainedRow(row_id=row_id, loss_class=loss_class, detail=detail)
+        )
+    counts = Counter(r.loss_class for r in rows)
+    return ModelParityExplain(
+        failure_log=counts[EnumParityLossClass.FAILURE_LOG],
+        journal_dead_letter=counts[EnumParityLossClass.JOURNAL_DEAD_LETTER],
+        journal_pending=counts[EnumParityLossClass.JOURNAL_PENDING],
+        unexplained=counts[EnumParityLossClass.UNEXPLAINED],
+        evidence=dict(evidence.sources),
+        rows=tuple(rows),
+    )
+
+
+def resolve_state_dir(explicit: Path | None) -> Path:
+    """``--state-dir``, else ``ONEX_STATE_DIR``, else ``$OMNI_HOME/.onex_state``; else KeyError."""
+    if explicit is not None:
+        return explicit
+    if os.environ.get("ONEX_STATE_DIR"):
+        return Path(os.environ["ONEX_STATE_DIR"])
+    if os.environ.get("OMNI_HOME"):
+        return Path(os.environ["OMNI_HOME"]) / ".onex_state"
+    raise KeyError(
+        "--explain needs the emitting host's state directory: pass --state-dir, "
+        "or set ONEX_STATE_DIR or OMNI_HOME"
+    )
+
+
 def load_projection_json(
     path: Path,
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
@@ -223,6 +386,17 @@ def main(argv: list[str] | None = None) -> int:
         "--dsn-env", help="name of the env var holding the lab database DSN"
     )
     parser.add_argument("--format", choices=("json", "text"), default="json")
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="classify each row missing from the projection (OMN-20535)",
+    )
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        help="the emitting host's state directory for --explain "
+        "(default: $ONEX_STATE_DIR, else $OMNI_HOME/.onex_state)",
+    )
     args = parser.parse_args(argv)
 
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
@@ -242,6 +416,18 @@ def main(argv: list[str] | None = None) -> int:
             since=args.since,
             until=until,
         )
+        if args.explain:
+            missing = [
+                m.key
+                for m in report.mismatches
+                if m.kind is EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION
+            ]
+            evidence = load_explain_evidence(
+                state_dir=resolve_state_dir(args.state_dir)
+            )
+            report = report.model_copy(
+                update={"explain": explain_missing(missing, evidence)}
+            )
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"work_ledger_parity: error: {exc!r}\n")
         return 2
@@ -257,6 +443,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         for m in report.mismatches[:50]:
             sys.stdout.write(f"  {m.kind.value} {m.key} {m.detail}\n")
+        if report.explain is not None:
+            e = report.explain
+            sys.stdout.write(
+                f"explain failure-log={e.failure_log} journal-dead-letter={e.journal_dead_letter} "
+                f"journal-pending={e.journal_pending} unexplained={e.unexplained}\n"
+            )
     return 0 if report.exact else 1
 
 

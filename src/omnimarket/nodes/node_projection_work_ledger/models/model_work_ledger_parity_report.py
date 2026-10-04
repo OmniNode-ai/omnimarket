@@ -29,6 +29,56 @@ class ModelParityMismatch(BaseModel):
     detail: str = ""
 
 
+class EnumParityLossClass(StrEnum):
+    """Where a row missing from the projection was lost (OMN-20535 AC3).
+
+    ``failure-log``: the writer's dual write recorded the row as not emitted.
+    ``journal-dead-letter``: the hook-emit drainer evicted, dropped or dead-lettered it.
+    ``journal-pending``: it is still queued in the journal, so it has not reached the bus yet.
+    ``unexplained``: no evidence names it; the loss happened where nothing records it.
+    """
+
+    FAILURE_LOG = "failure-log"
+    JOURNAL_DEAD_LETTER = "journal-dead-letter"
+    JOURNAL_PENDING = "journal-pending"
+    UNEXPLAINED = "unexplained"
+
+
+class ModelParityExplainedRow(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    row_id: str
+    loss_class: EnumParityLossClass
+    detail: str = ""
+
+
+class ModelParityExplainEvidence(BaseModel):
+    """What the emitting host's state directory says about each row id, by class."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pending: dict[str, str] = Field(default_factory=dict)
+    dead_letter: dict[str, str] = Field(default_factory=dict)
+    failure_log: dict[str, str] = Field(default_factory=dict)
+    sources: dict[str, str] = Field(default_factory=dict)
+
+
+class ModelParityExplain(BaseModel):
+    """The classification of every row missing from the projection, with counts per class."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    failure_log: int = 0
+    journal_dead_letter: int = 0
+    journal_pending: int = 0
+    unexplained: int = 0
+    evidence: dict[str, str] = Field(
+        default_factory=dict,
+        description="Each evidence source read and its path, or why it could not be read.",
+    )
+    rows: tuple[ModelParityExplainedRow, ...] = ()
+
+
 class ModelWorkLedgerParityReport(BaseModel):
     """Exact parity means ``mismatches`` is empty and the window held at least one row."""
 
@@ -46,6 +96,9 @@ class ModelWorkLedgerParityReport(BaseModel):
     unemittable_types: dict[str, int] = Field(default_factory=dict)
     state_entities_compared: int
     mismatches: tuple[ModelParityMismatch, ...] = ()
+    explain: ModelParityExplain | None = Field(
+        default=None, description="Present only when the check ran with --explain."
+    )
 
     @property
     def exact(self) -> bool:
@@ -53,7 +106,11 @@ class ModelWorkLedgerParityReport(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumParityLossClass",
     "EnumParityMismatchKind",
+    "ModelParityExplain",
+    "ModelParityExplainEvidence",
+    "ModelParityExplainedRow",
     "ModelParityMismatch",
     "ModelWorkLedgerParityReport",
 ]
