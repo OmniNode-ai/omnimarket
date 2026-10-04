@@ -63,6 +63,12 @@ def test_repo_evidence_poller_admission(
     script = poller["steps"][0]["run"]
     assert "check_name=repo-evidence%20%2F%20dod-verify" in script
     assert "check_name=occ-preflight" not in script
+    # The poller's real deadline is 2580 seconds. With the clock mocked away, the
+    # loop would still run 258 iterations on every absent or pending verdict, and
+    # that took the module past the 30 second per-check budget of the evidence
+    # verifier. Assert the shipped deadline, then shrink it to three iterations.
+    assert "deadline=2580" in script
+    script = script.replace("deadline=2580", "deadline=30")
     fixture = tmp_path / "check-runs.json"
     fixture.write_text(
         json.dumps(
