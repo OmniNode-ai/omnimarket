@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20159"
+title: "A runtime-resident projection read effect node answers every contract-declared projection exposure over the bus"
+summary: "The projection read node gets its own database binding, OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY, read only in projection/runner.py. When that variable is unset, the read binding is the runtime binding as before. The delegate-skill claim store and evidence store keep following the runtime binding only, so a reader's credentials never become their write principal. This contract binds AC2's clause that the node takes its database handle from the runtime's binding and not from a DSN the handler reads. It does not claim AC2's other clause (the served window, since walk and column checks living in the node), nor AC1, AC3 and AC5 (delivered by omnimarket#3169) or AC4 (a lab readback)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-read-binding-apart-from-claim-store"
+    statement: |-
+      The read node resolves its database only through the projection read binding in projection/runner.py (the read overlay, else the runtime overlay), never from an environment variable or DSN it reads itself, and the claim and evidence stores never follow the read overlay.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the table read logic from omnimarket#3119 (TableRowSource: served window, since walk, column and relation checks) lives in the node and takes its database handle from the runtime binding, not from a DSN read by the handler -- falsifier: uv run pytest tests/integration/nodes/node_projection_read_effect -q against EphemeralPostgres, plus a test asserting the handler module reads no DB_URL environment variable
+evidence_requirements:
+  - kind: "tests"
+    description: "The read-binding tests (F1 to F5), the read node's own tests including its no-environment-read scan, and the binding-variable env-read scan (F6) pass."
+    command: "uv run pytest tests/unit/nodes/node_projection_read_effect/test_read_binding_apart_from_claim_store_omn20159.py tests/unit/nodes/node_projection_read_effect/test_projection_read_effect_omn20159.py tests/unit/projection/test_projection_binding_env_discipline_omn20159.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20159-ac2-read-binding-apart-from-claim-store"
+    description: "The read node takes its database from the projection read binding (the read overlay, else the runtime overlay), and no module of the node reads the environment. A broken read overlay is the refusal projection_binding_invalid and never falls back. The claim and evidence stores and the projection writers keep the runtime binding. Only projection/runner.py reads either overlay variable. This check fails at the merge base (27 of its 53 tests), where the read resolver does not exist and the read node follows the runtime overlay only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_read_effect/test_read_binding_apart_from_claim_store_omn20159.py tests/unit/nodes/node_projection_read_effect/test_projection_read_effect_omn20159.py tests/unit/projection/test_projection_binding_env_discipline_omn20159.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
