@@ -204,15 +204,18 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
     return entries
 
 
-def _journal_row_ids(directory: Path) -> dict[str, str]:
-    """``row_id`` -> file name for each work-ledger record directly under ``directory``."""
+def _journal_row_ids(directory: Path) -> tuple[dict[str, str], int]:
+    """``row_id`` -> file name for each work-ledger record directly under ``directory``,
+    and how many record files could not be read (reported, never silently skipped)."""
     found: dict[str, str] = {}
+    unreadable = 0
     for path in sorted(directory.glob("*.json")):
         if path.name.endswith(".reason.json"):
             continue
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
+            unreadable += 1
             continue
         if not isinstance(record, dict):
             continue
@@ -225,15 +228,29 @@ def _journal_row_ids(directory: Path) -> dict[str, str]:
         row_id = payload.get("row_id") if isinstance(payload, dict) else None
         if isinstance(row_id, str) and row_id:
             found[row_id] = path.name
-    return found
+    return found, unreadable
 
 
-def load_explain_evidence(*, state_dir: Path) -> ModelParityExplainEvidence:
-    """Read the four evidence sources under ``state_dir``. Never raises on an absent source."""
-    journal = state_dir / JOURNAL_DIR_NAME
+def load_explain_evidence(
+    *,
+    state_dir: Path,
+    journal_dir: Path | None = None,
+    loss_log_path: Path | None = None,
+) -> ModelParityExplainEvidence:
+    """Read the four evidence sources. Never raises on an absent source.
+
+    The paths are the producers' own: the dual write's failure log under
+    ``state_dir``; the journal at ``journal_dir`` (the drainer's
+    ``ONEX_HOOK_EMIT_JOURNAL_DIR``), else ``state_dir/hook_emit_journal``; the
+    drainer's loss log at ``loss_log_path`` (its ``ONEX_HOOK_EMIT_LOSS_LOG``), else
+    beside the journal directory.
+    """
+    journal = journal_dir if journal_dir is not None else state_dir / JOURNAL_DIR_NAME
     quarantine = journal / QUARANTINE_DIR_NAME
     failure_log = state_dir / FAILURE_LOG_NAME
-    loss_log = state_dir / LOSS_LOG_NAME
+    loss_log = (
+        loss_log_path if loss_log_path is not None else journal.parent / LOSS_LOG_NAME
+    )
     sources: dict[str, str] = {}
     pending: dict[str, str] = {}
     dead_letter: dict[str, str] = {}
@@ -243,8 +260,11 @@ def load_explain_evidence(*, state_dir: Path) -> ModelParityExplainEvidence:
         if not path.is_dir():
             sources[name] = f"absent:{path}"
             continue
-        sources[name] = str(path)
-        for row_id, file_name in _journal_row_ids(path).items():
+        found, unreadable = _journal_row_ids(path)
+        sources[name] = str(path) + (
+            f" (unreadable={unreadable})" if unreadable else ""
+        )
+        for row_id, file_name in found.items():
             if name == "journal":
                 pending[row_id] = f"queued in the journal as {file_name}"
             else:
@@ -319,6 +339,11 @@ def explain_missing(
         evidence=dict(evidence.sources),
         rows=tuple(rows),
     )
+
+
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value) if value else None
 
 
 def resolve_state_dir(explicit: Path | None) -> Path:
@@ -423,7 +448,9 @@ def main(argv: list[str] | None = None) -> int:
                 if m.kind is EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION
             ]
             evidence = load_explain_evidence(
-                state_dir=resolve_state_dir(args.state_dir)
+                state_dir=resolve_state_dir(args.state_dir),
+                journal_dir=_env_path("ONEX_HOOK_EMIT_JOURNAL_DIR"),
+                loss_log_path=_env_path("ONEX_HOOK_EMIT_LOSS_LOG"),
             )
             report = report.model_copy(
                 update={"explain": explain_missing(missing, evidence)}

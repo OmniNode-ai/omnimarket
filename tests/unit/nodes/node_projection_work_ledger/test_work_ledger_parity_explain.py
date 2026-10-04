@@ -28,6 +28,14 @@ from omnimarket.nodes.node_projection_work_ledger.parity import (
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def _no_producer_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI honours the producers' path overrides; a shell value must not leak in."""
+    monkeypatch.delenv("ONEX_HOOK_EMIT_JOURNAL_DIR", raising=False)
+    monkeypatch.delenv("ONEX_HOOK_EMIT_LOSS_LOG", raising=False)
+
+
 ROWS = [
     "2026-10-03T01:00:00Z | STATUS | lane=a | one",
     "2026-10-03T02:00:00Z | STATUS | lane=b | two",
@@ -188,3 +196,37 @@ def test_explain_cli_without_a_state_dir_is_an_error(
     )  # fmt: skip
     assert rc == 2
     assert "state directory" in capsys.readouterr().err
+
+
+def test_explain_reads_the_producers_journal_and_loss_log_overrides(
+    tmp_path: Path,
+) -> None:
+    state = _state(tmp_path)
+    journal = tmp_path / "elsewhere" / "journal"
+    _journal_record(journal, "00000000000000000004_d.json", ROWS[3])
+    loss_log = tmp_path / "losses.jsonl"
+    loss_log.write_text(
+        json.dumps({"row_id": _rid(ROWS[1]), "disposition": "dead-lettered"})
+    )
+
+    result = explain_missing(
+        [_rid(ROWS[1]), _rid(ROWS[3])],
+        load_explain_evidence(
+            state_dir=state, journal_dir=journal, loss_log_path=loss_log
+        ),
+    )
+
+    assert [r.loss_class for r in result.rows] == [
+        EnumParityLossClass.JOURNAL_DEAD_LETTER,
+        EnumParityLossClass.JOURNAL_PENDING,
+    ]
+    assert result.evidence["loss_log"] == str(loss_log)
+
+
+def test_explain_reports_unreadable_journal_records(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    (state / "hook_emit_journal" / "00000000000000000007_x.json").write_text("{torn")
+
+    result = explain_missing([], load_explain_evidence(state_dir=state))
+
+    assert result.evidence["journal"].endswith("(unreadable=1)")
