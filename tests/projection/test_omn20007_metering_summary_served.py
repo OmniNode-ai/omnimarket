@@ -239,7 +239,8 @@ def test_the_served_rows_are_the_stored_rows_with_every_column(
         assert set(row) == ROW_COLUMNS
         expected = dict(stored[_key(row)])
         # summary_json is served decoded; every other column byte for byte.
-        assert row.pop("summary_json") is not None
+        served_summary = row.pop("summary_json")
+        assert served_summary is not None
         expected.pop("summary_json")
         assert row == expected
 
