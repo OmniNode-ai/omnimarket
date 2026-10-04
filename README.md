@@ -165,3 +165,5 @@ Test markers: `unit` (isolated), `integration` (multi-component), `slow` (>1s),
 
 - [Contributing](.github/CONTRIBUTING.md)
 - [License](LICENSE)
+
+<!-- OMN-20543 negative control on dev: a non-test change, never merged -->

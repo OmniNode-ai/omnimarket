@@ -31,3 +31,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k gives_bound_tests_a_database"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20543-negative-control-always-pass"
+    description: "Negative control, never merged: the OMN-20162 real-Postgres twin bound beside a non-test change. The product behaviour is already on dev, so the twin passes at the merge base against the job's database and the control must refuse it as always-pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20162_backend_id_and_host_real_postgres.py::TestTheRowCarriesBackendIdAndHost::test_a_terminal_stores_backend_id_and_host -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
