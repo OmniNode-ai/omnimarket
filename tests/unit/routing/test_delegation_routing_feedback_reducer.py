@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.events.topics import (
     DELEGATION_ALL_TIERS_FAILED_TOPIC_V1,
@@ -414,3 +416,52 @@ def test_runtime_state_takes_precedence_over_legacy_state(
         handler.handle(dispatch), source_topic=DELEGATION_CALL_COMPLETED_TOPIC_V1
     )
     assert state == before
+
+
+@pytest.mark.parametrize(
+    "latency",
+    [float("nan"), float("inf"), float("-inf"), True, False],
+    ids=["nan", "inf", "neg-inf", "true", "false"],
+)
+def test_unusable_latency_is_ignored_and_never_crashes_the_dispatcher(
+    handler: reducer.HandlerDelegationRoutingFeedback,
+    payload: dict[str, Any],
+    state: dict[str, Any],
+    latency: object,
+) -> None:
+    """A latency that is not a real measurement counts as no latency (OMN-13216).
+
+    The reducer's contract is that a malformed terminal never raises out of the
+    dispatcher, because a raise swallows the terminal and splits the request and
+    terminal high-water marks. NaN and infinity cannot convert to an int, and a
+    bool is not a duration, so each is treated like a missing latency: the event
+    still counts, and the running average stays where it was.
+    """
+    before = deepcopy(state)
+    result = handler.handle(
+        {
+            **payload,
+            "success": False,
+            "latency_ms": latency,
+            "_topic": DELEGATION_CALL_COMPLETED_TOPIC_V1,
+            "_state": state,
+        }
+    )
+    assert result["skipped"] is False
+    assert result["feedback"]["total_count"] == 3
+    assert result["feedback"]["failure_count"] == 2
+    assert result["feedback"]["avg_latency_ms"] == 150.0
+    assert result["state"]["model-a:test"] == result["feedback"]
+    assert state == before
+
+
+def test_contract_fsm_moves_idle_to_updated_and_keeps_updated_on_later_folds() -> None:
+    """The contract's FSM declares that a folded terminal leaves the reducer updated."""
+    contract_path = Path(reducer.__file__).resolve().parents[1] / "contract.yaml"
+    fsm = yaml.safe_load(contract_path.read_text())["state_machine"]
+    assert fsm["initial_state"] == "idle"
+    assert {state["state_name"] for state in fsm["states"]} == {"idle", "updated"}
+    assert {
+        (transition["from_state"], transition["to_state"])
+        for transition in fsm["transitions"]
+    } == {("idle", "updated"), ("updated", "updated")}
