@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20008"
+title: "Savings overview excludes estimated and unknown runs from measured totals and serves their counts"
+summary: "Migration 094 recreates projection_cost_savings_overview so its measured monetary totals include only runs whose stored token_provenance is measured, and appends estimated_run_count and unknown_run_count. The projection contract serves both counts, so the dashboard can show how many runs a measured total leaves out."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-measured-totals-and-excluded-counts"
+    statement: |-
+      The savings overview served by this repository must keep estimated and unknown runs out of every total it presents as measured, and must serve their counts beside it.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: Estimated runs are excluded from any total presented as measured, and their count is shown beside it -- falsifier: uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot
+evidence_requirements:
+  - kind: "tests"
+    description: "The savings-overview exposure serves estimated_run_count and unknown_run_count after the existing columns."
+    command: "uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20008-ac4-served-excluded-counts"
+    description: "The savings-overview exposure serves estimated_run_count and unknown_run_count, appended after tenant_id, so the excluded runs are counted beside the measured total."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
