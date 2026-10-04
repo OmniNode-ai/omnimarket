@@ -15,10 +15,9 @@ the node, and these tests are the statement of what makes it safe.
 
 Three properties, each independently sufficient to break if violated:
 
-1. **One subscribe topic.** This node cannot receive two *kinds* of event for
-   one correlation, so "same-correlation events handled out of order" is not
-   reachable. `node_delegation_orchestrator` subscribes to several topics that
-   all carry one correlation, which is exactly why it is left serial.
+1. **One command topic plus runtime ticks.** Commands carry independent
+   delivery identities. The reaper and worker arbitrate through an insert-only
+   terminal slot, so a tick may race a worker without replacing its terminal.
 2. **No cross-record state.** The handler keeps a frozen budget and a port.
    Nothing is keyed by correlation, so two records in flight cannot interfere.
 3. **No slot deadlock.** The handler awaits the delegation reply inline while
@@ -70,32 +69,35 @@ def _subscribe_topics(path: Path) -> list[str]:
 
 
 @pytest.mark.unit
-def test_the_parallelised_node_consumes_exactly_one_topic() -> None:
-    """Property 1 — a second subscribe topic would make out-of-order reachable.
-
-    With one topic, every record is a whole delegation carrying its own
-    correlation. There is no second event kind that could arrive for the same
-    correlation and be handled before or beside the first.
-    """
-    topics = _subscribe_topics(_DELEGATE_SKILL)
-
-    assert topics == ["onex.cmd.omnimarket.delegate-skill.v1"], (
-        "OMN-18852: node_delegate_skill_orchestrator now subscribes to "
-        f"{topics}. It declares consume_concurrency, and the bounded in-flight "
-        "driver does NOT serialise by key, so a second subscribe topic means "
-        "two events for one correlation can be handled concurrently. Either "
-        "drop the added topic or remove the concurrency declaration."
+def test_the_parallelised_node_routes_commands_and_ticks_separately() -> None:
+    """The only competing event is the reaper tick, guarded by the command slot."""
+    contract = _contract(_DELEGATE_SKILL)
+    assert _subscribe_topics(_DELEGATE_SKILL) == [
+        "onex.cmd.omnimarket.delegate-skill.v1",
+        "onex.intent.platform.runtime-tick.v1",
+    ]
+    assert {
+        entry["topic"]: entry["operation"] for entry in contract["input_subscriptions"]
+    } == {
+        "onex.cmd.omnimarket.delegate-skill.v1": "delegate-skill.orchestrate",
+        "onex.intent.platform.runtime-tick.v1": "delegate-skill.reap_scheduled_run",
+    }
+    routes = {
+        entry["operation"]: entry for entry in contract["handler_routing"]["handlers"]
+    }
+    assert (
+        routes["delegate-skill.orchestrate"]["event_type"]
+        == "omnimarket.delegate-skill"
+    )
+    assert (
+        routes["delegate-skill.reap_scheduled_run"]["event_type"]
+        == "platform.runtime-tick"
     )
 
 
 @pytest.mark.unit
 def test_the_serial_fsm_node_is_the_one_with_many_topics_for_one_correlation() -> None:
-    """The positive control for property 1, so it is a contrast and not a tautology.
-
-    A single-topic assertion proves little unless some node in the same family
-    actually has several. This is that node, and it is the one deliberately
-    left serial.
-    """
+    """Correlation-keyed FSM transitions still require serial consumption."""
     fsm_topics = _subscribe_topics(_FSM_ORCHESTRATOR)
 
     assert len(fsm_topics) > 1, (

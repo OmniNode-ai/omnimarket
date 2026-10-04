@@ -139,6 +139,10 @@ class LiveDocumentDelegation:
                 wait=True,
             )
             response = await handler.handle(request)
+            if response is None:
+                raise RuntimeError(
+                    "a direct delegate-skill call binds no delivery, so it is never claimed and always returns a terminal"
+                )
 
             # Typed readback off the delegation wire contract — the terminal
             # carries the resolved routing identity, so telemetry records the
