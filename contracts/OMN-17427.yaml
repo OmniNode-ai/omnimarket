@@ -34,6 +34,13 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: a completed terminal with latency_ms of NaN, positive or negative infinity, or a boolean is accumulated as an event with no latency (total_count advances, avg_latency_ms is unchanged) and handle() does not raise -- falsifier: uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q
+  - id: "req-swe-client-smoke-coverage"
+    statement: |-
+      The swe_discriminator model client and smoke runner are exercised offline by focused unit tests that block real HTTP.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: routing, transport, grading, aggregation and smoke CLI behaviour of the swe_discriminator client is asserted offline -- falsifier: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -50,6 +57,9 @@ evidence_requirements:
   - kind: "tests"
     description: "An unusable latency is counted as no latency and never raises."
     command: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
+  - kind: "tests"
+    description: "The SWE discriminator model client and smoke runner offline tests pass."
+    command: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -95,3 +105,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn17427-swe-client-smoke"
+    description: "The SWE discriminator model client and smoke runner offline tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
