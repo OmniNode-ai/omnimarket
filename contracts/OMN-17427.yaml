@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-17427"
-title: "A local run states one saving on row and receipt, and metering keys on the minted tenant"
-summary: "The local delegation_events row priced its saving against a hardcoded Opus rate while the receipt priced it against the resolved baseline, and onex metering keyed metering_summary on the literal tenant local. The saving is now computed once against the resolved baseline and written to both the row and the receipt with its pinned counterfactual and manifest version, and metering reads the minted tenant identity and refuses when none exists."
+title: "A local run states one saving on row and receipt, metering keys on the minted tenant, and the routing feedback reducer ignores an unusable latency"
+summary: "The local delegation_events row priced its saving against a hardcoded Opus rate while the receipt priced it against the resolved baseline, and onex metering keyed metering_summary on the literal tenant local. The saving is now computed once against the resolved baseline and written to both the row and the receipt with its pinned counterfactual and manifest version, and metering reads the minted tenant identity and refuses when none exists. A terminal event whose latency_ms was NaN or infinite raised out of the routing feedback reducer, and a boolean latency was counted as one millisecond; the reducer now treats a non-finite or boolean latency as no latency, so the event still counts and the running average is unchanged."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,6 +27,13 @@ requirements:
       - id: "AC7"
         statement: |-
           AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.64 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired
+  - id: "req-unusable-latency"
+    statement: |-
+      A delegation terminal whose latency is not a real measurement must be counted without raising and without moving the running average latency.
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: a completed terminal with latency_ms of NaN, positive or negative infinity, or a boolean is accumulated as an event with no latency (total_count advances, avg_latency_ms is unchanged) and handle() does not raise -- falsifier: uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q
   - id: "req-swe-client-smoke-coverage"
     statement: |-
       The swe_discriminator model client and smoke runner are exercised offline by focused unit tests that block real HTTP.
@@ -47,6 +54,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The omnibase_infra 0.38.64 pin parity tests pass."
     command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
+  - kind: "tests"
+    description: "An unusable latency is counted as no latency and never raises."
+    command: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
   - kind: "tests"
     description: "The SWE discriminator model client and smoke runner offline tests pass."
     command: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
@@ -87,6 +97,14 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
+  - id: "dod-omn17427-unusable-latency"
+    description: "The reducer counts a NaN, infinite or boolean latency as no latency and does not raise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_delegation_routing_feedback_reducer.py -k unusable_latency -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
   - id: "dod-omn17427-swe-client-smoke"
     description: "The SWE discriminator model client and smoke runner offline tests pass."
     source: "manual"
