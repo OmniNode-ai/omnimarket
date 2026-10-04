@@ -155,6 +155,7 @@ def test_repo_evidence_summary_queue_keeps_existing_occ_enforcement() -> None:
     assert set(queue) == set(gate.EXPECTED_EXTERNAL_CONTEXTS) - {CONTEXT}
     assert "occ-preflight / eligibility" in queue
     assert "verify / verify" in queue
-    assert "call-reject-skip-token / occ-preflight / eligibility" in queue
+    assert "call-reject-skip-token / occ-preflight / eligibility" not in queue
+    assert "call-reject-skip-token / scan / reject-skip-gate-token" in queue
     assert "OCC Companion Merged Gate (OMN-15214)" in gate.STRICT_GATE_JOBS
     assert "Repo Evidence Dependency" in gate.STRICT_GATE_JOBS
