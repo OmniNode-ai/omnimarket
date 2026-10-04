@@ -87,6 +87,7 @@ from omnimarket.delegation.acceptance_directives import (
     acceptance_rule_names,
     compose_user_prompt_with_output_directives,
     render_acceptance_directives,
+    state_prompt_for_task_class,
 )
 from omnimarket.delegation.deciding_cause import ladder_is_gate_decided
 from omnimarket.delegation.deliverable_extraction import (
@@ -1342,7 +1343,13 @@ def _outbound_user_prompt(
         else None
     )
     return compose_user_prompt_with_output_directives(
-        prompt=_prompt_with_context_pack(workflow.request, prompt),
+        # OMN-19432: a class that declares ``prompt_shape: facts_first`` states
+        # the facts computed from the prompt before it; the prompt follows
+        # unchanged, and a class that declares nothing gets it byte-identical.
+        prompt=state_prompt_for_task_class(
+            prompt=_prompt_with_context_pack(workflow.request, prompt),
+            task_class=workflow.request.task_type,
+        ),
         acceptance_directives=acceptance,
         text_shape_instruction=text_shape_instruction,
     )
