@@ -9,9 +9,8 @@ model (``omnibase_core`` ``ModelDelegationResult``):
 * ``routed_model``       <- ``model_used``
 * ``answering_backend``  <- ``route``
 
-``finish_reason``, ``truncated``, ``requested_model``, ``queue_wait_ms`` and
-``execution_ms`` have no field on that wire model today, so no column exists
-for them (see the PR body for the follow-up).
+``requested_model``, ``queue_wait_ms`` and ``execution_ms`` have no field on
+that wire model today, so no column exists for them.
 
 The falsifier: apply the migration, project a terminal, assert each column.
 The SQL file is checked statically here; the real-Postgres twin below applies
@@ -87,8 +86,6 @@ def test_a_migration_adds_each_new_column_idempotently() -> None:
 def test_no_column_is_minted_for_a_field_the_terminal_does_not_carry() -> None:
     text = "\n".join(path.read_text() for path in _MIGRATIONS.glob("*.sql"))
     for absent in (
-        "finish_reason",
-        "truncated",
         "requested_model",
         "queue_wait_ms",
         "execution_ms",
