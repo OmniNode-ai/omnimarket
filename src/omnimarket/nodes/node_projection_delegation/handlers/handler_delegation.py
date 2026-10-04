@@ -57,6 +57,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _judge_verdict_projection_row,
     _measure_actual_cost,
     _preserve_terminal_failure,
+    _stamp_accepting_attempt,
     _stamp_declared_failure_cause,
     _stamp_terminal_stop_reason,
     _stamp_terminal_trace_and_routing,
@@ -1536,6 +1537,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "trace_id",
             "routed_model",
             "answering_backend",
+            "backend_id",
+            "host",
             "finish_reason",
         ):
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
@@ -1961,6 +1964,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        _stamp_accepting_attempt(row, reduction.attempt_history)
         # Same rule as the sync builder: a terminal that was never scored names
         # neither column, so the row stores NULL on insert, never zero.
         for column, value in (
