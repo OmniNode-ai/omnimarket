@@ -1,0 +1,9 @@
+Write the git commit message (a subject line of the form type(OMN-17427): summary, then a short body) for the commit described by the facts below. Facts only: use no PR number, sha, check name, test name or file name that is not listed.
+
+FACTS
+Pull request: OmniNode-ai/onex_change_control#12643
+Ticket: OMN-17427
+Files changed by the commit: (not listed)
+What the worker reported about the change:
+- **Conflict:** `contracts/OMN-17427.yaml` conflicted at the end of the file. `dev` had added a `dod-OmniNode-ai-omnimarket-pr-3336-ci` entry and this PR adds the two omnimarket PR 3321 entries. I kept both.
+- **Re-pin:** the merge changed the contract's bytes, so I replaced the old `contract_sha256` in the two PR 3321 receipts and the self-bind with the new value (`8cbebfa3…f791`). This is a second commit on top of the rebased ones.

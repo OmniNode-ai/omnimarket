@@ -400,6 +400,9 @@ projection_api:
         - trace_id
         - routed_model
         - answering_backend
+        # OMN-19448: the deciding terminal's stop reason (migration 0053).
+        - finish_reason
+        - truncated
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model

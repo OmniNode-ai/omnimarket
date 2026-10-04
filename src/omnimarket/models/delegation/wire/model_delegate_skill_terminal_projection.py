@@ -224,7 +224,10 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     @field_validator("prompt_text")
     @classmethod
     def _blank_prompt_to_empty(cls, value: str) -> str:
-        return value.strip()
+        # Only an all-whitespace prompt collapses to "". Any other prompt is kept
+        # byte for byte: stripping it dropped the trailing newline and made the
+        # stored row unequal to the sent prompt, so it could not be replayed.
+        return value if value.strip() else ""
 
     @field_validator("context_pack_hash")
     @classmethod

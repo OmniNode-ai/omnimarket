@@ -44,7 +44,10 @@ _DEFAULT_EVIDENCE_DB_PATH = (
 # correlation_id UNIQUE constraint backs the UPSERT dedup.
 _DELEGATION_EVENTS_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_events (
-    correlation_id          TEXT    NOT NULL UNIQUE
+    correlation_id          TEXT    NOT NULL UNIQUE,
+    -- OMN-19448: nullable terminal stop reason and truncation evidence.
+    finish_reason           TEXT,
+    truncated               INTEGER
 )
 """
 

@@ -1091,6 +1091,8 @@ class OccCompanionEmitter:
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
+        # OMN-20412: the defer is per PR, not per ticket. A hand-authored companion
+        # whose evidence ids name other PRs only does not contend with this one.
         # OMN-15247 deliverable A — DEFER-ON-CONTENTION, ALWAYS ON. Placed AFTER
         # the already-bound idempotency check and ticket extraction, and BEFORE
         # ``acquire_occ_companion_lease``, so a defer takes the lease-free,
@@ -1104,7 +1106,11 @@ class OccCompanionEmitter:
         # contract merges (OCC is append-only; the repair is rejected with
         # pr_ticket_mismatch). Same posture as the lease guard below.
         findings = self._find_contending_companions(
-            tickets=tickets, own_branch=branch, token=token
+            tickets=tickets,
+            own_branch=branch,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
         )
         should_defer, contention_reason = decide_contention(findings)
         for finding in findings:
@@ -2800,7 +2806,13 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     def _find_contending_companions(
-        self, *, tickets: Sequence[str], own_branch: str, token: str
+        self,
+        *,
+        tickets: Sequence[str],
+        own_branch: str,
+        repo: str,
+        pr_number: int,
+        token: str,
     ) -> tuple[ContentionFinding, ...]:
         """Index open OCC companions that already carry evidence for ``tickets``.
 
@@ -2825,6 +2837,8 @@ class OccCompanionEmitter:
             tickets=tickets,
             occ_repo=self._occ_repo,
             own_branch=own_branch,
+            repo=repo,
+            pr_number=pr_number,
             search_issues=_search,
             get_pull=_get_pull,
             list_pr_files=_files,
