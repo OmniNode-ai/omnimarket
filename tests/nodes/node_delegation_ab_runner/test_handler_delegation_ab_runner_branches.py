@@ -47,6 +47,20 @@ def test_completed_output_topic_is_declared_and_externally_consumed() -> None:
     assert publish_topics == contract["externally_consumed_topics"]
 
 
+def test_completed_output_topic_has_no_stale_state_coverage_baseline_entry() -> None:
+    baseline_path = (
+        Path(__file__).resolve().parents[3]
+        / "scripts"
+        / "validation"
+        / "state_coverage_baseline.txt"
+    )
+    stale = (
+        "node_delegation_ab_runner onex.evt.omnimarket.delegation-ab-run-completed.v1"
+    )
+
+    assert stale not in baseline_path.read_text().splitlines()
+
+
 def _response() -> httpx.Response:
     return httpx.Response(
         200,
