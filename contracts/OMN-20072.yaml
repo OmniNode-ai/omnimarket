@@ -1,49 +1,35 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20072"
-title: "OR.4 Pilot one full goal chain in shadow against the OCC path"
-summary: "Step S5 of the OCC retirement takeover plan on omnimarket. The constructed pilot cases are pinned to the real verifier output, and repo-evidence / dod-verify runs its OCC difference step, which fails on a difference between the two paths that has no reason code in the OR.1 expected-difference table."
+title: "S5 constructed case C4b: no criterion bound"
+summary: "S5 constructed pilot case on a scratch PR labelled dod-negative-control. Never merged; it exists so repo-evidence / dod-verify and its OCC difference step can be observed refusing it on the real dev definition."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-s5-case-list"
+  - id: "req-s5-constructed"
     statement: |-
-      The S5 constructed cases must be pinned to the real verifier output so a renamed verdict field or reworded refusal moves a reason code in a test.
+      Constructed S5 case; see the PR body.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the nine constructed S5 cases, run through the real HandlerDodVerify, classify as documented, and every refused case also gives negative_control_refused -- falsifier: uv run pytest tests/test_dod_verify_s5_case_list.py -q
-  - id: "req-s5-difference-check-active"
-    statement: "The repo-evidence caller runs the reusable's OCC difference step with a verifier release that ships the classifier, so an unclassified difference fails the required context and names the difference."
-    acceptance:
-      - id: "AC3"
-        statement: "The S3 context is required on omnimarket while every OCC context stays required, and a difference between the two paths that has no reason code in the OR.1 expected-difference table fails the check and names the difference."
+          AC1: constructed criterion
+      - id: "AC2"
+        statement: |-
+          AC2: constructed criterion
 evidence_requirements:
   - kind: "tests"
-    description: "The nine S5 constructed cases classify as documented."
-    command: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
-  - kind: "tests"
-    description: "The caller passes compare-with-occ true and pins a verifier release that ships node_dod_verify occ-difference."
-    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k compares_with_occ"
+    description: "constructed case"
+    command: "uv run pytest tests -q -k omn20072_s5"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-s5-case-list"
-    description: "The S5 case-list test passes against the real verifier."
+  - id: "dod-s5-c4b-unbound"
+    description: "dod-s5-c4b-unbound"
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
+        check_value: "uv run pytest tests/test_omn20072_s5_c4b_unbound.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
-  - id: "dod-s5-caller-compares-with-occ"
-    description: "The caller turns on the difference step and pins a verifier that carries the classifier; the test fails at the merge base, whose caller has no compare-with-occ and pins 0.4.280."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k compares_with_occ"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
