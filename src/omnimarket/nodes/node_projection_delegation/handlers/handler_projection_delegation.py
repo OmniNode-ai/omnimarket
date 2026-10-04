@@ -1977,6 +1977,7 @@ def _preserve_existing_evidence(
         return
     existing_rows = db.query(TABLE, {CONFLICT_KEY: correlation_id})
     if not existing_rows:
+        apply_terminal_precedence({}, row)
         return
     existing = existing_rows[0]
     # OMN-17427: a stored failure terminal is never partly overwritten by a

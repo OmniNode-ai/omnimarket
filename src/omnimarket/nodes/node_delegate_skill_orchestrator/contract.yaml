@@ -319,6 +319,16 @@ delegation_runtime_dispatch:
   consumer_group_prefix: delegate-skill-runtime-port
   wait_timeout_seconds: 300
 
+# The handler waits execution_timeout + delivery margin; a further 60 seconds
+# gives its own timeout terminal first chance to hold the command's slot.
+#
+# The runtime tick arrives about once a second; a scan reads every claim with no
+# terminal, so the handler scans at most once per scan_interval_seconds.
+delegation_reaper:
+  grace_seconds: 60
+  max_reaps_per_tick: 25
+  scan_interval_seconds: 15
+
 # OMN-15504: the handler's own wall-clock bound on one handle() invocation.
 #
 # This node is auto-wired onto a consumer whose poll loop is serial, so a
@@ -410,11 +420,18 @@ descriptor:
   runtime_profiles:
     - effects
 
+input_subscriptions:
+  - topic: onex.cmd.omnimarket.delegate-skill.v1
+    operation: delegate-skill.orchestrate
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: delegate-skill.reap_scheduled_run
+
 event_bus:
   version: {major: 1, minor: 0, patch: 0}
   plugin_managed: false
   subscribe_topics:
     - onex.cmd.omnimarket.delegate-skill.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
@@ -468,6 +485,14 @@ handler_routing:
         module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
       event_type: omnimarket.delegate-skill
       description: Accept a delegate-skill command and dispatch to the delegation runtime.
+    - operation: delegate-skill.reap_scheduled_run
+      handler:
+        name: HandlerDelegationReaper
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper
+      handler_module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: Close overdue commands or heal their unhanded terminal slots.
 
 error_handling:
   retry_policy:
