@@ -27,7 +27,7 @@ import inspect
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from importlib import resources
 from typing import Any, Protocol
@@ -154,6 +154,65 @@ async def _subscribe(
         else {}
     )
     return await subscribe(topic, on_message=on_message, group_id=group_id, **extra)
+
+
+# Deleting a per-call consumer group (OMN-20461).
+#
+# A reader that waits for one reply on a topic every caller shares must not share
+# a group with its peers: the broker splits partitions among the members of one
+# group, so a reply for caller A can land on caller B's consumer, which drops it
+# for the wrong correlation id. Such a reader keeps a group of its own, and the
+# group outlives the consumer as an Empty group unless it is deleted. Deletion is
+# best effort: a failure is logged and never fails a completed call, and a bus
+# with no ``bootstrap_servers`` string (the in-memory bus) has no broker group.
+_ATTEMPTS = 3
+_RETRY_DELAY_SECONDS = 0.5
+_RESULT_TIMEOUT_SECONDS = 10.0
+
+
+def _new_admin(bootstrap_servers: str) -> Any:
+    from confluent_kafka.admin import AdminClient
+    from omnibase_infra.event_bus.kafka_auth import (
+        build_confluent_auth_config_from_env,
+    )
+
+    return AdminClient(
+        {
+            **build_confluent_auth_config_from_env(),
+            "bootstrap.servers": bootstrap_servers,
+        }
+    )
+
+
+def _delete_once(admin: Any, group_ids: list[str]) -> list[str]:
+    """Return the group ids the broker refused to delete."""
+    failed: list[str] = []
+    futures = admin.delete_consumer_groups(group_ids)
+    for group_id, future in futures.items():
+        try:
+            future.result(timeout=_RESULT_TIMEOUT_SECONDS)
+        except Exception as exc:
+            logger.warning("consumer group %s not deleted: %s", group_id, exc)
+            failed.append(str(group_id))
+    return failed
+
+
+async def delete_consumer_groups(bus: object, group_ids: Iterable[str]) -> None:
+    """Delete ``group_ids`` on the broker ``bus`` is connected to, if it has one."""
+    pending = sorted(set(group_ids))
+    bootstrap = getattr(bus, "bootstrap_servers", None)
+    if not pending or not isinstance(bootstrap, str) or not bootstrap:
+        return
+    try:
+        admin = await asyncio.to_thread(_new_admin, bootstrap)
+        for attempt in range(_ATTEMPTS):
+            pending = await asyncio.to_thread(_delete_once, admin, pending)
+            if not pending:
+                return
+            if attempt + 1 < _ATTEMPTS:
+                await asyncio.sleep(_RETRY_DELAY_SECONDS)
+    except Exception as exc:
+        logger.warning("consumer group cleanup failed: %s", exc)
 
 
 def host_group_id(host_name: str) -> str:
