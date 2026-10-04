@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20303
+title: A delegation run's saving is recorded once and keeps its premium counterfactual
+summary: The savings projection writes exactly one savings_estimates row per run whichever terminal lands first, and a later canonical delegation terminal keeps the stored premium_counterfactual, session_id and delegated_by when it carries none.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20303
+  statement: The dashboard rows must state each run's saving once and keep the baseline it was computed from.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: projecting a delegate-skill-completed terminal and a delegation-completed terminal for the same run, in either order, one second apart, leaves exactly one savings_estimates row -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_savings/tests -k one_row_per_run'
+  - id: AC2
+    statement: 'AC2: a delegation-completed terminal written after a delegate-skill terminal keeps the stored premium_counterfactual, session_id and delegated_by when it carries none -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_delegation/tests -k keeps_counterfactual'
+evidence_requirements:
+- kind: tests
+  description: The unit tests cover both orders on the sync handler and the async runner, and historical duplicate convergence.
+  command: uv run pytest src/omnimarket/nodes/node_projection_savings/tests -q -k one_row_per_run
+- kind: tests
+  description: The unit tests cover the sync and async writers and assert an incoming value is never overridden.
+  command: uv run pytest src/omnimarket/nodes/node_projection_delegation/tests -q -k keeps_counterfactual
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20303-ac1
+  description: The unit tests cover both orders on the sync handler and the async runner, and historical duplicate convergence.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_projection_savings/tests -q -k one_row_per_run
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20303-ac2
+  description: The unit tests cover the sync and async writers and assert an incoming value is never overridden.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_projection_delegation/tests -q -k keeps_counterfactual
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

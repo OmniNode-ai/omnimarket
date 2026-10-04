@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@47e893e5aaf708f932c952a9145688f7b4edbbf2 # OMN-20070: immutable full-SHA pin, the squash commit of omnibase_core#1855 on that repo's dev branch. It adds `evidence-source: caller`, which checks out the caller repository and reads its own contracts.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@44aa5aebc05799d3b62b58f8b7f6ad76ea00b008 # OMN-20070: immutable full-SHA pin, the squash commit of omnibase_core#1867 on that repo's dev branch. Over omnibase_core#1855 (evidence-source: caller), the merge-base control re-controls only the dod_evidence a pull request adds or changes; evidence carried unchanged from the merge base's contract is no longer re-run as an always-pass control.
     with:
       evidence-source: caller
       verifier-version: 0.4.280

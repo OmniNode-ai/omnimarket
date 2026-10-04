@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-16811
+title: Every admitted task class is routable or declares why it is not
+summary: Escalation resolves a free rung when every credentialed backend is unavailable, no routable class depends on one credentialed failure domain, and every admitted class is either routable or carries a routing_availability declaration naming an unserveable capability.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn16811
+  statement: The task-class contract and the routing overlay must not be able to drift apart silently.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a check fails when the task-class contract lists a class the routing overlay cannot resolve -- falsifier: uv run pytest tests/unit/delegation/test_tier_endpoint_completeness_omn16811.py -q'
+evidence_requirements:
+- kind: tests
+  description: The completeness suite fails if an admitted class is neither routable nor declared unroutable with a genuine missing capability, and the routing integrity suite pins the declaration.
+  command: uv run pytest tests/unit/delegation/test_tier_endpoint_completeness_omn16811.py tests/unit/delegation/test_cloud_routing_contract_integrity_omn15503.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-16811-ac3
+  description: The completeness suite fails if an admitted class is neither routable nor declared unroutable with a genuine missing capability, and the routing integrity suite pins the declaration.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_tier_endpoint_completeness_omn16811.py tests/unit/delegation/test_cloud_routing_contract_integrity_omn15503.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

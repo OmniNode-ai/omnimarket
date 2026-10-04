@@ -137,3 +137,68 @@ def test_rank_penalty_ranks_last_resort_hosts_last_but_never_bars_them() -> None
     alone = place([evidence], evaluated_at=NOW)
     assert alone.decision is EnumPlacementDecision.PLACED
     assert alone.host_name == "h201"
+
+
+def test_placement_refuses_every_host_over_the_load_bar() -> None:
+    result = place([_ad("h202", 25, 32), _ad("h105", 8, 10)], evaluated_at=NOW)
+    assert result.decision is EnumPlacementDecision.REFUSED
+    assert result.refusal is EnumRefusalReason.OVER_CAPACITY
+    assert result.host_name == ""
+    assert len(result.verdicts) == 2
+    assert all(not verdict.eligible for verdict in result.verdicts)
+    assert {verdict.reason for verdict in result.verdicts} == {
+        "over the 0.75 load/core bar"
+    }
+
+
+@pytest.mark.parametrize("age", [20, 20.001], ids=["at-ttl", "past-ttl"])
+def test_placement_capacity_ttl_boundary(age: float) -> None:
+    result = place([_ad("h202", 0, 32, age=age)], evaluated_at=NOW)
+    if age == 20:
+        assert result.decision is EnumPlacementDecision.PLACED
+        assert result.host_name == "h202"
+        assert result.verdicts[0].eligible
+    else:
+        assert result.decision is EnumPlacementDecision.REFUSED
+        assert result.refusal is EnumRefusalReason.COULD_NOT_CHECK
+        assert result.host_name == ""
+        assert not result.verdicts[0].eligible
+        assert result.verdicts[0].reason.startswith("stale")
+
+
+def test_placement_breaks_equal_load_ties_by_more_free_memory() -> None:
+    ads = [_ad("h105", 1, 10, free_gb=8), _ad("h202", 3.2, 32, free_gb=32)]
+    result = place(ads, evaluated_at=NOW)
+    assert result.host_name == "h202"
+    assert all(verdict.eligible for verdict in result.verdicts)
+    assert place(ads[::-1], evaluated_at=NOW) == result
+
+
+def test_placement_breaks_equal_free_capacity_ties_by_host_name() -> None:
+    ads = [_ad("h202", 3.2, 32), _ad("h105", 1, 10)]
+    result = place(ads, evaluated_at=NOW)
+    assert result.host_name == "h105"
+    assert all(verdict.eligible for verdict in result.verdicts)
+    assert place(ads[::-1], evaluated_at=NOW) == result
+
+
+def test_placement_refuses_an_idle_host_with_zero_free_unit_slots() -> None:
+    result = place([_ad("h202", 0, 32, running=2, max_units=2)], evaluated_at=NOW)
+    assert result.decision is EnumPlacementDecision.REFUSED
+    assert result.refusal is EnumRefusalReason.OVER_CAPACITY
+    assert result.host_name == ""
+    assert not result.verdicts[0].eligible
+    assert result.verdicts[0].reason == "all 2 unit slots busy"
+
+
+def test_placement_refuses_a_host_short_of_free_memory() -> None:
+    result = place([_ad("h202", 0, 32, free_gb=3)], evaluated_at=NOW)
+    assert result.refusal is EnumRefusalReason.OVER_CAPACITY
+    assert result.verdicts[0].reason == "short of free memory"
+    assert not result.verdicts[0].eligible
+
+
+def test_placement_cannot_check_a_requested_host_that_did_not_advertise() -> None:
+    result = place([_ad("h202", 0, 32)], evaluated_at=NOW, only_host="h105")
+    assert result.refusal is EnumRefusalReason.COULD_NOT_CHECK
+    assert result.verdicts[0].reason == "not the requested host"
