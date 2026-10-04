@@ -26,8 +26,11 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    delivery was recorded (S19, S20).
 6. Companions, before any other selection (R2 rules 1 to 5), then uncovered
    members (``CoverRequest``).
-7. Product PRs: chain roots only (R3), blocked-outcome suppression by
-   fingerprint (R8), update-branch once per head, one rerun per head (R5),
+7. Product PRs: chain roots only (R3), update-branch once per head, a head
+   held at BLOCKED only by stale cancelled check copies refreshed once per
+   head and at most ``max_stale_refreshes`` times per PR (then DEGRADED, no
+   worker), blocked-outcome suppression by fingerprint (R8), one rerun per
+   head (R5),
    the escalation ladder and parking (R1), the token (R6), pinned merge under a
    live lease (``PinMerge``), and dispatch in priority order (R4) under the
    worker pool, the load pause and the available engines (D5).
@@ -803,6 +806,42 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     )
 
 
+def _stale_cancelled(p: ModelLandingPrFacts) -> bool:
+    """BLOCKED with cancelled check copies and no failed check: a stale copy holds it."""
+    return (
+        p.merge_state is EnumLandingMergeState.BLOCKED
+        and p.ci is not EnumLandingCi.PENDING
+        and bool(p.cancelled_checks)
+        and not p.red_checks
+    )
+
+
+def _refresh_stale_cancelled(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> None:
+    """One update-branch per head, at most ``max_stale_refreshes`` per PR; never a worker."""
+    if p.head_sha in rec.update_heads:  # refreshed already: wait for the new head
+        return
+    if rec.stale_refreshes >= t.facts.policy.max_stale_refreshes:
+        t.degraded.append(
+            ModelLandingDegraded(
+                reason=EnumLandingDegradedReason.STALE_REFRESH_EXHAUSTED,
+                subject=p.pr,
+            )
+        )
+        return
+    t.put_record(
+        p.pr,
+        update_heads=(*rec.update_heads, p.head_sha),
+        stale_refreshes=rec.stale_refreshes + 1,
+    )
+    t.emit(
+        ModelLandingAction(
+            kind=EnumLandingActionKind.UPDATE_BRANCH, subject=p.pr, head_sha=p.head_sha
+        )
+    )
+
+
 def _park_degraded(t: _Tick, pr: str) -> None:
     t.degraded.append(
         ModelLandingDegraded(
@@ -875,6 +914,9 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         return
     if _mergeable(p):
         _merge(t, p)
+        return
+    if _stale_cancelled(p):
+        _refresh_stale_cancelled(t, p, rec)
         return
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:

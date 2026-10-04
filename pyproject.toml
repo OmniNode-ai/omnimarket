@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.287"
+version = "0.4.288"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -204,7 +204,7 @@ dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.64,<0.39.0",
+    "omnibase-infra>=0.38.65,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -346,6 +346,7 @@ node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 # OMN-20275: ledger-host append effect, hosted by `onex work-ledger serve`.
 node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
+node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -992,7 +993,7 @@ override-dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.64,<0.39.0",
+    "omnibase-infra>=0.38.65,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

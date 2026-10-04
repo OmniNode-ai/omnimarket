@@ -37,6 +37,6 @@ def class_key(task_type: str, kind: str, rubric: ModelAcceptanceRubric) -> str |
     if kind == rubric.edit_loop.kind:
         return kind
     for key, class_rubric in rubric.classes.items():
-        if task_type in class_rubric.task_types:
+        if task_type in class_rubric.routing_labels:
             return key
     return None
