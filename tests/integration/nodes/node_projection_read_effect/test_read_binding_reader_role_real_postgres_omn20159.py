@@ -102,6 +102,7 @@ def _as_role(dsn: str, role: str, password: str) -> str:
 def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
     """A projection table the role can only SELECT, and a test-owned claims table."""
     psycopg2 = pytest.importorskip("psycopg2")
+    sql = pytest.importorskip("psycopg2.sql")
     suffix = uuid.uuid4().hex[:10]
     role, password = f"omn20159_reader_{suffix}", uuid.uuid4().hex
     read_schema, claims_schema = f"omn20159r_{suffix}", f"omn20159c_{suffix}"
@@ -112,9 +113,21 @@ def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
         # so a provisioned but unreachable server fails the job, not passes.
         pytest.skip(f"no reachable Postgres: {exc}")
     conn.autocommit = True
+    database: str | None = None
     try:
         with conn.cursor() as cur:
             cur.execute(f"CREATE ROLE {role} LOGIN PASSWORD %s", (password,))
+            # A hardened server revokes CONNECT from PUBLIC, so the role gets it
+            # on this database explicitly, as a deployed reader role does.
+            # Without it the reader cannot log in at all and the test proves
+            # nothing about which binding the claim store follows.
+            cur.execute("SELECT current_database()")
+            database = cur.fetchone()[0]
+            cur.execute(
+                sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                    sql.Identifier(database), sql.Identifier(role)
+                )
+            )
             cur.execute(f"CREATE SCHEMA {read_schema}")
             cur.execute(
                 f"CREATE TABLE {read_schema}.delegation_events ("
@@ -157,12 +170,21 @@ def reader_world(superuser_dsn: str) -> Iterator[dict[str, str]]:
         # Each DROP runs on its own, so one failure does not leave the login
         # role or the other schema behind; the first failure is raised after.
         failures: list[Exception] = []
+        statements: list[Any] = [
+            f"DROP SCHEMA IF EXISTS {read_schema} CASCADE",
+            f"DROP SCHEMA IF EXISTS {claims_schema} CASCADE",
+        ]
+        if database is not None:
+            # DROP ROLE refuses while the role still holds a privilege on a
+            # database, so the CONNECT grant goes first.
+            statements.append(
+                sql.SQL("REVOKE CONNECT ON DATABASE {} FROM {}").format(
+                    sql.Identifier(database), sql.Identifier(role)
+                )
+            )
+        statements.append(f"DROP ROLE IF EXISTS {role}")
         try:
-            for statement in (
-                f"DROP SCHEMA IF EXISTS {read_schema} CASCADE",
-                f"DROP SCHEMA IF EXISTS {claims_schema} CASCADE",
-                f"DROP ROLE IF EXISTS {role}",
-            ):
+            for statement in statements:
                 try:
                     with conn.cursor() as cur:
                         cur.execute(statement)
@@ -302,4 +324,7 @@ async def test_f1_read_binding_reads_and_never_holds_a_claim(
     )
     local = first._database()
     assert isinstance(local, SqliteDatabaseAdapter)
-    assert local.db_path == state_root / "delegation" / "delegation_claims.sqlite"
+    # The suite pins the local claim file once per session (tests/conftest.py,
+    # _session_delegation_claim_store), so the store is the file the claim
+    # module's own default resolves to in this process, never the read database.
+    assert local.db_path == claim_module.default_claim_db_path()
