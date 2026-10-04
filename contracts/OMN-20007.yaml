@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20007"
+title: "The daily spend series is bus-backed and served, so Overview can render baseline against actual"
+summary: "Under the 2026-10-04 ruling the pages read the daily savings series from metering-summary.v1's day rows, and savings-series.v1 stays listed as not served. This contract binds AC3 and AC4 to the unit test file this change adds: the metering-summary fold's day rows add up exactly to its all-time row for the same snapshot, and folding the same records again, in any order, gives the same rows. The lab reads of the served day rows (AC1, AC2 and AC3's lab half) need the metering-summary.v1 exposure served on a lane and are not claimed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-metering-summary-day-rows-sum-to-all"
+    statement: |-
+      For one fold of recorded runs, the day rows' spend, counterfactual and savings sum exactly (Decimal) to the all-time row's, unknown money staying null rather than zero; run and token counts sum the same way, an unmeasured run counting in runs_total and in no money sum; every run lands in its UTC day and a run at as_of in none; and a replayed fold, in any record order, produces identical rows.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: The daily series total for a window equals the Overview headline spend and savings for the same window -- falsifier: the two disagree
+      - id: "AC4"
+        statement: |-
+          AC4: A replayed fold produces the same rows -- falsifier: a second replay changes any row
+evidence_requirements:
+  - kind: "tests"
+    description: "The fold's day rows sum exactly to its all-time row and a replay changes no row. Each of five wrong folds (a day window one hour short, a day window that includes its end, a run at as_of counted, local calendar days instead of UTC days, one day dropped) fails at least one test."
+    command: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20007_day_rows_sum_to_all_window.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20007-ac3-ac4-day-rows-sum-to-all"
+    description: "The metering-summary fold over recorded runs on three UTC days with an idle day between two of them, two models, a run without tokens, a run without spend, runs either side of a UTC midnight and a run at as_of: each day row matches a hand-computed oracle; day rows sum exactly to the all-time row for spend, counterfactual, savings, run counts and tokens; an unresolved baseline gives no savings on any row; days=None puts a run written with a -04:00 offset in its UTC day; the same records folded again, reversed or rotated, give identical rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20007_day_rows_sum_to_all_window.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
