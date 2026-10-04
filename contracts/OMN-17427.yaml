@@ -17,13 +17,20 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: onex metering keys metering_summary on the minted tenant id and refuses when none exists -- falsifier: the focused pytest finds a summary row keyed on the literal local, or a run with no identity that does not refuse
+  - id: "req-infra-pin-0-38-64"
+    statement: |-
+      The omnibase-infra dependency floors and every literal CI sibling checkout of omnibase_infra must name the 0.38.64 release.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the CI bus overlay parity workflow checks out omnibase_infra at v0.38.64 -- falsifier: uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired
   - id: "req-ab-runner-branches"
     statement: |-
       The delegation A/B runner handler's default HTTP adapter, model boundary and contract-output branches are pinned by tests.
     acceptance:
-      - id: "AC7"
+      - id: "AC8"
         statement: |-
-          AC7: the delegation A/B runner handler branch tests pass, covering the default HTTP adapter, the refusal and timeout outcomes and the completed-output topic contract -- falsifier: uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q
+          AC8: the delegation A/B runner handler branch tests pass, covering the default HTTP adapter, the refusal and timeout outcomes and the completed-output topic contract -- falsifier: uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The row and the receipt state the same saving and the row pins its counterfactual."
@@ -31,6 +38,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Metering reads the minted tenant identity and refuses without one."
     command: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
+  - kind: "tests"
+    description: "The omnibase_infra 0.38.64 pin parity tests pass."
+    command: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
   - kind: "tests"
     description: "The delegation A/B runner handler branch tests pass."
     command: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
@@ -55,11 +65,19 @@ dod_evidence:
         check_value: "uv run pytest tests/test_cli_metering_omn18697.py -q -k TestTenantIdentity"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
-  - id: "dod-omn17427-ac7-ab-runner-branches"
+  - id: "dod-infra-pin-0-38-64"
+    description: "The omnibase_infra 0.38.64 pin parity tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ci_bus_overlay_parity.py -q -k TestParityWorkflowIsWired"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn17427-ac8-ab-runner-branches"
     description: "The delegation A/B runner handler branch tests pass against the default HTTP adapter and contract outputs."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC7"]
+    binds_ac: ["AC8"]
