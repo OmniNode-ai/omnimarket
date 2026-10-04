@@ -419,7 +419,20 @@ class HandlerTaskExecutionOrchestrator:
         # Defaults to the canonical delegation handler, which resolves its own
         # runtime dispatch port. The runtime DI container injects a bus-wired
         # delegation_executor; task.execute never selects transport itself.
-        return HandlerDelegateSkill()
+        handler = HandlerDelegateSkill()
+
+        class _DelegationExecutor:
+            async def handle(
+                self, request: ModelDelegateSkillRequest
+            ) -> ModelDelegateSkillResponse:
+                response = await handler.handle(request)
+                if response is None:
+                    raise RuntimeError(
+                        "a direct delegate-skill call binds no delivery, so it is never claimed and always returns a terminal"
+                    )
+                return response
+
+        return _DelegationExecutor()
 
     # ------------------------------------------------------------------
     # Direct in-process surface
