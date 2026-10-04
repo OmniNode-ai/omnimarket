@@ -1,0 +1,43 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20507"
+title: "The acceptance judge rubric names its per-class labels routing_labels"
+summary: "The delegation acceptance judge rubric, its class rubric model and its classify handler call the per-class routing-label list routing_labels instead of task_types, so no mapping key in the rubric reads as a task-class list, and class resolution is unchanged for every listed label."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-rubric-routing-labels"
+    statement: |-
+      The rubric yaml, the class rubric model and the classify handler must use routing_labels, no mapping key in the rubric may normalise to contain tasktype or taskclass, and class resolution must behave as before for every routing label.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the rubric yaml, the class rubric model and the classify handler use routing_labels and no key in the rubric matches the task-taxonomy name test -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_rubric.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: class resolution behaves as before for every routing label, including reasoning and complex_reasoning, and an unlisted label resolves to no class -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The acceptance judge rubric and node tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-rubric-routing-labels-ac1"
+    description: "The rubric tests prove no mapping key in the rubric reads as a task-class list and routing labels resolve to their class."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_rubric.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-rubric-routing-labels-ac2"
+    description: "The acceptance judge node tests pass with class resolution unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
