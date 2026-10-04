@@ -29,6 +29,16 @@ them is an error): ``journal-pending`` when the hook-emit journal still holds it
 ``work-ledger-emit-failures.jsonl`` names it, else ``unexplained``. Each evidence
 source is reported with its path, or as ``absent:`` when it is not there, so a
 missing source is never read as an empty one. The exit code is unchanged.
+
+``--utc-day YYYY-MM-DD`` (OMN-20536) sets the window to that whole UTC day, and
+``--receipt`` (which needs it, and implies ``--explain``) prints the daily parity
+receipt instead of the report: one STATUS ledger row, ``lane=work-ledger-parity``,
+carrying ``file_rows``, ``projection_rows``, ``missing``, ``extra``,
+``state_mismatches``, ``unexplained``, ``backfilled`` and ``exact`` for that day.
+``backfilled`` is 1 when any of the day's projected rows carries the emit backfill
+tool's source, ``onex-ledger-emit-backfill``; ``exact=yes`` needs every count at
+zero, ``backfilled=0`` and at least one row. The receipt's exit code is 0 for an
+exact day and 1 otherwise, so a caller appends the row on 0 or 1 and on nothing else.
 """
 
 from __future__ import annotations
@@ -40,7 +50,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +78,9 @@ JOURNAL_DIR_NAME = "hook_emit_journal"
 QUARANTINE_DIR_NAME = "quarantine"
 LOSS_LOG_NAME = "hook_emit_journal_losses.jsonl"
 _LEDGER_EVENT_PREFIX = "work.ledger."
+BACKFILL_SOURCE = "onex-ledger-emit-backfill"
+RECEIPT_LANE = "work-ledger-parity"
+RECEIPT_ACTOR = "script:work-ledger-parity"
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
@@ -75,6 +88,10 @@ _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
 _SELECT_ROWS = """
     SELECT row_id, row_ts FROM omninode_internal.work_ledger_rows
     WHERE row_ts >= $1 AND row_ts <= $2
+"""
+_SELECT_SOURCES = """
+    SELECT source, count(*) AS n FROM omninode_internal.work_ledger_rows
+    WHERE row_ts >= $1 AND row_ts <= $2 GROUP BY source
 """
 _SELECT_STATE = """
     SELECT entity_key, kind, opened_at, closed_at FROM omninode_internal.work_ledger_state
@@ -370,6 +387,65 @@ def load_projection_json(
     return rows, state
 
 
+def load_projection_sources_json(
+    path: Path, since: datetime, until: datetime
+) -> dict[str, int]:
+    """Projected rows in the window per ``source`` (absent counts as ``unknown``)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    counts: Counter[str] = Counter()
+    for r in data.get("rows", []):
+        if since <= parse_stamp(str(r["row_ts"])[:20]) <= until:
+            counts[str(r.get("source") or "unknown")] += 1
+    return dict(counts)
+
+
+async def _load_projection_sources_db(
+    dsn: str, since: datetime, until: datetime
+) -> dict[str, int]:
+    import asyncpg  # lazy: only the live read needs a database driver
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        return {
+            str(r["source"]): int(r["n"])
+            for r in await conn.fetch(_SELECT_SOURCES, since, until)
+        }
+    finally:
+        await conn.close()
+
+
+def receipt_exact(report: ModelWorkLedgerParityReport) -> bool:
+    """Phase 1's bar: exact parity and no backfilled row in the window."""
+    return report.exact and not report.projection_sources.get(BACKFILL_SOURCE, 0)
+
+
+def receipt_row(report: ModelWorkLedgerParityReport, day: str, now: datetime) -> str:
+    """The daily parity receipt for ``day``: one STATUS ledger row. Pure."""
+    kinds = Counter(m.kind for m in report.mismatches)
+    missing = kinds[EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION]
+    extra = kinds[EnumParityMismatchKind.ROW_MISSING_IN_FILE]
+    state = sum(
+        kinds[k]
+        for k in (
+            EnumParityMismatchKind.STATE_MISSING_IN_PROJECTION,
+            EnumParityMismatchKind.STATE_OPENED_AT_DIFFERS,
+            EnumParityMismatchKind.STATE_CLOSED_AT_DIFFERS,
+        )
+    )
+    unexplained = report.explain.unexplained if report.explain is not None else missing
+    backfilled = 1 if report.projection_sources.get(BACKFILL_SOURCE, 0) else 0
+    exact = "yes" if receipt_exact(report) else "no"
+    cells = [
+        f"{now:%Y-%m-%dT%H:%M:%SZ}", "STATUS", f"lane={RECEIPT_LANE}",
+        f"actor={RECEIPT_ACTOR}", "model=none", f"day={day}",
+        f"file_rows={report.file_rows}", f"projection_rows={report.projection_rows}",
+        f"missing={missing}", f"extra={extra}", f"state_mismatches={state}",
+        f"unexplained={unexplained}", f"backfilled={backfilled}", f"exact={exact}",
+        f"Work-ledger parity receipt for UTC day {day}",
+    ]  # fmt: skip
+    return " | ".join(cells)
+
+
 async def _load_projection_db(
     dsn: str, since: datetime, until: datetime
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
@@ -401,8 +477,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--archive-dir", type=Path, help="directory holding the archive splits"
     )
+    parser.add_argument("--since", type=_parse_when, help="UTC, YYYY-MM-DDTHH:MM:SSZ")
     parser.add_argument(
-        "--since", required=True, type=_parse_when, help="UTC, YYYY-MM-DDTHH:MM:SSZ"
+        "--utc-day", help="YYYY-MM-DD: the window is that whole UTC day (OMN-20536)"
+    )
+    parser.add_argument(
+        "--receipt",
+        action="store_true",
+        help="print the daily parity receipt row for --utc-day (implies --explain)",
     )
     parser.add_argument("--until", type=_parse_when, help="UTC; default now")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -424,24 +506,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.utc_day is not None:
+        try:
+            since = parse_stamp(f"{args.utc_day}T00:00:00Z")
+        except ValueError:
+            parser.error(f"--utc-day must be YYYY-MM-DD, got {args.utc_day!r}")
+        until = since + timedelta(days=1, seconds=-1)
+    elif args.receipt:
+        sys.stderr.write("work_ledger_parity: error: --receipt needs --utc-day\n")
+        return 2
+    elif args.since is None:
+        parser.error("one of --since or --utc-day is required")
+    else:
+        since = args.since
+        until = args.until or datetime.now(UTC).replace(microsecond=0)
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
-    until = args.until or datetime.now(UTC).replace(microsecond=0)
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)
         if args.projection_json is not None:
             proj_rows, proj_state = load_projection_json(args.projection_json)
+            sources = load_projection_sources_json(args.projection_json, since, until)
         else:
-            proj_rows, proj_state = asyncio.run(
-                _load_projection_db(os.environ[args.dsn_env], args.since, until)
-            )
+            dsn = os.environ[args.dsn_env]
+            proj_rows, proj_state = asyncio.run(_load_projection_db(dsn, since, until))
+            sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
         report = compare(
             file_rows=file_rows,
             projection_rows=proj_rows,
             projection_state=proj_state,
-            since=args.since,
+            since=since,
             until=until,
-        )
-        if args.explain:
+        ).model_copy(update={"projection_sources": sources})
+        if args.explain or args.receipt:
             missing = [
                 m.key
                 for m in report.mismatches
@@ -459,6 +555,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"work_ledger_parity: error: {exc!r}\n")
         return 2
 
+    if args.receipt:
+        sys.stdout.write(receipt_row(report, args.utc_day, datetime.now(UTC)) + "\n")
+        return 0 if receipt_exact(report) else 1
     if args.format == "json":
         sys.stdout.write(report.model_dump_json(indent=2) + "\n")
     else:

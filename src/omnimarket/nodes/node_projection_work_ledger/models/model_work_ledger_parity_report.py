@@ -96,6 +96,10 @@ class ModelWorkLedgerParityReport(BaseModel):
     unemittable_types: dict[str, int] = Field(default_factory=dict)
     state_entities_compared: int
     mismatches: tuple[ModelParityMismatch, ...] = ()
+    projection_sources: dict[str, int] = Field(
+        default_factory=dict,
+        description="Projected rows in the window per source value (OMN-20536).",
+    )
     explain: ModelParityExplain | None = Field(
         default=None, description="Present only when the check ran with --explain."
     )
