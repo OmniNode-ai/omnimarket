@@ -1,0 +1,32 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20492"
+title: "claims_grounded no longer reads an imperative as a claim"
+summary: "The delegation quality gate claims_grounded check no longer reads the first imperative word of a conventional commit subject as a state claim, no longer treats a ticket id inside a path segment or file stem as a ticket anchor, and still vetoes a genuinely ungrounded state claim. Covered by the new commit subject test file."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-grounded-imperative-not-a-claim"
+    statement: |-
+      The claims_grounded check must not read the first imperative word of a conventional commit subject as a state claim, must not treat a ticket id that is a path segment or file stem as a ticket anchor, and must still veto a genuinely ungrounded state claim.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an imperative resolve at the start of a commit subject is not a completed claim, a ticket id inside a file path is not an anchor, and an ungrounded state claim about a real identifier still vetoes -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn20492_claim_grounding_commit_subject.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The commit subject claim grounding tests pass."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn20492_claim_grounding_commit_subject.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-claims-grounded-imperative-ac1"
+    description: "The tests prove an imperative subject verb is not a state claim, a path segment is not an anchor, and an ungrounded state claim still vetoes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20492_claim_grounding_commit_subject.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

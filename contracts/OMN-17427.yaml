@@ -41,6 +41,13 @@ requirements:
       - id: "AC9"
         statement: |-
           AC9: routing, transport, grading, aggregation and smoke CLI behaviour of the swe_discriminator client is asserted offline -- falsifier: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q
+  - id: "req-ab-runner-branches"
+    statement: |-
+      The delegation A/B runner handler's default HTTP adapter, model boundary and contract-output branches are pinned by tests.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: the delegation A/B runner handler branch tests pass, covering the default HTTP adapter, the refusal and timeout outcomes and the completed-output topic contract -- falsifier: uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -60,6 +67,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The SWE discriminator model client and smoke runner offline tests pass."
     command: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
+  - kind: "tests"
+    description: "The delegation A/B runner handler branch tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -113,3 +123,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn17427-ac10-ab-runner-branches"
+    description: "The delegation A/B runner handler branch tests pass against the default HTTP adapter and contract outputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
