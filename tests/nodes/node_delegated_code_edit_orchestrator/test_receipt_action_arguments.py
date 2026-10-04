@@ -56,8 +56,8 @@ def _run_scripted() -> tuple[FakePorts, dict[str, object]]:
                 _a(
                     "replace_in_files",
                     glob="src/*.py",
-                    old_string="line",
-                    new_string="ln",
+                    old_string="a + b",
+                    new_string="b + a",
                 ),
             ),
             _reply(2, _a("finish", summary="done")),
@@ -90,14 +90,14 @@ def test_written_files_carry_the_sha256_after_the_action() -> None:
     ports, receipt = _run_scripted()
     first = _actions(receipt, 1)
     assert first[1]["written_sha256"] == {"src/big.py": _sha(ports.files["src/big.py"])}
-    # the later glob replace rewrote big.py and m.py, so the digest is not the
-    # write's own content
     assert first[1]["written_sha256"]["src/big.py"] == _sha(LONG)
-    assert set(first[4]["written_sha256"]) == {"src/big.py"}
-    assert first[4]["written_sha256"]["src/big.py"] == _sha(ports.files["src/big.py"])
+    # the glob reaches the manifest's files only: m.py, not the file written in
+    # this loop
+    assert first[4]["written_sha256"] == {"src/m.py": _sha(ports.files["src/m.py"])}
     assert first[2]["written_sha256"] == {
         "src/m.py": _sha("def add(a, b):\n    return a + b\n")
     }
+    assert ports.files["src/m.py"] == "def add(a, b):\n    return b + a\n"
 
 
 def test_reads_refused_and_finish_actions_carry_an_empty_digest_map() -> None:

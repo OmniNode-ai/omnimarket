@@ -924,7 +924,11 @@ def test_resume_restores_history_and_archives_failed_attempts() -> None:
     assert not result.resumable
     calls = cast(list[dict[str, Any]], ports.transcript["calls"])
     assert [c["call_id"] for c in calls] == ["t1a1", "t2a1", "t3a1"]
-    assert json.loads(calls[1]["arguments_json"]) == {"path": "src/m.py"}
+    # a v2 receipt restores the write's full arguments, not just its target
+    assert json.loads(calls[1]["arguments_json"]) == {
+        "file_path": "src/m.py",
+        "content": FIX,
+    }
 
 
 @pytest.mark.parametrize(
