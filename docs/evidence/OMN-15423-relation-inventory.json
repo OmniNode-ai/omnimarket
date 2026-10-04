@@ -8382,7 +8382,8 @@
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/094_savings_overview_measured_provenance.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
