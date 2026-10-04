@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@a842c9654396d7898a840e54d427e04f7dea8293 # OMN-20073: immutable full-SHA pin, the squash commit of omnibase_core#1884 on that repo's dev branch. Over omnibase_core#1867, the caller-evidence dod-verify job honours the same dependency-bot and pin-only writer-app exemption as the OCC path, so a bot release bump no longer fails for binding no evidence of its own.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@39ad8e5c88f607aed6a035a3241c96ed36d547a0 # OMN-20543: immutable full-SHA pin, the squash commit of omnibase_core#1886 on that repo's dev branch. Over omnibase_core#1884 (the dependency-bot and pin-only writer-app exemption, OMN-20073), the dod-verify job gives every bound test a Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, at the head and in the merge-base control, so a database test is bound with the default scope instead of local_done_gate.
     with:
       evidence-source: caller
       verifier-version: 0.4.294
