@@ -43,7 +43,8 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    live lease (``PinMerge``), and dispatch in priority order (R4) under the
    worker pool, the per-repo cap, the load pause and the available engines
    (D5). No per-PR worker is dispatched for a member of a cause that holds a
-   live lease, an open fix PR or a park.
+   live lease or an open fix PR, or a park an owner's CLAIM covers; a park
+   alone releases its members to per-PR dispatch (the fallback).
 
 A fixer HOLD (a repo, or all) dispatches no worker in its scope and revokes
 every live lease there through the kill sequence; merges, reruns and branch
@@ -1003,13 +1004,26 @@ def _parked(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
     return rec.parked_until is not None and t.now < rec.parked_until
 
 
-def _active(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
-    """A cause holding its members: a live lease, a fix PR in flight, or a park."""
+def _leased_or_fixing(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
     leased = (
         rec.key in t.leases and rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED
     )
     fixing = rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED
-    return leased or fixing or _parked(t, rec)
+    return leased or fixing
+
+
+def _active(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """A live cause: a live lease, a fix PR in flight, or a park."""
+    return _leased_or_fixing(t, rec) or _parked(t, rec)
+
+
+def _holds_members(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
+    """A cause holding its members off per-PR dispatch.
+
+    A live lease, a fix PR in flight, or a park that an owner's CLAIM still
+    covers. A park alone does not: its members take the per-PR path.
+    """
+    return _leased_or_fixing(t, rec) or (_parked(t, rec) and _owned(t, rec))
 
 
 def _blocks(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
@@ -1458,7 +1472,7 @@ def _dispatch_causes(t: _Tick) -> None:
     for rec in order:
         _try_dispatch_cause(t, t.causes[rec.key])
     for rec in t.causes.values():
-        if _active(t, rec) or (rec.key in t.formed and _owned(t, rec)):
+        if _holds_members(t, rec) or (rec.key in t.formed and _owned(t, rec)):
             t.suppressed.update(m.pr for m in rec.members)
 
 
@@ -1616,7 +1630,7 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
             )
         )
         return
-    if pr in t.suppressed:  # a member of a leased, fixing or parked cause
+    if pr in t.suppressed:  # a member of a leased, fixing or owned parked cause
         return
     if _brief_class(p, rec.ladder_index) is None:
         return

@@ -288,6 +288,10 @@ def dispatched(decision: ModelLandingDecision) -> list[str]:
     return [a.subject for a in decision.actions if a.kind.value == "dispatch_worker"]
 
 
+def cause_dispatched(decision: ModelLandingDecision) -> list[str]:
+    return [s for s in dispatched(decision) if is_cause_subject(s)]
+
+
 def per_pr_dispatched(decision: ModelLandingDecision) -> list[str]:
     return [s for s in dispatched(decision) if not is_cause_subject(s)]
 
@@ -568,7 +572,9 @@ def test_cause_scenario_s22_fix_merges_members_rerun_and_go_green() -> None:
 
 
 @pytest.mark.unit
-def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation() -> None:
+def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation_then_fallback() -> (
+    None
+):
     world = CauseWorld(three())
     key = key_for()
     world.step()
@@ -591,11 +597,12 @@ def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation() -> No
     assert rec.parked_until == world.now + timedelta(hours=12)
     assert escalations[0].dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
     assert [m.pr for m in escalations[0].members] == [p.key for p in three()]
-    assert dispatched(decision) == []
+    assert cause_dispatched(decision) == []
+    assert sorted(per_pr_dispatched(decision)) == [p.key for p in three()]  # fallback
     assert [(d.reason.value, d.subject) for d in decision.degraded] == [
         ("cause_exhausted", key)
     ]
-    for _ in range(3):
+    for _ in range(3):  # the members' workers run; the park keeps its one MSG
         later = world.step()
         assert later.actions == ()
         assert [(d.reason.value, d.subject) for d in later.degraded] == [
@@ -731,21 +738,21 @@ def _park_by_spawn_failures(world: CauseWorld, key: str) -> ModelLandingDecision
     world.step()
     world.step()
     world.step()
-    decision = world.step()
-    world.crash_spawn = False
-    return decision
+    world.crash_spawn = False  # the park tick's own workers (the fallback) do spawn
+    return world.step()
 
 
 @pytest.mark.unit
-def test_budget_three_spawn_failures_park_the_cause() -> None:
+def test_budget_three_spawn_failures_park_the_cause_and_members_fall_back() -> None:
     world = CauseWorld(three())
     key = key_for()
     decision = _park_by_spawn_failures(world, key)
     rec = world.cause(key)
     assert (rec.attempts, rec.spawn_failures) == (0, 3)
     assert len(actions_of(decision, "escalate_operator")) == 1
-    assert dispatched(decision) == []
-    assert per_pr_dispatched(world.step()) == []  # members stay suppressed while parked
+    assert cause_dispatched(decision) == []
+    assert sorted(per_pr_dispatched(decision)) == [p.key for p in three()]  # fallback
+    assert world.step().actions == ()  # parked: no cause worker, members working
 
 
 @pytest.mark.unit
@@ -1048,14 +1055,14 @@ def test_lc_f2_a_worker_that_keeps_dying_mid_run_parks_after_two_attempts() -> N
     assert dispatched(first) == [key]
     second = _exit_mid_run(world, key)
     assert recorded(second) == [f"{key} timed_out exited"]
-    assert dispatched(second) == []
+    assert cause_dispatched(second) == []
     assert len(actions_of(second, "escalate_operator")) == 1
     rec = world.cause(key)
     assert (rec.attempts, rec.spawn_failures) == (2, 0)
     assert rec.parked_until == world.now + timedelta(hours=12)
     for _ in range(4):
         later = world.step()
-        assert dispatched(later) == []
+        assert cause_dispatched(later) == []
         assert actions_of(later, "escalate_operator") == []
     total = sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
     assert total == 1
@@ -1087,7 +1094,7 @@ def test_lc_f2_exits_before_and_after_the_window_each_count_toward_one_budget() 
     decision = _exit_mid_run(world, key, after=1800)  # the second attempt parks it
     assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (2, 1)
     assert len(actions_of(decision, "escalate_operator")) == 1
-    assert dispatched(decision) == []
+    assert cause_dispatched(decision) == []
 
 
 def _park_tick(world: CauseWorld, key: str) -> tuple[ModelLandingControllerState, Any]:
@@ -1119,7 +1126,7 @@ def test_lc_f3_a_crash_between_the_msg_and_the_state_write_escalates_once() -> N
     world.extra["cause_escalations"] = [row]
     decision = world.step()
     assert actions_of(decision, "escalate_operator") == []
-    assert dispatched(decision) == []
+    assert cause_dispatched(decision) == []
     rec = world.cause(key)
     assert rec.parked_until == datetime.fromisoformat(row["at"]) + timedelta(hours=12)
     assert rec.escalated == row["dedupe_key"]
@@ -1205,3 +1212,200 @@ def test_lc_f3_rows_for_other_causes_and_their_order_change_nothing() -> None:
     world.extra["cause_escalations"] = list(reversed(rows))
     assert decide_landing(world.facts()).model_dump_json() == first
     assert actions_of(world.step(), "escalate_operator") == []
+
+
+# ------------------------------------------------ parked cause: per-PR fallback
+# Operator ruling: a parked cause no longer holds its members. Red PRs keep
+# getting fixed per PR while the cause waits out its park; a live cause lease,
+# an open fix PR or an owner still hold them.
+def _park_by_two_failed_attempts(world: CauseWorld, key: str) -> ModelLandingDecision:
+    """The s23 path: two attempts that fail, the second at its deadline."""
+    world.step()
+    world.result(
+        key, "external_blocker", blocker_kind="upstream_open", blocker_ref="acme/lib#7"
+    )
+    world.step()
+    world.step()  # the kill
+    world.step()  # released: attempt 2
+    world.step(advance=timedelta(seconds=5400))  # deadline with the process alive
+    return world.step()
+
+
+def _escalations(world: CauseWorld) -> int:
+    return sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
+
+
+def _assert_fallback_once(
+    world: CauseWorld, key: str, park: ModelLandingDecision
+) -> None:
+    members = [p.key for p in three()]
+    assert len(actions_of(park, "escalate_operator")) == 1
+    assert [s for s in dispatched(park) if is_cause_subject(s)] == []
+    assert sorted(per_pr_dispatched(park)) == members
+    for action in actions_of(park, "dispatch_worker"):
+        assert action.brief is not None
+        assert action.brief.engine.value == "claude_sonnet"
+        assert action.brief.brief_class.value == "real_red"
+    assert world.cause(key).parked_until is not None
+    for _ in range(3):  # parked, members working: no cause worker, no second MSG
+        later = world.step()
+        assert dispatched(later) == []
+        assert actions_of(later, "escalate_operator") == []
+    assert _escalations(world) == 1
+
+
+@pytest.mark.unit
+def test_fallback_a_cause_parked_by_two_failed_attempts_releases_its_members() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    park = _park_by_two_failed_attempts(world, key)
+    assert world.cause(key).attempts == 2
+    _assert_fallback_once(world, key, park)
+
+
+@pytest.mark.unit
+def test_fallback_a_cause_parked_by_spawn_failures_releases_its_members() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    park = _park_by_spawn_failures(world, key)
+    assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (0, 3)
+    _assert_fallback_once(world, key, park)
+
+
+@pytest.mark.unit
+def test_fallback_positive_control_a_live_cause_lease_still_holds_its_members() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    assert dispatched(world.step()) == [key]
+    for _ in range(4):
+        decision = world.step()
+        assert world.lease(key).revoked is False
+        assert per_pr_dispatched(decision) == []
+        assert decision.actions == ()
+    assert world.cause(key).parked_until is None
+
+
+def _parked_world(
+    key: str, policy: dict[str, Any] | None = None, prs: list[Pr] | None = None
+) -> CauseWorld:
+    """A fresh world carrying a parked cause and no worker: the park, then its members."""
+    parked = CauseWorld(prs or three(), policy=policy)
+    _park_by_spawn_failures(parked, key)
+    parked.state = parked.state.model_copy(update={"leases": ()})
+    fresh = CauseWorld(prs or three(), policy=policy)
+    fresh.state = ModelLandingControllerState.model_validate(
+        {"causes": [c.model_dump(mode="json") for c in parked.state.causes]}
+    )
+    fresh.now = parked.now
+    return fresh
+
+
+@pytest.mark.unit
+def test_fallback_a_parked_cause_with_an_owner_still_holds_its_members() -> None:
+    key = key_for()
+    world = _parked_world(key)
+    world.extra["cause_owners"] = [{"lane": "cause-lane", "repo": REPO, "cause": key}]
+    decision = world.step()
+    assert decision.actions == ()
+    assert world.cause(key).parked_until is not None
+
+
+@pytest.mark.unit
+def test_fallback_a_parked_cause_without_an_owner_releases_members_at_once() -> None:
+    key = key_for()
+    world = _parked_world(key)
+    decision = world.step()
+    assert sorted(per_pr_dispatched(decision)) == [p.key for p in three()]
+    assert [s for s in dispatched(decision) if is_cause_subject(s)] == []
+    assert actions_of(decision, "escalate_operator") == []
+
+
+@pytest.mark.unit
+def test_fallback_a_release_row_ends_the_park_and_the_cause_holds_members_again() -> (
+    None
+):
+    world = CauseWorld(three())
+    key = key_for()
+    park = _park_by_spawn_failures(world, key)
+    workers = per_pr_dispatched(park)
+    assert len(workers) == 3
+    for pr in workers:  # the fallback workers died; their next rung would dispatch
+        world.exit(pr)
+    # the release row is newer than the park: the cause redispatches and holds
+    world.extra["cause_releases"] = [
+        {"cause": key, "at": (world.now + timedelta(seconds=900)).isoformat()}
+    ]
+    decision = world.step(advance=timedelta(seconds=900))
+    assert dispatched(decision) == [key]
+    assert per_pr_dispatched(decision) == []
+    assert world.cause(key).parked_until is None
+    assert decision.actions[0].cause_brief is not None
+    assert decision.actions[0].cause_brief.attempt == 1
+
+
+@pytest.mark.unit
+def test_fallback_without_a_release_row_the_dead_fallback_workers_climb_the_ladder() -> (
+    None
+):
+    """Control for the release test: the same exits, no row, members redispatch."""
+    world = CauseWorld(three())
+    key = key_for()
+    workers = per_pr_dispatched(_park_by_spawn_failures(world, key))
+    assert len(workers) == 3
+    for pr in workers:
+        world.exit(pr)
+    decision = world.step(advance=timedelta(seconds=900))
+    assert [s for s in dispatched(decision) if is_cause_subject(s)] == []
+    assert sorted(per_pr_dispatched(decision)) == workers
+
+
+@pytest.mark.unit
+def test_fallback_per_pr_caps_bound_the_dispatches_of_a_big_cluster() -> None:
+    members = [Pr(n) for n in range(1, 9)]
+    key = key_for()
+    world = _parked_world(key, prs=members)
+    decision = world.step()
+    assert len(per_pr_dispatched(decision)) == 6  # max_workers_per_repo
+
+
+@pytest.mark.unit
+def test_fallback_the_worker_pool_bounds_the_dispatches() -> None:
+    key = key_for()
+    world = _parked_world(key, policy={"max_workers": 2})
+    assert len(per_pr_dispatched(world.step())) == 2
+
+
+@pytest.mark.unit
+def test_fallback_the_load_pause_stops_the_dispatches() -> None:
+    key = key_for()
+    world = _parked_world(key)
+    world.extra["load1"] = 25.0
+    assert dispatched(world.step()) == []
+    world.extra["load1"] = 0.0
+    assert len(per_pr_dispatched(world.step())) == 3
+
+
+@pytest.mark.unit
+def test_fallback_a_fixer_hold_dispatches_nothing_for_a_parked_cause() -> None:
+    key = key_for()
+    world = _parked_world(key)
+    world.extra["fixer_hold"] = [REPO]
+    assert dispatched(world.step()) == []
+    world.extra["fixer_hold"] = []
+    assert sorted(per_pr_dispatched(world.step())) == [p.key for p in three()]
+
+
+@pytest.mark.unit
+def test_fallback_a_parked_pr_stays_parked() -> None:
+    """Per-PR parks (parked_head) are not part of the ruling."""
+    prs = three()
+    key = key_for()
+    world = _parked_world(key, prs=prs)
+    world.state = ModelLandingControllerState.model_validate(
+        {
+            "causes": [c.model_dump(mode="json") for c in world.state.causes],
+            "records": [parked_record(prs[0])],
+        }
+    )
+    decision = world.step()
+    assert sorted(per_pr_dispatched(decision)) == [prs[1].key, prs[2].key]
