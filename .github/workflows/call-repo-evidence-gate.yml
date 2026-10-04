@@ -20,8 +20,17 @@
 # The job id is the context prefix: repo-evidence / dod-verify carries the
 # verdict, so do not add a job name. The reusable also reports a skipped
 # repo-evidence / verify job in this mode (the OCC path, switched off by the
-# input); only repo-evidence / dod-verify carries a verdict. This context is NOT
-# a required status check; a ruleset change is a separate step.
+# input); only repo-evidence / dod-verify carries a verdict.
+#
+# OMN-20072 (S5 pilot): repo-evidence / dod-verify is required on dev by its own
+# ruleset beside every OCC context, so a merge needs both verdicts. During the
+# pilot compare-with-occ is "true": the reusable's difference step classifies
+# this head's verdict against OCC's occ-preflight / eligibility verdict on the
+# same head and fails on a difference with no reason code in the OR.1
+# expected-difference table. verifier-version must be a release that ships that
+# classifier (node_dod_verify occ-difference, omnimarket#3277). The PR that
+# deletes omnimarket's OCC callers at cutover (S6) sets compare-with-occ back to
+# "false", because there is then no OCC verdict to compare.
 
 name: Repo Evidence Gate
 
@@ -43,4 +52,5 @@ jobs:
     uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@a842c9654396d7898a840e54d427e04f7dea8293 # OMN-20073: immutable full-SHA pin, the squash commit of omnibase_core#1884 on that repo's dev branch. Over omnibase_core#1867, the caller-evidence dod-verify job honours the same dependency-bot and pin-only writer-app exemption as the OCC path, so a bot release bump no longer fails for binding no evidence of its own.
     with:
       evidence-source: caller
-      verifier-version: 0.4.280
+      verifier-version: 0.4.294
+      compare-with-occ: "true"
