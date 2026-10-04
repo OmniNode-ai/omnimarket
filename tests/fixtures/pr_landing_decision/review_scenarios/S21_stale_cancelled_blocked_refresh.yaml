@@ -1,0 +1,54 @@
+id: s21_stale_cancelled_blocked_refresh
+scenario: S21
+tla_modeled: false
+claim: >-
+  A PR whose every newest check copy passed (or that has no failed copy) but
+  whose older cancelled copies hold GitHub's merge state at BLOCKED gets one
+  update-branch per head instead of a fix worker; if the class recurs on the
+  refreshed head the controller refreshes once more, then stops and reports
+  the PR degraded (stale_refresh_exhausted), never dispatching a worker and
+  never escalating. Not in LandingController.tla: the refresh path is a
+  rule the model abstracts away, like the BEHIND update-branch.
+world:
+  prs:
+    - pr: acme/app#2101
+      ci: red
+      red_class: product
+      red_checks: []
+      cancelled_checks: [occ-preflight / eligibility]
+      merge_state: blocked
+update_branch_result: blocked
+ticks:
+  - expect:
+      actions: ["update_branch acme/app#2101"]
+      lease_count: 0
+  - expect:
+      actions: []
+  - events:
+      - ci:
+          pr: acme/app#2101
+          result: red
+          red_class: product
+          red_checks: []
+          cancelled_checks: [occ-preflight / eligibility]
+    expect:
+      actions: ["update_branch acme/app#2101"]
+  - expect:
+      actions: []
+  - events:
+      - ci:
+          pr: acme/app#2101
+          result: red
+          red_class: product
+          red_checks: []
+          cancelled_checks: [occ-preflight / eligibility]
+    expect:
+      actions: []
+      degraded: ["stale_refresh_exhausted acme/app#2101"]
+      ladder: {acme/app#2101: 0}
+  - expect:
+      actions: []
+      degraded: ["stale_refresh_exhausted acme/app#2101"]
+      ladder: {acme/app#2101: 0}
+end:
+  dispatches: {}

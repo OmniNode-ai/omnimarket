@@ -96,6 +96,11 @@ class ModelLandingPrRecord(BaseModel):
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
+    stale_refreshes: int = Field(
+        default=0,
+        ge=0,
+        description="Update-branch refreshes sent for stale cancelled copies (bounded).",
+    )
 
 
 class ModelLandingRebuildRecord(BaseModel):
