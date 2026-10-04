@@ -76,15 +76,24 @@ class FakeGroupBroker:
 
 
 class FakeAdmin:
-    def __init__(self, broker: FakeGroupBroker) -> None:
+    """``refuse_first`` stands for the static-membership session timeout: the
+    broker refuses a group that left but whose member has not yet expired."""
+
+    def __init__(self, broker: FakeGroupBroker, refuse_first: int = 0) -> None:
         self._broker = broker
+        self._refuse_first = refuse_first
+        self.attempts: dict[str, int] = {}
 
     def delete_consumer_groups(self, group_ids: list[str]) -> dict[str, Future[None]]:
         out: dict[str, Future[None]] = {}
         for group_id in group_ids:
             future: Future[None] = Future()
-            if group_id in self._broker.live:
-                future.set_exception(RuntimeError("GROUP_NOT_EMPTY"))
+            self.attempts[group_id] = self.attempts.get(group_id, 0) + 1
+            if (
+                group_id in self._broker.live
+                or self.attempts[group_id] <= self._refuse_first
+            ):
+                future.set_exception(RuntimeError("NON_EMPTY_GROUP"))
             else:
                 self._broker.groups.discard(group_id)
                 future.set_result(None)
@@ -93,8 +102,9 @@ class FakeAdmin:
 
 
 def install_fake_admin(
-    monkeypatch: pytest.MonkeyPatch, broker: FakeGroupBroker
-) -> None:
-    monkeypatch.setattr(
-        lab_work_bus, "_new_admin", lambda _bootstrap: FakeAdmin(broker)
-    )
+    monkeypatch: pytest.MonkeyPatch, broker: FakeGroupBroker, refuse_first: int = 0
+) -> FakeAdmin:
+    admin = FakeAdmin(broker, refuse_first)
+    monkeypatch.setattr(lab_work_bus, "_new_admin", lambda _bootstrap: admin)
+    monkeypatch.setattr(lab_work_bus, "_RETRY_DELAY_SECONDS", 0.0)
+    return admin

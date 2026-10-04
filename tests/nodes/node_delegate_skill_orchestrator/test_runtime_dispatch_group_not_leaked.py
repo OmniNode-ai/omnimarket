@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.lab_work.bus import wait_for_consumer_group_deletions
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
     RuntimeDelegationDispatchPort,
@@ -79,6 +80,7 @@ def test_group_not_leaked_after_completed_calls(
         for _ in range(CALLS):
             result = await _call(port, uuid4())
             assert cast("dict[str, object]", result)["status"] == "completed"
+        await wait_for_consumer_group_deletions()
 
     asyncio.run(scenario())
 
@@ -99,6 +101,7 @@ def test_group_not_leaked_after_timeout(monkeypatch: pytest.MonkeyPatch) -> None
     async def scenario() -> None:
         result = await _call(port, uuid4())
         assert cast("dict[str, object]", result)["status"] == "timeout"
+        await wait_for_consumer_group_deletions()
 
     asyncio.run(scenario())
 
@@ -128,8 +131,32 @@ def test_concurrent_calls_do_not_share_a_group(
 
     async def scenario() -> None:
         await asyncio.gather(_call(port, uuid4()), _call(port, uuid4()))
+        await wait_for_consumer_group_deletions()
 
     asyncio.run(scenario())
 
     assert len(seen[0]) == 2
     assert broker.groups == set()
+
+
+def test_group_is_deleted_after_the_static_member_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The broker refuses a group whose member has not expired; the call does
+    not wait for that, and the deletion lands once the broker accepts it."""
+    broker = FakeGroupBroker()
+    admin = install_fake_admin(monkeypatch, broker, refuse_first=3)
+    _answer_every_request(
+        broker, load_runtime_delegation_dispatch_config().topics.completed
+    )
+    port = _port(broker)
+
+    async def scenario() -> None:
+        await _call(port, uuid4())
+        assert broker.groups, "the call returned before the broker accepted deletion"
+        await wait_for_consumer_group_deletions()
+
+    asyncio.run(scenario())
+
+    assert broker.groups == set()
+    assert set(admin.attempts.values()) == {4}

@@ -20,7 +20,7 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
-from omnimarket.lab_work.bus import broker_group_ids, delete_consumer_groups
+from omnimarket.lab_work.bus import broker_group_ids, schedule_consumer_group_deletion
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
 )
@@ -236,7 +236,7 @@ class RuntimeDelegationDispatchPort:
                 for leave in unsubscribes:
                     await leave()
             finally:
-                await delete_consumer_groups(self._event_bus, broker_groups)
+                schedule_consumer_group_deletion(self._event_bus, broker_groups)
 
         try:
             for topic in (self._config.topics.completed, self._config.topics.failed):

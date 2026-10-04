@@ -162,11 +162,18 @@ async def _subscribe(
 # a group with its peers: the broker splits partitions among the members of one
 # group, so a reply for caller A can land on caller B's consumer, which drops it
 # for the wrong correlation id. Such a reader keeps a group of its own, and the
-# group outlives the consumer as an Empty group unless it is deleted. Deletion is
-# best effort: a failure is logged and never fails a completed call, and a bus
-# with no ``bootstrap_servers`` string (the in-memory bus) has no broker group.
-_ATTEMPTS = 5
-_RETRY_DELAY_SECONDS = 1.0
+# group outlives the consumer as an Empty group unless it is deleted.
+#
+# The Kafka bus joins with static membership (KIP-345), so a stopped consumer
+# stays a member until its session times out (45s by default) and the broker
+# refuses to delete the group until then (NON_EMPTY_GROUP). Deletion therefore
+# runs as a background task that retries until the broker accepts it or the
+# deadline passes, and a call never waits for it. It is best effort: a failure
+# is logged and never fails a completed call, and a bus with no
+# ``bootstrap_servers`` string (the in-memory bus) has no broker group. A caller
+# whose process exits first (a one-shot CLI) takes its pending deletion with it.
+_DELETE_DEADLINE_SECONDS = 120.0
+_RETRY_DELAY_SECONDS = 5.0
 _RESULT_TIMEOUT_SECONDS = 10.0
 
 
@@ -192,18 +199,23 @@ def _new_admin(bootstrap_servers: str) -> Any:
 
 
 def _delete_once(admin: Any, group_ids: list[str]) -> list[str]:
-    """Return the group ids the broker refused to delete."""
-    failed: list[str] = []
+    """Return the group ids the broker refused for now and may accept later."""
+    retry: list[str] = []
     futures = admin.delete_consumer_groups(group_ids)
     for group_id, future in futures.items():
         try:
             future.result(timeout=_RESULT_TIMEOUT_SECONDS)
         except Exception as exc:
-            if "GROUP_ID_NOT_FOUND" in str(exc):
+            reason = str(exc)
+            if "GROUP_ID_NOT_FOUND" in reason:
                 continue
+            if "NON_EMPTY_GROUP" in reason or "GROUP_NOT_EMPTY" in reason:
+                retry.append(str(group_id))
+                continue
+            # Anything else (the identity lacks the Delete ACL, a broker error)
+            # will not change by waiting: say so once and stop.
             logger.warning("consumer group %s not deleted: %s", group_id, exc)
-            failed.append(str(group_id))
-    return failed
+    return retry
 
 
 def broker_group_ids(bus: object, group_ids: Iterable[str]) -> list[str]:
@@ -228,21 +240,49 @@ def broker_group_ids(bus: object, group_ids: Iterable[str]) -> list[str]:
 
 
 async def delete_consumer_groups(bus: object, group_ids: Iterable[str]) -> None:
-    """Delete broker groups ``group_ids`` (see :func:`broker_group_ids`)."""
+    """Delete broker groups ``group_ids`` (see :func:`broker_group_ids`).
+
+    Retries while a group still has a member, until the deadline.
+    """
     pending = sorted(set(group_ids))
     bootstrap = getattr(bus, "bootstrap_servers", None)
     if not pending or not isinstance(bootstrap, str) or not bootstrap:
         return
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _DELETE_DEADLINE_SECONDS
     try:
         admin = await asyncio.to_thread(_new_admin, bootstrap)
-        for attempt in range(_ATTEMPTS):
+        while True:
             pending = await asyncio.to_thread(_delete_once, admin, pending)
             if not pending:
                 return
-            if attempt + 1 < _ATTEMPTS:
-                await asyncio.sleep(_RETRY_DELAY_SECONDS)
+            if loop.time() + _RETRY_DELAY_SECONDS > deadline:
+                logger.warning(
+                    "consumer groups still have members at the deadline: %s", pending
+                )
+                return
+            await asyncio.sleep(_RETRY_DELAY_SECONDS)
     except Exception as exc:
         logger.warning("consumer group cleanup failed: %s", exc)
+
+
+_PENDING_DELETIONS: set[asyncio.Task[None]] = set()
+
+
+def schedule_consumer_group_deletion(bus: object, group_ids: Iterable[str]) -> None:
+    """Delete ``group_ids`` in the background; the caller does not wait."""
+    ids = list(group_ids)
+    if not ids:
+        return
+    task = asyncio.get_running_loop().create_task(delete_consumer_groups(bus, ids))
+    _PENDING_DELETIONS.add(task)
+    task.add_done_callback(_PENDING_DELETIONS.discard)
+
+
+async def wait_for_consumer_group_deletions() -> None:
+    """Wait for every scheduled deletion (a long-lived process never needs to)."""
+    while _PENDING_DELETIONS:
+        await asyncio.gather(*list(_PENDING_DELETIONS), return_exceptions=True)
 
 
 def host_group_id(host_name: str) -> str:

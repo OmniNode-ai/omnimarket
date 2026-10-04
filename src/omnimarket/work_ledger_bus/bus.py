@@ -33,7 +33,7 @@ from omnimarket.lab_work.bus import (
     _subscribe,
     _uuid_or_none,
     broker_group_ids,
-    delete_consumer_groups,
+    schedule_consumer_group_deletion,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.models import (
     EnumWorkLedgerAppendStatus,
@@ -281,7 +281,7 @@ class WorkLedgerAppendCaller:
                 await unsubscribe()
             self._unsubscribes.clear()
         finally:
-            await delete_consumer_groups(self._bus, broker_groups)
+            schedule_consumer_group_deletion(self._bus, broker_groups)
 
     def _terminal(self, topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
         async def on_message(message: ProtocolBusMessage) -> None:

@@ -16,6 +16,7 @@ from typing import cast
 import pytest
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+from omnimarket.lab_work.bus import wait_for_consumer_group_deletions
 from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller
 from tests.helpers.fake_group_broker import FakeGroupBroker, install_fake_admin
 
@@ -33,6 +34,7 @@ def test_work_ledger_bus_group_not_leaked(monkeypatch: pytest.MonkeyPatch) -> No
             caller = WorkLedgerAppendCaller(cast(ProtocolLabRunBus, broker))
             await caller.start()
             await caller.stop()
+        await wait_for_consumer_group_deletions()
 
     asyncio.run(scenario())
 
