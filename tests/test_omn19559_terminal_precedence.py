@@ -186,6 +186,7 @@ def test_outcome_for_every_failure_cause(
 
     expected = {
         "timeout": ("timeout", "not_applicable"),
+        "no_terminal": ("timeout", "not_applicable"),
         "runtime_shutdown": ("cancelled", "not_applicable"),
         "provider_quota_exhausted": ("provider_quota", "not_applicable"),
         "quality_gate_refused": ("quality_rejected", "unusable"),
