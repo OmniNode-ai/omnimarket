@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Durable, correlation-keyed claim on a delegate-skill command (OMN-18887).
+"""Durable, command-keyed claim on a delegate-skill command (OMN-18887).
 
 Why this exists
 ---------------
@@ -52,9 +52,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
-from uuid import UUID
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from uuid import UUID, uuid4
 
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    ModelDelegationReapContext,
+)
 from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
     ProtocolProjectionDatabaseSync,
@@ -64,6 +67,9 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only
     pass
 
 CLAIMS_TABLE = "delegate_skill_command_claims"
+REAP_CONTEXT_PREFIX = "reap:"
+TERMINAL_SLOT_PREFIX = "slot:"
+LATE_EVIDENCE_PREFIX = "late:"
 
 # OMN-18887: the key is the DELIVERY, not the correlation.
 #
@@ -98,26 +104,77 @@ class ModelDelegationClaimOutcome:
     served_terminal: dict[str, object] | None = None
 
 
+@dataclass(frozen=True)
+class ModelDelegationTerminalOutcome:
+    """Slot verdict; a losing attempt must publish nothing."""
+
+    won: bool
+    held: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class ModelStalledDelegationClaim:
+    """An overdue, unhanded command with a first-claim context."""
+
+    delivery_id: UUID
+    claimed_at: datetime
+    context: ModelDelegationReapContext
+
+
+@dataclass(frozen=True)
+class ModelDelegationReapOutcome:
+    """The held terminal to hand off, whether newly written or healed."""
+
+    won: bool
+    terminal: dict[str, object]
+
+
 @runtime_checkable
 class ProtocolDelegationIdempotencyPort(Protocol):
-    """Claim a correlation for execution, or report who already holds it."""
+    """Claim a command and arbitrate its one terminal."""
 
     def claim(
-        self, *, delivery_id: UUID, correlation_id: UUID
-    ) -> ModelDelegationClaimOutcome:
-        """Atomically claim ``delivery_id``; the return value is the verdict."""
-        ...
+        self,
+        *,
+        delivery_id: UUID,
+        correlation_id: UUID,
+        reap_context: ModelDelegationReapContext | None = None,
+    ) -> ModelDelegationClaimOutcome: ...
 
     def record_terminal(
         self, *, delivery_id: UUID, terminal: dict[str, object]
-    ) -> None:
-        """Store the terminal so a later redelivery can be answered from it."""
-        ...
+    ) -> ModelDelegationTerminalOutcome: ...
+
+
+class ProtocolDelegationReaperPort(Protocol):
+    """Find overdue commands and hand off their slot winners."""
+
+    def stalled_claims(
+        self, *, now: datetime, limit: int
+    ) -> list[ModelStalledDelegationClaim]: ...
+
+    def reap(
+        self, *, delivery_id: UUID, terminal: dict[str, object]
+    ) -> ModelDelegationReapOutcome: ...
+
+
+class _ProtocolClaimDatabase(
+    ProtocolProjectionDatabaseSync, ProtocolProjectionAttestedWrite, Protocol
+):
+    """The claim store needs both attested writes and read-side queries."""
+
+
+def _decode_terminal(raw: object) -> dict[str, object] | None:
+    try:
+        decoded = json.loads(str(raw))
+    except (TypeError, ValueError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
 
 
 def _require_attested_write(
     database: ProtocolProjectionDatabaseSync,
-) -> ProtocolProjectionAttestedWrite:
+) -> _ProtocolClaimDatabase:
     # The claim needs `upsert_returning`, which lives on the NARROWER
     # attested-write protocol rather than on the sync protocol every
     # adapter implements. That separation is deliberate upstream, and the
@@ -132,7 +189,7 @@ def _require_attested_write(
             "claim cannot be made atomically and a redelivery would "
             "re-run and re-bill the inference (OMN-18887)"
         )
-    return database
+    return cast(_ProtocolClaimDatabase, database)
 
 
 class DelegationClaimPort:
@@ -161,7 +218,7 @@ class DelegationClaimPort:
                 "`resolve_database`"
             )
         self._resolve_database = resolve_database
-        self._resolved: ProtocolProjectionAttestedWrite | None = (
+        self._resolved: _ProtocolClaimDatabase | None = (
             _require_attested_write(database) if database is not None else None
         )
         # Four records run in flight in one process (OMN-18852), so the first
@@ -169,8 +226,11 @@ class DelegationClaimPort:
         # under this lock so exactly one adapter is built and every caller
         # claims through it.
         self._resolve_lock = threading.Lock()
+        # Claims written before the reaper existed have no reap row and never
+        # will; each is probed once per process instead of once per tick.
+        self._without_context: set[str] = set()
 
-    def _database(self) -> ProtocolProjectionAttestedWrite:
+    def _database(self) -> _ProtocolClaimDatabase:
         resolved = self._resolved
         if resolved is not None:
             return resolved
@@ -184,61 +244,88 @@ class DelegationClaimPort:
                 self._resolved = _require_attested_write(self._resolve_database())
             return self._resolved
 
-    def claim(
-        self, *, delivery_id: UUID, correlation_id: UUID
-    ) -> ModelDelegationClaimOutcome:
-        mine = datetime.now(UTC).isoformat()
-        rows = self._database().upsert_returning(
+    def _insert_only(
+        self,
+        key: str,
+        correlation_id: str,
+        raw: str,
+        mine: str,
+    ) -> list[dict[str, object]]:
+        # correlation_id keeps the conflict arm writable, so RETURNING still
+        # reports the first writer when both arbiter columns are insert-only.
+        return self._database().upsert_returning(
             CLAIMS_TABLE,
             _DELIVERY_COLUMN,
             {
-                _DELIVERY_COLUMN: str(delivery_id),
-                # Carried for diagnostics only. The key is the delivery; this
-                # column is what lets a reader join a suppressed redelivery
-                # back to the chain it belongs to.
-                "correlation_id": str(correlation_id),
+                _DELIVERY_COLUMN: key,
+                "correlation_id": correlation_id,
                 _CLAIMED_AT_COLUMN: mine,
-                "terminal_json": "",
+                "terminal_json": raw,
             },
-            # The claim itself. On a conflict these are NOT overwritten, so the
-            # returned `claimed_at` is the first claimer's and the comparison
-            # below is the race verdict rather than a guess.
             insert_only_columns=frozenset({_CLAIMED_AT_COLUMN, "terminal_json"}),
             returning=(_CLAIMED_AT_COLUMN, "terminal_json"),
         )
-        if not rows:
-            # No row came back at all. That is not a win: it is an answer this
-            # port could not read, and treating an unreadable claim as "mine"
-            # is how a double-bill gets through. Fail towards NOT dispatching
-            # only when we can also answer the caller -- here we cannot, so the
-            # honest outcome is a loss with no terminal, and the caller's own
-            # in-flight branch decides.
-            return ModelDelegationClaimOutcome(won=False, served_terminal=None)
 
+    def claim(
+        self,
+        *,
+        delivery_id: UUID,
+        correlation_id: UUID,
+        reap_context: ModelDelegationReapContext | None = None,
+    ) -> ModelDelegationClaimOutcome:
+        mine = datetime.now(UTC).isoformat()
+        if reap_context is not None:
+            self._insert_only(
+                f"{REAP_CONTEXT_PREFIX}{delivery_id}",
+                str(correlation_id),
+                reap_context.model_dump_json(),
+                mine,
+            )
+        rows = self._insert_only(str(delivery_id), str(correlation_id), "", mine)
+        if not rows:
+            return ModelDelegationClaimOutcome(won=False)
         row = rows[0]
         if str(row.get(_CLAIMED_AT_COLUMN, "")) == mine:
             return ModelDelegationClaimOutcome(won=True)
-
-        raw = row.get("terminal_json") or ""
+        raw = row.get("terminal_json")
         if not raw:
-            return ModelDelegationClaimOutcome(won=False, served_terminal=None)
-        try:
-            decoded = json.loads(str(raw))
-        except (TypeError, ValueError):
-            return ModelDelegationClaimOutcome(won=False, served_terminal=None)
-        if not isinstance(decoded, dict):
-            return ModelDelegationClaimOutcome(won=False, served_terminal=None)
-        return ModelDelegationClaimOutcome(won=False, served_terminal=decoded)
+            slots = self._database().query(
+                CLAIMS_TABLE, {_DELIVERY_COLUMN: f"{TERMINAL_SLOT_PREFIX}{delivery_id}"}
+            )
+            raw = slots[0].get("terminal_json") if slots else None
+        return ModelDelegationClaimOutcome(
+            won=False, served_terminal=_decode_terminal(raw)
+        )
 
-    def record_terminal(
-        self, *, delivery_id: UUID, terminal: dict[str, object]
-    ) -> None:
-        # `claimed_at` is carried even though this call never means to change
-        # it. The INSERT arm of an upsert is evaluated before the conflict is
-        # resolved, so a row omitting a NOT NULL column is refused outright
-        # rather than falling through to the update. Passing it insert-only
-        # satisfies the INSERT arm while leaving the real claimer's timestamp
-        # untouched on the arm that actually runs.
+    def _slot(
+        self, delivery_id: UUID, terminal: dict[str, object]
+    ) -> ModelDelegationTerminalOutcome:
+        # A per-attempt token, not a bare instant: two attempts that read the
+        # same clock tick would otherwise both see their own value come back
+        # and both believe they won the one terminal slot.
+        mine = f"{datetime.now(UTC).isoformat()}#{uuid4().hex}"
+        data = terminal.get("data")
+        correlation_id = (
+            str(data.get("correlation_id", "")) if isinstance(data, dict) else ""
+        )
+        rows = self._insert_only(
+            f"{TERMINAL_SLOT_PREFIX}{delivery_id}",
+            correlation_id,
+            json.dumps(terminal, default=str),
+            mine,
+        )
+        if not rows:
+            raise RuntimeError("Terminal slot write returned no arbitration verdict")
+        row = rows[0]
+        won = str(row.get(_CLAIMED_AT_COLUMN, "")) == mine
+        return ModelDelegationTerminalOutcome(
+            won=won,
+            held=None if won else _decode_terminal(row.get("terminal_json")) or {},
+        )
+
+    def _copy_terminal(self, delivery_id: UUID, terminal: dict[str, object]) -> None:
+        # The INSERT arm needs claimed_at even on a conflict; insert-only keeps
+        # the real claim instant fixed while the handoff marker is healed.
         self._database().upsert_returning(
             CLAIMS_TABLE,
             _DELIVERY_COLUMN,
@@ -249,6 +336,81 @@ class DelegationClaimPort:
             },
             insert_only_columns=frozenset({_CLAIMED_AT_COLUMN}),
         )
+
+    def record_terminal(
+        self, *, delivery_id: UUID, terminal: dict[str, object]
+    ) -> ModelDelegationTerminalOutcome:
+        try:
+            outcome = self._slot(delivery_id, terminal)
+        except RuntimeError:
+            # No verdict came back. The dispatch is already billed, so fail
+            # towards answering the caller with this terminal, the behaviour
+            # before the slot existed, rather than losing it.
+            return ModelDelegationTerminalOutcome(won=True, held=None)
+        if outcome.won:
+            self._copy_terminal(delivery_id, terminal)
+        else:
+            data = terminal.get("data")
+            status = str(data.get("status", "")) if isinstance(data, dict) else ""
+            correlation_id = (
+                str(data.get("correlation_id", "")) if isinstance(data, dict) else ""
+            )
+            self._insert_only(
+                f"{LATE_EVIDENCE_PREFIX}{delivery_id}:{status}:{uuid4().hex}",
+                correlation_id,
+                json.dumps(terminal, default=str),
+                datetime.now(UTC).isoformat(),
+            )
+        return outcome
+
+    def stalled_claims(
+        self, *, now: datetime, limit: int
+    ) -> list[ModelStalledDelegationClaim]:
+        stalled: list[ModelStalledDelegationClaim] = []
+        for row in self._database().query(CLAIMS_TABLE, {"terminal_json": ""}):
+            key = str(row.get(_DELIVERY_COLUMN, ""))
+            if key.startswith(
+                (REAP_CONTEXT_PREFIX, TERMINAL_SLOT_PREFIX, LATE_EVIDENCE_PREFIX)
+            ):
+                continue
+            if key in self._without_context:
+                continue
+            try:
+                delivery_id = UUID(key)
+                contexts = self._database().query(
+                    CLAIMS_TABLE,
+                    {_DELIVERY_COLUMN: f"{REAP_CONTEXT_PREFIX}{delivery_id}"},
+                )
+                if not contexts:
+                    self._without_context.add(key)
+                    continue
+                context = ModelDelegationReapContext.model_validate_json(
+                    str(contexts[0].get("terminal_json", ""))
+                )
+                claimed_at = datetime.fromisoformat(
+                    str(contexts[0][_CLAIMED_AT_COLUMN])
+                )
+                if claimed_at.tzinfo is None or claimed_at.utcoffset() is None:
+                    continue
+                if context.deadline_at <= now:
+                    stalled.append(
+                        ModelStalledDelegationClaim(delivery_id, claimed_at, context)
+                    )
+            except Exception:
+                # A legacy or unreadable context cannot establish a reap deadline.
+                continue
+        stalled.sort(key=lambda claim: claim.context.deadline_at)
+        return stalled[: max(0, limit)]
+
+    def reap(
+        self, *, delivery_id: UUID, terminal: dict[str, object]
+    ) -> ModelDelegationReapOutcome:
+        outcome = self._slot(delivery_id, terminal)
+        held = terminal if outcome.won else outcome.held or {}
+        if held:
+            # An undecodable winner is left unmarked so the next tick retries.
+            self._copy_terminal(delivery_id, held)
+        return ModelDelegationReapOutcome(won=outcome.won, terminal=held)
 
 
 def default_claim_db_path() -> Path:
@@ -341,9 +503,16 @@ def claims_schema(contract_path: Path = _CONTRACT_PATH) -> str:
 
 __all__ = [
     "CLAIMS_TABLE",
+    "LATE_EVIDENCE_PREFIX",
+    "REAP_CONTEXT_PREFIX",
+    "TERMINAL_SLOT_PREFIX",
     "DelegationClaimPort",
     "ModelDelegationClaimOutcome",
+    "ModelDelegationReapOutcome",
+    "ModelDelegationTerminalOutcome",
+    "ModelStalledDelegationClaim",
     "ProtocolDelegationIdempotencyPort",
+    "ProtocolDelegationReaperPort",
     "claims_schema",
     "default_claim_db_path",
     "resolve_delegation_claim_store",
