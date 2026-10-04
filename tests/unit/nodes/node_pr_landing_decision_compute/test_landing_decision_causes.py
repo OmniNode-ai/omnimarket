@@ -1021,3 +1021,187 @@ def test_cause_brief_text_and_rules_are_fixed() -> None:
         )
     with pytest.raises(ValidationError):
         ModelLandingCauseBrief(**{**data, "push_rule": "push to every member branch"})
+
+
+# ------------------------------------------- T1 model findings LC-F2 and LC-F3
+# omnibase_internal#144 (tla/landing_controller, S21 to S28 reached, every
+# mutant caught) found two gaps in the plan's section 2.4. LC-F2 (mutant
+# M_P11_late_exit_uncounted): an exit with no result after the spawn window and
+# before the deadline counted against no budget, so a cause whose worker keeps
+# dying was redispatched without bound. LC-F3 (mutant M_P14_sidecar_dedupe): a
+# dedupe key kept only in the controller's state escalated twice after a crash
+# between the operator MSG and the state write. The ledger row is the source.
+def _exit_mid_run(
+    world: CauseWorld, key: str, after: int = 900
+) -> ModelLandingDecision:
+    world.exit(key)
+    return world.step(advance=timedelta(seconds=after))
+
+
+@pytest.mark.unit
+def test_lc_f2_a_worker_that_keeps_dying_mid_run_parks_after_two_attempts() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    first = _exit_mid_run(world, key)
+    assert recorded(first) == [f"{key} timed_out exited"]
+    assert dispatched(first) == [key]
+    second = _exit_mid_run(world, key)
+    assert recorded(second) == [f"{key} timed_out exited"]
+    assert dispatched(second) == []
+    assert len(actions_of(second, "escalate_operator")) == 1
+    rec = world.cause(key)
+    assert (rec.attempts, rec.spawn_failures) == (2, 0)
+    assert rec.parked_until == world.now + timedelta(hours=12)
+    for _ in range(4):
+        later = world.step()
+        assert dispatched(later) == []
+        assert actions_of(later, "escalate_operator") == []
+    total = sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
+    assert total == 1
+
+
+@pytest.mark.unit
+def test_lc_f2_the_spawn_window_edge_splits_a_spawn_failure_from_an_attempt() -> None:
+    inside = CauseWorld(three())
+    key = key_for()
+    inside.step()
+    _exit_mid_run(inside, key, after=599)
+    assert (inside.cause(key).attempts, inside.cause(key).spawn_failures) == (0, 1)
+
+    at_edge = CauseWorld(three())
+    at_edge.step()
+    _exit_mid_run(at_edge, key, after=600)
+    assert (at_edge.cause(key).attempts, at_edge.cause(key).spawn_failures) == (1, 0)
+
+
+@pytest.mark.unit
+def test_lc_f2_exits_before_and_after_the_window_each_count_toward_one_budget() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key, after=300)  # a spawn failure, not an attempt
+    assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (0, 1)
+    _exit_mid_run(world, key, after=1800)  # a late exit: an attempt
+    assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (1, 1)
+    decision = _exit_mid_run(world, key, after=1800)  # the second attempt parks it
+    assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (2, 1)
+    assert len(actions_of(decision, "escalate_operator")) == 1
+    assert dispatched(decision) == []
+
+
+def _park_tick(world: CauseWorld, key: str) -> tuple[ModelLandingControllerState, Any]:
+    before = world.state
+    world.exit(key)
+    decision = world.step(advance=timedelta(seconds=900))
+    escalations = actions_of(decision, "escalate_operator")
+    assert len(escalations) == 1
+    return before, escalations[0]
+
+
+def _ledger_row(world: CauseWorld, key: str, action: Any) -> dict[str, Any]:
+    return {
+        "cause": key,
+        "at": world.now.isoformat(),
+        "dedupe_key": action.dedupe_key,
+    }
+
+
+@pytest.mark.unit
+def test_lc_f3_a_crash_between_the_msg_and_the_state_write_escalates_once() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key)
+    before, action = _park_tick(world, key)
+    row = _ledger_row(world, key, action)
+    world.state = before  # the controller died before it wrote the next state
+    world.extra["cause_escalations"] = [row]
+    decision = world.step()
+    assert actions_of(decision, "escalate_operator") == []
+    assert dispatched(decision) == []
+    rec = world.cause(key)
+    assert rec.parked_until == datetime.fromisoformat(row["at"]) + timedelta(hours=12)
+    assert rec.escalated == row["dedupe_key"]
+    total = sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
+    assert total == 1  # the model's P14: one MSG for the park episode
+
+
+@pytest.mark.unit
+def test_lc_f3_without_a_ledger_row_the_same_crash_still_escalates() -> None:
+    """Positive control: the row, and only the row, suppresses the second MSG."""
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key)
+    before, _ = _park_tick(world, key)
+    world.state = before
+    decision = world.step()
+    assert len(actions_of(decision, "escalate_operator")) == 1
+
+
+@pytest.mark.unit
+def test_lc_f3_two_crashes_in_a_row_still_escalate_once() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key)
+    before, action = _park_tick(world, key)
+    world.extra["cause_escalations"] = [_ledger_row(world, key, action)]
+    for _ in range(2):
+        world.state = before
+        assert actions_of(world.step(), "escalate_operator") == []
+    assert world.cause(key).escalated == action.dedupe_key
+
+
+@pytest.mark.unit
+def test_lc_f3_a_row_older_than_the_park_does_not_cover_a_new_episode() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key)
+    before, action = _park_tick(world, key)
+    stale = _ledger_row(world, key, action)
+    stale["at"] = (world.now - timedelta(hours=13)).isoformat()
+    world.state = before
+    world.extra["cause_escalations"] = [stale]
+    assert len(actions_of(world.step(), "escalate_operator")) == 1
+
+
+@pytest.mark.unit
+def test_lc_f3_a_release_after_the_row_starts_a_new_episode() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    world.step()
+    _exit_mid_run(world, key)
+    before, action = _park_tick(world, key)
+    row = _ledger_row(world, key, action)
+    world.state = before
+    world.extra["cause_escalations"] = [row]
+    world.extra["cause_releases"] = [
+        {"cause": key, "at": (world.now + timedelta(minutes=1)).isoformat()}
+    ]
+    assert (
+        len(actions_of(world.step(advance=timedelta(minutes=2)), "escalate_operator"))
+        == 1
+    )
+
+
+@pytest.mark.unit
+def test_lc_f3_rows_for_other_causes_and_their_order_change_nothing() -> None:
+    world = CauseWorld(three())
+    key = key_for()
+    other = key_for(check="build / unit", text="boom")
+    world.step()
+    _exit_mid_run(world, key)
+    before, action = _park_tick(world, key)
+    rows = [
+        _ledger_row(world, key, action),
+        {"cause": other, "at": world.now.isoformat(), "dedupe_key": f"{other}@x"},
+    ]
+    world.state = before
+    world.extra["cause_escalations"] = rows
+    first = decide_landing(world.facts()).model_dump_json()
+    world.extra["cause_escalations"] = list(reversed(rows))
+    assert decide_landing(world.facts()).model_dump_json() == first
+    assert actions_of(world.step(), "escalate_operator") == []
