@@ -40,6 +40,9 @@ from omnibase_core.models.delegation.wire.model_delegation_completed import (
     ModelDelegationCompleted,
 )
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -63,6 +66,7 @@ def _bus_terminal_result(
     correlation_id: Any,
     *,
     provider: str | None,
+    escalation_history: tuple[dict[str, object], ...] = (),
 ) -> dict[str, object]:
     """Build the exact dict the BUS dispatch port hands the handler.
 
@@ -88,6 +92,9 @@ def _bus_terminal_result(
         quality_score=0.95,
         latency_ms=1200,
         fallback_to_claude=False,
+        escalation_history=escalation_history,
+        attempts_count=max(len(escalation_history), 1),
+        escalation_count=max(len(escalation_history) - 1, 0),
     )
     payload = terminal.model_dump(mode="json")
     return {"status": "completed", **payload}
@@ -102,8 +109,14 @@ class _BusTerminalDispatchPort:
     which would make this test pass for the wrong reason.
     """
 
-    def __init__(self, *, provider: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        provider: str | None,
+        escalation_history: tuple[dict[str, object], ...] = (),
+    ) -> None:
         self._provider = provider
+        self._escalation_history = escalation_history
 
     async def dispatch(
         self,
@@ -128,12 +141,22 @@ class _BusTerminalDispatchPort:
         response_format: dict[str, object] | None = None,
         provenance: object | None = None,
     ) -> dict[str, object]:
-        return _bus_terminal_result(correlation_id, provider=self._provider)
+        return _bus_terminal_result(
+            correlation_id,
+            provider=self._provider,
+            escalation_history=self._escalation_history,
+        )
 
 
-async def _receipt(*, provider: str | None) -> Any:
+async def _receipt(
+    *,
+    provider: str | None,
+    escalation_history: tuple[dict[str, object], ...] = (),
+) -> Any:
     handler = HandlerDelegateSkill(
-        dispatch_port=_BusTerminalDispatchPort(provider=provider)
+        dispatch_port=_BusTerminalDispatchPort(
+            provider=provider, escalation_history=escalation_history
+        )
     )
     response = await handler.handle(
         ModelDelegateSkillRequest(
@@ -207,3 +230,58 @@ async def test_absent_provider_yields_explicit_empty_not_a_url() -> None:
 
     assert response.provider == ""
     assert response.provider != _ENDPOINT_URL
+
+
+# OMN-17013 DoD item 4: one receipt, built from the real core wire terminal on the
+# bus path, asserting all three bindings together. The rung that answered is the
+# SECOND rung: a first rung abandoned (``climb``) and a second accepted, which is
+# the shape the live lane writes (the deployed delegation_events rows carry exactly
+# this ladder). A receipt that stamped the first rung, or defaulted the gate to
+# False, or left the manifest version at its 0 default, fails here by name.
+_LADDER: tuple[dict[str, object], ...] = (
+    {
+        "tier": "local",
+        "backend_ref": "local-omnipc2-chat",
+        "model_used": "qwen-coder",
+        "acceptance_decision": "climb",
+        "acceptance_reason": "provider_call_failed",
+        "failure_reasons": ["provider call failed"],
+    },
+    {
+        "tier": "local",
+        "backend_ref": "local-heavy-reasoning",
+        "model_used": "qwen-coder",
+        "acceptance_decision": "accept",
+        "acceptance_reason": "quality_bar_met",
+        "quality_score": 0.95,
+    },
+)
+
+
+@pytest.mark.unit
+async def test_bus_receipt_binds_provider_accepted_attempt_gate_and_manifest_version() -> (
+    None
+):
+    from omnimarket.pricing import get_manifest_version_int
+
+    response = await _receipt(provider=_PROVIDER_IDENTITY, escalation_history=_LADDER)
+
+    # (1) a provider identity, never the endpoint address.
+    assert response.provider == _PROVIDER_IDENTITY
+    assert "://" not in response.provider
+
+    # (2) the ladder carries the accepted terminal attempt, and the receipt's gate
+    # is the real outcome (True here) rather than a hardcoded False.
+    assert len(response.attempts) == 2
+    terminal_attempt = response.attempts[-1]
+    assert (
+        terminal_attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+    )
+    assert terminal_attempt.quality_gate_passed is True
+    assert terminal_attempt.backend_id == "local-heavy-reasoning"
+    assert response.attempts[0].quality_gate_passed is False
+    assert response.quality_gate_passed is True
+
+    # (3) a real manifest version from the pricing manifest, not the field's 0 default.
+    assert response.pricing_manifest_version > 0
+    assert response.pricing_manifest_version == get_manifest_version_int()
