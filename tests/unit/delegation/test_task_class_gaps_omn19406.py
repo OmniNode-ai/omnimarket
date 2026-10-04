@@ -76,7 +76,7 @@ def _declared_task_classes() -> tuple[str, ...]:
 def _routable_task_classes() -> tuple[str, ...]:
     """Classes a delegation can be dispatched for today.
 
-    A class declaring ``routing_availability`` (agent_delegation, OMN-15961)
+    A class declaring ``routing_availability`` (including withheld, OMN-17427)
     resolves no backend on any tier and fails closed before the gate, so the
     acceptance-authority invariant does not apply to it.
     """

@@ -15,6 +15,17 @@
 # written ahead of delivery). The fixed worker briefs are typed models in the
 # output. No clock (observed_at is the snapshot's time), no I/O, no model.
 #
+# 0.2.0 adds shared red causes: red PRs in one repo failing one check with one
+# normalized failure signature form a cluster, and one bounded cause worker is
+# dispatched per cause (cause caps inside the pool, a two-attempt budget per
+# park episode, a 12-hour park with one operator escalation, a fixer HOLD that
+# revokes and dispatches nothing), with per-PR dispatch suppressed for the
+# members of a leased, fixing or owned cause; a cause parked with no owner
+# releases its members to per-PR dispatch (the fallback).
+# An exit with no result after the spawn window spends an attempt (LC-F2), and the
+# park's operator MSG is deduped against the ledger row, not the state (LC-F3);
+# both from the T1 model, omnibase_internal#144.
+#
 # The landing controller calls it in process, so it has no event_bus; it is
 # addressable through runtime_dispatch like the other directly-invoked compute
 # nodes. Experimental until the controller runs it (observe-only first).
@@ -25,11 +36,11 @@ lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 node_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 description: >
   Pure definition-B decision of one landing-controller tick. Reads one
@@ -37,9 +48,10 @@ description: >
   worker result files, producer acknowledgements and failures, and the
   controller's last state) and returns the tick's actions (merge pinned to a
   head, rerun, update-branch, eligibility rerun, companion rebuild or close,
-  dispatch of a fixed worker brief, kill, discard, observe-only), the outcomes
-  recorded, DEGRADED reasons, violations and the next state to write ahead of
-  acting. Deterministic in any input order.
+  dispatch of a fixed worker brief or of one cause brief per shared red cause,
+  kill, discard, observe-only, operator escalation of a parked cause), the
+  outcomes recorded, DEGRADED reasons, violations and the next state to write
+  ahead of acting. Deterministic in any input order.
 input_model:
   name: "ModelLandingFacts"
   module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"

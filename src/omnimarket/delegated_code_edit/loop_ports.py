@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The real ports of the delegated code edit loop (OMN-20290).
 
-* delegate -> the sanctioned ``onex`` wrapper, ``onex delegate <prompt>
-              --task-type code_generation --response-contract <schema>`` with
-              the caller's bus and locus flags, its lane and its ticket. Each
+* delegate -> the sanctioned ``onex`` wrapper, ``onex delegate --prompt-file
+              <file> --task-type code_generation --response-contract
+              <schema>`` with the caller's bus and locus flags, its lane and its ticket. Each
               turn is one delegation run with its own receipt under
               ``<state root>/runs/<run id>/``, exactly as any other caller's.
 * workspace -> the git worktree named by the request, every path resolved and
@@ -25,9 +25,13 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
+import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
@@ -48,7 +52,9 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
     ModelTurnReply,
+    ResumeRefusedError,
     WorkspacePathError,
+    bound_error,
     parse_turn_reply,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
@@ -60,11 +66,10 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 )
 
 _DELEGATE_TIMEOUT_SECONDS = 900
-#: Linux bounds one argv word at 128 KiB; the prompt travels as one.
-MAX_PROMPT_BYTES = 120_000
 _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
+_MAX_PATH_HINTS = 3
 _OUTPUT_TAIL = 6_000
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 _VOLATILE = re.compile(r"\b\d+(?:\.\d+)?\s?(?:s|ms|sec|seconds)\b|0x[0-9a-fA-F]+")
@@ -117,6 +122,58 @@ def check_fingerprint(exit_code: int | None, output: str) -> str:
     ).hexdigest()
 
 
+@dataclass(frozen=True)
+class _DelegateReceipt:
+    model: str = ""
+    tokens_in: int = 0
+    tokens_out: int = 0
+    failure: str = ""
+
+
+def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
+    """Read delegate metrics and failure details, tolerating malformed receipts."""
+
+    def block(value: object) -> dict[str, object]:
+        return cast("dict[str, object]", value) if isinstance(value, dict) else {}
+
+    def tokens(value: object) -> int:
+        if not isinstance(value, (str, int, float)):
+            return 0
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return 0
+
+    try:
+        receipt = block(json.loads(path.read_text()))
+    except (OSError, ValueError, UnicodeError, RecursionError):
+        return _DelegateReceipt()
+    result = block(block(receipt.get("receipt")).get("result"))
+    # Deployed-lane metrics are in the payload; in-process metrics are in result.
+    terminal = block(block(result.get("terminal_payload")).get("payload", result))
+    metrics = block(terminal.get("metrics"))
+    failures = [
+        receipt.get("status") if receipt.get("status") != "success" else "",
+        receipt.get("terminal_failure_cause"),
+        receipt.get("terminal_failure_reason"),
+        receipt.get("failure_reason"),
+        result.get("error"),
+        result.get("runtime_error_type"),
+    ]
+    if "terminal_payload" in result and result["terminal_payload"] is None:
+        failures.append("terminal_payload is null")
+    return _DelegateReceipt(
+        model=str(receipt.get("model") or ""),
+        tokens_in=tokens(metrics.get("input_tokens")),
+        tokens_out=tokens(metrics.get("output_tokens")),
+        failure="; ".join(
+            text
+            for value in failures
+            if value and (text := " ".join(str(value).split()))
+        ),
+    )
+
+
 class DelegatedCodeEditPorts:
     """Binds the code edit loop's ports to onex delegate, the worktree and the checks."""
 
@@ -141,14 +198,35 @@ class DelegatedCodeEditPorts:
     def _loop_dir(self, loop_run_id: str) -> Path:
         return self._state_root / "runs" / loop_run_id
 
-    def claim_loop_receipt(self, loop_run_id: str) -> None:
+    @property
+    def state_root(self) -> str:
+        """The receipt root for the resume command."""
+        return str(self._state_root)
+
+    def load_loop_receipt(self, loop_run_id: str) -> dict[str, object] | None:
+        """Read the current receipt, tolerating missing or unreadable JSON."""
+        try:
+            payload = json.loads(
+                (self._loop_dir(loop_run_id) / "loop_receipt.json").read_text()
+            )
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            return None
+        return cast("dict[str, object]", payload) if isinstance(payload, dict) else None
+
+    def claim_loop_receipt(self, loop_run_id: str, *, resume: bool = False) -> None:
         """Claim the correlation id with an exclusive create, so two concurrent
         runs of one id cannot both pass: the second finds the claim and is refused.
         A run that dies after claiming leaves the claim; rerun with a new id."""
         loop_dir = self._loop_dir(loop_run_id)
         loop_dir.mkdir(parents=True, exist_ok=True)
+        receipt = loop_dir / "loop_receipt.json"
+        if not resume and receipt.exists():
+            raise LoopReceiptExistsError(
+                f"loop {loop_run_id} is already claimed and has a receipt"
+            )
+        claim = loop_dir / "loop_claim"
         try:
-            with (loop_dir / "loop_claim").open("x") as handle:
+            with claim.open("x") as handle:
                 handle.write(f"{os.getpid()}\n")
         except FileExistsError as exc:
             raise LoopReceiptExistsError(
@@ -159,10 +237,43 @@ class DelegatedCodeEditPorts:
                     else ""
                 )
             ) from exc
+        if resume:
+            try:
+                if not receipt.exists():
+                    raise ResumeRefusedError(
+                        f"loop {loop_run_id} has no receipt to resume"
+                    )
+                number = 1 + len(list(loop_dir.glob("loop_receipt.*.json")))
+                os.replace(receipt, loop_dir / f"loop_receipt.{number}.json")
+            except Exception:
+                claim.unlink(missing_ok=True)
+                raise
+            return
+        if receipt.exists():
+            claim.unlink(missing_ok=True)
+            raise LoopReceiptExistsError(
+                f"loop {loop_run_id} is already claimed and has a receipt"
+            )
 
     def write_loop_receipt(self, loop_run_id: str, payload: dict[str, object]) -> None:
         path = self._loop_dir(loop_run_id) / "loop_receipt.json"
-        path.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=".loop_receipt.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+                handle.write(json.dumps(payload, indent=1, sort_keys=True) + "\n")
+            os.replace(temporary, path)
+        finally:
+            (path.parent / "loop_claim").unlink(missing_ok=True)
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     # -- workspace ------------------------------------------------------------
 
@@ -219,16 +330,51 @@ class DelegatedCodeEditPorts:
                 break
         return tuple(sorted(rows))
 
+    def _missing(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        path: str,
+        target: Path,
+        what: str,
+    ) -> WorkspacePathError:
+        """``path`` is not usable as asked. When it does not exist, name up to
+        three worktree paths that end with it: a model that guessed
+        'omnimarket/nodes' in a src-layout repo kept guessing it for 20 turns
+        when told only that it was not a directory (OMN-20291, ab8d7ef6)."""
+        message = f"{path} {what}"
+        tail = "/" + path.strip().removeprefix("./").strip("/")
+        if target.exists() or tail == "/":
+            return WorkspacePathError(message)
+        root = self._root(request)
+        listed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
+            capture_output=True,
+            env=_git_env(),
+            check=False,
+            timeout=60,
+        )
+        found: set[str] = set()
+        for raw in listed.stdout.split(b"\0")[:_MAX_MANIFEST_FILES]:
+            parts = raw.decode("utf-8", "replace").split("/")
+            for depth in range(1, len(parts) + 1):
+                prefix = "/".join(parts[:depth])
+                if prefix and ("/" + prefix).endswith(tail):
+                    found.add(prefix)
+        if not found:
+            return WorkspacePathError(message)
+        named = sorted(found, key=lambda rel: (len(rel), rel))[:_MAX_PATH_HINTS]
+        return WorkspacePathError(f"{message}; did you mean: {', '.join(named)}?")
+
     def read_file(self, request: ModelDelegatedCodeEditRequest, path: str) -> str:
         target = self._inside(request, path)
         if not target.is_file():
-            raise WorkspacePathError(f"{path} is not a file")
+            raise self._missing(request, path, target, "is not a file")
         return target.read_text(encoding="utf-8", errors="replace")
 
     def list_dir(self, request: ModelDelegatedCodeEditRequest, path: str) -> str:
         target = self._inside(request, path)
         if not target.is_dir():
-            raise WorkspacePathError(f"{path} is not a directory")
+            raise self._missing(request, path, target, "is not a directory")
         names = sorted(
             entry.name + ("/" if entry.is_dir() else "")
             for entry in target.iterdir()
@@ -240,6 +386,10 @@ class DelegatedCodeEditPorts:
         self, request: ModelDelegatedCodeEditRequest, pattern: str, path: str
     ) -> str:
         target = self._inside(request, path or ".")
+        if not target.exists():
+            # git grep answers a missing pathspec with "no matches", which told a
+            # model searching the wrong layout nothing (OMN-20291, ab8d7ef6).
+            raise self._missing(request, path, target, "does not exist")
         root = self._root(request)
         found = subprocess.run(
             [
@@ -378,16 +528,28 @@ class DelegatedCodeEditPorts:
         response_contract: dict[str, object],
         turn: int,
     ) -> ModelTurnReply:
-        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-            return ModelTurnReply(
-                run_id="",
-                ok=False,
-                invalid_reason=f"the turn prompt is over {MAX_PROMPT_BYTES} bytes",
-            )
+        # The prompt travels by file: one argv word is bounded at 128 KiB on
+        # Linux, which cut the history of long multi-file tasks short.
+        prompt_dir = self._state_root / "tmp"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        prompt_path = prompt_dir / f"code-edit-prompt-{uuid.uuid4().hex}.md"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        try:
+            return self._delegate_turn(request, prompt_path, response_contract)
+        finally:
+            prompt_path.unlink(missing_ok=True)
+
+    def _delegate_turn(
+        self,
+        request: ModelDelegatedCodeEditRequest,
+        prompt_path: Path,
+        response_contract: dict[str, object],
+    ) -> ModelTurnReply:
         argv = [
             str(self._onex),
             "delegate",
-            prompt,
+            "--prompt-file",
+            str(prompt_path),
             "--task-type",
             request.task_type,
             "--response-contract",
@@ -422,32 +584,30 @@ class DelegatedCodeEditPorts:
         if not run_id:
             match = re.search(r"runs/([0-9a-f-]{36})/receipt\.json", result.stderr)
             run_id = match.group(1) if match else ""
-        text, tokens_in, tokens_out, model = "", 0, 0, ""
+        text = ""
         run_dir = self._state_root / "runs" / run_id
         if run_id and (run_dir / "result.txt").is_file():
             text = (run_dir / "result.txt").read_text()
-        if run_id and (run_dir / "receipt.json").is_file():
-            receipt = json.loads((run_dir / "receipt.json").read_text())
-            model = str(receipt.get("model", ""))
-            # A deployed-lane receipt nests the terminal under terminal_payload;
-            # an in-process (--bus inmemory) receipt carries it as result.
-            result_block = receipt.get("receipt", {}).get("result", {})
-            terminal = result_block.get("terminal_payload", {}).get(
-                "payload", result_block
+        receipt = (
+            _read_delegate_receipt(run_dir / "receipt.json")
+            if run_id
+            else _DelegateReceipt()
+        )
+        if not text:
+            reason = (
+                f"onex delegate exited {result.returncode}: {result.stderr.rstrip()}"
+                if result.returncode != 0
+                else f"onex delegate run {run_id or '?'} returned no result text"
             )
-            metrics = terminal.get("metrics", {}) if isinstance(terminal, dict) else {}
-            tokens_in = int(metrics.get("input_tokens") or 0)
-            tokens_out = int(metrics.get("output_tokens") or 0)
-        if result.returncode != 0 and not text:
+            if receipt.failure:
+                reason += f" | receipt: {receipt.failure}"
             return ModelTurnReply(
                 run_id=run_id,
                 ok=False,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                model=model,
-                invalid_reason=(
-                    f"onex delegate exited {result.returncode}: {result.stderr[-300:]}"
-                ),
+                tokens_in=receipt.tokens_in,
+                tokens_out=receipt.tokens_out,
+                model=receipt.model,
+                invalid_reason=bound_error(reason),
             )
         actions, reason = parse_turn_reply(text)
         return ModelTurnReply(
@@ -456,9 +616,9 @@ class DelegatedCodeEditPorts:
             actions=actions,
             invalid_reason=reason,
             raw_text=text[:200_000],
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            model=model,
+            tokens_in=receipt.tokens_in,
+            tokens_out=receipt.tokens_out,
+            model=receipt.model,
         )
 
     # -- score ----------------------------------------------------------------
@@ -491,6 +651,7 @@ def score_transcript(
                     status=EnumToolCallStatus(str(row["status"])),
                     output=str(row["output"]),
                 ),
+                refused=bool(row.get("refused", False)),
             )
         )
     workspace: Sequence[ModelWorkspaceFile] | None = (
@@ -520,7 +681,6 @@ def score_transcript(
 
 __all__ = [
     "IN_PROCESS_DELEGATE_FLAGS",
-    "MAX_PROMPT_BYTES",
     "DelegatedCodeEditPorts",
     "check_fingerprint",
     "deployed_lane_delegate_flags",

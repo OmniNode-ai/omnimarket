@@ -53,6 +53,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
+from omnimarket.inference.task_class_authority import withheld_delegation_refusal
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
@@ -645,6 +646,11 @@ def resolve_delegation_backend(
     overlay (store or file) is responsible for supplying COMPLETE local endpoint
     URLs.
     """
+    # OMN-17427: a withheld class is refused before every backend or overlay override.
+    refusal = withheld_delegation_refusal(task_type)
+    if refusal is not None:
+        raise RuntimeError(refusal)
+
     # OMN-18670: resolve WITH provenance so the resolved backend can name which
     # artifact supplied its ``model_id``. A caller that hands in a pre-merged
     # ``backends`` list has already performed (or bypassed) the merge, so there

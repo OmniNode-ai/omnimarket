@@ -15,7 +15,6 @@ RSD canonical rewrite regenerating these handlers, each with an adequacy receipt
 """
 
 NON_CANONICAL: tuple[str, ...] = (
-    "omnimarket.nodes.node_ab_compare_reducer",
     "omnimarket.nodes.node_agent_coordinator_orchestrator",
     "omnimarket.nodes.node_architecture_graph_populate_effect",
     "omnimarket.nodes.node_architecture_graph_query_effect",
@@ -107,6 +106,5 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_thread_reply_effect",
     "omnimarket.nodes.node_ticket_query",
     "omnimarket.nodes.node_user_correction_observer_effect",
-    "omnimarket.nodes.node_verified_dispatch_orchestrator",
     "omnimarket.nodes.node_verify_effect",
 )

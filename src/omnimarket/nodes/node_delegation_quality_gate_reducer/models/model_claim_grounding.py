@@ -53,6 +53,16 @@ class ModelClaimGroundingPolicy(BaseModel):
         ),
     )
     excluded_answer_spans: tuple[str, ...] = Field(default=())
+    imperative_subject_patterns: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Python re patterns, each with a named group ``verb``. The text the "
+            "group matches is an imperative verb that opens a commit subject "
+            "(``fix(OMN-1): resolve ...``): it names the change the subject "
+            "makes, not a state the answer asserts, so it is read out of the "
+            "answer before the clauses are cut (OMN-20492)."
+        ),
+    )
     state_groups: dict[str, tuple[str, ...]] = Field(
         ...,
         min_length=1,
@@ -72,6 +82,18 @@ class ModelClaimGroundingPolicy(BaseModel):
     def _patterns_compile(cls, patterns: tuple[str, ...]) -> tuple[str, ...]:
         for pattern in patterns:
             re.compile(pattern)
+        return patterns
+
+    @field_validator("imperative_subject_patterns")
+    @classmethod
+    def _subject_patterns_name_the_verb(
+        cls, patterns: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        for pattern in patterns:
+            if "verb" not in re.compile(pattern).groupindex:
+                raise ValueError(
+                    f"imperative subject pattern declares no (?P<verb>...) group: {pattern!r}"
+                )
         return patterns
 
     @field_validator("clause_split", "subclause_split")

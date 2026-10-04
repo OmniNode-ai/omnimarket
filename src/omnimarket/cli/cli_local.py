@@ -6,8 +6,10 @@
 Two subcommands:
 
 ``onex local init``
-    Mint this install's tenant identity, once. Idempotent: a second run reports
-    the identity it already has and changes nothing.
+    Mint this install's tenant identity, once, and declare its runtime lane
+    (OMN-19750): select the local-home overlay source and write the shipped
+    ``runtime.lane`` example document there. Idempotent: a second run reports
+    what it already has and changes nothing.
 
 ``onex local identity``
     Print it. Read-only, and refuses rather than inventing one when the install
@@ -27,11 +29,14 @@ the distribution that owns the store, and it is deliberately the only one.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import socket
 from pathlib import Path
 from uuid import UUID
 
 import click
+import yaml
 
 from omnimarket.local_deployment.tenant_identity import (
     LOCAL_TENANT_IDENTITY_KEY,
@@ -40,27 +45,49 @@ from omnimarket.local_deployment.tenant_identity import (
     mint_local_tenant_identity,
     read_local_tenant_identity,
 )
+from omnimarket.models.model_local_runtime_lane import (
+    LocalRuntimeLaneError,
+    ModelLocalRuntimeLane,
+    declare_local_runtime_lane,
+)
+from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
+    HandlerLocalDashboardServe,
+)
+from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
+    DashboardBindError,
+    ModelLocalDashboardServeRequest,
+    resolve_dashboard_bind,
+)
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 
-__all__ = ["identity_command", "init_command", "local_group"]
+__all__ = ["dashboard_command", "identity_command", "init_command", "local_group"]
 
 
-def _render(identity: ModelLocalTenantIdentity, *, store: Path, as_json: bool) -> None:
+def _render(
+    identity: ModelLocalTenantIdentity,
+    *,
+    store: Path,
+    as_json: bool,
+    lane: ModelLocalRuntimeLane | None = None,
+) -> None:
     if as_json:
-        click.echo(
-            json.dumps(
-                {
-                    "key": LOCAL_TENANT_IDENTITY_KEY,
-                    "tenant_id": str(identity.tenant_uuid),
-                    "tenant_slug": identity.tenant_slug,
-                    "recorded_at": identity.recorded_at.isoformat(),
-                    "newly_minted": identity.newly_minted,
-                    "store": str(store),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        payload: dict[str, object] = {
+            "key": LOCAL_TENANT_IDENTITY_KEY,
+            "tenant_id": str(identity.tenant_uuid),
+            "tenant_slug": identity.tenant_slug,
+            "recorded_at": identity.recorded_at.isoformat(),
+            "newly_minted": identity.newly_minted,
+            "store": str(store),
+        }
+        if lane is not None:
+            payload["runtime_lane"] = {
+                "lane_id": lane.lane_id,
+                "environment": lane.environment,
+                "path": str(lane.path),
+                "sha256": lane.sha256,
+                "newly_written": lane.newly_written,
+            }
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     verb = "minted" if identity.newly_minted else "already present"
     click.echo(f"local deployment tenant identity ({verb})")
@@ -68,6 +95,13 @@ def _render(identity: ModelLocalTenantIdentity, *, store: Path, as_json: bool) -
     click.echo(f"  tenant_slug: {identity.tenant_slug}")
     click.echo(f"  key:         {LOCAL_TENANT_IDENTITY_KEY}")
     click.echo(f"  store:       {store}")
+    if lane is not None:
+        verb = "written" if lane.newly_written else "already present"
+        click.echo(f"local runtime lane ({verb})")
+        click.echo(f"  lane_id:     {lane.lane_id}")
+        click.echo(f"  environment: {lane.environment}")
+        click.echo(f"  document:    {lane.path}")
+        click.echo(f"  sha256:      {lane.sha256}")
 
 
 @click.group("local")
@@ -108,7 +142,7 @@ def init_command(
     store: Path | None,
     as_json: bool,
 ) -> None:
-    """Mint this install's tenant identity. Safe to re-run."""
+    """Mint this install's tenant identity and declare its runtime lane. Safe to re-run."""
     resolved_store = store or default_evidence_db_path()
     parsed: UUID | None = None
     if tenant_id is not None:
@@ -127,7 +161,11 @@ def init_command(
         )
     except LocalTenantIdentityError as exc:
         raise click.ClickException(str(exc)) from exc
-    _render(identity, store=resolved_store, as_json=as_json)
+    try:
+        lane = declare_local_runtime_lane()
+    except LocalRuntimeLaneError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _render(identity, store=resolved_store, as_json=as_json, lane=lane)
 
 
 @local_group.command("identity")
@@ -152,3 +190,50 @@ def identity_command(store: Path | None, as_json: bool) -> None:
             "`onex local init` once. No identity will be invented for it."
         )
     _render(identity, store=resolved_store, as_json=as_json)
+
+
+def _free_port(host: str) -> int:
+    with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as probe:
+        probe.bind((host, 0))
+        return int(probe.getsockname()[1])
+
+
+@click.command("dashboard")
+@click.option(
+    "--overlay",
+    "overlay_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Overlay document carrying dashboard.bind (host:port, loopback only).",
+)
+def dashboard_command(overlay_path: Path | None) -> None:
+    """Serve this install's projection exposures to the local dashboard (OMN-19976).
+
+    ``onex dashboard`` is a top-level command (plan T2.3) registered from this
+    module, the local deployment surface, so it adds no new CLI file
+    (canonical file shape, OMN-20304). node_local_dashboard_serve_effect owns
+    the serving.
+    """
+    loaded = (
+        yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+        if overlay_path is not None
+        else None
+    )
+    overlay = loaded if isinstance(loaded, dict) else {}
+    try:
+        host, port = resolve_dashboard_bind(overlay)
+    except DashboardBindError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if port == 0:
+        port = _free_port(host)
+    identity = read_local_tenant_identity()
+    tenant = None if identity is None else str(identity.tenant_uuid)
+    click.echo(
+        f"onex dashboard: http://{host}:{port} "
+        f"(tenant {tenant or 'not configured: run `onex local init`'})"
+    )
+    asyncio.run(
+        HandlerLocalDashboardServe().handle(
+            ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
+        )
+    )

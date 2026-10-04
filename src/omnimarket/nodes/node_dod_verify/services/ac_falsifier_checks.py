@@ -25,6 +25,8 @@ What it refuses to do, on purpose:
   reported rather than papered over.
 * **It never trusts a draft.** Only a label whose ``ac_bindings`` record carries
   ``accepted_by`` is read. A draft is a machine's proposal.
+  OMN-17427: a self-accepted record (``accepted_by`` equal to its ``proposed_by``)
+  is not an acceptance.
 * **It never carries the author's text into a command.** The command is rebuilt
   from allowlisted tokens, so a falsifier cannot smuggle a shell metacharacter
   into the runner.
@@ -37,6 +39,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
+from string import punctuation
 from typing import Any, Final
 
 from omnimarket.nodes.node_dod_verify.models.model_ac_falsifier_command import (
@@ -48,8 +51,12 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import
 
 __all__ = [
     "DERIVED_ITEM_ID_PREFIX",
+    "actor_identities",
     "derive_falsifier_items",
+    "is_accepted_binding",
     "parse_falsifier_command",
+    "self_accepted_bindings",
+    "self_accepting_actor",
 ]
 
 #: Prefix of every derived evidence id. The label is appended lowercased.
@@ -144,6 +151,38 @@ def _falsifier_text(statement: str) -> str | None:
     return text or None
 
 
+def actor_identities(actor: str) -> frozenset[str]:
+    """OMN-17427: actor identities, including hostless names and lane tokens."""
+    folded = actor.casefold().strip()
+    if not folded:
+        return frozenset()
+    identities = {folded}
+    if "@" in folded:
+        identities.add(folded.rsplit("@", 1)[0].strip())
+    identities.update(
+        match.group(1).rstrip(punctuation)
+        for match in re.finditer(r"\blane=(\S+)", folded)
+    )
+    identities.discard("")
+    return frozenset(identities)
+
+
+def self_accepting_actor(record: Mapping[str, Any]) -> str | None:
+    """OMN-17427: name the accepting actor when it authored the binding."""
+    accepted_by = str(record.get("accepted_by") or "").strip()
+    proposed_by = str(record.get("proposed_by") or "").strip()
+    if accepted_by and actor_identities(accepted_by) & actor_identities(proposed_by):
+        return accepted_by
+    return None
+
+
+def is_accepted_binding(record: Mapping[str, Any]) -> bool:
+    """OMN-17427: only an acceptance by another lane decides a binding."""
+    return bool(str(record.get("accepted_by") or "").strip()) and (
+        self_accepting_actor(record) is None
+    )
+
+
 def _accepted_labels(dod_items: Sequence[Any]) -> frozenset[str]:
     accepted: set[str] = set()
     for item in dod_items:
@@ -155,11 +194,74 @@ def _accepted_labels(dod_items: Sequence[Any]) -> frozenset[str]:
         for record in records:
             if (
                 isinstance(record, Mapping)
-                and record.get("accepted_by")
+                and is_accepted_binding(record)
                 and isinstance(record.get("label"), str)
             ):
                 accepted.add(str(record["label"]))
     return frozenset(accepted)
+
+
+def _canonical_label(label: str) -> str:
+    return label.strip().upper().replace("-", "").replace("_", "")
+
+
+def _same_binding(
+    independent: Mapping[str, Any], binding: Mapping[str, Any], label: str
+) -> bool:
+    """OMN-17427: does ``independent`` re-accept the very binding ``binding`` is?
+
+    The same label, proposed by the same author, over the same criterion text.
+    A record another author proposed on the label (the original ``occ-autobind``
+    one) accepts that author's binding and nothing else.
+    """
+    other = independent.get("label")
+    if not isinstance(other, str) or _canonical_label(other) != label:
+        return False
+    proposer = actor_identities(str(binding.get("proposed_by") or ""))
+    if not proposer & actor_identities(str(independent.get("proposed_by") or "")):
+        return False
+    hashes = {
+        str(record.get("criterion_hash") or "").strip()
+        for record in (independent, binding)
+    }
+    hashes.discard("")
+    return len(hashes) <= 1
+
+
+def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
+    """OMN-17427: every binding no second lane accepted, whatever else shares its label.
+
+    A record whose ``accepted_by`` is its own author, or is absent, is reported
+    unless another record re-accepts that same binding (same label, author and
+    criterion text) by a different actor. Another record on the label, such as
+    the original ``occ-autobind`` one, does not stand in for that acceptance.
+    """
+    records: list[tuple[str, str, Mapping[str, Any]]] = []
+    for index, item in enumerate(dod_items):
+        if not isinstance(item, Mapping):
+            continue
+        raw = item.get("ac_bindings")
+        if not isinstance(raw, list):
+            continue
+        item_id = str(item.get("id") or f"dod_evidence[{index}]")
+        records.extend(
+            (item_id, label, record)
+            for record in raw
+            if isinstance(record, Mapping)
+            and isinstance(label := record.get("label"), str)
+        )
+    independent = [record for _, _, record in records if is_accepted_binding(record)]
+    bindings: list[str] = []
+    for item_id, label, record in records:
+        accepted_by = self_accepting_actor(record)
+        if accepted_by is None and str(record.get("accepted_by") or "").strip():
+            continue
+        canonical = _canonical_label(label)
+        if any(_same_binding(other, record, canonical) for other in independent):
+            continue
+        shown = accepted_by or "<none>"
+        bindings.append(f"{item_id}:{label} accepted_by={shown}")
+    return tuple(bindings)
 
 
 def _declared_criteria(contract: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -257,5 +359,6 @@ def derive_falsifier_items(
         runnable_count=len(items),
         unrunnable_labels=tuple(unrunnable),
         derived_item_ids=tuple(str(item["id"]) for item in items),
+        self_accepted_bindings=self_accepted_bindings(dod_items),
     )
     return items, summary

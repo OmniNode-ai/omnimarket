@@ -37,6 +37,7 @@ from omnimarket.routing.delegation_backend_resolution import (
 )
 from omnimarket.routing.local_byok_route import (
     ByokKeyNotRegisteredError,
+    ByokPinNotPermittedError,
     substitute_any_registered_byok_route,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -93,6 +94,37 @@ def test_a_pinned_byok_id_with_no_key_names_the_missing_key() -> None:
     assert "openai" in message
     assert "no key" in message.lower()
     assert "onex secret set llm.openai.api_key" in message
+
+
+def test_a_pinned_byok_glm_coding_plan_is_refused() -> None:
+    with pytest.raises(ByokPinNotPermittedError) as excinfo:
+        resolve_delegation_backend("summarization", backend_id="byok-glm")
+
+    assert excinfo.value.code == "BYOK_CODING_PLAN_NOT_PERMITTED"
+    message = str(excinfo.value)
+    assert "BYOK_CODING_PLAN_NOT_PERMITTED" in message
+    assert "bifrost" not in message
+
+
+def test_a_pinned_byok_glm_coding_plan_is_refused_with_a_general_api_key() -> None:
+    register_local_byok_credential(
+        "glm", _FAKE_KEY, plan="general_api", model="glm-5.3-flash"
+    )
+
+    with pytest.raises(ByokPinNotPermittedError) as excinfo:
+        resolve_delegation_backend("summarization", backend_id="byok-glm")
+
+    assert excinfo.value.code == "BYOK_CODING_PLAN_NOT_PERMITTED"
+    message = str(excinfo.value)
+    assert "BYOK_CODING_PLAN_NOT_PERMITTED" in message
+    assert "bifrost" not in message
+
+
+def test_the_byok_pin_not_permitted_error_is_a_runtime_error() -> None:
+    with pytest.raises(ByokPinNotPermittedError) as excinfo:
+        resolve_delegation_backend("summarization", backend_id="byok-glm")
+
+    assert isinstance(excinfo.value, RuntimeError)
 
 
 def test_an_unpinned_run_with_only_an_openai_key_routes_to_byok_openai(

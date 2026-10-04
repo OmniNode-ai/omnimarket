@@ -161,3 +161,84 @@ class TestTheRowNeverContradictsItself:
             assert row["terminal_ok"] is True
             assert row["terminal_failure_cause"] is None
             assert row["operational_outcome"] == "completed"
+
+
+_FOLD_SELECT = (
+    "SELECT terminal_ok, terminal_failure_cause, operational_outcome, "
+    "content_verdict, quality_gate_passed, model_name, delegated_to, "
+    "actual_score, timestamp "
+    "FROM delegation_events WHERE correlation_id = $1"
+)
+
+
+@pytest.mark.integration
+class TestAStoredFailureIsNeverPartlyOverwritten:
+    """OMN-17427: one terminal owns model, score and time with the outcome."""
+
+    async def test_late_inner_completed_leaves_the_whole_failure(self) -> None:
+        terminal = _completed_terminal()
+        cid = str(terminal.correlation_id)
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            assert await runner.project_event(
+                runner._topic_delegate_skill_failed,
+                _skill_timeout(cid),
+                MessageMeta(partition=0, offset=0, fallback_id=cid),
+            )
+            failed = await admin_conn.fetchrow(_FOLD_SELECT, cid)
+            assert failed is not None
+            assert await runner.project_event(
+                runner._topic_delegation_completed,
+                _wire(terminal),
+                MessageMeta(partition=0, offset=1, fallback_id=cid),
+            )
+            row = await admin_conn.fetchrow(_FOLD_SELECT, cid)
+            assert row is not None
+            assert row["terminal_ok"] is False
+            assert row["terminal_failure_cause"] == "timeout"
+            assert row["operational_outcome"] == "timeout"
+            assert row["content_verdict"] == "not_applicable"
+            assert row["quality_gate_passed"] is False
+            assert row["model_name"] == failed["model_name"]
+            assert row["delegated_to"] == failed["delegated_to"]
+            assert row["actual_score"] == failed["actual_score"]
+            assert row["timestamp"] == failed["timestamp"]
+
+    async def test_inner_completed_then_failure_reads_the_same_failure(self) -> None:
+        terminal = _completed_terminal()
+        cid = str(terminal.correlation_id)
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            assert await runner.project_event(
+                runner._topic_delegation_completed,
+                _wire(terminal),
+                MessageMeta(partition=0, offset=0, fallback_id=cid),
+            )
+            assert await runner.project_event(
+                runner._topic_delegate_skill_failed,
+                _skill_timeout(cid),
+                MessageMeta(partition=0, offset=1, fallback_id=cid),
+            )
+            row = await admin_conn.fetchrow(_FOLD_SELECT, cid)
+            assert row is not None
+            assert row["terminal_ok"] is False
+            assert row["terminal_failure_cause"] == "timeout"
+            assert row["operational_outcome"] == "timeout"
+            assert row["content_verdict"] == "not_applicable"
+            assert row["quality_gate_passed"] is False
+            assert not row["model_name"]
+            assert not row["actual_score"]
+
+    async def test_inner_completed_alone_is_the_row(self) -> None:
+        """Positive control: with no failure stored the completion is the row."""
+        terminal = _completed_terminal()
+        cid = str(terminal.correlation_id)
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            assert await runner.project_event(
+                runner._topic_delegation_completed,
+                _wire(terminal),
+                MessageMeta(partition=0, offset=0, fallback_id=cid),
+            )
+            row = await admin_conn.fetchrow(_FOLD_SELECT, cid)
+            assert row is not None
+            assert row["operational_outcome"] == "completed"
+            assert row["model_name"] == "qwen3-coder-30b"
+            assert float(row["actual_score"]) == pytest.approx(0.9)

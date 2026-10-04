@@ -59,12 +59,21 @@ RERUNNABLE_RED_CLASSES: frozenset[EnumLandingRedClass] = frozenset(
 
 
 class EnumLandingMergeState(StrEnum):
-    """The head's position against its base."""
+    """The head's position against its base.
+
+    ``blocked`` is GitHub's BLOCKED: a required context is missing or a ruleset
+    holds the merge. A collector that does not send it sends ``unknown``, and
+    ``blocked`` decides like ``unknown`` except for one case: with no failed
+    check and at least one cancelled check copy named in ``cancelled_checks``,
+    the head is refreshed once with update-branch (a stale cancelled copy holds
+    the merge state; see ``ModelLandingPrFacts.cancelled_checks``).
+    """
 
     CLEAN = "clean"
     BEHIND = "behind"
     CONFLICTING = "conflicting"
     UNKNOWN = "unknown"
+    BLOCKED = "blocked"
 
 
 class EnumLandingSuspension(StrEnum):
@@ -74,19 +83,34 @@ class EnumLandingSuspension(StrEnum):
     GATE = "gate"
     DRAFT = "draft"
     DO_NOT_LAND = "do_not_land"
+    OWNED = "owned"
+
+
+# A person's hold, a draft and do-not-land keep a PR out of every shared cause;
+# ``owned`` (a lane's CLAIM on the PR) and a stalled ``gate`` do not.
+CAUSE_EXCLUDED_SUSPENSIONS: frozenset[EnumLandingSuspension] = frozenset(
+    {
+        EnumLandingSuspension.HOLD,
+        EnumLandingSuspension.DRAFT,
+        EnumLandingSuspension.DO_NOT_LAND,
+    }
+)
 
 
 class EnumLandingResultKind(StrEnum):
     """What a worker's one result file may say.
 
-    Only the first four are valid results (R1). The rest are recorded
-    ``invalid`` and escalate.
+    Only the first four are valid results of a per-PR worker (R1). A cause
+    worker's valid results are ``cause_fix_submitted``, ``cause_not_shared``
+    and ``external_blocker``. The rest are recorded ``invalid`` and escalate.
     """
 
     MERGED = "merged"
     ARMED = "armed"
     FIX_SUBMITTED = "fix_submitted"
     EXTERNAL_BLOCKER = "external_blocker"
+    CAUSE_FIX_SUBMITTED = "cause_fix_submitted"
+    CAUSE_NOT_SHARED = "cause_not_shared"
     WAITING_CI = "waiting_ci"
     WAITING_ORDER = "waiting_order"
     REPORT_ONLY = "report_only"
@@ -99,7 +123,8 @@ class EnumLandingOutcome(StrEnum):
 
     The first six are the outcomes of a dispatch (P3: every dispatch reaches
     exactly one). ``blocked_on`` is recorded by the controller for a PR it did
-    not dispatch because a parent is open (R3).
+    not dispatch because a parent is open (R3). The two ``cause_`` outcomes
+    are the verified results of a cause worker.
     """
 
     MERGED = "merged"
@@ -109,6 +134,8 @@ class EnumLandingOutcome(StrEnum):
     INVALID = "invalid"
     TIMED_OUT = "timed_out"
     BLOCKED_ON = "blocked_on"
+    CAUSE_FIX_SUBMITTED = "cause_fix_submitted"
+    CAUSE_NOT_SHARED = "cause_not_shared"
 
 
 BLOCKED_OUTCOMES: frozenset[EnumLandingOutcome] = frozenset(
@@ -187,13 +214,15 @@ class EnumLandingBriefClass(StrEnum):
     COMPANION_RED = "companion_red"
     COMPANION_ORPHAN = "companion_orphan"
     RUNTIME = "runtime"
+    SHARED_CAUSE = "shared_cause"
 
 
 class EnumLandingActionKind(StrEnum):
     """The controller's actions (the handover mapping's left column).
 
     ``kill_worker`` and ``discard_result`` act on the controller's own
-    workers; ``observe_only`` switches a drained repo to observe-only.
+    workers; ``observe_only`` switches a drained repo to observe-only;
+    ``escalate_operator`` asks the operator once about a parked cause.
     """
 
     MERGE = "merge"
@@ -206,6 +235,7 @@ class EnumLandingActionKind(StrEnum):
     KILL_WORKER = "kill_worker"
     DISCARD_RESULT = "discard_result"
     OBSERVE_ONLY = "observe_only"
+    ESCALATE_OPERATOR = "escalate_operator"
 
 
 class EnumLandingRebuildStatus(StrEnum):
@@ -249,15 +279,23 @@ class EnumLandingCompanionVerdict(StrEnum):
 
 
 class EnumLandingDegradedReason(StrEnum):
-    """What sets DEGRADED."""
+    """What sets DEGRADED.
+
+    ``stale_refresh_exhausted``: a PR held at BLOCKED by stale cancelled check
+    copies was refreshed ``max_stale_refreshes`` times and the class came back;
+    no further refresh, no fix worker and no escalation (a person looks).
+    """
 
     LEASE_STUCK = "lease_stuck"
     ESCALATION_EXHAUSTED = "escalation_exhausted"
     REBUILD_EXHAUSTED = "rebuild_exhausted"
+    STALE_REFRESH_EXHAUSTED = "stale_refresh_exhausted"
+    CAUSE_EXHAUSTED = "cause_exhausted"
 
 
 __all__: list[str] = [
     "BLOCKED_OUTCOMES",
+    "CAUSE_EXCLUDED_SUSPENSIONS",
     "CLAUDE_ENGINES",
     "RERUNNABLE_RED_CLASSES",
     "EnumLandingActionKind",

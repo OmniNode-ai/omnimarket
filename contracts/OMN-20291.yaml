@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20291"
+title: "Fix the delegated code edit node's failure classes found by the crush replay comparison"
+summary: "The OMN-20291 replay comparison found that the delegated code edit loop passed each turn's prompt to onex delegate as one argv word, capped near 128 KiB on Linux, and refused prompts over 120,000 bytes, so long multi-file tasks truncated their history. This change writes each turn's prompt to a file under the state root, passes it as onex delegate --prompt-file, and removes the file after the turn. Each behavior is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-code-edit-prompt-by-file"
+    statement: |-
+      The delegated code edit node must pass each turn's prompt to onex delegate by file, not as an argv word, so a prompt longer than one argv word reaches the delegate intact.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: the delegate argv carries --prompt-file and a path whose file holds the turn prompt at call time, carries no prompt word, and the file is gone after the turn -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "prompt_by_file_and_carries"
+      - id: "AC11"
+        statement: |-
+          AC11: a prompt over 200 KB reaches the delegate runner intact by file, no argv word is near 128 KiB, the prompt is not refused as over a size cap, and the file is gone after the turn -- falsifier: uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k "prompt_over_one_argv_word"
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegated code edit loop port tests pass."
+    command: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-code-edit-prompt-file-argv-ac10"
+    description: "The delegate argv test proves the turn prompt is passed by --prompt-file and the file is removed after the turn."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_by_file_and_carries\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-code-edit-long-prompt-by-file-ac11"
+    description: "The long prompt test proves a prompt over 200 KB reaches the delegate intact with no argv word near 128 KiB."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q -k \"prompt_over_one_argv_word\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]

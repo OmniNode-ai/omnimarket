@@ -210,10 +210,16 @@ def test_every_declared_class_is_served_at_every_declared_tier_unpinned() -> Non
 
     unserved = _unserved_rungs_by_class(config, contract, backends)
 
-    known_unserved_pending_agent_wiring = {
-        "agent_delegation": ["local", "cheap_cloud", "claude"],
+    # OMN-17427: read every unavailable class from the contract, including withheld.
+    declared_unserved = {
+        task_type: [
+            tier.name for tier in routing._tier_order_from_contract(config, entry)
+        ]
+        for task_type, entry in contract["task_classes"].items()
+        if entry.get("routing_availability") is not None
     }
-    assert unserved == known_unserved_pending_agent_wiring, (
+    assert "agent_delegation" in declared_unserved
+    assert unserved == declared_unserved, (
         f"declared task classes with unserved tiers: {unserved}"
     )
 
@@ -282,8 +288,14 @@ def test_ceiling_tier_serves_every_declared_class() -> None:
         if selected is None:
             dead_ceilings[task_type] = ceiling.name
 
-    known_dead_ceiling_pending_agent_wiring = {"agent_delegation": "claude"}
-    assert dead_ceilings == known_dead_ceiling_pending_agent_wiring, (
+    # OMN-17427: withheld classes also have no serving ceiling.
+    declared_dead_ceilings = {
+        task_type: routing._tier_order_from_contract(config, entry)[-1].name
+        for task_type, entry in task_classes.items()
+        if entry.get("routing_availability") is not None
+    }
+    assert declared_dead_ceilings["agent_delegation"] == "claude"
+    assert dead_ceilings == declared_dead_ceilings, (
         f"declared ceiling tier does not serve class: {dead_ceilings}"
     )
 

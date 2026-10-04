@@ -117,6 +117,12 @@ class TestTaskTypeBackendCoverage:
         for task_type in sorted(contract):
             if task_type in _FAIL_CLOSED_BY_DESIGN:
                 continue
+            # OMN-17427: a class the contract withholds from delegation is
+            # meant to resolve nothing; its own drift gate asserts that.
+            if (contract[task_type].get("routing_availability") or {}).get(
+                "status"
+            ) == "withheld":
+                continue
             order = _tier_order(task_type, contract)
             serving = _serving_backends(task_type)
             reachable = [

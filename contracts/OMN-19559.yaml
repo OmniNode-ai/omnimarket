@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19559
+title: A late timeout terminal never overturns an evidenced delegation success
+summary: The delegation projection keeps terminal_ok, model_name and quality_gate_passed when a later handler-local timeout terminal arrives for a correlation that already recorded an evidenced success, and a later success still does not erase a typed failure cause.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19559
+  statement: A spurious late failure after a real success must not change the stored success columns, and the typed-failure-is-sticky rule must keep holding.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: once a correlation row records a completed terminal with a model and a passing gate, a later timeout terminal carrying no model and no attempts does not change terminal_ok, model_name or quality_gate_passed -- falsifier: uv run pytest tests/test_omn19559_terminal_precedence.py -q -k "late_handler_timeout_keeps_evidenced_success or precedence_preserves_all_outcome_columns"'
+  - id: AC2
+    statement: 'AC2: the OMN-15503 case still holds, a later success does not erase a recorded typed failure cause -- falsifier: the quota-sticky and golden-chain projection tests in omnimarket run red'
+evidence_requirements:
+- kind: tests
+  description: The projection tests deliver a completed terminal then a timeout terminal in both orders and assert the three columns.
+  command: uv run pytest tests/test_omn19559_terminal_precedence.py -q -k "late_handler_timeout_keeps_evidenced_success or precedence_preserves_all_outcome_columns_on_late_handler_failure or inner_completed_then_handler_timeout or handler_timeout_then_inner_completed"
+- kind: tests
+  description: The quota-sticky test and the projection golden chain pass.
+  command: uv run pytest tests/test_omn19559_terminal_precedence.py tests/test_golden_chain_projection_delegation.py -q -k "quota_failure_stays_sticky_after_success or golden_chain"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-19559-ac1
+  description: The projection tests deliver a completed terminal then a timeout terminal in both orders and assert the three columns.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19559_terminal_precedence.py -q -k "late_handler_timeout_keeps_evidenced_success or precedence_preserves_all_outcome_columns_on_late_handler_failure or inner_completed_then_handler_timeout or handler_timeout_then_inner_completed"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-19559-ac2
+  description: The quota-sticky test and the projection golden chain pass.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19559_terminal_precedence.py tests/test_golden_chain_projection_delegation.py -q -k "quota_failure_stays_sticky_after_success or golden_chain"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

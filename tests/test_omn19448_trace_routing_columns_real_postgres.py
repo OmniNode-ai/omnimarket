@@ -32,6 +32,28 @@ _SELECT = (
 
 @pytest.mark.integration
 class TestTheRowCarriesTraceAndRouting:
+    async def test_a_failed_terminal_stores_deciding_rung_stop_reason(self) -> None:
+        # OMN-19448: migration 0053 and the async canonical projection path.
+        terminal = _quota_terminal()
+        payload = _wire(terminal)
+        payload["escalation_history"] = [{"finish_reason": "length", "truncated": True}]
+        cid = str(terminal.correlation_id)
+
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            assert await runner.project_event(
+                runner._topic_delegation_failed,
+                payload,
+                MessageMeta(partition=0, offset=0, fallback_id=cid),
+            )
+            row = await admin_conn.fetchrow(
+                "SELECT finish_reason, truncated FROM delegation_events "
+                "WHERE correlation_id = $1",
+                cid,
+            )
+            assert row is not None
+            assert row["finish_reason"] == "length"
+            assert row["truncated"] is True
+
     async def test_a_failed_terminal_stores_trace_model_and_backend(self) -> None:
         terminal = _quota_terminal()
         payload = _wire(terminal)

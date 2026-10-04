@@ -124,6 +124,7 @@ async def test_a_claimed_command_with_no_terminal_at_its_budget_plus_60_seconds_
     assert terminal.status == "failed"
     assert terminal.terminal_failure_cause.value == "no_terminal"
     assert terminal.correlation_id == ctx.correlation_id
+    assert terminal.command_id == delivery_id
     assert terminal.task_type == ctx.task_type
     assert terminal.tenant_id == ctx.tenant_id
     assert terminal.ticket_id == ctx.ticket_id
@@ -217,6 +218,7 @@ async def test_shared_correlation_commands_each_hold_a_terminal():
     assert output is not None
     assert len(output.events) == 2
     assert all(event.correlation_id == ctx.correlation_id for event in output.events)
+    assert {event.command_id for event in output.events} == {first, second}
     assert _row(db, f"slot:{first}")
     assert _row(db, f"slot:{second}")
 

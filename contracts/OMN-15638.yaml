@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-15638
+title: The cheap_frontier rung no longer pins a retired OpenRouter slug
+summary: The bifrost backend and the model registry pin the same live OpenRouter slug, the tier's zero-cost declaration matches a free slug, and no OpenRouter backend pins a known-retired slug.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn15638
+  statement: The cheap_frontier rung must not be dead at the model-slug level, and its cost declaration must not lie.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the cost declaration matches reality -- the tier does not declare free_local or zero cost while pinning a metered slug -- falsifier: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k zero_cost_declaration'
+  - id: AC5
+    statement: 'AC5: the check iterates every OpenRouter backend in bifrost_delegation.yaml, not one -- falsifier: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k known_retired_slug'
+evidence_requirements:
+- kind: tests
+  description: The seam test asserts the zero-cost declaration only coexists with a free slug.
+  command: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k "zero_cost_declaration or pin_the_same_openrouter_slug"
+- kind: tests
+  description: The seam test walks every OpenRouter endpoint backend and refuses any pinned retired slug.
+  command: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k no_openrouter_backend_pins_a_known_retired_slug
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-15638-ac3
+  description: The seam test asserts the zero-cost declaration only coexists with a free slug.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k "zero_cost_declaration or pin_the_same_openrouter_slug"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn-15638-ac5
+  description: The seam test walks every OpenRouter endpoint backend and refuses any pinned retired slug.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_openrouter_slug_seam_omn15638.py -q -k no_openrouter_backend_pins_a_known_retired_slug
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5

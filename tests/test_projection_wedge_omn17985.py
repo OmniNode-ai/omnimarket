@@ -57,6 +57,7 @@ import pytest
 
 from omnimarket.projection.error_classification import (
     ProjectionErrorClass,
+    ProjectionSchemaError,
     classify_projection_error,
 )
 from omnimarket.projection.runner import (
@@ -123,17 +124,13 @@ class TestTenantIdentityRefusalsArePoison:
             is ProjectionErrorClass.RECOVERABLE
         )
 
-    def test_migration_gap_is_still_recoverable(self) -> None:
-        """POSITIVE CONTROL for the untouched policy (OMN-13634).
-
-        A not-yet-applied migration must still be retried until the schema
-        catches up -- never quarantined as malformed.
-        """
+    def test_migration_gap_is_schema(self) -> None:
+        """A migration gap is SCHEMA and never quarantined as malformed."""
         assert (
             classify_projection_error(
                 asyncpg.exceptions.UndefinedColumnError('column "x" does not exist')
             )
-            is ProjectionErrorClass.RECOVERABLE
+            is ProjectionErrorClass.SCHEMA
         )
 
 
@@ -169,7 +166,7 @@ class _RefusingRunner(BaseProjectionRunner):
         )
         self._raises = raises
         self.dlq_published: list[tuple[str, bytes]] = []
-        self._consumer = _RecordingConsumer()  # type: ignore[assignment]
+        self._consumer: _RecordingConsumer = _RecordingConsumer()
 
     @property
     def topics(self) -> list[str]:
@@ -208,7 +205,7 @@ class TestTheWedgedPartitionAdvances:
 
         await runner._handle_message(_live_msg(offset=17))
 
-        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        commits = runner._consumer.commits
         assert list(commits[0].values()) == [18], (
             "the offset must advance -- an unattributable event that no retry can "
             "resolve wedged nine partitions and held three tables at zero rows"
@@ -227,15 +224,15 @@ class TestTheWedgedPartitionAdvances:
         )
 
     @pytest.mark.asyncio
-    async def test_a_migration_gap_still_holds_the_offset(self) -> None:
-        """POSITIVE CONTROL: the untouched RECOVERABLE policy still applies."""
+    async def test_a_schema_migration_gap_holds_the_offset(self) -> None:
+        """A SCHEMA fault leaves the offset uncommitted for replay."""
         runner = _RefusingRunner(
             raises=asyncpg.exceptions.UndefinedColumnError('column "x" missing')
         )
-        with pytest.raises(asyncpg.exceptions.UndefinedColumnError):
+        with pytest.raises(ProjectionSchemaError):
             await runner._handle_message(_live_msg(offset=17))
 
-        assert runner._consumer.commits == []  # type: ignore[attr-defined]
+        assert runner._consumer.commits == []
         assert runner.dlq_published == []
 
 
@@ -305,7 +302,7 @@ def _neutralize_io(runner: BaseProjectionRunner, monkeypatch: Any) -> None:
     """Remove every side effect `run()` has other than the retry loop itself."""
     from unittest.mock import AsyncMock
 
-    runner._db = AsyncMock()  # type: ignore[assignment]
+    runner._db = AsyncMock()
     monkeypatch.setattr(runner, "_start_health_server_if_configured", lambda: None)
     monkeypatch.setattr(runner, "_stop_health_server", lambda: None)
 

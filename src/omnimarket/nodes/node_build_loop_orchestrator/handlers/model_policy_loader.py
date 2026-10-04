@@ -3,8 +3,8 @@
 """ModelPolicyLoader — resolves model policy IDs to runtime URLs.
 
 Reads model_policy.yaml from the omnimarket package root and resolves
-each policy's env_var to a concrete URL at runtime. Raises RuntimeError
-on missing env vars — no silent fallback to hardcoded IPs.
+Bifrost-backed policies through the canonical contract and overlay. Other
+policies use declared env vars. Parked endpoints never fall back to an env URL.
 
 Related: OMN-8782
 """
@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 
 _POLICY_FILE = Path(__file__).parents[3] / "model_policy.yaml"
 
@@ -32,19 +34,19 @@ def _load_policy_file() -> dict[str, Any]:
 
 
 class ModelPolicyLoader:
-    """Resolves model policy IDs to endpoint URLs from environment variables.
+    """Resolves model policy IDs to contract endpoints or declared env URLs.
 
     Usage:
         loader = ModelPolicyLoader()
-        coder_url = loader.resolve("coder")      # reads LLM_CODER_URL
+        coder_url = loader.resolve("coder")      # Bifrost local-coder endpoint
         judge_url = loader.resolve("judge")      # reads LLM_DEEPSEEK_R1_URL
     """
 
     def resolve(self, policy_id: str) -> str:
-        """Resolve a policy ID to its base URL.
+        """Resolve a policy ID to its endpoint URL.
 
-        Reads the env_var declared in model_policy.yaml for this policy
-        and returns its value. Raises RuntimeError if not set.
+        Bifrost policies return complete request URLs; env policies retain
+        their declared URL form. Raises RuntimeError for an absent endpoint.
         """
         data = _load_policy_file()
         policies: dict[str, Any] = data.get("policies", {})
@@ -54,6 +56,15 @@ class ModelPolicyLoader:
                 f"Unknown model policy ID {policy_id!r}. "
                 f"Known policies: {list(policies.keys())}"
             )
+        backend_id: str = policy.get("bifrost_backend_id", "")
+        if backend_id:
+            backend = resolve_bifrost_backend(backend_id)
+            if backend is None or not backend.endpoint_url:
+                raise RuntimeError(
+                    f"Model endpoint for policy {policy_id!r} not configured: "
+                    f"Bifrost backend {backend_id!r} is absent or parked."
+                )
+            return backend.endpoint_url
         env_var: str = policy.get("env_var", "")
         endpoint_ref: str = policy.get("endpoint_ref", "")
         if not env_var and endpoint_ref.startswith("env:"):
@@ -72,7 +83,7 @@ class ModelPolicyLoader:
         return url.rstrip("/")
 
     def resolve_optional(self, policy_id: str) -> str | None:
-        """Resolve a policy ID to its base URL, returning None if not configured."""
+        """Resolve a policy ID to its endpoint URL, returning None if parked."""
         try:
             return self.resolve(policy_id)
         except RuntimeError:
@@ -91,7 +102,7 @@ class ModelPolicyLoader:
         return os.environ.get(api_key_env, "")
 
     def resolve_model_id(self, policy_id: str) -> str:
-        """Resolve the served model ID for a policy from its declared env var."""
+        """Resolve the served model ID from Bifrost or the declared env var."""
         data = _load_policy_file()
         policies: dict[str, Any] = data.get("policies", {})
         policy = policies.get(policy_id)
@@ -100,6 +111,15 @@ class ModelPolicyLoader:
                 f"Unknown model policy ID {policy_id!r}. "
                 f"Known policies: {list(policies.keys())}"
             )
+        backend_id: str = policy.get("bifrost_backend_id", "")
+        if backend_id:
+            backend = resolve_bifrost_backend(backend_id)
+            if backend is None or not backend.model_name:
+                raise RuntimeError(
+                    f"Served model ID for policy {policy_id!r} not configured "
+                    f"in Bifrost backend {backend_id!r}."
+                )
+            return backend.model_name
         model_id_env: str = policy.get("model_id_env_var", "")
         if not model_id_env:
             raise RuntimeError(

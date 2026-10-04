@@ -117,7 +117,7 @@ repos:
   # The rev moved from 6363509770 to the OMN-20304 commit for both hooks; the
   # lifecycle validator's source is identical at the two commits.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: 7f20b97895f01996c5858dde385ba8991c06e708 # pragma: allowlist secret
+    rev: f50d00fc7918d0b12ccd0d3497160325e32e7ac5 # pragma: allowlist secret
     hooks:
       # Shape-gate independence (OMN-20298): a shape-gate detector job never waits
       # on the change-control preflight and never reads its result. BLOCKING, zero
@@ -278,9 +278,6 @@ repos:
         # literals through a constant would let the pinned pair drift away from the
         # defect it pins, which is the whole property the fence exists to hold.
         exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/omnimarket/validators/contract_topic_graph\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/cli/.*)$"
-      - id: no-untracked-todos
-        require_serial: true
-        stages: [pre-commit]
 
   # KB doc gate (OMN-16589) — blocks new/regrown non-KB markdown docs.
   #
@@ -813,6 +810,18 @@ repos:
         entry: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
         pass_filenames: false
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
+        stages: [pre-commit]
+
+      # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
+      # OCC retirement S8). Runs omnibase_core's own handler, which owns this
+      # behaviour; the hook of the same id used to be pulled from the
+      # onex_change_control repo block.
+      - id: no-untracked-todos
+        name: No untracked TODO/FIXME/HACK comments
+        language: system
+        entry: uv run python -m omnibase_core.handlers.handler_todo_format
+        require_serial: true
+        types: [python]
         stages: [pre-commit]
 
       # OMN-20173: same tracked-config assertion as the required CI gate.

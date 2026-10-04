@@ -25,15 +25,25 @@ node_version: "0.1.0"
 description: >
   Sequences one delegated code edit loop over one git worktree: at most
   max_turns onex delegate turns, each returning typed actions (view, ls, grep,
-  write, edit, run_check, finish) that are applied confined to the worktree and
-  the declared writable globs; only declared checks run, and finish runs all of
-  them. Two identical failing check rounds over the same diff stop with
+  write, edit, replace_in_files, run_check, finish) that are applied confined to
+  the worktree and the declared writable globs; only declared checks run, and
+  finish runs all of them. replace_in_files replaces every occurrence of
+  old_string with new_string across file_paths or a glob over the worktree
+  manifest, at most MAX_BULK_FILES (200) files per action, with the same
+  writable globs and no shell. Each file is all-or-nothing and its result is
+  reported: a named file without old_string is a failure left untouched, a glob
+  covers only writable files and skips those without old_string. The tool_use
+  rubric records one call per action, failed when any file failed.
+  Two identical failing check rounds over the same diff stop with
   no_progress, two failed delegate runs in a row stop with delegate_failed, and
   the turn cap ends budget_exhausted unless the checks pass. Writes
   <state root>/runs/<correlation id>/loop_receipt.json with every delegate run
-  id, every action and observation, the diff, the check results and the
+  id, every action with its full arguments and observation, the sha256 of each
+  file the action wrote, the diff, the check results and the
   tool_use rubric verdict, refusing a second loop for the same correlation id,
-  and returns a compact result that carries no file content.
+  and returns a compact result that carries no file content. The receipt resume
+  block permits --resume after delegate_failed, archiving the prior receipt as
+  loop_receipt.<n>.json; the turn cap spans all resumed segments.
 input_model:
   name: "ModelDelegatedCodeEditRequest"
   module: "omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit"
@@ -84,9 +94,11 @@ metadata:
   author: "OmniNode Team"
   created: "2026-10-01"
   tags:
+    - "bulk-edit"
     - "orchestrator"
     - "delegated-code-edit"
     - "OMN-20290"
   related_tickets:
+    - "OMN-20392"
     - "OMN-20290"
     - "OMN-20287"

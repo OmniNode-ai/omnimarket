@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -275,12 +276,13 @@ class TestBuildEndpointConfigs:
         assert configs == {}
 
     def test_glm_endpoint_requires_key_and_url(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_bifrost_glm_endpoint: Callable[[str | None], None],
     ) -> None:
         _clear_endpoint_env(monkeypatch)
         # OMN-18695: the CREDENTIAL is registered in the local secret store.
-        # Only the endpoint and model name are config, and those stay in
-        # the environment.
+        # Endpoints and served model IDs come from the contract.
         _register_local_secret("llm.glm.api_key", "secret")
 
         assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
@@ -291,11 +293,16 @@ class TestBuildEndpointConfigs:
         monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
         monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-review")
 
+        assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
+        bind_bifrost_glm_endpoint("https://glm.example/v4/chat/completions")
         configs = build_endpoint_configs()
 
-        assert configs[EnumModelTier.FRONTIER_GLM].base_url == "https://glm.example/v4"
-        assert configs[EnumModelTier.FRONTIER_GLM].model_id == "glm-4.5"
-        assert configs[EnumModelTier.FRONTIER_REVIEW].model_id == "glm-review"
+        assert (
+            configs[EnumModelTier.FRONTIER_GLM].base_url
+            == "https://glm.example/v4/chat/completions"
+        )
+        assert configs[EnumModelTier.FRONTIER_GLM].model_id == "glm-5.3-flash"
+        assert configs[EnumModelTier.FRONTIER_REVIEW].model_id == "glm-5.3-flash"
 
     def test_local_endpoints_require_model_name(
         self, monkeypatch: pytest.MonkeyPatch
@@ -314,7 +321,7 @@ class TestBuildEndpointConfigs:
         configs = build_endpoint_configs()
 
         assert configs[EnumModelTier.LOCAL_FAST].model_id == "fast-model"
-        assert configs[EnumModelTier.LOCAL_CODER].model_id == "coder-model"
+        assert EnumModelTier.LOCAL_CODER not in configs
         assert configs[EnumModelTier.LOCAL_REASONING].model_id == "reason-model"
 
     def test_gemini_key_uses_cli_when_binary_is_available(

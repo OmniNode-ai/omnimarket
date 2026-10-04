@@ -88,7 +88,8 @@ tiers:
         # a routing-completeness gap, not a deliberate cloud-only class).
         use_for:
           - code_generation
-          - code_review
+          # OMN-17427: code_review REMOVED -- withheld from delegation, see
+          # task_class_contracts.v1.yaml code_review.routing_availability
           - refactor
           - validator_generation
           # OMN-16442: restored — see the block comment above.
@@ -271,11 +272,8 @@ tiers:
         max_context_tokens: 1000000
         use_for:
           - code_generation
-          # OMN-13541: code_review added so the cheap_cloud tier is a real
-          # escalation fallback for code_review (its escalation_policy.tier_order
-          # is [local, cheap_cloud]). Without it code_review could only route to
-          # the single local-coder backend — a single point of failure.
-          - code_review
+          # OMN-17427: code_review REMOVED -- withheld from delegation, see
+          # task_class_contracts.v1.yaml code_review.routing_availability
           - reasoning
           - research
           - test
@@ -362,7 +360,7 @@ tiers:
   # tier (OMN-14225 free-before-paid). Under this ticket the remaining code
   # classes (code_review, validator_generation, test) were given the same
   # placement code_generation and refactor already had, so the free coder rung
-  # carries the whole family rather than two members of it.
+  # historically carried the whole family. OMN-17427 now withholds code_review.
   #
   # Free-only is ABSOLUTE (OMN-14225 / operator ruling R9-amended): only models
   # OpenRouter serves at genuinely zero cost may sit here — never a paid model
@@ -383,15 +381,9 @@ tiers:
       - id: openrouter-nemotron-ultra
         backend_id: openrouter-nemotron-ultra
         max_context_tokens: 262144
-        # OMN-16891: code_review and validator_generation ADDED, completing the
-        # code-class family (code_generation, code_review, refactor,
-        # validator_generation, test) on the free coder rung. Both were already
-        # served by this backend's declared `code_generation` capability in
-        # bifrost_delegation.yaml and share code_generation's DoD family
-        # (OMN-15630 established validator_generation as an exact DoD match;
-        # OMN-13541 established code_review's cheap-tier need), so this
-        # inherits existing placements rather than making a new capability
-        # claim.
+        # OMN-16891 added code_review and validator_generation to this free
+        # coder rung alongside code_generation/refactor/test. OMN-17427 now
+        # withholds code_review; the remaining code classes keep their placements.
         #
         # Placement constraint, stated rather than discovered in production:
         # this rung is a POOR fit for terse or tightly-budgeted structured
@@ -403,7 +395,8 @@ tiers:
         # exactly this reason; do not narrow it for this rung.
         use_for:
           - code_generation
-          - code_review
+          # OMN-17427: code_review REMOVED -- withheld from delegation, see
+          # task_class_contracts.v1.yaml code_review.routing_availability
           - reasoning
           # OMN-19432: `review` added beside `reasoning`; see the class contract.
           - review
@@ -447,7 +440,8 @@ tiers:
         max_context_tokens: 262144
         use_for:
           - code_generation
-          - code_review
+          # OMN-17427: code_review REMOVED -- withheld from delegation, see
+          # task_class_contracts.v1.yaml code_review.routing_availability
           - review
           - reasoning
           - research
@@ -458,23 +452,9 @@ tiers:
           - documentation
           - summarization
         fast_path_threshold_tokens: 8192
-      # OMN-19432: the third free OpenRouter model, declared last; code_review is left
-      # off because it passed 2 of 5 of those tasks on the delegate gate.
-      - id: cohere/north-mini-code:free
-        backend_id: openrouter-north-mini-code
-        max_context_tokens: 256000
-        use_for:
-          - code_generation
-          - review
-          - reasoning
-          - research
-          - refactor
-          - test
-          - validator_generation
-          - document
-          - documentation
-          - summarization
-        fast_path_threshold_tokens: 8192
+      # north-mini-code is a spread peer of openrouter-nemotron-ultra via its
+      # placement in bifrost_delegation.yaml. The mirrored entry copies the
+      # ultra rung's use_for, so it still serves every class that rung serves.
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1

@@ -20,6 +20,10 @@ from typing import Literal
 
 import click
 
+from omnimarket.local_deployment.tenant_identity import (
+    LocalTenantIdentityError,
+    require_local_tenant_identity,
+)
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     ModelMeteringSummary,
 )
@@ -180,23 +184,33 @@ def metering_command(
     kind: Literal["day", "all"] = "day" if selected_day else "all"
     start = selected_day.isoformat() if selected_day else ""
     try:
+        if not resolved_db.exists():
+            raise MeteringRecordsUnavailableError(
+                f"no local delegation evidence database at {resolved_db}"
+            )
+        # OMN-17427: the summary row is keyed on this install's own minted
+        # tenant identity (`onex local init`), never a literal. A literal here
+        # wrote every row under "local", a tenant no install ever minted.
+        tenant_id = str(require_local_tenant_identity(db_path=resolved_db))
         # Always refresh through the node's own fold before reading its row:
         # the local evidence store can gain runs at any time, and a stored row
         # older than the newest run would print a savings figure that omits it.
         refresh_metering_summary(
             resolved_db,
-            "local",
+            tenant_id,
             baseline,
             now,
             days=frozenset({selected_day}) if selected_day else None,
             include_fixtures=include_fixtures,
         )
-        row = read_summary_row(resolved_db, "local", kind, start, baseline)
+        row = read_summary_row(resolved_db, tenant_id, kind, start, baseline)
     except MeteringRecordsUnavailableError as exc:
         raise click.ClickException(
             f"{exc}\nNo metering can be reported from an unreadable evidence store. "
             "Run `onex delegate` once to create it."
         ) from exc
+    except LocalTenantIdentityError as exc:
+        raise click.ClickException(str(exc)) from exc
     if row is None:
         raise click.ClickException("Metering refresh did not produce the requested row")
     if as_json:

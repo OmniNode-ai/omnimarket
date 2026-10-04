@@ -38,6 +38,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.inference.task_class_authority import (
@@ -48,6 +49,9 @@ from omnimarket.local_deployment.tenant_identity import (
 )
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
+)
+from omnimarket.models.delegation.delegation_attempt_lineage import (
+    stamp_attempt_lineage,
 )
 from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
@@ -63,6 +67,7 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -91,9 +96,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
 )
 from omnimarket.pricing import (
-    DEFAULT_BASELINE_MODEL,
     build_premium_counterfactual,
-    estimate_baseline_cost_usd,
+    estimate_baseline_savings_usd,
     estimate_frontier_costs_usd,
     resolve_baseline_model,
 )
@@ -440,14 +444,12 @@ def _estimate_claude_cost_savings(
     baseline_model: str,
 ) -> float | None:
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
-    counterfactual_cost_usd = estimate_baseline_cost_usd(
+    return estimate_baseline_savings_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        actual_cost_usd=actual_cost_usd,
         baseline_model=baseline_model,
     )
-    if counterfactual_cost_usd is None:
-        return None
-    return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
 def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
@@ -487,6 +489,37 @@ def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
     }
 
 
+def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
+    """The OMN-20168 lineage and placement fields, typed or dropped."""
+    fields: dict[str, Any] = {}
+    for key in ("attempt_id", "parent_attempt_id", "split_id"):
+        value = raw.get(key)
+        try:
+            fields[key] = value if isinstance(value, UUID) else UUID(str(value))
+        except (ValueError, TypeError, AttributeError):
+            fields[key] = None
+    for key, enum_type in (
+        ("attempt_kind", EnumDelegationAttemptKind),
+        ("size_band", EnumDelegationSizeBand),
+    ):
+        value = raw.get(key)
+        try:
+            fields[key] = enum_type(value) if isinstance(value, str) else None
+        except (ValueError, TypeError):
+            fields[key] = None
+    host = raw.get("host")
+    fields["host"] = host if isinstance(host, str) and host else None
+    return fields
+
+
+def _attempt_record_with_lineage(**values: Any) -> ModelDelegateSkillAttemptRecord:
+    """OMN-20168: malformed lineage must never lose a terminal."""
+    try:
+        return ModelDelegateSkillAttemptRecord(**values)
+    except ValidationError:
+        return ModelDelegateSkillAttemptRecord(**(values | _lineage_fields({})))
+
+
 def _attempt_records(
     result: dict[str, object],
 ) -> list[ModelDelegateSkillAttemptRecord]:
@@ -514,6 +547,16 @@ def _attempt_records(
             return []
         attempt_values = list(raw_history)
 
+    try:
+        correlation_id = UUID(str(result.get("correlation_id")))
+    except (ValueError, TypeError, AttributeError):
+        pass
+    else:
+        attempt_values = stamp_attempt_lineage(
+            [v for v in attempt_values if isinstance(v, dict)],
+            correlation_id=correlation_id,
+        )
+
     records: list[ModelDelegateSkillAttemptRecord] = []
     for raw in attempt_values:
         if not isinstance(raw, dict):
@@ -534,7 +577,7 @@ def _attempt_records(
             failure_reasons = _as_str_list(raw.get("failure_reasons"))
             decision = _as_acceptance_decision(raw.get("acceptance_decision"))
             records.append(
-                ModelDelegateSkillAttemptRecord(
+                _attempt_record_with_lineage(
                     tier=str(raw.get("tier_name") or raw.get("tier") or ""),
                     # OMN-19234: the backend key the decision selected, which
                     # names the host. ``routing_decision_id`` is uuid5 of the
@@ -580,12 +623,13 @@ def _attempt_records(
                     finish_reason=_as_finish_reason(raw.get("finish_reason")),
                     **truncated_fields,
                     **_provider_facts(raw),
+                    **_lineage_fields(raw),
                     rubric_verdict=rubric_verdict,
                 )
             )
             continue
         records.append(
-            ModelDelegateSkillAttemptRecord(
+            _attempt_record_with_lineage(
                 tier=str(raw.get("tier", "")),
                 backend_id=str(raw.get("backend_id", "")),
                 model_id=str(raw.get("model_id", "")),
@@ -610,6 +654,7 @@ def _attempt_records(
                 ),
                 error_message=str(raw.get("error_message", "")),
                 **_provider_facts(raw),
+                **_lineage_fields(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
                 # typed terminal always read "no segmentation attempted".
@@ -663,18 +708,20 @@ def _response_attempts_count(
 
 def _premium_counterfactual(
     result: dict[str, object],
+    *,
+    baseline_model: str,
 ) -> ModelPremiumCounterfactual | None:
-    """Build the pinned premium counterfactual from measured tokens (OMN-13355)."""
+    """Build the pinned premium counterfactual from measured tokens (OMN-13355).
+
+    OMN-17427: priced against the RESOLVED baseline the receipt's savings figure
+    uses, not a second guess at the model, so the counterfactual a row pins and
+    the saving the receipt states share one baseline.
+    """
     prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
-    premium_model = str(
-        result.get("model_cloud_baseline")
-        or result.get("baseline_model")
-        or DEFAULT_BASELINE_MODEL
-    )
     return build_premium_counterfactual(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        premium_model=premium_model,
+        premium_model=baseline_model,
     )
 
 
@@ -945,7 +992,9 @@ def _response_from_result(
             cost_usd=actual_cost_usd,
             cost_savings_usd=cost_savings_usd,
             frontier_costs_usd=_frontier_cost_estimates(result),
-            premium_counterfactual=_premium_counterfactual(result),
+            premium_counterfactual=_premium_counterfactual(
+                result, baseline_model=baseline.model
+            ),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
@@ -1011,14 +1060,21 @@ class HandlerDelegateSkill:
         caller lane and UUID session the caller named. Stamp them in one place
         so a future terminal path cannot forget them and the projection can
         join the run to its ticket and identify who issued it.
+
+        OMN-20383: the same place stamps ``command_id``, the id of the delivering
+        command message the OMN-18887 claim keys on, so two commands sharing a
+        correlation yield terminals that differ in it. No bound delivery (a
+        direct call) leaves it absent rather than substituting another id.
         """
         terminal = await self._dispatch_and_build_untagged_terminal(request)
-        attribution = {
+        delivery = current_dispatch_envelope()
+        attribution: dict[str, object] = {
             key: value
             for key, value in (
                 ("ticket_id", _request_ticket_id(request)),
                 ("caller_lane", _request_caller_lane(request)),
                 ("session_id", _request_session_id(request)),
+                ("command_id", None if delivery is None else delivery.envelope_id),
             )
             if value is not None
         }
@@ -1313,6 +1369,11 @@ class HandlerDelegateSkill:
         if not outcome.won and outcome.served_terminal is not None:
             replayed = terminal_from_record(outcome.served_terminal)
             if replayed is not None:
+                # OMN-20383: a replay answers the same delivery it was recorded
+                # for, so it keeps that command's id; a record written before
+                # the id existed is filled with this delivery's own.
+                if replayed.command_id is None:
+                    return replayed.model_copy(update={"command_id": delivery_id})
                 return replayed
 
         terminal = await self._dispatch_and_build_terminal(request)

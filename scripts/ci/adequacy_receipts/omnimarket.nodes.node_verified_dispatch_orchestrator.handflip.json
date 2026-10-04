@@ -1,0 +1,27 @@
+{
+  "base_ref": "0c3748bb3c194ebe386cd9576b2c152bf6eab8c5",
+  "canonical_handler_module": "omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator",
+  "legacy_handler_module": "omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator",
+  "node_id": "omnimarket.nodes.node_verified_dispatch_orchestrator",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:509483795a1c25b9afc6a8421184ccc5752ea2dd72980d6003e186de222345d9",
+      "sha256:da174cf36aa8271863c629e7072665913e6043aa820d1c7d2b68f712723693d0",
+      "sha256:08cf002600eaf1f9e6c38d9ec5b01f510764e2fbd1508b0ed87cdc4e0ce0e3af"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/test_delegation_dispatch_entrypoints.py::test_verified_dispatch_orchestrator_handle_matches_dispatch_corpus"
+    ]
+  },
+  "preserved_symbols": [
+    "HandlerVerifiedDispatchOrchestrator._create_linear_escalation_ticket",
+    "HandlerVerifiedDispatchOrchestrator._escalate",
+    "HandlerVerifiedDispatchOrchestrator._probe_surface",
+    "HandlerVerifiedDispatchOrchestrator._query_authoritative_surfaces",
+    "HandlerVerifiedDispatchOrchestrator._run_verifier",
+    "HandlerVerifiedDispatchOrchestrator._run_worker",
+    "HandlerVerifiedDispatchOrchestrator.dispatch"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

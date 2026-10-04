@@ -13,6 +13,7 @@ from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
+from omnimarket.models.delegation.model_size_band import ModelSizeBand
 
 
 class ModelRoutingDecision(BaseModel):
@@ -117,6 +118,17 @@ class ModelRoutingDecision(BaseModel):
         description=(
             "Declared provider identity for route. Paired with route; None is "
             "the legacy/unproven shape."
+        ),
+    )
+
+    size_band: ModelSizeBand | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Measured size band and its three features, each with its source "
+            "(OMN-20167). Computed at routing from the text and the class "
+            "contract, never taken from the caller. None when the contract "
+            "declares no thresholds for the class."
         ),
     )
 

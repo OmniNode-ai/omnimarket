@@ -69,7 +69,7 @@ jobs:
           repository: OmniNode-ai/omnibase_infra
           # dev, not main: main is release-synced, so a validator that has landed on the
           # integration branch would otherwise not be visible here until the next release.
-          ref: v0.38.61
+          ref: v0.38.65
           path: omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |

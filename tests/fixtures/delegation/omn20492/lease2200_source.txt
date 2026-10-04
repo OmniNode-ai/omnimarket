@@ -1,0 +1,15 @@
+Write the git commit message (a subject line of the form type(OMN-17427): summary, then a short body) for the commit described by the facts below. Facts only: use no PR number, sha, check name, test name or file name that is not listed.
+
+FACTS
+Pull request: OmniNode-ai/onex_change_control#12625
+Ticket: OMN-17427
+Files changed by the commit: drift/dod_receipts/OMN-17427/dod-OmniNode-ai-omnimarket-pr-3323-ci/command.yaml, drift/dod_receipts/OMN-17427/dod-OmniNode-ai-omnimarket-pr-3323/command.yaml, drift/occ_bindings/OMN-17427/occ-self-bind-pr-12625/command.yaml
+What the worker reported about the change:
+- **Conflict:** `contracts/OMN-17427.yaml` conflicted because `dev` had added the `omnibase_infra` PR #4524 entry and this branch added the `omnimarket` PR #3323 entries. I kept both sides.
+- **Receipts:** The contract's sha256 changed, so I updated `contract_sha256` to `820472a451bf…` in three files:
+  - the two `omnimarket-pr-3323` receipts
+  - the `occ-self-bind-pr-12625` binding
+- **Entry hashes:** I recomputed the per-entry hashes for the two #3323 evidence items, and they still match what the receipts pin.
+- **Not run:** I did not run any tests or the CI gates. `uvx` isn't on this host, so I couldn't run yamlfmt by hand. The commit hooks ran and left the contract's hash unchanged.
+Facts the worker recorded for the commit body:
+Both sides of the contracts/OMN-17427.yaml conflict were kept. The two omnimarket-pr-3323 receipts and the occ-self-bind-pr-12625 binding now pin the rebased contract sha256 820472a451bf. Entry hashes are unchanged.

@@ -27,8 +27,6 @@ runtime_profiles: [main]
 description: >
   Deterministic quality gate reducer for the delegation pipeline. Evaluates LLM output quality using DoD checks declared in the task-class contract: deterministic structural/schema checks (output_parses, signature_preserved, response_non_empty, etc.) BLOCK delegation result injection on failure but are reject-only pass-side diagnostics; heuristic pre-filters (no_refusal, min_length_chars, cites_* markers, methodical_analysis markers, sentence-count checks, etc.) are also reject-only and may not promote output to adequate by themselves (OMN-13370). Substantive task checks such as semantic_adequacy may serve as adequacy authority only when explicitly declared in the task contract. Reads dod_deterministic and dod_heuristic from ModelQualityGateInput (OMN-10616). Pure function, no I/O.
 
-  OMN-13367 adds the controlled, reproducible, auditable judge verdict event schema for non-verifiable task classes. The judge verdict event records the judge identity bundle and replay hash; it does not claim LLM judge inference is deterministic.
-
   OMN-18278 adds one class-independent floor evaluated ahead of every branch above, including the caller-declared response_contract branch: when the caller reports that the PROVIDER stopped generating because the output-token budget ran out (finish_reason=length), acceptance is vetoed as fail_deterministic at score 0.0 with the blocking rule not_truncated_by_output_budget named on the verdict. It is deliberately not a declared DoD check -- a declared check is one a task class may decline to name, and the two criteria written for this shape (final_artifact_only, response_non_empty) were named, ran, and passed a response that was nothing but the model's scratchpad. The reason carries the WEAK_OUTPUT prefix so the attempt CLIMBS: the next rung brings its own budget. A caller that supplies no signal records finish_reason=absent on the result, which is never read as evidence that a response completed.
 
   Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, FAIL_DETERMINISTIC.
@@ -50,17 +48,12 @@ event_bus:
     - "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
   publish_topics:
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
-    - "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
     # OMN-17445: the address the consume boundary answers at when
     # HandlerQualityGateIntent RAISES. APPENDED, never prepended: the
     # dispatch-result applier resolves this contract's SUCCESS terminal as the
     # FIRST publish topic (no top-level terminal_event is declared), so a
     # prepended failure terminal would silently become the success terminal.
     - "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
-    # OMN-20154: the judge's provider quota observation, delivered through
-    # node_event_emit_effect (spool, then bus) by the judge adapter, folded by
-    # node_projection_provider_quota. APPENDED for the same reason as above.
-    - "onex.evt.omnimarket.provider-quota-observed.v1"
 
 # OMN-17445 -- WHY THIS DECLARATION EXISTS.
 #
@@ -99,12 +92,6 @@ published_events:
   - event_type: "QualityGateResult"
     topic: "onex.evt.omnibase-infra.quality-gate-result.v1"
     description: "Quality gate verdict emitted by HandlerQualityGateIntent for the delegation orchestrator."
-  - event_type: "DelegationJudgeVerdictEvent"
-    topic: "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
-    model:
-      name: "ModelDelegationJudgeVerdictEvent"
-      module: "omnimarket.events.delegation_judge_verdict"
-    description: "Controlled, reproducible, auditable judge verdict for non-verifiable delegation classes. Includes judge_model, judge_model_version, judge_provider, rubric_id, rubric_hash, prompt_hash, input_hash, temperature, judge_node_version, reasoning_hash, verdict, actual_score, and event_hash."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -357,13 +344,14 @@ numeric_grounding:
 # uses no state word, a true state attached to the wrong subject inside one row,
 # and an invented reason all pass. Groups are generous synonym sets on purpose,
 # because a false refusal pushes a correct local answer up a quota-limited
-# ladder. This is a deterministic floor, not the faithfulness judge OMN-13470
-# adds; that judge stays the route for what this check cannot see.
+# ladder. This deterministic floor checks the declared grounding rules.
 claim_grounding:
   policy_version: "claim-grounding.v1"
   check_name: "claims_grounded"
   anchor_patterns:
-    - '(?<![\w-])OMN-\d{3,6}(?![\w-])'
+    # A ticket id that is a path segment or a file stem (contracts/OMN-17427.yaml)
+    # names a file, not the ticket's state (OMN-20492).
+    - '(?<![\w/-])OMN-\d{3,6}(?![\w/-])(?!\.\w)'
     - '(?:[A-Za-z][A-Za-z0-9._-]*)?#\d{1,7}(?![\w])'
     - '(?<![\w])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![\w])'
     - '(?<![\w-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-])'
@@ -376,6 +364,14 @@ claim_grounding:
   subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
   excluded_answer_spans:
     - '```.*?(?:```|\Z)'
+  # OMN-20492. The first word of a conventional commit subject is an imperative
+  # verb naming the change ("fix(OMN-17427): resolve the conflict"), not a state
+  # asserted about the ticket. E4 (OMN-20422) lost 3 of 19 faithful landing
+  # commit messages to "resolve" read as `completed`. Only a base-form verb is
+  # exempt: "resolved" or "resolving" there still asserts, and so does any state
+  # word later in the subject or in the body.
+  imperative_subject_patterns:
+    - '^[ \t]*[a-z]+(?:\([^)\n]*\))?!?:[ \t]+(?P<verb>(?![a-z]*(?:ed|ing)\b)[a-z]+)\b'
   state_groups:
     completed: [complet, done, finish, merg, resolv, shipp, landed, succe, passed, green]
     in_progress: [in progress, ongoing, underway, active, claim, resum, started, working, wip, taken over]
@@ -445,25 +441,7 @@ health_check:
       type: "handler"
       critical: true
 metadata:
-  description: "Delegation quality gate that evaluates LLM output using reject-only schema/format, length, refusal, and marker diagnostics plus explicit semantic adequacy authority, and records controlled, reproducible, auditable judge verdicts for non-verifiable classes."
-  judge_verdict_event:
-    topic: "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
-    score_source: "reproducible_judge"
-    terminology: "controlled_reproducible_auditable"
-    identity_bundle_fields:
-      - judge_model
-      - judge_model_version
-      - judge_provider
-      - rubric_id
-      - rubric_hash
-      - prompt_hash
-      - input_hash
-      - temperature
-      - judge_node_version
-      - reasoning_hash
-      - verdict
-      - actual_score
-    failure_semantics: "judge_failed verdict carries failure_kind/failure_message and actual_score=null, never a silent zero score"
+  description: "Delegation quality gate that evaluates LLM output using reject-only schema/format, length, refusal, and marker diagnostics plus explicit semantic adequacy authority."
   demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
   author: "OmniNode Team"
   license: "MIT"

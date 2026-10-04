@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_size_band_compute
+version: "1.0.0"
+description: Deterministic delegation size bands measured from text and contract edges
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_delegation_size_band_compute: omnimarket.nodes.node_delegation_size_band_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, routing, delegation, size]
+node_role: compute
+pack: "routing"
+display_name: "Delegation Size Band Compute"

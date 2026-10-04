@@ -48,13 +48,15 @@ def _contract(
     *,
     falsifiers: dict[str, str],
     extra_items: list[dict[str, Any]] | None = None,
+    proposed_by: str = "occ-autobind",
+    accepted_by: str = "author-uuid",
 ) -> dict[str, Any]:
     accepted = [
         {
             "label": label,
             "criterion_hash": "a" * 64,
-            "proposed_by": "occ-autobind",
-            "accepted_by": "author-uuid",
+            "proposed_by": proposed_by,
+            "accepted_by": accepted_by,
             "accepted_at": "2026-09-30T01:00:00Z",
         }
         for label in falsifiers
@@ -306,3 +308,94 @@ def test_caller_supplied_results_carry_no_acceptance_basis() -> None:
         ],
     )
     assert state.acceptance_basis is None
+
+
+def test_self_accepted_binding_refuses_the_verdict_and_names_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-17427: even a behavior proof cannot accept its author's binding."""
+    proof = {
+        "id": "dod-occ-diff-derived-behavior-proof-pr-3103",
+        "description": "diff-derived",
+        "source": "generated",
+        "checks": [
+            {
+                "check_type": "test_passes",
+                "check_value": "uv run pytest tests/test_a.py -q",
+                "cwd": "${OMNI_HOME}/omnimarket",
+            }
+        ],
+    }
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _FALSIFIER_A},
+            proposed_by="mac-occ-contracts",
+            accepted_by="mac-occ-contracts",
+            extra_items=[proof],
+        ),
+    )
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.error_message is not None
+    assert state.error_message.startswith("AC_BINDING_SELF_ACCEPTED")
+    assert state.acceptance_self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=mac-occ-contracts",
+    )
+    pr_check = next(check for check in state.checks if check.evidence_id == _PR_ITEM)
+    assert pr_check.draft_binds_ac == ("AC1",)
+
+
+def test_binding_accepted_by_another_lane_verifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _FALSIFIER_A},
+            proposed_by="mac-occ-contracts",
+            accepted_by="verify-2a21",
+        ),
+    )
+    assert state.status is EnumDodVerifyStatus.VERIFIED
+    assert state.acceptance_basis is EnumDodAcceptanceBasis.FALSIFIER_CHECKS
+    assert state.acceptance_self_accepted_bindings == ()
+
+
+def test_autobind_record_on_the_label_does_not_hide_a_self_accepted_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-17427: OMN-19405's shape -- a person-accepted autobind record shares the label."""
+    autobind = {
+        "id": "dod-OmniNode-ai-omnibase_core-pr-1754",
+        "description": "autobind original",
+        "source": "generated",
+        "checks": [{"check_type": "command", "check_value": "true"}],
+        "binds_ac": ["AC1"],
+        "ac_bindings": [
+            {
+                "label": "AC1",
+                "criterion_hash": "a" * 64,
+                "proposed_by": "occ-autobind",
+                "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+                "accepted_at": "2026-09-24T15:41:02Z",
+            }
+        ],
+    }
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _FALSIFIER_A},
+            proposed_by="evid-B13-2a21",
+            accepted_by="evid-B13-2a21",
+            extra_items=[autobind],
+        ),
+    )
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.error_message is not None
+    assert state.error_message.startswith("AC_BINDING_SELF_ACCEPTED")
+    assert state.acceptance_self_accepted_bindings == (
+        "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=evid-B13-2a21",
+    )

@@ -75,6 +75,7 @@ class HandlerDelegationReaper:
                 terminal = ModelDelegateSkillFailed(
                     status="failed",
                     correlation_id=ctx.correlation_id,
+                    command_id=claim.delivery_id,
                     task_type=ctx.task_type,
                     tenant_id=ctx.tenant_id,
                     provenance=ctx.provenance,

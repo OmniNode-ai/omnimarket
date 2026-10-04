@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
@@ -105,11 +106,13 @@ def test_multiple_keys_registered_when_urls_set(
 
 
 @pytest.mark.unit
-def test_glm_api_key_included_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LLM_GLM_URL", "https://api.z.ai")
-    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
-    # OMN-18695: the CREDENTIAL comes from the local secret store; the
-    # endpoint and model name stay config and stay in the environment.
+def test_glm_api_key_included_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+) -> None:
+    # OMN-17103: the glm endpoint and model name come from the bifrost contract.
+    bind_bifrost_glm_endpoint("http://glm.example/v4")
+    # OMN-18695: the CREDENTIAL comes from the local secret store.
     _register_local_secret("llm.glm.api_key", "secret-key")
     for var in (
         "LLM_CODER_URL",
@@ -123,9 +126,11 @@ def test_glm_api_key_included_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
-def test_glm_api_key_absent_when_not_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LLM_GLM_URL", "https://api.z.ai")
-    monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
+def test_glm_api_key_absent_when_not_set(
+    monkeypatch: pytest.MonkeyPatch,
+    bind_bifrost_glm_endpoint: Callable[[str | None], None],
+) -> None:
+    bind_bifrost_glm_endpoint("http://glm.example/v4")
     monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
     for var in (
         "LLM_CODER_URL",

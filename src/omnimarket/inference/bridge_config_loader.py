@@ -8,9 +8,16 @@ dict defaulted to empty and every reviewer key failed with
 ``ValueError: Unknown model_key`` (OMN-9351 Bug 1).
 
 This loader is the single source of truth for mapping canonical short keys
-(``qwen3-coder``, ``qwen3-14b``, ``deepseek-r1``, ``qwen3-next``, ``glm``)
+(``qwen3-coder``, ``qwen3-14b``, ``deepseek-r1``, ``qwen3-next``)
 onto the corresponding ``LLM_*_URL`` endpoint so nodes no longer duplicate
 the wiring inline.
+
+OMN-17103: the ``glm`` key is NOT read from ``LLM_GLM_URL`` /
+``LLM_GLM_MODEL_NAME``. It is derived from the ``provider: glm`` backend of the
+bifrost delegation contract (``bifrost_delegation.yaml``), the routing
+authority, so a GLM endpoint has exactly one declaration. While the contract
+parks the GLM rungs (``endpoint_url: null``, OMN-20173) the key is absent; it
+appears only when the contract declares an endpoint URL and a model name.
 
 Missing env vars simply omit the key — the loader never raises. That lets
 callers pass whatever subset of keys is actually configured on the current
@@ -56,6 +63,9 @@ from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
 from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_bifrost_path_binding,
+)
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     get_openrouter_models,
@@ -66,6 +76,9 @@ from omnimarket.inference.registry_context_windows import (
 from omnimarket.inference.secret_store_resolver import (
     resolve_api_key,
     resolve_api_key_async,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelDelegationBackendConfig,
 )
 
 # key -> (url env var, model_id env var)
@@ -80,15 +93,14 @@ _MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = (
     ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME"),
     ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME"),
     ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME"),
-    ("glm", "LLM_GLM_URL", "LLM_GLM_MODEL_NAME"),
 )
 
-# Fallback context windows for endpoint env vars that have no registry entry.
-# Add entries here only when the provider is not yet in model_registry_v1.yaml.
-# Remove entries when the provider graduates to the registry.
-_CONTEXT_WINDOW_FALLBACKS: Final[dict[str, int]] = {
-    "LLM_GLM_URL": 128_000,
-}
+# The ``glm`` key's provider, as the bifrost contract declares it (OMN-17103).
+_GLM_PROVIDER: Final[str] = "glm"
+_GLM_MODEL_KEY: Final[str] = "glm"
+# The contract carries no context window for a backend; the bridge's glm entry
+# has always used this figure.
+_GLM_CONTEXT_WINDOW: Final[int] = 128_000
 
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
 
@@ -105,8 +117,9 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     For each registry entry: if the URL env var is set, register the key
     with ``base_url``, ``model_id`` (from the model-name env var, empty string
     if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
-    GLM also picks up ``api_key`` when the ``llm.glm.api_key`` secret ref
-    resolves through the store.
+    The ``glm`` key is registered from the bifrost contract's GLM backend
+    instead (OMN-17103), picking up ``api_key`` when the ``llm.glm.api_key``
+    secret ref resolves through the store.
 
     OpenRouter models are registered as ``openrouter/<model_id>`` keys when the
     ``llm.openrouter.api_key`` secret ref resolves. Each entry carries the
@@ -168,16 +181,11 @@ def _build_static_model_configs(
 
     for key, url_env, model_env in _MODEL_KEY_REGISTRY:
         base_url = os.environ.get(url_env, "").strip()
-        if url_env == "LLM_GLM_URL":
-            base_url = glm_url_or_empty(base_url, source="bridge_config_loader.glm")
         if not base_url:
             continue
 
-        context_window = get_context_window_for_endpoint_env(
-            url_env,
-            fallback=_CONTEXT_WINDOW_FALLBACKS.get(url_env, 32_000),
-        )
-        cfg: dict[str, object] = {
+        context_window = get_context_window_for_endpoint_env(url_env, fallback=32_000)
+        model_configs[key] = {
             "base_url": base_url,
             "model_id": os.environ.get(model_env, ""),
             "transport": "http",
@@ -185,14 +193,87 @@ def _build_static_model_configs(
             "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
         }
 
-        if key == "glm" and glm_key is not None:
+    _register_contract_glm(model_configs, glm_key)
+    return model_configs
+
+
+def resolve_bifrost_backend(backend_id: str) -> ModelDelegationBackendConfig | None:
+    """Load a declared backend, preserving parked endpoints and load errors.
+
+    URLs are complete request URLs. A null endpoint never consults legacy env
+    vars. Model metadata remains available for cost projections when parked.
+    """
+    # Deferred for the same inference-package import cycle as the bridge loader.
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_bifrost_delegation_config,
+    )
+
+    binding = resolve_bifrost_path_binding()
+    config = load_bifrost_delegation_config(
+        config_path=binding.contract_path, overlay_path=binding.overlay_path
+    )
+    for backend in config.backends:
+        if backend.backend_id != backend_id:
+            continue
+        endpoint = (backend.endpoint_url or "").strip()
+        if backend.provider == _GLM_PROVIDER:
+            endpoint = glm_url_or_empty(
+                endpoint, source=f"bridge_config_loader.{backend_id}"
+            )
+        return backend.model_copy(
+            update={
+                "endpoint_url": endpoint or None,
+                "model_name": (backend.model_name or "").strip() or None,
+            }
+        )
+    return None
+
+
+def _register_contract_glm(
+    model_configs: dict[str, dict[str, object]],
+    glm_key: SecretStr | None,
+) -> None:
+    """Register the ``glm`` key from the bifrost contract's GLM backend (OMN-17103).
+
+    The endpoint URL and model name are read from the first ``provider: glm``
+    backend that declares both; a parked backend (``endpoint_url: null``,
+    OMN-20173) registers nothing. A Coding Plan URL is still treated as unset
+    (OMN-20173). A contract that cannot be loaded raises, so a broken routing
+    contract is not mistaken for "GLM not configured".
+    """
+    # Deferred: the bifrost loader imports ``omnimarket.inference`` (provider
+    # surfaces), whose package ``__init__`` imports this module, so a top-level
+    # import here is a cycle.
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_bifrost_delegation_config,
+    )
+
+    binding = resolve_bifrost_path_binding()
+    config = load_bifrost_delegation_config(
+        config_path=binding.contract_path, overlay_path=binding.overlay_path
+    )
+    for backend in config.backends:
+        if backend.provider != _GLM_PROVIDER:
+            continue
+        base_url = glm_url_or_empty(
+            (backend.endpoint_url or "").strip(), source="bridge_config_loader.glm"
+        )
+        model_id = (backend.model_name or "").strip()
+        if not base_url or not model_id:
+            continue
+        cfg: dict[str, object] = {
+            "base_url": base_url,
+            "model_id": model_id,
+            "transport": "http",
+            "context_window": _GLM_CONTEXT_WINDOW,
+            "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
+        }
+        if glm_key is not None:
             resolved = glm_key.get_secret_value().strip()
             if resolved:
                 cfg["api_key"] = resolved
-
-        model_configs[key] = cfg
-
-    return model_configs
+        model_configs[_GLM_MODEL_KEY] = cfg
+        return
 
 
 def _register_openrouter_models(
@@ -245,4 +326,5 @@ def _register_openrouter_models(
 __all__: list[str] = [
     "load_inference_bridge_config_from_env",
     "load_inference_bridge_config_from_env_async",
+    "resolve_bifrost_backend",
 ]

@@ -68,7 +68,8 @@ Four independent checks; all must be satisfied for success:
    (advisory / shadow / not in the old ``ci-summary`` ``needs``). This sweep is
    what makes the poller *stricter* than the old gate: any failed ``ci.yml`` job
    not on the allowlist fails the summary, even one the old ``needs`` loop never
-   listed. Failed ``Tests (Split …)`` splits are caught here too.
+   listed. Failed ``Tests (Split …)`` splits are caught here too. Non-exempt
+   running rows hold the verdict PENDING and are re-polled until completed.
 
 The strict + skippable gates together are the **completeness anchor**: requiring
 them present+good proves the whole substantive matrix actually ran and passed,
@@ -173,9 +174,9 @@ DETECT_CHANGES_JOB = "Detect Changes"
 # — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
 # legitimate if:" derivation above is otherwise unchanged for every other row.
 STRICT_GATE_JOBS: tuple[str, ...] = (
-    # OCC preflight dependency — step short-circuits to exit 0 on non-PR events;
+    # Repo-owned evidence dependency — non-PR events keep their existing gates;
     # no ``if:``, so the job is always present + completed.
-    "OCC Preflight Dependency",
+    "Repo Evidence Dependency",
     # zone-filter reusable — it IS the docs-only classifier, so it always runs
     # (it never skips itself); only ``needs: occ-preflight``.
     "zone-filter / Zone Filter (docs-only check)",
@@ -185,6 +186,7 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Compliance Sweep",  # compliance-sweep — needs occ-preflight, no if:
     "Core-Only Install Gate",  # core-only-install — needs occ-preflight, no if:
     "Customer Clean-Install Delegate Gate",  # customer-clean-install (OMN-16200) — needs occ-preflight, if: always()
+    "Sibling Release Compatibility Gate (OMN-20381)",  # sibling-release-compat (OMN-20381) — needs occ-preflight, if: always()
     # contract-compliance — its ``if:`` is
     # ``occ-preflight.result == 'success' && (pull_request||merge_group||push)``;
     # the event clause is always true (those are the only triggers), so it never
@@ -323,6 +325,12 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # default-deny sweep, and this row makes a skipped or absent conclusion fail
     # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Canonical File Shape (OMN-20304)",  # canonical-file-shape
+    # OMN-18010: release staleness moved from OCC under retirement plan S8,
+    # option (b) of addendum section 11 question 2 (B3). Registered on the
+    # same terms: a FAILURE already fails CI Summary through the default-deny
+    # sweep, and this row makes a skipped or absent conclusion fail closed too.
+    # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
+    "Release Staleness (OMN-18010)",  # release-staleness
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
@@ -473,6 +481,9 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # receipt exits 1, real committed receipt exits 0). Pinned by
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
+    # OMN-20073: repo-owned evidence is enforced beside OCC during cutover.
+    # Retiring the OCC contexts requires OR.2 queue support and pilot proof.
+    "repo-evidence / dod-verify",
     # OMN-18434: git-env-scrub.yml, standalone and unconditional on
     # pull_request, so it carries no paths filter and is always present. A test
     # that shells out to git inherits GIT_DIR from the hook running it and
@@ -999,7 +1010,8 @@ def evaluate(
         )
     )
 
-    # (4) Default-deny sweep over every OTHER present+completed job. Failed
+    # (4) Default-deny sweep over every OTHER present job: fail completed
+    #     refusals and WAIT for running rows (PENDING, re-polled). Failed
     #     "Tests (Split N/M)" splits are caught here (they are not gate_names
     #     and not allowlisted).
     sweep_failures = sorted(
@@ -1011,6 +1023,15 @@ def evaluate(
         and j.status == "completed"
         and name not in provisional_names
         and j.conclusion not in GOOD_CONCLUSIONS
+    )
+    sweep_running = sorted(
+        j.name
+        for name, j in latest.items()
+        if name != self_name
+        and name not in gate_names
+        and not _is_allowlisted(name, allowlist)
+        and j.status != "completed"
+        and name not in provisional_names
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
@@ -1038,6 +1059,7 @@ def evaluate(
             matrix_state,
             docs_only=docs_only,
             relaxed=relaxed,
+            sweep_running=sweep_running,
             provisional_own_cancellations=provisional_own_cancellations,
         )
 
@@ -1046,6 +1068,7 @@ def evaluate(
         return EXIT_FAILURE, _rep("FAILURE")
     if (
         gate_missing_or_pending
+        or sweep_running
         or matrix_state == "pending"
         or provisional_own_cancellations
     ):
@@ -1066,6 +1089,7 @@ def _report(
     *,
     docs_only: bool = False,
     relaxed: frozenset[str] = frozenset(),
+    sweep_running: list[str] | None = None,
     provisional_own_cancellations: list[str] | None = None,
 ) -> str:
     lines = [f"CI Summary verdict: {verdict}", f"  jobs observed: {len(latest)}"]
@@ -1112,6 +1136,11 @@ def _report(
         lines.append(f"  skippable-gate failures: {', '.join(skippable_failures)}")
     if sweep_failures:
         lines.append(f"  default-deny sweep failures: {', '.join(sweep_failures)}")
+    if sweep_running:
+        lines.append(
+            "  default-deny sweep rows still running (PENDING, re-polled): "
+            + ", ".join(sweep_running)
+        )
     if gate_missing_or_pending:
         lines.append(f"  gates missing/pending: {', '.join(gate_missing_or_pending)}")
     if provisional_own_cancellations:
@@ -1564,6 +1593,23 @@ def external_layer_applies(event: str | None) -> bool:
     return event in MERGE_ADMISSION_EVENTS or event not in _KNOWN_NON_ADMISSION_EVENTS
 
 
+def expected_external_contexts(event: str | None) -> tuple[str, ...]:
+    """Keep existing queue enforcement until OR.2 supports caller evidence there.
+
+    The pinned repo-evidence reusable currently refuses merge_group, and its
+    caller does not trigger on that event. Only that explicit event keeps the
+    previous required set; missing or unknown events require repo evidence.
+    """
+
+    if event == "merge_group":
+        return tuple(
+            context
+            for context in EXPECTED_EXTERNAL_CONTEXTS
+            if context != "repo-evidence / dod-verify"
+        )
+    return EXPECTED_EXTERNAL_CONTEXTS
+
+
 def evaluate_external(
     check_runs: list[dict[str, object]] | None,
     *,
@@ -1837,6 +1883,7 @@ def main(argv: list[str] | None = None) -> int:
         # test green.
         ext_code, ext_report = evaluate_external(
             check_runs,
+            expected=expected_external_contexts(args.event),
             actor=args.actor,
             now=observation_time,
             head_workflow_runs=_load_workflow_runs(args.head_workflow_runs_file),
