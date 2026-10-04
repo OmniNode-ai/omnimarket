@@ -3292,6 +3292,10 @@ class EvidenceCollector:
         # falsifier is a FAILED item in the verdict rather than a sentence in a
         # ticket. A goal-scoped inline run has no ticket criteria and derives
         # nothing.
+        # OMN-19267: only the contract's own items can be supersession targets.
+        # A marker is written against the contract; a derived falsifier is not
+        # in it, so no marker may retire one, whatever ids coincide.
+        declared_count = len(dod_items)
         if inline_items is None:
             derived_items, self.acceptance_summary = derive_falsifier_items(
                 raw,
@@ -3316,7 +3320,7 @@ class EvidenceCollector:
         if audience_failures:
             return audience_failures
 
-        supersession = self._resolve_supersessions(dod_items)
+        supersession = self._resolve_supersessions(dod_items[:declared_count])
 
         # OMN-15390 (remediation): resolving the markers only says which EDGES
         # are well-formed. Whether an edge actually RETIRES its target is a
@@ -3370,7 +3374,7 @@ class EvidenceCollector:
         for index, item in enumerate(dod_items):
             if index in supersession.malformed or index in unrepresentable:
                 continue
-            if (id_at[index] or None) in target_ids:
+            if index < declared_count and (id_at[index] or None) in target_ids:
                 continue
             executed[index] = self._execute_item(
                 item,
@@ -3444,7 +3448,9 @@ class EvidenceCollector:
             # carrier still hard-fails via the malformed-reason branch further
             # down — only the carrying item's OWN retirement path changed.
             carrier_index = (
-                in_effect.get(item_id_str) if item_id_str is not None else None
+                in_effect.get(item_id_str)
+                if item_id_str is not None and index < declared_count
+                else None
             )
             if carrier_index is not None:
                 # OMN-15382: an item a LATER, VERIFIED item in this contract
