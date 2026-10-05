@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20535"
+title: "Every ledger row missing from the database ledger is accounted for as failure-log, journal dead-letter or journal pending, and none is unexplained"
+summary: "The work-ledger parity check gains --explain: each row in the markdown ledger and missing from the projection is classified as failure-log, journal-dead-letter, journal-pending or unexplained, from the emitting host's dual-write failure log, hook-emit journal, drainer quarantine and drainer loss log, each read from the producer's own path and reported as absent rather than read as empty."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-parity-explain-classifies-missing-rows"
+    statement: |-
+      The parity check must classify every row missing from the projection into one of four loss classes, from evidence on the emitting host, so a missing row is never silently unexplained when a record of its loss exists.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: parity takes --explain and classifies each missing row as failure-log, journal-dead-letter, journal-pending or unexplained, and a journal record the drainer deleted is classified journal-dead-letter, never unexplained -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k explain -q
+evidence_requirements:
+  - kind: "tests"
+    description: "parity --explain classifies missing rows by the producers' evidence."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k explain -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20535-ac3-parity-explain"
+    description: "The explain tests are absent at the merge base, so the bound command fails there and passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k explain -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
