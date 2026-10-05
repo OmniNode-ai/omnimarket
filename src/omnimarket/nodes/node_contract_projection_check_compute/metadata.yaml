@@ -1,0 +1,24 @@
+name: node_contract_projection_check_compute
+version: 1.0.0
+description: Pure definition-B projection contract checks emitting the canonical validation report
+omnibase_core_compat: '>=0.40.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_contract_projection_check_compute: omnimarket.nodes.node_contract_projection_check_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+- omnibase_core>=0.40.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- validation
+- projection
+- deterministic
+pack: core
+display_name: Projection Contract Check
+node_role: compute

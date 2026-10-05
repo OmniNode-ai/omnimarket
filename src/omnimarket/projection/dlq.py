@@ -21,7 +21,7 @@ runner emits a DURABLE failure signal ON THE BUS instead of dropping:
   payload is recoverable by correlation.
 
 A projection handler that can raise ``ValidationError`` without routing to a DLQ
-topic is rejected by ``scripts/ci/check_projection_dlq_path.py`` (CI +
+topic is rejected by the ``dlq`` rule of ``node_contract_projection_check_compute`` (CI +
 pre-commit).
 """
 
