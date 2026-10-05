@@ -7,10 +7,29 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
+    HandlerProjectionContractCheck,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather import (
+    HandlerContractProjectionGather,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.models import (
+    ModelContractProjectionGatherRequest,
+)
 from omnimarket.validators.handler_event_type_source import scan_paths
 from scripts.ci.check_aiokafka_construction_auth import main as aiokafka_main
-from scripts.ci.check_projection_dlq_path import _scan as scan_projection_dlq
 from scripts.ci.check_watchdog_topic_authority import scan as scan_watchdog
+
+
+def scan_projection_dlq(root: Path, paths: list[Path]) -> list[str]:
+    """The DLQ rule over explicit paths, as pre-commit hands them to the node's runtime."""
+    check_input = HandlerContractProjectionGather().handle(
+        ModelContractProjectionGatherRequest(
+            root=str(root), rule="dlq", filenames=tuple(str(p) for p in paths)
+        )
+    )
+    report = HandlerProjectionContractCheck().handle(check_input)
+    return [f.message for f in report.findings if f.rule_id == "projection-dlq-path"]
 
 
 @pytest.mark.unit  # type: ignore[untyped-decorator]
