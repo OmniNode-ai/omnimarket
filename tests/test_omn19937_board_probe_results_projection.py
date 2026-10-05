@@ -349,7 +349,7 @@ def test_sql_uses_the_declared_key_guard_and_latest_per_subject_order() -> None:
 
 
 @pytest.fixture
-def projection_client(monkeypatch: pytest.MonkeyPatch) -> Iterable[TestClient]:
+def projection_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     cfg = build_projection_topic_map()[TOPIC_EXPOSURE]
     source = TableRowSource()
     rows = [
