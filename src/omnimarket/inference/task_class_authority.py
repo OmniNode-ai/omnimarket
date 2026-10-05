@@ -379,7 +379,7 @@ class ModelTaskClassExecutionBudget(BaseModel):
     terminal_delivery_margin_seconds: int = Field(ge=1)
 
 
-class EnumTaskClassPromptShape(StrEnum):
+class EnumPromptShape(StrEnum):
     """How the delegate states a task of one class to the model (OMN-19432).
 
     ``plain`` sends the caller's prompt as written. ``facts_first`` sends the
@@ -789,8 +789,8 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
     complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
-    prompt_shape: EnumTaskClassPromptShape = Field(
-        default=EnumTaskClassPromptShape.PLAIN,
+    prompt_shape: EnumPromptShape = Field(
+        default=EnumPromptShape.PLAIN,
         description=(
             "How a task of this class is stated to the model (OMN-19432). "
             "Absent means the caller's prompt goes out as written."
@@ -853,7 +853,7 @@ class ModelTaskClassAuthority(BaseModel):
         wanting = sorted(
             name
             for name, entry in self.task_classes.items()
-            if entry.prompt_shape is EnumTaskClassPromptShape.FACTS_FIRST
+            if entry.prompt_shape is EnumPromptShape.FACTS_FIRST
         )
         if wanting and self.facts_first_prompt is None:
             raise ValueError(
@@ -1271,7 +1271,7 @@ def resolve_task_class_output_contract(task_class: str) -> ModelTaskClassOutputC
     return entry.output_contract
 
 
-def resolve_task_class_prompt_shape(task_class: str) -> EnumTaskClassPromptShape:
+def resolve_task_class_prompt_shape(task_class: str) -> EnumPromptShape:
     """Return how ``task_class`` states a task, or ``plain`` for an unknown class.
 
     An unknown class sends the prompt as written: the shape is an addition to a
@@ -1279,7 +1279,7 @@ def resolve_task_class_prompt_shape(task_class: str) -> EnumTaskClassPromptShape
     """
     entry = _delegation_task_class_authority().task_classes.get(task_class)
     if entry is None:
-        return EnumTaskClassPromptShape.PLAIN
+        return EnumPromptShape.PLAIN
     return entry.prompt_shape
 
 
@@ -1290,9 +1290,9 @@ def resolve_facts_first_prompt_policy() -> ModelFactsFirstPromptPolicy | None:
 
 __all__ = [
     "EnumGatewayExposure",
+    "EnumPromptShape",
     "EnumQualityRuleEnforcement",
     "EnumRoutingAvailabilityStatus",
-    "EnumTaskClassPromptShape",
     "EnumTaskTypeResolution",
     "ModelBandEdges",
     "ModelDelegationOutputAuthority",
