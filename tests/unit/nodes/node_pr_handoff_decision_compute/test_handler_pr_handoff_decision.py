@@ -68,23 +68,39 @@ def _waits(decision: ModelPrHandoffDecision, reason: EnumPrHandoffWaitReason) ->
     assert decision.wait_reason is reason
 
 
-def test_ready_rows_are_handoff_row_sh_rows_stamped_at_now() -> None:
+def test_ready_rows_are_handoff_row_sh_rows_stamped_at_the_request() -> None:
     decision = _decide()
     assert decision.verdict is EnumPrHandoffVerdict.READY
-    stamp = b.stamp(b.at(60))
+    stamp = b.stamp(b.at(0))
     ref = b.KEY
     assert decision.msg_id == f"{stamp}-{b.LANE}"
     assert decision.rows == (
         f"{stamp} | MSG | from={b.LANE} | to=landing-controller | id={stamp}-{b.LANE} | "
         f"ticket={b.TICKET} | source=title | repo={b.REPO} | pr={ref} | head={b.HEAD} | "
         f"needs=land | Handoff from {b.LANE}: {ref} is ready to land at this head. "
-        f"Send a red back to {b.LANE} by MSG. Decided on the PR watcher's observation by "
-        "node_pr_handoff_orchestrator (OMN-20636).\n"
+        f"Send a red back to {b.LANE} by MSG. Decided at {b.stamp(b.at(60))} on the PR "
+        f"watcher's observation of {b.stamp(b.at(60))} by node_pr_handoff_orchestrator "
+        "(OMN-20636).\n"
         f"{stamp} | TERMINAL | lane={b.LANE} | ticket={b.TICKET} | outcome=handed-off | "
         f"repo={b.REPO} | pr={ref} | head={b.HEAD} | handed_to=landing-controller | "
         f"msg={stamp}-{b.LANE} | friction=none | delegated=0 delegation_reason=no-text-or-code"
         f" | Handed {ref} to landing-controller by MSG; this lane has stopped touching the PR.\n"
     )
+
+
+def test_two_prs_handed_off_by_one_lane_on_one_watcher_tick_get_distinct_msg_ids() -> (
+    None
+):
+    """Codex review 10: the MSG id follows the request, not the shared observation tick."""
+    first = _decide(request={"requested_at": b.at(0)})
+    second = _decide(request={"requested_at": b.at(3)})
+    assert first.msg_id != second.msg_id
+
+
+def test_an_observation_older_than_the_watcher_resync_window_is_not_trusted() -> None:
+    """Codex review 1: a cached view from a stopped watcher does not authorize a handoff."""
+    _waits(_decide(-(91 * 60)), W.OBSERVATION_STALE)
+    assert _decide(-(89 * 60)).verdict is EnumPrHandoffVerdict.READY
 
 
 def test_session_mode_closes_with_status_and_msg_only_with_nothing() -> None:
@@ -192,13 +208,13 @@ def test_lab_proof_rules() -> None:
         source=EnumPrHandoffLabProofSource.BODY, line="Lab: host=h202 observed=ok"
     )
     assert _decide(request={"lab_proof": body}).verdict is EnumPrHandoffVerdict.READY
-    exempt = ModelPrHandoffLabProof(
-        source=EnumPrHandoffLabProofSource.EXEMPT_VERSION_BUMP
+    multi_line = ModelPrHandoffLabProof(
+        source=EnumPrHandoffLabProofSource.COMMENT,
+        line=f"Lab: proof posted after the push\nhead={b.HEAD} host=h202 observed=ok",
     )
-    _refused(_decide(request={"lab_proof": exempt}), E.MISSING_LAB_PROOF)
-    bot = _decide(request={"lab_proof": exempt}, observation={"author_is_bot": True})
-    assert bot.rows is not None
-    assert "Lab line exempt: bot version-only bump" in bot.rows
+    assert (
+        _decide(request={"lab_proof": multi_line}).verdict is EnumPrHandoffVerdict.READY
+    )
 
 
 def test_invalid_requests() -> None:
@@ -212,7 +228,9 @@ def test_invalid_requests() -> None:
 def test_the_decision_is_a_function_of_its_inputs() -> None:
     first, second = _decide(), _decide()
     assert first == second
-    later = _decide(now_offset=60 + int(timedelta(minutes=1).total_seconds()))
+    later = _decide(
+        request={"requested_at": b.at(int(timedelta(minutes=1).total_seconds()))}
+    )
     assert later.rows != first.rows
 
 

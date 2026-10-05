@@ -12,22 +12,25 @@ from omnimarket.models.pr_handoff.enum_pr_handoff_lab_proof_source import (
 
 
 class ModelPrHandoffLabProof(BaseModel):
-    """One Lab line, verbatim, and where the lane read it.
+    """The lab proof, verbatim, and where the lane read it.
 
     The PR watcher's observation carries neither the PR body nor its comments,
-    so the requesting lane quotes the line it read (the same read pr-handoff
-    makes today). The decision compute checks the line against the live head:
-    a comment's line must name ``head=<sha>`` of the live head, a body line
-    must start with Lab, and the version-bump exemption needs a bot author.
+    so the requesting lane quotes what it read (the same read pr-handoff makes
+    today). The decision compute checks it against the live head: a comment
+    must have a line starting Lab and name ``head=<sha>`` of the live head, and
+    a body line must contain Lab. Local mode's bot version-bump exemption is
+    not offered here: it needs the PR's changed files, which no observation
+    carries (pr-handoff --via local keeps it).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source: EnumPrHandoffLabProofSource
     line: str = Field(
-        default="",
-        max_length=2000,
-        description="The Lab line verbatim; empty only for the version-bump exemption.",
+        ...,
+        min_length=1,
+        max_length=4000,
+        description="The body's Lab line, or the whole author comment that carries one, verbatim.",
     )
 
 

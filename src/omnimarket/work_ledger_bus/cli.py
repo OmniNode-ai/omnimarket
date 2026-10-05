@@ -231,6 +231,16 @@ _HANDOFF_ANSWERS: dict[str, type[BaseModel]] = {
     show_default=True,
     help="How long to wait for the orchestrator's first answer; 0 publishes only.",
 )
+@click.option(
+    "--settle-s",
+    type=click.FloatRange(min=0),
+    default=5.0,
+    show_default=True,
+    help=(
+        "After an acceptance, how long to keep listening for a terminal: a refusal "
+        "or a handoff decided in the same leg is published right behind it."
+    ),
+)
 def handoff_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -238,8 +248,13 @@ def handoff_command(
     kafka_bootstrap: str | None,
     request_file: str,
     wait_s: float,
+    settle_s: float,
 ) -> None:
-    """Publish one PR handoff request; print the orchestrator's first answer as JSON.
+    """Publish one PR handoff request; print the orchestrator's answer as JSON.
+
+    The answer printed is a terminal (handed off or failed) when one arrives
+    within the wait, or within ``--settle-s`` of the acceptance; otherwise the
+    acceptance, after which the orchestrator answers on the bus alone.
 
     The decision is node_pr_handoff_orchestrator's, on the PR watcher's live
     observations; this verb decides nothing. Exit 0 accepted or handed off,
@@ -311,6 +326,13 @@ def handoff_command(
                     topic, answer = await asyncio.wait_for(
                         answers.get(), timeout=wait_s
                     )
+                    if isinstance(answer, ModelPrHandoffAccepted):
+                        # The same leg may refuse or hand off right behind the
+                        # acceptance; a lane told "accepted" must not miss it.
+                        with contextlib.suppress(TimeoutError):
+                            topic, answer = await asyncio.wait_for(
+                                answers.get(), timeout=settle_s
+                            )
                 except TimeoutError:
                     click.echo(
                         json.dumps(

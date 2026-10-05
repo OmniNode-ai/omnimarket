@@ -35,10 +35,11 @@ pytestmark = pytest.mark.unit
 
 
 def _with_orchestrator(
-    monkeypatch: pytest.MonkeyPatch, *, answer: bool
+    monkeypatch: pytest.MonkeyPatch, *, answer: bool, observed: bool = False
 ) -> list[ModelPrHandoffRequested]:
     seen: list[ModelPrHandoffRequested] = []
     orchestrator = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    pending_observation = [b.observation(b.at(-5))] if observed else []
 
     @contextlib.asynccontextmanager
     async def open_bus(
@@ -57,6 +58,8 @@ def _with_orchestrator(
             seen.append(request)
             if not answer:
                 return
+            while pending_observation:
+                await orchestrator.handle(pending_observation.pop())
             for event in await orchestrator.handle(request):
                 topic = publish_topic_for(event)
                 envelope = ModelEventEnvelope[dict[str, object]](
@@ -80,8 +83,10 @@ def _with_orchestrator(
     return seen
 
 
-def _invoke(tmp_path: Path, wait_s: str) -> tuple[int, str, ModelPrHandoffRequested]:
-    request = b.request(uuid4())
+def _invoke(
+    tmp_path: Path, wait_s: str, **overrides: Any
+) -> tuple[int, str, ModelPrHandoffRequested]:
+    request = b.request(uuid4(), **overrides)
     path = tmp_path / "request.json"
     path.write_text(request.model_dump_json())
     result = CliRunner().invoke(
@@ -121,3 +126,15 @@ def test_no_answer_in_time_is_pending_and_publish_only_is_published(
     code, output, _ = _invoke(tmp_path, "0")
     assert code == 0
     assert json.loads(output)["status"] == "published"
+
+
+def test_a_refusal_right_behind_the_acceptance_is_what_is_printed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Codex review 12: accepted then failed in one leg is reported as failed (exit 4)."""
+    _with_orchestrator(monkeypatch, answer=True, observed=True)
+    code, output, _ = _invoke(tmp_path, "5", lab_proof=None)
+    assert code == 4, output
+    printed = json.loads(output)
+    assert printed["topic"] == "onex.evt.omnimarket.pr-handoff-failed.v1"
+    assert printed["answer"]["error_code"] == "missing_lab_proof"

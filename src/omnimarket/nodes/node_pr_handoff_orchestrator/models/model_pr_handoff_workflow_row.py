@@ -13,9 +13,17 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from omnimarket.events.pr_state import ModelPrStateEmitRequest
 from omnimarket.models.pr_handoff import (
     EnumPrHandoffState,
+    ModelPrHandoffAccepted,
     ModelPrHandoffDecision,
+    ModelPrHandoffFailed,
+    ModelPrHandoffHandedOff,
+    ModelPrHandoffLedgerAppendCommand,
     ModelPrHandoffRequested,
 )
+
+# How many answered request ids a row remembers, so a replayed request that
+# already has its terminal is dropped instead of starting again.
+ANSWERED_MEMORY = 64
 
 
 class ModelPrHandoffEpisode(BaseModel):
@@ -49,6 +57,32 @@ class ModelPrHandoffWorkflowRow(BaseModel):
     handoff_key: str = Field(..., min_length=3)
     observation: ModelPrStateEmitRequest | None = None
     episode: ModelPrHandoffEpisode | None = None
+    answered: tuple[str, ...] = Field(
+        default=(),
+        description="Correlation ids of the newest requests that already have their terminal.",
+    )
+    last_message_key: str | None = Field(
+        default=None,
+        description="The message the last leg consumed; a redelivery of it re-emits last_emitted.",
+    )
+    last_emitted: tuple[
+        ModelPrHandoffAccepted
+        | ModelPrHandoffHandedOff
+        | ModelPrHandoffFailed
+        | ModelPrHandoffLedgerAppendCommand,
+        ...,
+    ] = Field(
+        default=(),
+        description=(
+            "What the last leg emitted. Until the rows are durable with an outbox "
+            "(OMN-20638), a publish lost after the row was written is recovered by "
+            "the message's redelivery, which re-emits these."
+        ),
+    )
 
 
-__all__: list[str] = ["ModelPrHandoffEpisode", "ModelPrHandoffWorkflowRow"]
+__all__: list[str] = [
+    "ANSWERED_MEMORY",
+    "ModelPrHandoffEpisode",
+    "ModelPrHandoffWorkflowRow",
+]

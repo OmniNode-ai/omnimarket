@@ -51,10 +51,16 @@ from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.core import (
 from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.row_store import (
     InMemoryPrHandoffRowStore,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
+    HandlerWorkLedgerAppendEffect,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.models import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
+    ModelAppendCommandResult,
 )
 from tests.chains.chain_assert import ChainEvent, ChainRecorder
 
@@ -181,10 +187,50 @@ class ScriptedLedger:
 
 
 @dataclass
+class InMemoryLedgerFile:
+    """The ledger of record for a chain: the real append handler writes here."""
+
+    text: str = ""
+
+    def append(self, rows: str) -> ModelAppendCommandResult:
+        self.text += rows if rows.endswith("\n") else rows + "\n"
+        return ModelAppendCommandResult(exit_code=0)
+
+    def read_text(self) -> str:
+        return self.text
+
+
+@dataclass
+class RealLedger:
+    """node_work_ledger_append_effect's real handler on an in-memory ledger.
+
+    ``lost`` receipts are dropped after the handler appended, the way a receipt
+    lost on the bus would be; the append itself happens.
+    """
+
+    lost: int = 0
+    ledger: InMemoryLedgerFile = field(default_factory=InMemoryLedgerFile)
+    requests: list[ModelWorkLedgerAppendRequest] = field(default_factory=list)
+
+    async def append(
+        self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float
+    ) -> ModelWorkLedgerAppendReceipt | None:
+        del timeout_s
+        self.requests.append(request)
+        receipt = HandlerWorkLedgerAppendEffect(
+            runner=self.ledger, reader=self.ledger, host_name="h200"
+        ).handle(request)
+        if self.lost:
+            self.lost -= 1
+            return None
+        return receipt
+
+
+@dataclass
 class HandoffRun:
     """One workflow over one in-memory bus; ``events`` in publication order."""
 
-    ledger: ScriptedLedger
+    ledger: ScriptedLedger | RealLedger
     bus: EventBusInmemory = field(
         default_factory=lambda: EventBusInmemory(
             environment="test", group="pr-handoff-chain"
@@ -239,10 +285,15 @@ class HandoffRun:
 
 
 async def drive(
-    ledger_answers: Sequence[EnumWorkLedgerAppendStatus | None],
+    ledger_answers: Sequence[EnumWorkLedgerAppendStatus | None] | RealLedger,
     steps: Sequence[tuple[BaseModel, UUID]],
 ) -> HandoffRun:
-    run = HandoffRun(ledger=ScriptedLedger(list(ledger_answers)))
+    ledger = (
+        ledger_answers
+        if isinstance(ledger_answers, RealLedger)
+        else ScriptedLedger(list(ledger_answers))
+    )
+    run = HandoffRun(ledger=ledger)
     for message, cid in steps:
         await run.send(message, cid=cid)
     return run
@@ -261,6 +312,8 @@ __all__ = [
     "REPO",
     "TICKET",
     "HandoffRun",
+    "InMemoryLedgerFile",
+    "RealLedger",
     "ScriptedLedger",
     "at",
     "drive",

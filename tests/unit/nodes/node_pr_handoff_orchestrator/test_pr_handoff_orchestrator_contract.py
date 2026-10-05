@@ -17,6 +17,7 @@ from omnimarket.models.pr_handoff import (
     EnumPrHandoffLedgerStatus,
     EnumPrHandoffState,
     ModelPrHandoffFailed,
+    ModelPrHandoffHandedOff,
     ModelPrHandoffLedgerAppendCommand,
     ModelPrHandoffLedgerAppended,
 )
@@ -196,7 +197,8 @@ async def test_drops() -> None:
     assert await handler.handle(b.observation(b.at(50), draft=True)) == []
     first = await handler.handle(b.request(cid, requested_at=b.at(110)))
     assert [type(e).__name__ for e in first][:1] == ["ModelPrHandoffAccepted"]
-    assert await handler.handle(b.request(cid, requested_at=b.at(110))) == []
+    # An immediate redelivery re-emits what the leg emitted and writes nothing.
+    assert await handler.handle(b.request(cid, requested_at=b.at(110))) == first
     command = first[-1]
     assert isinstance(command, ModelPrHandoffLedgerAppendCommand)
     assert command.ledger_request_id == ledger_request_id_for(cid)
@@ -209,3 +211,115 @@ async def test_drops() -> None:
         answered_at=b.at(120),
     )
     assert await handler.handle(wrong_attempt) == []
+
+
+def _answer(
+    command: ModelPrHandoffLedgerAppendCommand,
+    status: EnumPrHandoffLedgerStatus,
+    attempt: int,
+) -> ModelPrHandoffLedgerAppended:
+    return ModelPrHandoffLedgerAppended(
+        correlation_id=command.correlation_id,
+        handoff_key=command.handoff_key,
+        ledger_request_id=command.ledger_request_id,
+        attempt=attempt,
+        status=status,
+        answered_at=b.at(200 + attempt),
+    )
+
+
+def _kinds(events: list[Any]) -> list[str]:
+    return [type(e).__name__ for e in events]
+
+
+async def test_a_replayed_superseded_request_is_dropped_not_restarted() -> None:
+    """Codex review 5: A waits, newer B supersedes it, a replay of A changes nothing."""
+    first, second = b.new_cid(), b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(first, requested_at=b.at(0)))
+    superseding = await handler.handle(b.request(second, requested_at=b.at(10)))
+    assert _kinds(superseding) == ["ModelPrHandoffFailed", "ModelPrHandoffAccepted"]
+    await handler.handle(b.observation(b.at(-5), draft=True))
+    assert await handler.handle(b.request(first, requested_at=b.at(0))) == []
+
+
+async def test_a_request_older_than_the_one_in_flight_loses() -> None:
+    first, older = b.new_cid(), b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(first, requested_at=b.at(10)))
+    (failed,) = await handler.handle(b.request(older, requested_at=b.at(0)))
+    assert isinstance(failed, ModelPrHandoffFailed)
+    assert failed.correlation_id == older
+    assert failed.error_code is EnumPrHandoffErrorCode.SUPERSEDED
+    # Redelivered at once, it is re-emitted; replayed after another leg, it is dropped.
+    assert await handler.handle(b.request(older, requested_at=b.at(0))) == [failed]
+    await handler.handle(b.observation(b.at(20), draft=True))
+    assert await handler.handle(b.request(older, requested_at=b.at(0))) == []
+
+
+async def test_a_request_refused_while_appending_stays_refused() -> None:
+    """Codex review 6: the refusal is recorded, so a replay after the append is dropped."""
+    first, second = b.new_cid(), b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.observation(b.at(-5)))
+    (*_, command) = await handler.handle(b.request(first))
+    assert isinstance(command, ModelPrHandoffLedgerAppendCommand)
+    refused = await handler.handle(b.request(second, requested_at=b.at(5)))
+    assert _kinds(refused) == ["ModelPrHandoffFailed"]
+    done = await handler.handle(_answer(command, EnumPrHandoffLedgerStatus.ACCEPTED, 1))
+    assert _kinds(done) == ["ModelPrHandoffHandedOff"]
+    assert await handler.handle(b.request(second, requested_at=b.at(5))) == []
+
+
+async def test_the_deadline_is_checked_before_readiness() -> None:
+    """Codex review 8: a ready observation after the deadline times out, it does not append."""
+    cid = b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(cid, wait_budget_s=60))
+    (failed,) = await handler.handle(b.observation(b.at(61)))
+    assert isinstance(failed, ModelPrHandoffFailed)
+    assert failed.error_code is EnumPrHandoffErrorCode.TIMED_OUT
+
+
+async def test_a_newer_request_after_the_deadline_times_the_old_one_out() -> None:
+    first, second = b.new_cid(), b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(first, wait_budget_s=60))
+    (failed, accepted) = await handler.handle(b.request(second, requested_at=b.at(90)))
+    assert isinstance(failed, ModelPrHandoffFailed)
+    assert failed.error_code is EnumPrHandoffErrorCode.TIMED_OUT
+    assert type(accepted).__name__ == "ModelPrHandoffAccepted"
+
+
+async def test_an_earlier_attempts_success_hands_off() -> None:
+    """Codex review 9: pending on attempt 1, resend, then attempt 1's late success counts."""
+    cid = b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.observation(b.at(-5)))
+    (*_, command) = await handler.handle(b.request(cid))
+    assert isinstance(command, ModelPrHandoffLedgerAppendCommand)
+    resend = await handler.handle(
+        _answer(command, EnumPrHandoffLedgerStatus.PENDING, 1)
+    )
+    assert _kinds(resend) == ["ModelPrHandoffLedgerAppendCommand"]
+    late = await handler.handle(_answer(command, EnumPrHandoffLedgerStatus.ACCEPTED, 1))
+    assert _kinds(late) == ["ModelPrHandoffHandedOff"]
+    stale = await handler.handle(_answer(command, EnumPrHandoffLedgerStatus.PENDING, 2))
+    assert stale == []
+
+
+async def test_a_lost_command_is_re_emitted_by_the_observation_redelivery() -> None:
+    """Codex review 7: the row was written but the publish was lost; redelivery recovers it."""
+    cid = b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(cid))
+    observed = b.observation(b.at(30))
+    first = await handler.handle(observed)
+    assert _kinds(first) == ["ModelPrHandoffLedgerAppendCommand"]
+    assert await handler.handle(observed) == first
+    command = first[0]
+    assert isinstance(command, ModelPrHandoffLedgerAppendCommand)
+    done = await handler.handle(
+        _answer(command, EnumPrHandoffLedgerStatus.DUPLICATE, 1)
+    )
+    assert isinstance(done[0], ModelPrHandoffHandedOff)

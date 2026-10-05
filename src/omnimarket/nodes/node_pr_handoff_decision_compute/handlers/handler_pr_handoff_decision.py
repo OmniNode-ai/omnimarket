@@ -23,7 +23,7 @@ so the landing controller reads the handoff exactly as before.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
 from omnimarket.events.pr_state import EnumPrState, ModelPrStateEmitRequest
@@ -51,8 +51,9 @@ _WHAT: dict[EnumPrHandoffNeeds, str] = {
     EnumPrHandoffNeeds.TRAIN: "runtime-affecting, ready for the runtime train at this head",
     EnumPrHandoffNeeds.COMPANION: "waiting on its change-control companion at this head",
 }
-_EXEMPT_NOTE = " Lab line exempt: bot version-only bump (RULING 2026-10-04T10:11:35Z)."
-_VIA_NOTE = " Decided on the PR watcher's observation by node_pr_handoff_orchestrator (OMN-20636)."
+# The PR watcher's full re-list interval (pr_state_local.py's freshness rule):
+# an observation older than this before the request is not trusted.
+OBSERVATION_FRESHNESS = timedelta(minutes=90)
 
 
 def is_bot_release_pr(title: str, author_is_bot: bool) -> bool:
@@ -153,10 +154,6 @@ def _lab_proof_problem(
             f'no lab proof: post a PR comment with a line "Lab: head={head} host=... lane=... '
             'command=... observed=..." and request the handoff again with it'
         )
-    if proof.source is EnumPrHandoffLabProofSource.EXEMPT_VERSION_BUMP:
-        if observation.author_is_bot:
-            return None
-        return "the version-bump exemption applies only to a bot's PR"
     if proof.source is EnumPrHandoffLabProofSource.BODY:
         if _LAB_WORD.search(proof.line):
             return None
@@ -180,7 +177,11 @@ def _rows(
     source: str,
     now: datetime,
 ) -> tuple[str, str]:
-    stamp = now.strftime(_STAMP)
+    # Stamped with the request's time: the lane stopped touching the PR when it
+    # asked, and one lane's requests are seconds apart, so the MSG id (stamp and
+    # lane, unique per sender) never collides the way one watcher tick shared by
+    # several PRs would.
+    stamp = request.requested_at.strftime(_STAMP)
     lane, to, repo, head = (
         request.lane,
         request.to_lane,
@@ -189,17 +190,15 @@ def _rows(
     )
     ref = f"{repo}#{request.pr_number}"
     msg_id = f"{stamp}-{lane}"
-    exempt = (
-        _EXEMPT_NOTE
-        if request.lab_proof is not None
-        and request.lab_proof.source is EnumPrHandoffLabProofSource.EXEMPT_VERSION_BUMP
-        else ""
+    provenance = (
+        f" Decided at {now.strftime(_STAMP)} on the PR watcher's observation of "
+        f"{observation.observed_at} by node_pr_handoff_orchestrator (OMN-20636)."
     )
     rows = [
         f"{stamp} | MSG | from={lane} | to={to} | id={msg_id} | ticket={ticket} | "
         f"source={source} | repo={repo} | pr={ref} | head={head} | needs={request.needs.value} | "
         f"Handoff from {lane}: {ref} is {_WHAT[request.needs]}. "
-        f"Send a red back to {lane} by MSG.{exempt}{_VIA_NOTE}"
+        f"Send a red back to {lane} by MSG.{provenance}"
     ]
     if request.mode is EnumPrHandoffMode.SESSION:
         rows.append(
@@ -247,6 +246,14 @@ def decide_handoff(
             EnumPrHandoffErrorCode.WITHHELD,
             "a bot's `chore: release` PR is gated to the release train and landed through "
             "/omni:release-cut; it is never handed off",
+            head,
+        )
+    if _observed_at(observation) < request.requested_at - OBSERVATION_FRESHNESS:
+        return _wait(
+            EnumPrHandoffWaitReason.OBSERVATION_STALE,
+            f"the newest observation ({observation.observed_at}) is more than "
+            f"{int(OBSERVATION_FRESHNESS.total_seconds() // 60)} minutes older than the request; "
+            "waiting for the watcher to observe the PR again",
             head,
         )
     if not head.startswith(request.expected_head_sha):

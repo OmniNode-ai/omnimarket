@@ -92,7 +92,7 @@ async def test_handoff_waits_for_first_observation_then_hands_off() -> None:
     # The rows are pr-handoff's, stamped for the ledger's bus append.
     (sent,) = run.ledger.requests
     msg, terminal = sent.rows.splitlines()
-    stamp = b.stamp(b.at(120))
+    stamp = b.stamp(b.at(0))  # the request's time, not the observation's
     assert msg.startswith(
         f"{stamp} | MSG | from={b.LANE} | to=landing-controller | id={stamp}-{b.LANE} | "
     )
@@ -165,10 +165,11 @@ async def test_head_not_yet_observed_waits_then_hands_off() -> None:
 async def test_lost_receipt_is_resent_under_the_same_request_and_handed_off_once() -> (
     None
 ):
-    """Mechanical retry: no receipt, then a duplicate receipt, ends handed off with one request id."""
+    """Mechanical retry against the real ledger append handler: the rows land exactly once."""
     cid = b.new_cid()
+    ledger = b.RealLedger(lost=1)
     run = await b.drive(
-        [None, EnumWorkLedgerAppendStatus.DUPLICATE],
+        ledger,
         [(b.request(cid), cid), (b.observation(b.at(60)), cid)],
     )
     assert_chain(
@@ -183,13 +184,15 @@ async def test_lost_receipt_is_resent_under_the_same_request_and_handed_off_once
             APPENDED,
             HANDED_OFF,
         ],
-        terminal_fields={"terminal_outcome": "handed_off", "ledger_lines": ()},
+        terminal_fields={"terminal_outcome": "handed_off", "ledger_lines": (1, 2)},
         correlation_id=cid,
         bus_history_count=await run.bus_history_count(),
     )
-    first, second = run.ledger.requests
+    first, second = ledger.requests
     assert first.request_id == second.request_id
     assert first.rows == second.rows
+    # Two rows (the MSG and the TERMINAL), appended once although sent twice.
+    assert len(ledger.ledger.text.splitlines()) == 2
     statuses = [
         e.payload.status
         for e in run.events

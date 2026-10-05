@@ -43,6 +43,7 @@ from omnimarket.nodes.node_pr_handoff_orchestrator.models.model_pr_handoff_obser
     ModelPrHandoffObservationIngress,
 )
 from omnimarket.nodes.node_pr_handoff_orchestrator.models.model_pr_handoff_workflow_row import (
+    ANSWERED_MEMORY,
     ModelPrHandoffEpisode,
     ModelPrHandoffWorkflowRow,
 )
@@ -190,6 +191,33 @@ class _Leg:
     def episode(self) -> ModelPrHandoffEpisode | None:
         return self.row.episode
 
+    def emit(self, event: PrHandoffEmission) -> None:
+        """Queue ``event``; a terminal also records its request as answered."""
+        self.emitted.append(event)
+        if isinstance(event, ModelPrHandoffFailed | ModelPrHandoffHandedOff):
+            self.mark_answered(event.correlation_id)
+
+    def mark_answered(self, correlation_id: UUID) -> None:
+        answered = (*self.row.answered, str(correlation_id))[-ANSWERED_MEMORY:]
+        self.row = self.row.model_copy(update={"answered": answered})
+
+    def expire(self, at: datetime, why: str) -> None:
+        episode = _req(self.episode, "an episode")
+        self._move("completion_bound_expired")
+        self.emit(
+            _failed(
+                episode.request,
+                E.TIMED_OUT,
+                S.TIMED_OUT,
+                f"{why} at the {episode.request.wait_budget_s}s budget (deadline {episode.deadline_at})",
+                at,
+            )
+        )
+
+    def past_deadline(self, at: datetime) -> bool:
+        episode = _req(self.episode, "an episode")
+        return at >= _req(episode.deadline_at, "the wait deadline")
+
     def _set_episode(self, episode: ModelPrHandoffEpisode) -> None:
         self.row = self.row.model_copy(update={"episode": episode})
 
@@ -202,8 +230,11 @@ class _Leg:
 
     def supersede(self, at: datetime) -> None:
         episode = _req(self.episode, "an episode")
+        if self.past_deadline(at):
+            self.expire(at, "a newer request arrived after this one's wait had run out")
+            return
         self._move("superseded")
-        self.emitted.append(
+        self.emit(
             _failed(
                 episode.request,
                 E.SUPERSEDED,
@@ -216,7 +247,7 @@ class _Leg:
     def abandon(self, at: datetime) -> None:
         episode = _req(self.episode, "an episode")
         self._move("append_attempts_exhausted")
-        self.emitted.append(
+        self.emit(
             _failed(
                 episode.request,
                 E.APPEND_UNCONFIRMED,
@@ -233,13 +264,11 @@ class _Leg:
         at = request.requested_at
         if reason is not None:
             self._move("rejected_invalid_request")
-            self.emitted.append(
-                _failed(request, E.INVALID_REQUEST, S.REFUSED, reason, at)
-            )
+            self.emit(_failed(request, E.INVALID_REQUEST, S.REFUSED, reason, at))
             return
         deadline = at + timedelta(seconds=request.wait_budget_s)
         self._move("accepted", deadline_at=deadline)
-        self.emitted.append(
+        self.emit(
             ModelPrHandoffAccepted(
                 correlation_id=request.correlation_id,
                 handoff_key=request.handoff_key,
@@ -258,6 +287,15 @@ class _Leg:
             msg = f"evaluate needs WAITING, the row is {episode.state.value}"
             raise RuntimeError(msg)
         request = episode.request
+        if self.past_deadline(now):
+            last = episode.last_decision
+            reason = (
+                f"still waiting ({last.wait_reason.value}: {last.detail})"
+                if last is not None and last.wait_reason is not None
+                else "never decided"
+            )
+            self.expire(now, reason)
+            return
         decision = self.ports.decider.handle(
             ModelPrHandoffDecisionRequest(
                 request=request,
@@ -283,7 +321,7 @@ class _Leg:
         if decision.verdict is EnumPrHandoffVerdict.REFUSE:
             code = _req(decision.error_code, "the refusal's error code")
             self._move(f"evaluated_{code.value}", last_decision=decision)
-            self.emitted.append(
+            self.emit(
                 _failed(
                     request,
                     code,
@@ -294,26 +332,12 @@ class _Leg:
                 )
             )
             return
-        if now >= _req(episode.deadline_at, "the wait deadline"):
-            self._move("completion_bound_expired", last_decision=decision)
-            reason = decision.wait_reason.value if decision.wait_reason else "unknown"
-            self.emitted.append(
-                _failed(
-                    request,
-                    E.TIMED_OUT,
-                    S.TIMED_OUT,
-                    f"still waiting ({reason}: {decision.detail}) at the {request.wait_budget_s}s budget",
-                    now,
-                    live_head_sha=decision.live_head_sha,
-                )
-            )
-            return
         self._move("evaluated_wait", last_decision=decision)
 
     def _append(self, now: datetime) -> None:
         episode = _req(self.episode, "an episode")
         request = episode.request
-        self.emitted.append(
+        self.emit(
             ModelPrHandoffLedgerAppendCommand(
                 correlation_id=request.correlation_id,
                 handoff_key=request.handoff_key,
@@ -340,7 +364,7 @@ class _Leg:
         ):
             self._move("append_accepted")
             ready = _req(decision, "the ready decision")
-            self.emitted.append(
+            self.emit(
                 ModelPrHandoffHandedOff(
                     correlation_id=request.correlation_id,
                     handoff_key=request.handoff_key,
@@ -367,7 +391,7 @@ class _Leg:
                 self._append(at)
                 return
             self._move("append_attempts_exhausted")
-            self.emitted.append(
+            self.emit(
                 _failed(
                     request,
                     E.APPEND_UNCONFIRMED,
@@ -380,7 +404,7 @@ class _Leg:
             )
             return
         self._move("append_refused")
-        self.emitted.append(
+        self.emit(
             _failed(
                 request,
                 E.LEDGER_REFUSED,
@@ -396,6 +420,84 @@ def _new_row(key: str) -> ModelPrHandoffWorkflowRow:
     return ModelPrHandoffWorkflowRow(handoff_key=key)
 
 
+_SUCCESS = (EnumPrHandoffLedgerStatus.ACCEPTED, EnumPrHandoffLedgerStatus.DUPLICATE)
+
+
+def message_key(message: PrHandoffMessage) -> str:
+    """The identity of a consumed message, for redelivery."""
+    if isinstance(message, ModelPrHandoffRequested):
+        return f"request:{message.correlation_id}"
+    if isinstance(message, ModelPrHandoffObservationIngress):
+        return f"observed:{message.observed_at}:{message.digest or message.head_sha}"
+    return (
+        f"answer:{message.ledger_request_id}:{message.attempt}:{message.status.value}"
+    )
+
+
+def _on_request(
+    leg: _Leg, message: ModelPrHandoffRequested, invalid: str | None
+) -> str | None:
+    """Apply a request; return a drop reason when it changes nothing."""
+    episode = leg.episode
+    cid = str(message.correlation_id)
+    if cid in leg.row.answered:
+        return "a request that already has its terminal"
+    if episode is not None and episode.request.correlation_id == message.correlation_id:
+        return "a redelivered request already in flight"
+    at = message.requested_at
+    if episode is not None and not episode.state.is_terminal:
+        if episode.request.requested_at > at:
+            # Older than the request in flight: it lost the race, and is answered so.
+            leg.emit(
+                _failed(
+                    message,
+                    E.SUPERSEDED,
+                    S.REFUSED,
+                    f"request {episode.request.correlation_id} for this PR is newer",
+                    at,
+                )
+            )
+            return None
+        if episode.state is S.APPENDING and episode.append_abandoned:
+            leg.abandon(at)
+        elif episode.state is S.APPENDING:
+            leg.emit(
+                _failed(
+                    message,
+                    E.INVALID_REQUEST,
+                    S.REFUSED,
+                    f"a handoff of {message.handoff_key} by request "
+                    f"{episode.request.correlation_id} is being appended; read its "
+                    "terminal before requesting again",
+                    at,
+                )
+            )
+            return None
+        elif episode.state is S.WAITING:
+            leg.supersede(at)
+    leg.start(message, invalid)
+    if leg.episode is not None and leg.episode.state is S.WAITING:
+        leg.evaluate(at)
+    return None
+
+
+def _on_answer(leg: _Leg, message: ModelPrHandoffLedgerAppended) -> str | None:
+    episode = leg.episode
+    if (
+        episode is None
+        or episode.state is not S.APPENDING
+        or episode.ledger_request_id != message.ledger_request_id
+        or message.attempt > episode.append_attempts
+    ):
+        return "an answer for no append in flight"
+    if message.attempt < episode.append_attempts and message.status not in _SUCCESS:
+        # An earlier attempt's pending or refusal is obsolete; its success is not:
+        # the rows are on the ledger under this request id.
+        return "an obsolete answer for an earlier attempt"
+    leg.answer(message)
+    return None
+
+
 def run_leg(
     row: ModelPrHandoffWorkflowRow | None,
     message: PrHandoffMessage,
@@ -403,58 +505,41 @@ def run_leg(
     ports: PrHandoffPorts,
     invalid_reason: Callable[[ModelPrHandoffRequested], str | None],
 ) -> PrHandoffStepResult:
-    """Apply one message to the PR's row."""
+    """Apply one message to the PR's row.
+
+    A redelivery of the message the last leg consumed re-emits what that leg
+    emitted and writes nothing, so a publish lost after the row was written is
+    recovered by the bus's redelivery (until the rows have a durable outbox,
+    OMN-20638).
+    """
     start = row if row is not None else _new_row(message.handoff_key)
+    key = message_key(message)
+    if start.last_message_key == key:
+        return PrHandoffStepResult(
+            row=None, emitted=list(start.last_emitted), dropped_reason=None
+        )
     leg = _Leg(start, ports)
-    episode = leg.episode
+    dropped: str | None
     if isinstance(message, ModelPrHandoffRequested):
-        if (
-            episode is not None
-            and episode.request.correlation_id == message.correlation_id
-        ):
-            return PrHandoffStepResult(row=None, dropped_reason="redelivered request")
-        if (
-            episode is not None
-            and episode.state is S.APPENDING
-            and episode.append_abandoned
-        ):
-            leg.abandon(message.requested_at)
-        elif episode is not None and episode.state is S.APPENDING:
-            failure = _failed(
-                message,
-                E.INVALID_REQUEST,
-                S.REFUSED,
-                f"a handoff of {message.handoff_key} by request {episode.request.correlation_id} "
-                "is being appended; read its terminal before requesting again",
-                message.requested_at,
-            )
-            return PrHandoffStepResult(row=None, emitted=[failure])
-        if episode is not None and episode.state is S.WAITING:
-            leg.supersede(message.requested_at)
-        leg.start(message, invalid_reason(message))
-        if leg.episode is not None and leg.episode.state is S.WAITING:
-            leg.evaluate(message.requested_at)
-        return PrHandoffStepResult(row=leg.row, emitted=leg.emitted)
-    if isinstance(message, ModelPrHandoffObservationIngress):
+        dropped = _on_request(leg, message, invalid_reason(message))
+    elif isinstance(message, ModelPrHandoffObservationIngress):
         current = start.observation
         if current is not None and _observed_at(current) > _observed_at(message):
-            return PrHandoffStepResult(row=None, dropped_reason="an older observation")
-        leg.row = start.model_copy(update={"observation": message.observation()})
-        if episode is not None and episode.state is S.WAITING:
-            # A decision is never stamped before the request it answers: an
-            # observation older than the request is evaluated at the request's time.
-            leg.evaluate(max(_observed_at(message), episode.request.requested_at))
-        return PrHandoffStepResult(row=leg.row, emitted=leg.emitted)
-    if (
-        episode is None
-        or episode.state is not S.APPENDING
-        or episode.ledger_request_id != message.ledger_request_id
-        or episode.append_attempts != message.attempt
-    ):
-        return PrHandoffStepResult(
-            row=None, dropped_reason="an answer for no append in flight"
-        )
-    leg.answer(message)
+            dropped = "an older observation"
+        else:
+            dropped = None
+            leg.row = leg.row.model_copy(update={"observation": message.observation()})
+            episode = leg.episode
+            if episode is not None and episode.state is S.WAITING:
+                # A decision is never made earlier than the request it answers.
+                leg.evaluate(max(_observed_at(message), episode.request.requested_at))
+    else:
+        dropped = _on_answer(leg, message)
+    if dropped is not None:
+        return PrHandoffStepResult(row=None, dropped_reason=dropped)
+    leg.row = leg.row.model_copy(
+        update={"last_message_key": key, "last_emitted": tuple(leg.emitted)}
+    )
     return PrHandoffStepResult(row=leg.row, emitted=leg.emitted)
 
 
@@ -471,5 +556,6 @@ __all__: list[str] = [
     "ProtocolPrHandoffHoldReader",
     "check_transition",
     "ledger_request_id_for",
+    "message_key",
     "run_leg",
 ]

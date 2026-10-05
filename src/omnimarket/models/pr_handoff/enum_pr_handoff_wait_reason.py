@@ -16,6 +16,9 @@ class EnumPrHandoffWaitReason(StrEnum):
     HEAD_NOT_OBSERVED = "head_not_observed"
     """The newest observation predates the request and shows another head: the push is not observed yet."""
 
+    OBSERVATION_STALE = "observation_stale"
+    """The newest observation is older than the watcher's full-resync window before the request: the watcher may have stopped, so its view is not trusted (handoff_row.sh's freshness rule)."""
+
     DRAFT = "draft"
     """The PR is a draft and needs is not companion."""
 
