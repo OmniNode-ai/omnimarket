@@ -143,6 +143,13 @@ from omnimarket.models.delegation.delegation_attempt_lineage import (
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
+from omnimarket.models.delegation.delegation_caller_lane import (
+    DELEGATION_CALLER_LANE_METADATA_KEY,
+)
+from omnimarket.models.delegation.delegation_lineage import LINEAGE_KEYS
+from omnimarket.models.delegation.delegation_ticket_id import (
+    DELEGATION_TICKET_METADATA_KEY,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
 )
@@ -1105,6 +1112,7 @@ class LocalDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
@@ -1606,6 +1614,7 @@ class LocalDelegationDispatchPort:
                     result=transport_result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=transport_failure_message,
@@ -1879,6 +1888,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=True,
                     failure_message="",
@@ -2099,6 +2109,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=gate_failure_message,
@@ -3185,6 +3196,7 @@ class LocalDelegationDispatchPort:
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
         required_bar: float | None,
+        attribution: Mapping[str, str] | None = None,
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -3280,6 +3292,15 @@ class LocalDelegationDispatchPort:
                     "non-UUID session id %r omitted from evidence row",
                     source_session_id,
                 )
+        # OMN-20606: who issued the run and what it follows. The handler's own
+        # terminal carries the caller lane and ticket, but on this in-process
+        # path only THIS payload reaches the bus, and it named neither, so every
+        # in-process fallback row on the dev lane had an empty caller_lane and
+        # nothing linking it to the failed delegation it answered. The handler
+        # has already validated each value; only the named keys are copied.
+        for key, value in (attribution or {}).items():
+            if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
+                payload[key] = value
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
         # tenant_id so the evidence row stamps a real tenant.
         #
@@ -3405,6 +3426,14 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation or None,
             partition_key=correlation or None,
         )
+
+
+#: The attribution keys the in-process evidence terminal carries (OMN-20606):
+#: the caller lane, the ticket, and the delegation lineage. Each key is the
+#: terminal key and the delegation_events column of the same name.
+_EVIDENCE_ATTRIBUTION_KEYS: frozenset[str] = frozenset(
+    {DELEGATION_CALLER_LANE_METADATA_KEY, DELEGATION_TICKET_METADATA_KEY} | LINEAGE_KEYS
+)
 
 
 def _local_terminal_topic(*, success: bool) -> str | None:
