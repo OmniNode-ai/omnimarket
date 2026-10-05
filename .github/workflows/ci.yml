@@ -339,7 +339,7 @@ jobs:
       # route the malformed event to its contract-declared DLQ topic, not drop it
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.
       - name: Projection-DLQ path gate
-        run: uv run python scripts/ci/check_projection_dlq_path.py
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule dlq
       # OMN-16690: a db_io contract's declared table `access` must cover the
       # operations its handler performs. A handler that reads for idempotency
       # under `access: write` is refused fail-closed by the runtime and every
@@ -347,7 +347,12 @@ jobs:
       # isolation tests, which inject fakes with no access enforcement. SYNC
       # with pre-commit hook 'projection-contract-access'.
       - name: Projection contract-access gate
-        run: uv run python scripts/ci/check_projection_contract_access.py
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
+      # OMN-18043: every projection_api exposure declares a cursor_column, against
+      # the shrink-only baseline scripts/validation/projection_cursor_baseline.txt.
+      # SYNC with pre-commit hook 'projection-cursor-declared'.
+      - name: Projection cursor-declared gate
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor
       # OMN-17446: a REGISTRY-shaped projection (its relation is resolved
       # against by another node's `ALTER COLUMN ... TYPE ... USING` conversion,
       # or by a shared write-path module another node imports) must not be fed

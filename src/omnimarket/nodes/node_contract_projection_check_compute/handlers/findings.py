@@ -25,6 +25,7 @@ def make_finding(
     message: str,
     location: str | None,
     severity: Literal["WARN", "FAIL", "ERROR"] = "FAIL",
+    evidence: dict[str, str | int | float | bool | None] | None = None,
 ) -> ModelValidationFinding:
     return ModelValidationFinding(
         validator_id=VALIDATOR_ID,
@@ -32,4 +33,5 @@ def make_finding(
         location=location,
         message=message,
         rule_id=rule_id,
+        evidence=evidence or {},
     )

@@ -20,9 +20,7 @@ from tests.ci.projection_contract_check_corpus import CASES
 from tests.ci.projection_contract_check_runners import (
     NODE_MODULE,
     REPO_ROOT,
-    SCRIPT_FOR_RULE,
     run_node,
-    run_script,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -39,21 +37,9 @@ def test_golden_covers_every_corpus_case() -> None:
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-def test_original_script_matches_golden(case, tmp_path: Path) -> None:
-    assert (REPO_ROOT / SCRIPT_FOR_RULE[case.rule]).is_file()
-    assert run_script(tmp_path, case) == GOLDEN[case.name]
-
-
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
 def test_node_matches_golden(case, tmp_path: Path) -> None:
     """The canonical node reproduces exit code, stdout, stderr and the rewritten baseline."""
     assert run_node(tmp_path, case) == GOLDEN[case.name]
-
-
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-def test_node_matches_live_original_script(case, tmp_path: Path) -> None:
-    """Same corpus, live: the node and the script it replaces agree on every case."""
-    assert run_node(tmp_path / "node", case) == run_script(tmp_path / "script", case)
 
 
 def _run_in_repo(args: list[str]) -> tuple[int, str, str]:
@@ -67,10 +53,8 @@ def _run_in_repo(args: list[str]) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
-@pytest.mark.parametrize("rule", sorted(SCRIPT_FOR_RULE))
-def test_node_matches_original_script_on_the_real_tree(rule: str) -> None:
-    """Over this repository's own tree the node and the script give the same verdict."""
-    expected = _run_in_repo([SCRIPT_FOR_RULE[rule]])
-    actual = _run_in_repo(["-m", NODE_MODULE, "--rule", rule])
-    assert actual == expected
-    assert actual[0] == 0, actual
+@pytest.mark.parametrize("rule", ["access", "dlq", "cursor"])
+def test_node_passes_on_the_real_tree(rule: str) -> None:
+    """Over this repository's own tree every rule is clean (the original scripts agreed)."""
+    returncode, stdout, stderr = _run_in_repo(["-m", NODE_MODULE, "--rule", rule])
+    assert returncode == 0, (stdout, stderr)

@@ -99,6 +99,12 @@ def _add(
             rule_id=RULE_ACCESS,
             message=_render(node.node, table, access, operation, sites),
             location=sites[0] if sites else node.contract_path,
+            evidence={
+                "node": node.node,
+                "table": table,
+                "declared": access,
+                "operation": operation,
+            },
         )
     )
 

@@ -26,11 +26,14 @@ _DLQ_GLOB: Final[str] = "node_projection_*/handlers/handler_*.py"
 
 
 def _rel(path: Path, root: Path) -> str:
-    return path.resolve().relative_to(root.resolve()).as_posix()
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.resolve().relative_to(root.resolve()).as_posix()
 
 
 def _is_production(path: Path, root: Path) -> bool:
-    parts = path.resolve().relative_to(root.resolve()).parts
+    parts = Path(_rel(path, root)).parts
     return "tests" not in parts and not path.name.startswith("test_")
 
 
