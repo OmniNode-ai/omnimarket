@@ -23,6 +23,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2 omnibase_infra probe. The grant derivation check proves both tables granted to the projection principal on every topology instance and catalog."
     command: "uv run python scripts/generate_application_database_table_grants.py --check"
+  - kind: "tests"
+    description: "AC1 omnimarket probe. The source migrations reconcile every declared routing-feedback column and the ownership manifest declares each created relation exactly once, which omnibase_infra's vendoring gates require."
+    command: "uv run pytest tests/test_omn20578_vendor_prereqs_declared.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -46,3 +49,11 @@ dod_evidence:
         check_value: "uv run python scripts/generate_application_database_table_grants.py --check"
         cwd: "${OMNI_HOME}/omnibase_infra"
     binds_ac: ["AC2"]
+  - id: "dod-omn20578-ac1-omnimarket-vendor-prereqs"
+    description: "AC1 omnimarket probe. The source migrations reconcile every declared routing-feedback column and the ownership manifest declares each created relation exactly once, which omnibase_infra's vendoring gates require."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20578_vendor_prereqs_declared.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
