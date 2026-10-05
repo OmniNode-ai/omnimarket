@@ -402,7 +402,8 @@ jobs:
       - name: Coverage-json ignore-errors parity gate
         run: uv run python scripts/ci/check_coverage_ignore_parity.py
       # OMN-14762 (F-19-A): every third-party `uses:` must be pinned to a 40-char
-      # SHA. OMN-20558 emptied and deleted the baseline: any unpinned ref fails.
+      # SHA. OMN-20558 pinned every frozen ref to the commit its tag resolved to
+      # and deleted the baseline, so any unpinned, non-exempt ref fails.
       # SYNC with pre-commit hook 'check-action-pins'.
       - name: GitHub Actions pin ratchet
         run: uv run python scripts/ci/check_action_pins.py
@@ -541,9 +542,9 @@ jobs:
       - name: Contract publish parity gate
         run: uv run python scripts/ci/check_contract_publish_parity.py
       # OMN-13026: Transport-mock lint. Bare AsyncMock/MagicMock without
-      # spec=/spec_set= on EventBus/transport/kafka surfaces. Ratchet: existing
-      # violations frozen in validation/transport_mock_baseline.yaml. New
-      # violations in any PR are blocked. Drain tracked by per-site tickets.
+      # spec=/spec_set= on EventBus/transport/kafka surfaces. The baseline was
+      # empty and OMN-20558 deleted it: any violation in any PR is blocked.
+      # Plain check, no baseline argument.
       # SYNC with pre-commit hook 'transport-mock-lint'.
       # Invoked via PYTHONPATH so it uses the sibling clone (already cloned
       # earlier in this job) rather than the uv-locked pin.
@@ -551,8 +552,8 @@ jobs:
         run: |
           uv run python \
             -m omnibase_core.validators.transport_mock_lint \
-            --baseline validation/transport_mock_baseline.yaml \
-            tests/
+            tests/ \
+            src/
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
