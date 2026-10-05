@@ -5,9 +5,8 @@ name: node_contract_projection_check_effect
 contract_name: node_contract_projection_check_effect
 node_name: node_contract_projection_check_effect
 node_type: EFFECT_GENERIC
-# Invoked directly as a pre-commit hook and CI step, never through the bus
-# (OMN-20567: no bus publication in the validator conversion phase).
-lifecycle: experimental
+runtime_profiles:
+  - main
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -41,5 +40,17 @@ input_model:
 
 output_model:
   name: ModelProjectionContractCheckInput
-  module: omnimarket.nodes.node_contract_projection_check_compute.models
+  module: omnimarket.models.contract_projection_check
   description: Explicit contract and handler text for the paired compute node.
+terminal_event: onex.evt.omnimarket.contract-projection-gathered.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.contract-projection-gather-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.contract-projection-gathered.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.contract-projection-gather-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.contract-projection-gathered.v1

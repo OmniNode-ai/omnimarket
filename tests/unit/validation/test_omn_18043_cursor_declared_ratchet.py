@@ -31,11 +31,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.contract_projection_check import (
+    ModelProjectionNodeSources,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers import (
     check_cursor,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
-    ModelProjectionNodeSources,
 )
 from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather import (
     HandlerContractProjectionGather,

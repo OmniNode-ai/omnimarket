@@ -16,13 +16,13 @@ from omnibase_core.models.validation.model_validation_report import (
     ModelValidationReport,
 )
 
-from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
-    HandlerProjectionContractCheck,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
+from omnimarket.models.contract_projection_check import (
     EnumProjectionContractRule,
     ModelProjectionContractCheckInput,
     ModelProjectionNodeSources,
+)
+from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
+    HandlerProjectionContractCheck,
 )
 from tests.ci.projection_contract_check_corpus import CASES
 from tests.ci.projection_contract_check_runners import (
@@ -52,9 +52,27 @@ def test_contract_is_the_canonical_pure_compute_shape() -> None:
     assert contract["node_type"] == "compute"
     assert contract["descriptor"]["node_archetype"] == "compute"
     assert contract["descriptor"]["purity"] == "pure"
-    assert "event_bus" not in contract
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
     assert set(contract["outputs"]) == {"report"}
-    assert "terminal_event" not in contract
+
+
+def test_both_nodes_declare_their_command_and_terminal_topics() -> None:
+    compute = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    effect = yaml.safe_load(
+        (
+            NODE_DIR.parent / "node_contract_projection_check_effect" / "contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        compute["terminal_event"]
+        == "onex.evt.omnimarket.contract-projection-checked.v1"
+    )
+    assert (
+        effect["terminal_event"]
+        == "onex.evt.omnimarket.contract-projection-gathered.v1"
+    )
+    assert compute["runtime_profiles"] == ["main"]
+    assert effect["runtime_profiles"] == ["main"]
 
 
 def test_handler_returns_the_canonical_report_from_explicit_text() -> None:

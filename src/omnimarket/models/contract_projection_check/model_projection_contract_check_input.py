@@ -5,10 +5,10 @@
 from omnibase_core.models.nodes.no_utcnow_check.model_source_file import ModelSourceFile
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_contract_projection_check_compute.models.enum_projection_contract_rule import (
+from omnimarket.models.contract_projection_check.enum_projection_contract_rule import (
     EnumProjectionContractRule,
 )
-from omnimarket.nodes.node_contract_projection_check_compute.models.model_projection_node_sources import (
+from omnimarket.models.contract_projection_check.model_projection_node_sources import (
     ModelProjectionNodeSources,
 )
 

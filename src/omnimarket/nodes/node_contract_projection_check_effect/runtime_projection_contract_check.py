@@ -26,6 +26,10 @@ from omnibase_core.models.validation.model_validation_report import (
     ModelValidationReport,
 )
 
+from omnimarket.models.contract_projection_check import (
+    EnumProjectionContractRule,
+    ModelProjectionNodeSources,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.check_cursor import (
     missing_cursor_ids,
     tracked_exposures,
@@ -39,10 +43,6 @@ from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings i
 )
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
     HandlerProjectionContractCheck,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
-    EnumProjectionContractRule,
-    ModelProjectionNodeSources,
 )
 from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather import (
     HandlerContractProjectionGather,

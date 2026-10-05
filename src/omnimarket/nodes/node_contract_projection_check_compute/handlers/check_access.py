@@ -20,13 +20,13 @@ from omnibase_core.models.validation.model_validation_finding import (
     ModelValidationFinding,
 )
 
+from omnimarket.models.contract_projection_check import (
+    ModelProjectionNodeSources,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings import (
     RULE_ACCESS,
     RULE_UNPARSEABLE,
     make_finding,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
-    ModelProjectionNodeSources,
 )
 
 _READ_OK = {"read", "read_write"}

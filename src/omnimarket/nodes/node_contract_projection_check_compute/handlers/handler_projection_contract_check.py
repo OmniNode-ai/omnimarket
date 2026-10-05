@@ -17,6 +17,10 @@ from omnibase_core.models.validation.model_validation_report import (
     ModelValidationRequestRef,
 )
 
+from omnimarket.models.contract_projection_check import (
+    EnumProjectionContractRule,
+    ModelProjectionContractCheckInput,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.check_access import (
     check_access,
 )
@@ -30,10 +34,6 @@ from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings i
     RULE_ZERO_SCAN,
     VALIDATOR_ID,
     make_finding,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
-    EnumProjectionContractRule,
-    ModelProjectionContractCheckInput,
 )
 
 _PROFILE: Final[Literal["strict", "default", "advisory"]] = "default"

@@ -3,10 +3,9 @@ contract_version:
   major: 1
   minor: 0
   patch: 0
+runtime_profiles:
+- main
 node_type: compute
-# Invoked through node_contract_projection_check_effect's runtime as a hook and CI
-# step; it declares no bus topics, and OMN-20567 publishes nothing to the bus.
-lifecycle: experimental
 node_version:
   major: 1
   minor: 0
@@ -26,7 +25,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check
   class: HandlerProjectionContractCheck
-  input_model: omnimarket.nodes.node_contract_projection_check_compute.models.model_projection_contract_check_input.ModelProjectionContractCheckInput
+  input_model: omnimarket.models.contract_projection_check.model_projection_contract_check_input.ModelProjectionContractCheckInput
 descriptor:
   node_archetype: compute
   purity: pure
@@ -59,3 +58,15 @@ outputs:
   report:
     type: object
     description: omnibase_core.models.validation.model_validation_report.ModelValidationReport
+terminal_event: onex.evt.omnimarket.contract-projection-checked.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.contract-projection-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.contract-projection-checked.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.contract-projection-check-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.contract-projection-checked.v1

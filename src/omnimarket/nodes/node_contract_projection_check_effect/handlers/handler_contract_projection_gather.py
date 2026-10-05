@@ -12,7 +12,7 @@ from typing import Final
 
 from omnibase_core.models.nodes.no_utcnow_check.model_source_file import ModelSourceFile
 
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
+from omnimarket.models.contract_projection_check import (
     EnumProjectionContractRule,
     ModelProjectionContractCheckInput,
     ModelProjectionNodeSources,

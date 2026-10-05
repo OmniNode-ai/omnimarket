@@ -21,15 +21,15 @@ from omnibase_core.models.validation.model_validation_finding import (
     ModelValidationFinding,
 )
 
+from omnimarket.models.contract_projection_check import (
+    ModelProjectionNodeSources,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings import (
     RULE_CURSOR_MEMBERSHIP,
     RULE_CURSOR_MISSING,
     RULE_CURSOR_SHRINKABLE,
     RULE_UNPARSEABLE,
     make_finding,
-)
-from omnimarket.nodes.node_contract_projection_check_compute.models import (
-    ModelProjectionNodeSources,
 )
 
 
