@@ -15,9 +15,10 @@ Each line: {"correlation_id", "attempt_index", "label", "rater_role",
 
 Usage:
     uv run python -m omnimarket.nodes.node_delegation_eval_orchestrator.publish_label_record \
-        --tenant-id <uuid> --labels labels.jsonl [--dry-run]
+        --tenant-id <uuid> --labels labels.jsonl \
+        (--bootstrap-servers <host:port> | --dry-run)
 
-Kafka: KAFKA_BOOTSTRAP_SERVERS plus the SASL variables the shared auth helper reads.
+Kafka: --bootstrap-servers plus the SASL variables the shared auth helper reads.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -124,16 +124,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tenant-id", required=True)
     parser.add_argument("--labels", required=True, help="JSONL file, one label a line")
+    parser.add_argument(
+        "--bootstrap-servers", default="", help="Kafka bootstrap servers"
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     lines = Path(args.labels).read_text(encoding="utf-8").splitlines()
     if args.dry_run:
         count = publish_labels(lines, args.tenant_id, _DryRunProducer())
     else:
-        bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
-        if not bootstrap:
-            raise SystemExit("KAFKA_BOOTSTRAP_SERVERS is not set")
-        kafka = _KafkaProducer(bootstrap)
+        if not args.bootstrap_servers:
+            parser.error("--bootstrap-servers is required unless --dry-run")
+        kafka = _KafkaProducer(args.bootstrap_servers)
         count = publish_labels(lines, args.tenant_id, kafka)
         asyncio.run(kafka.flush())
     sys.stderr.write(f"published {count} label-record command(s)\n")
