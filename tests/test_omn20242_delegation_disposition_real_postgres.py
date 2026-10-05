@@ -74,13 +74,13 @@ async def _prove_routing_feedback_ordering(
     Runs inside the disposition proof so the projection write-path gate's real
     Postgres requirement is met without a second environment-skipped test id.
     """
-    migration = (_NODES / "node_projection_routing_feedback/migrations").glob("*.sql")
+    # 0001 grants the cluster role tenant_projection_writer, which a scratch
+    # database does not carry; the table shape is 0000.
+    migration = (_NODES / "node_projection_routing_feedback/migrations").glob(
+        "0000_*.sql"
+    )
     for path in sorted(migration):
-        await conn.execute(
-            _scoped(path.read_text(), schema).replace(
-                "TO omninode_runtime", "TO CURRENT_USER"
-            )
-        )
+        await conn.execute(_scoped(path.read_text(), schema))
     window_a = datetime(2026, 10, 5, 0, 0, tzinfo=UTC)
     window_b = window_a + timedelta(hours=1)
 

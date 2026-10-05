@@ -16,9 +16,3 @@ CREATE TABLE IF NOT EXISTS public.delegation_routing_feedback (
     PRIMARY KEY (model_id, task_type)
 );
 GRANT SELECT ON public.delegation_routing_feedback TO app_dashboard;
-
--- Existing platform runtime principal, also used by work-ledger projections.
-GRANT USAGE ON SCHEMA public TO omninode_runtime;
-GRANT SELECT, INSERT, UPDATE
-    ON public.delegation_routing_feedback
-    TO omninode_runtime;

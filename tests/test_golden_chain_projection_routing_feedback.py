@@ -272,5 +272,10 @@ def test_migration_declares_platform_table_and_existing_roles() -> None:
     assert "last_updated TIMESTAMPTZ NOT NULL" in ddl
     assert "tenant_id" not in ddl
     assert "GRANT SELECT ON public.delegation_routing_feedback TO app_dashboard" in ddl
-    assert "GRANT SELECT, INSERT, UPDATE" in ddl
-    assert "TO omninode_runtime" in ddl
+    grant = (
+        NODE
+        / "migrations/0001_grant_tenant_projection_writer_delegation_routing_feedback.sql"
+    ).read_text()
+    assert "GRANT SELECT, INSERT, UPDATE" in grant
+    assert "TO tenant_projection_writer" in grant
+    assert "omninode_runtime" not in ddl + grant

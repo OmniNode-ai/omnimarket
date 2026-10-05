@@ -3824,7 +3824,7 @@
       "foreign_keys": [],
       "grants": [
         "SELECT TO app_dashboard",
-        "SELECT, INSERT, UPDATE TO omninode_runtime"
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
       ],
       "indexes": [],
       "internal_tenant_column_transform": null,
