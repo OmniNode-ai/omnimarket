@@ -488,6 +488,13 @@ class SqliteDatabaseAdapter:
     def _reconcile_usage_by_model_day(cls, conn: sqlite3.Connection) -> None:
         if cls._usage_by_model_day_reconciled(conn):
             return
+        # The llm_call_metrics relabel earlier in _connect is an UPDATE, and the
+        # sqlite3 module opens a transaction before it that stays open until the
+        # end of _connect. BEGIN IMMEDIATE inside it raises, and while it is open
+        # this connection holds the write lock other first opens wait on. Commit
+        # it first: the relabel is idempotent and _connect commits it anyway.
+        if conn.in_transaction:
+            conn.commit()
         # Two first opens of one store can race: the check and the ALTERs run in
         # one write transaction, so the second never adds a column twice.
         conn.execute("BEGIN IMMEDIATE")

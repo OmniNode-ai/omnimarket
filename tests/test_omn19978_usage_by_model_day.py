@@ -300,6 +300,54 @@ def test_an_old_local_store_gains_the_new_columns_on_connect(tmp_path: Path) -> 
     assert int(str(row["call_count"])) == 2
 
 
+def test_a_store_written_by_the_previous_release_opens_and_keeps_its_relabel(
+    tmp_path: Path,
+) -> None:
+    """The store every existing install has: llm_call_metrics already carries
+    usage_source (so the connect-time relabel UPDATE runs and opens an implicit
+    transaction), and the usage tables predate the new columns and triggers.
+    Opening it must add the columns, and must commit the relabel, not undo it."""
+    path = tmp_path / "previous-release.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE llm_call_metrics (correlation_id TEXT, usage_source TEXT, "
+        "input_hash TEXT NOT NULL UNIQUE)"
+    )
+    conn.execute("INSERT INTO llm_call_metrics VALUES ('c-1', 'API', 'h-1')")
+    conn.execute(
+        "CREATE TABLE usage_by_model_day_calls (call_id TEXT PRIMARY KEY, "
+        "tenant_id TEXT NOT NULL, usage_day TEXT NOT NULL, model_id TEXT NOT NULL, "
+        "input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, "
+        "cost_usd REAL NOT NULL, occurred_at TEXT NOT NULL, ingested_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE usage_by_model_day (tenant_id TEXT NOT NULL, "
+        "usage_day TEXT NOT NULL, model_id TEXT NOT NULL, "
+        "input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, "
+        "cost_usd REAL NOT NULL, call_count INTEGER NOT NULL, "
+        "updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, usage_day, model_id))"
+    )
+    conn.commit()
+    conn.close()
+
+    assert SqliteDatabaseAdapter(path).query(AGGREGATE_TABLE) == []
+
+    check = sqlite3.connect(path)
+    try:
+        columns = {r[1] for r in check.execute("PRAGMA table_info(usage_by_model_day)")}
+        relabelled = check.execute(
+            "SELECT usage_source FROM llm_call_metrics WHERE input_hash = 'h-1'"
+        ).fetchone()
+    finally:
+        check.close()
+    assert {
+        "measured_cost_usd",
+        "unmeasured_call_count",
+        "projection_cursor",
+    } <= columns
+    assert relabelled == ("measured",)
+
+
 def test_each_insert_and_recount_takes_the_next_cursor(tmp_path: Path) -> None:
     """The served exposure walks by projection_cursor, so a local store must
     stamp one, and re-stamp a recounted row the way the Postgres BIGSERIAL does."""
