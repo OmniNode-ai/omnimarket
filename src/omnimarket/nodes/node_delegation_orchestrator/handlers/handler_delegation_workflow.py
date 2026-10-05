@@ -1841,8 +1841,9 @@ def _inference_failure_cause(
     exceeded call budget is ``timeout``, and a response the provider cut off at
     ``finish_reason=length`` is ``quality_gate_refused``: the output-budget rule
     refused an answer the provider did give, and the rung records the stop
-    reason and the truncated flag that tell it apart from a rule's veto. Any
-    other final failure states no cause rather than inventing one.
+    reason and the truncated flag that tell it apart from a rule's veto. An
+    empty body or choices is ``provider_error``. Any other final failure
+    states no cause rather than inventing one.
     """
     if ladder_is_gate_decided(
         [
@@ -1859,6 +1860,12 @@ def _inference_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if failure_class is EnumDelegationFailureClass.TIMEOUT:
         return EnumDelegationTerminalFailureCause.TIMEOUT
+    if workflow.escalation_history and any(
+        marker in reason.lower()
+        for reason in workflow.escalation_history[-1].failure_reasons
+        for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+    ):
+        return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
 
 
@@ -2999,6 +3006,16 @@ class HandlerDelegationWorkflow:
         The provider facts are recorded first so the attempt row this response
         produces carries them.
         """
+        # A provider may return no text without an error field. Classify the
+        # raw response before extraction: withholding a nonempty deliverable
+        # is a content rejection, but absent output has nothing to grade.
+        if not response.error_message and not response.content.strip():
+            response = response.model_copy(
+                update={
+                    "content": "",
+                    "error_message": "API returned empty message content",
+                }
+            )
         observation = self._observe_provider_call(response)
         events = self._handle_inference_response(response)
         if observation is None:
