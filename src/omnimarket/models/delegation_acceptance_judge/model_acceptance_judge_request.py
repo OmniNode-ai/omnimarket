@@ -6,19 +6,19 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
     EnumAcceptanceOperation,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_cell_event import (
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_cell_event import (
     ModelAcceptanceCellEvent,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
     ModelAcceptanceItem,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_receipt_join import (
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_receipt_join import (
     ModelAcceptanceReceiptJoin,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
     ModelAcceptanceVerdict,
 )
 

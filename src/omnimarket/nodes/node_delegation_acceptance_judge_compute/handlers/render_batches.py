@@ -8,6 +8,9 @@ import hashlib
 import math
 from collections import defaultdict
 
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
+    ModelAcceptanceItem,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.classify import (
     class_key,
     is_probe,
@@ -15,9 +18,6 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.classify
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_batch import (
     ModelAcceptanceBatch,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
-    ModelAcceptanceItem,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_rubric import (
     ModelAcceptanceRubric,

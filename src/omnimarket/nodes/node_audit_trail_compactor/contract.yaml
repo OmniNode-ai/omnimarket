@@ -23,7 +23,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_audit_trail_compactor.handlers.handler_audit_trail_compactor
   class: HandlerAuditTrailCompactor
-  input_model: omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input.ModelCompactorCommand
+  input_model: omnimarket.models.model_audit_trail_compactor_command.ModelCompactorCommand
 
 descriptor:
   node_archetype: compute

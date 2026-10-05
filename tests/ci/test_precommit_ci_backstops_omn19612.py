@@ -57,7 +57,7 @@ BACKSTOPS: dict[str, tuple[Path, str, tuple[str, ...]]] = {
     "projection-dlq-path": (
         CI_WORKFLOW,
         "lint",
-        ("scripts/ci/check_projection_dlq_path.py",),
+        ("runtime_projection_contract_check --rule dlq",),
     ),
     "github-token-env-gate": (
         CI_WORKFLOW,

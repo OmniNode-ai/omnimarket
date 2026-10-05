@@ -21,35 +21,101 @@ same mutation exits 0; with the indexed key it exits 1.
 
 from __future__ import annotations
 
-import importlib.util
+import contextlib
+import os
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 import yaml
 
-pytestmark = pytest.mark.unit
-
-_SCRIPT = (
-    Path(__file__).resolve().parents[3]
-    / "scripts"
-    / "validation"
-    / "check_projection_cursor_declared.py"
+from omnimarket.models.contract_projection_check import (
+    ModelProjectionNodeSources,
+)
+from omnimarket.nodes.node_contract_projection_check_compute.handlers import (
+    check_cursor,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather import (
+    HandlerContractProjectionGather,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check import (
+    main as runtime_main,
 )
 
+pytestmark = pytest.mark.unit
 
-def _load_module():
-    spec = importlib.util.spec_from_file_location("_cursor_ratchet", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["_cursor_ratchet"] = module
-    spec.loader.exec_module(module)
-    return module
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-@pytest.fixture(scope="module")
-def mod():
+class _CursorGate:
+    """The cursor gate as the canonical node and its effect boundary expose it.
+
+    OMN-20567 replaced ``scripts/validation/check_projection_cursor_declared.py``
+    with ``node_contract_projection_check_compute`` (rule ``cursor``). This adapter
+    keeps the original test bodies below unchanged: ``NODES_DIR`` and ``BASELINE``
+    are retargetable per test exactly as the script's module globals were, and
+    ``main`` runs the node's real runtime over that directory.
+    """
+
+    NODES_DIR = _REPO_ROOT / "src" / "omnimarket" / "nodes"
+    BASELINE = _REPO_ROOT / "scripts" / "validation" / "projection_cursor_baseline.txt"
+
+    _exposures = staticmethod(check_cursor._exposures)
+    _cursor_membership_problem = staticmethod(check_cursor._membership_problem)
+
+    @contextlib.contextmanager
+    def _root(self) -> Iterator[Path]:
+        """A repo-shaped root whose ``src/omnimarket/nodes`` is this gate's NODES_DIR."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "omnimarket").mkdir(parents=True)
+            (root / "src" / "omnimarket" / "nodes").symlink_to(self.NODES_DIR)
+            yield root
+
+    def _gathered(self) -> list[ModelProjectionNodeSources]:
+        with self._root() as root:
+            return HandlerContractProjectionGather._nodes(
+                root, "node_*/contract.yaml", with_modules=False
+            )
+
+    def _tracked_exposures(self) -> list[tuple[str, dict[str, object]]]:
+        return check_cursor.tracked_exposures(self._gathered())[0]
+
+    def violations(self) -> list[str]:
+        return check_cursor.missing_cursor_ids(self._tracked_exposures())
+
+    def membership_violations(self) -> list[tuple[str, str]]:
+        return check_cursor.membership_violations(self._tracked_exposures())
+
+    def _read_baseline(self) -> list[str]:
+        return HandlerContractProjectionGather._baseline(self.BASELINE)
+
+    def main(self) -> int:
+        with self._root() as root:
+            previous = Path.cwd()
+            os.chdir(root)
+            try:
+                return runtime_main(
+                    [
+                        "--rule",
+                        "cursor",
+                        "--baseline",
+                        str(self.BASELINE),
+                        *sys.argv[1:],
+                    ]
+                )
+            finally:
+                os.chdir(previous)
+
+
+def _load_module() -> _CursorGate:
+    return _CursorGate()
+
+
+@pytest.fixture
+def mod() -> _CursorGate:
     return _load_module()
 
 
@@ -147,7 +213,7 @@ _CONSUMER_FLOW_CURSOR_LINE = '  cursor_column: "projection_cursor"\n'
 
 
 def _run_main(mod, monkeypatch, *args: str) -> int:
-    monkeypatch.setattr(sys, "argv", ["check_projection_cursor_declared.py", *args])
+    monkeypatch.setattr(sys, "argv", ["projection-contract-check", *args])
     return int(mod.main())
 
 
