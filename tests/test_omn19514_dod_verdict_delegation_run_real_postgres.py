@@ -26,6 +26,12 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    HandlerDelegateSkill,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
 )
@@ -42,6 +48,15 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers import (
 )
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner import (
     DodVerdictProjectionWriter,
+)
+from omnimarket.projection.runner import MessageMeta
+from tests.test_omn19514_ticket_id_projection_real_postgres import (
+    _Postgres,
+    _provisioned,
+    _runner,
+)
+from tests.test_omn19514_ticket_id_projection_real_postgres import (
+    postgres as postgres,
 )
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
@@ -72,7 +87,10 @@ def _base_dsn() -> str:
     return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
+async def _connect_or_skip(dsn: str | None = None) -> asyncpg.Connection:
+    if dsn is not None:
+        # An explicitly provisioned database must fail, never silently skip.
+        return await asyncpg.connect(dsn)
     password = os.environ.get(
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
@@ -110,11 +128,11 @@ class _ConnectionDb:
 
 
 @asynccontextmanager
-async def _migrated_writer() -> AsyncIterator[
-    tuple[DodVerdictProjectionWriter, asyncpg.Connection, str]
-]:
+async def _migrated_writer(
+    dsn: str | None = None,
+) -> AsyncIterator[tuple[DodVerdictProjectionWriter, asyncpg.Connection, str]]:
     """A throwaway schema carrying the real migration, wired to the real writer."""
-    connection = await _connect_or_skip()
+    connection = await _connect_or_skip(dsn)
     schema = f"omn19514_{uuid4().hex[:12]}"
     original_table = writer_module.TABLE
     original_upsert = writer_module._UPSERT
@@ -224,39 +242,76 @@ async def test_an_unlinked_verdict_stores_null() -> None:
     assert count == 1
 
 
+class _CompletedDispatch:
+    """Deterministic inference result; both producers and writers remain real."""
+
+    async def dispatch(self, **kwargs: Any) -> dict[str, object]:
+        return {"status": "completed", "content": "ok", "quality_gate_passed": True}
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_the_verdict_joins_to_the_delegation_row_it_judged() -> None:
-    """The join the column exists for, against a stand-in delegation_events.
-
-    The stand-in keeps the lab's column type: delegation_events.correlation_id
-    is TEXT on the .201 dev lane (pg_typeof read 2026-09-25), so the join
-    casts the UUID side. Joining UUID to TEXT without the cast is refused by
-    Postgres with "operator does not exist: uuid = text", which is exactly
-    what the first lab attempt hit.
-    """
-    delegation = uuid4()
+async def test_the_verdict_joins_to_the_delegation_row_it_judged(
+    postgres: _Postgres,
+) -> None:
+    """Join real producer payloads through both migrated projection writers."""
+    request = ModelDelegateSkillRequest(
+        prompt="Summarize the router",
+        task_type="summarization",
+        source="claude-code",
+        tenant_id=str(uuid4()),
+        metadata={"ticket_id": "OMN-19514"},
+    )
+    terminal = await HandlerDelegateSkill(
+        object(), dispatch_port=_CompletedDispatch()
+    ).handle(request)
+    delegation = request.correlation_id
     payload = _produced_payload(
         ticket_id="OMN-19514",
         checks=[_check("dod-001", EnumEvidenceCheckStatus.VERIFIED)],
         delegation_correlation_id=delegation,
     )
-    async with _migrated_writer() as (writer, connection, schema):
-        await connection.execute(
-            f"CREATE TABLE {schema}.delegation_events "
-            "(correlation_id TEXT PRIMARY KEY, ticket_id TEXT)"
+    async with (
+        _provisioned(postgres) as (admin, delegation_schema),
+        _runner(postgres, delegation_schema) as runner,
+        _migrated_writer(postgres.dsn("public")) as (writer, connection, schema),
+    ):
+        mirror_migration = Path(__file__).resolve().parents[1] / (
+            "src/omnimarket/nodes/node_projection_tenant_registry/migrations/"
+            "0000_create_tenant_registry_mirror.sql"
         )
-        await connection.execute(
-            f"INSERT INTO {schema}.delegation_events VALUES ($1, $2), ($3, $4)",
+        await admin.execute(mirror_migration.read_text(encoding="utf-8"))
+        await admin.execute(
+            "INSERT INTO tenant_registry_mirror (tenant_slug, tenant_uuid, status) "
+            "VALUES ($1, $2, $3)",
+            "omn19514-test",
+            UUID(str(terminal.tenant_id)),
+            "active",
+        )
+        assert await runner._project_delegate_skill_terminal(
+            terminal.model_dump(mode="json"),
+            MessageMeta(partition=0, offset=1, fallback_id=str(delegation)),
+        )
+        stored_ticket = await admin.fetchval(
+            "SELECT ticket_id FROM delegation_events WHERE correlation_id = $1",
             str(delegation),
-            "OMN-19514",
-            str(uuid4()),
-            "OMN-19514",
         )
+        assert stored_ticket == "OMN-19514"
         assert await writer._project_verdict(payload) is not None
+        # Neither sharing the ticket alone nor sharing the attempt alone joins.
+        for ticket_id, correlation in (
+            ("OMN-19514", uuid4()),
+            ("OMN-1", delegation),
+        ):
+            unrelated = _produced_payload(
+                ticket_id=ticket_id,
+                checks=[_check("dod-001", EnumEvidenceCheckStatus.VERIFIED)],
+                delegation_correlation_id=correlation,
+            )
+            assert await writer._project_verdict(unrelated) is not None
         joined = await connection.fetch(
             f"SELECT d.correlation_id, d.ticket_id, v.status "
-            f"FROM {schema}.delegation_events d "
+            f"FROM {delegation_schema}.delegation_events d "
             f"JOIN {schema}.dod_verify_runs v "
             "ON v.delegation_correlation_id::text = d.correlation_id "
             "AND v.ticket_id = d.ticket_id"
