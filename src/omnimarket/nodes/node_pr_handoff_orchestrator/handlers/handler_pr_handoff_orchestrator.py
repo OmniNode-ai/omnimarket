@@ -44,21 +44,16 @@ from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.core import (
     run_leg,
 )
 from omnimarket.nodes.node_pr_handoff_orchestrator.orchestration.row_store import (
-    InMemoryPrHandoffRowStore,
     ProtocolPrHandoffRowStore,
     read_active_state_io_rows,
     run_with_cas_retry,
 )
 from omnimarket.nodes.node_pr_handoff_orchestrator.state_codec import (
+    process_row_store,
     shared_state_io_store,
 )
 
 logger = logging.getLogger(__name__)
-
-# The runtime may construct one handler instance per route; until the rows are
-# durable (OMN-20638) every instance in the process shares this one store, so a
-# request and the observations of its PR meet in the same row.
-_PROCESS_STORE = InMemoryPrHandoffRowStore()
 
 
 class HandlerPrHandoffOrchestrator:
@@ -76,7 +71,7 @@ class HandlerPrHandoffOrchestrator:
             holds=holds if holds is not None else NoLedgerHolds(),
         )
         self._local_store: ProtocolPrHandoffRowStore = (
-            store if store is not None else _PROCESS_STORE
+            store if store is not None else process_row_store()
         )
 
     @property
