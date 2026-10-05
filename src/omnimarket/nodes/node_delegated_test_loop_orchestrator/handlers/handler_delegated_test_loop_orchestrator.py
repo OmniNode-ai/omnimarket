@@ -45,6 +45,7 @@ from typing import Literal
 
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop import (
     HEADLINE_STATUSES,
+    MAX_RESULT_BYTES,
     EnumLoopStatus,
     ModelDelegatedTestLoopRequest,
     ModelDelegatedTestLoopResult,
@@ -222,7 +223,7 @@ class HandlerDelegatedTestLoopOrchestrator:
                 "result": result.model_dump(mode="json"),
             },
         )
-        return result
+        return _compact_result(result)
 
     def _write_until_pass(
         self,
@@ -507,6 +508,41 @@ class HandlerDelegatedTestLoopOrchestrator:
                 EnumLoopStatus.INFRA_ERROR, f"{role} run digest: infra_error", digest
             )
         return digest, receipt
+
+
+def _compact_result(
+    result: ModelDelegatedTestLoopResult,
+) -> ModelDelegatedTestLoopResult:
+    """Cap diagnostic text by serialized bytes; the receipt keeps the full result."""
+    if result_json_bytes(result) < MAX_RESULT_BYTES:
+        return result
+
+    def candidate(limit: int) -> ModelDelegatedTestLoopResult:
+        digest = result.final_digest
+        if digest is not None:
+            digest = digest.model_copy(
+                update={
+                    "exception_type": digest.exception_type[:limit],
+                    "message": digest.message[:limit],
+                    "top_frame": digest.top_frame[:limit],
+                }
+            )
+        return result.model_copy(
+            update={"final_digest": digest, "detail": result.detail[:limit]}
+        )
+
+    compact = candidate(0)
+    if result_json_bytes(compact) >= MAX_RESULT_BYTES:
+        raise ValueError("loop result metadata exceeds the compact byte budget")
+    lo, hi = 0, MAX_RESULT_BYTES
+    while lo + 1 < hi:
+        limit = (lo + hi) // 2
+        trial = candidate(limit)
+        if result_json_bytes(trial) < MAX_RESULT_BYTES:
+            compact, lo = trial, limit
+        else:
+            hi = limit
+    return compact
 
 
 def result_json_bytes(result: ModelDelegatedTestLoopResult) -> int:
