@@ -1,6 +1,6 @@
 name: node_delegate_skill_orchestrator
 version: "1.0.0"
-description: "Consumer-facing delegation entry point for Claude Code and Codex adapters"
+description: "Delegation entry point with durable command claims and scheduled terminal recovery"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

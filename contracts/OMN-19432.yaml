@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19432"
+title: "The delegate states a task's computed facts before the task for the classes measured to need it"
+summary: "Adds node_facts_first_prompt_compute, which computes constraints, limits, counts, identifiers, numbered code and diff lines and cut marks from a prompt and states them ahead of the unchanged task, for the task classes the task-class contract declares facts_first. Tests: tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py, tests/unit/nodes/node_delegate_skill_orchestrator/test_facts_first_reaches_the_model_omn19432.py and tests/test_golden_chain_node_facts_first_prompt_compute.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-facts-first-prompt"
+    statement: |-
+      A prompt for a task class the contract declares facts_first must reach the model with the facts computed from it stated ahead of the unchanged task; a class the contract does not declare, or a prompt with nothing to state, must reach the model as written.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the composer states the task's own constraints verbatim, exact counts, limits, identifiers, numbered code and diff lines and cut marks, returns a prompt with nothing to state byte-identical, is idempotent, and follows the contract's class list -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the bytes handed to the model on the in-process port and the bus intent lead with the facts for a declaring class and carry the prompt as written for any other class -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_facts_first_reaches_the_model_omn19432.py -q
+      - id: "AC3"
+        statement: |-
+          AC3: the node's golden chain replays prompt in to stated prompt out with the same bytes and publishes its one terminal event -- falsifier: env -u PYTHONPATH uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The facts-first tests pass at the head and fail at the merge base, where the node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py tests/unit/nodes/node_delegate_skill_orchestrator/test_facts_first_reaches_the_model_omn19432.py tests/test_golden_chain_node_facts_first_prompt_compute.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-facts-first-ac1"
+    description: "The composer tests prove the facts it states, byte identity, idempotence and contract-driven class selection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-facts-first-ac2"
+    description: "The wiring tests prove the model receives the facts on both paths for declaring classes only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_facts_first_reaches_the_model_omn19432.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-facts-first-ac3"
+    description: "The golden chain proves the node replays to the same bytes and publishes its terminal event."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

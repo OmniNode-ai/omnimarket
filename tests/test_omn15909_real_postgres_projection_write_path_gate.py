@@ -249,9 +249,9 @@ def _real_quality_gate_result_payload(
 
 
 @asynccontextmanager
-async def _provisioned_runner() -> AsyncIterator[
-    tuple[DelegationProjectionRunner, asyncpg.Connection, str]
-]:
+async def _provisioned_runner(
+    dsn: str | None = None,
+) -> AsyncIterator[tuple[DelegationProjectionRunner, asyncpg.Connection, str]]:
     """Provision a disposable schema with the live migrated delegation
     projection schema, bind a real asyncpg-backed ``DelegationProjectionRunner``
     to it, and yield ``(runner, admin_conn, schema)``.
@@ -265,8 +265,14 @@ async def _provisioned_runner() -> AsyncIterator[
     write-path TYPE/shape contract, not the RLS boundary -- that boundary is
     already proven by
     ``tests/test_writer_tenant_isolation_omn14898.py::test_real_postgres_cross_tenant_write_is_rls_isolated_on_read``.
+
+    ``dsn`` names a database the caller already owns (for example a disposable
+    native cluster from a ``local_postgres`` fixture). Without it the
+    ``INTEGRATION_POSTGRES_*`` database is used and the test skips when that is
+    not configured, exactly as before.
     """
-    admin_conn = await _connect_or_skip()
+    admin_conn = await (asyncpg.connect(dsn) if dsn else _connect_or_skip())
+    runner_dsn = dsn or _base_dsn()
     schema = f"omn15909_{uuid4().hex[:16]}"
     pool: asyncpg.Pool | None = None
     try:
@@ -282,12 +288,12 @@ async def _provisioned_runner() -> AsyncIterator[
             await admin_conn.execute(sql)
 
         pool = await asyncpg.create_pool(
-            _base_dsn(),
+            runner_dsn,
             min_size=1,
             max_size=3,
             server_settings={"search_path": f"{schema},public"},
         )
-        adapter = AsyncpgAdapter(dsn=_base_dsn())
+        adapter = AsyncpgAdapter(dsn=runner_dsn)
         adapter._pool = pool  # type: ignore[attr-defined]
 
         runner = DelegationProjectionRunner()
