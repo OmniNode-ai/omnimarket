@@ -19,14 +19,12 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.models.model_audit_trail_compactor_command import ModelCompactorCommand
 from omnimarket.nodes.node_audit_trail_compact_schedule_compute.handlers.handler_audit_trail_compact_schedule import (
     HandlerAuditTrailCompactSchedule,
     schedule_config,
 )
-from omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input import (
-    ModelCompactorCommand,
-)
-from omnimarket.validators.contract_topic_graph import build_graph
+from omnimarket.validators.contract_topic_graph import GRAPH_PACKAGES, build_graph
 
 pytestmark = pytest.mark.unit
 
@@ -57,9 +55,17 @@ def _slot_time() -> dt.datetime:
     return dt.datetime(2026, 10, 5, cfg.run_hour_utc, cfg.run_minute_utc, tzinfo=dt.UTC)
 
 
-def test_compactor_command_topic_has_a_node_producer() -> None:
+def test_compactor_command_topic_has_a_node_producer(tmp_path: Path) -> None:
     command_topic = _contract(COMPACTOR)["runtime_dispatch"]["command_topic"]
-    producers = build_graph().producers.get(command_topic, ())
+    # The producer is an omnimarket node, so the graph over the real omnimarket
+    # contracts is sound for this edge. Every other census package resolves to an
+    # empty root here, which keeps the test independent of
+    # CONTRACT_GRAPH_CHECKOUT_ROOT (CI does not set it for the unit shards).
+    roots = {package: tmp_path / package for package in GRAPH_PACKAGES}
+    for root in roots.values():
+        root.mkdir(parents=True, exist_ok=True)
+    roots["omnimarket"] = NODES.parent
+    producers = build_graph(roots=roots).producers.get(command_topic, ())
     assert any(SCHEDULE in p for p in producers), (
         f"{command_topic} has no node producer; producers={producers}"
     )

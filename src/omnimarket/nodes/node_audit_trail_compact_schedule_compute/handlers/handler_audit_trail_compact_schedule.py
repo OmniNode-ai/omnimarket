@@ -18,9 +18,7 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input import (
-    ModelCompactorCommand,
-)
+from omnimarket.models.model_audit_trail_compactor_command import ModelCompactorCommand
 
 _CONTRACT = Path(__file__).parents[1] / "contract.yaml"
 

@@ -43,7 +43,7 @@ input_subscriptions:
 
 output_model:
   name: ModelCompactorCommand
-  module: omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input
+  module: omnimarket.models.model_audit_trail_compactor_command
   description: The compactor command for the day's run, or no output on a tick outside the slot.
 
 config:
