@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20578"
 title: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra"
-summary: "omnimarket carries the source migrations, ownership declarations and shape reconciliation for the routing-feedback and alert-channel liveness projection tables; omnibase_infra vendors them byte-identically and derives the projection grants. AC1 and AC2 run in omnibase_infra and are bound there as local_done_gate items, because the hosted check carries only this repository. AC3 is a dev-202 runtime log readback and is not bound."
+summary: "omnimarket carries the source migrations, ownership declarations and shape reconciliation for the routing-feedback and alert-channel liveness projection tables; omnibase_infra vendors them byte-identically and derives the projection grants. AC1 and AC2 run in omnibase_infra and are listed as unbound local_done_gate items, because the hosted check carries only this repository and cannot control them; AC1 is bound to the omnimarket prerequisite test, which it can run. AC3 is a dev-202 runtime log readback and is not bound."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -39,7 +39,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/migrations/test_vendor_routing_feedback_and_alert_liveness.py -q"
         cwd: "${OMNI_HOME}/omnibase_infra"
-    binds_ac: ["AC1"]
   - id: "dod-omn20578-ac2-table-grants-derived"
     description: "AC2 omnibase_infra probe. The grant derivation check proves both tables granted to the projection principal on every topology instance and catalog."
     source: "manual"
@@ -48,7 +47,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python scripts/generate_application_database_table_grants.py --check"
         cwd: "${OMNI_HOME}/omnibase_infra"
-    binds_ac: ["AC2"]
   - id: "dod-omn20578-ac1-omnimarket-vendor-prereqs"
     description: "AC1 omnimarket probe. The source migrations reconcile every declared routing-feedback column and the ownership manifest declares each created relation exactly once, which omnibase_infra's vendoring gates require."
     source: "manual"
