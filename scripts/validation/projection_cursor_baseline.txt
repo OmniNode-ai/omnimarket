@@ -1,6 +1,6 @@
 # OMN-18043 — projection_api exposures that declare no cursor_column.
 # This list may only SHRINK. Regenerate with:
-#   uv run python scripts/validation/check_projection_cursor_declared.py --write-baseline
+#   uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor --write-baseline
 node_ab_compare_reducer::llm_call_metrics#0
 node_canary_score_reducer::capability_scores#0
 node_deployment_evidence_reducer::deployment_evidence_projection#0

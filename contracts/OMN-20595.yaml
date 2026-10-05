@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20595"
+title: "Lab lanes can create, read and comment on tickets through node_create_ticket"
+summary: "node_create_ticket handles create, read and comment, sends the caller's description unchanged, and runs the installed ticket-creation guard on every create. AC1 to AC3 are bound to the node's tests. The lab readback is recorded in the pull request body and is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-node-create-ticket-operations-and-guard"
+    statement: "node_create_ticket is the one ticket node for lab lanes. The criteria below are the ones the node's tests cover; each id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the node handles create, read and comment, and its contract input_model names the model handle() takes -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: a create sends the caller's description to Linear byte for byte -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: a create the installed ticket-creation guard refuses, or for which no guard is found, raises and never calls Linear -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q in omnimarket"
+      - id: "AC4"
+        statement: "AC4: operation=transition moves a ticket to a named state only after the installed guard accepts the exact {id, state} payload, and a refusal or a missing guard raises with no write -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 hosted probe. The ticket operation tests pass at the head and fail at the merge base, where the operations and the guard do not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -q"
+  - kind: "tests"
+    description: "AC4 hosted probe. The ticket transition tests pass at the head and fail at the merge base, where operation=transition does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20595-ac1-operations"
+    description: "AC1 hosted probe. The node handles create, read and comment and its contract input model matches handle()."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20595-ac2-description-pass-through"
+    description: "AC2 hosted probe. The caller's description reaches Linear and the guard payload unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20595-ac3-guard-blocks-create"
+    description: "AC3 hosted probe. A guard refusal, an undecidable exit or a missing guard blocks the create before any Linear call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20595-ac4-transition"
+    description: "AC4 hosted probe. operation=transition writes only after the guard accepts the exact payload and raises with no write otherwise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

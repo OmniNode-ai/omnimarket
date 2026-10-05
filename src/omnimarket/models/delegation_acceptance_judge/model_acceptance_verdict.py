@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_failure_class import (
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
 )
 

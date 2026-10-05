@@ -7,6 +7,18 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
+    EnumAcceptanceFailureClass,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_cell_event import (
+    ModelAcceptanceCellEvent,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
+    ModelAcceptanceItem,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
+    ModelAcceptanceVerdict,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.classify import (
     is_probe,
     kind_of,
@@ -15,17 +27,11 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.stats im
     cohen_kappa,
     wilson_accept_interval,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_failure_class import (
-    EnumAcceptanceFailureClass,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_issue_code import (
     EnumAcceptanceIssueCode as Code,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_agreement import (
     ModelAcceptanceAgreement,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_cell_event import (
-    ModelAcceptanceCellEvent,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_failure_count import (
     ModelAcceptanceFailureCount,
@@ -33,17 +39,11 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acce
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_issue import (
     ModelAcceptanceIssue,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
-    ModelAcceptanceItem,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_matrix_row import (
     ModelAcceptanceMatrixRow,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_rubric import (
     ModelAcceptanceRubric,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
-    ModelAcceptanceVerdict,
 )
 
 _Cell = tuple[str, str, str]

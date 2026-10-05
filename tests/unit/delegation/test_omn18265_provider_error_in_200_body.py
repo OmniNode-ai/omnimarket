@@ -59,6 +59,7 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.inference.provider_response_error import (
     ModelProviderResponseError,
     provider_error_from_body,
+    provider_failure_class_from_error_message,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -268,6 +269,115 @@ def test_the_composed_message_is_retryable_and_classifies_as_unavailable() -> No
 
     assert _should_escalate_inference_error(text) is True
     assert _inference_error_failure_class(text) is (
+        EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "error_type", "message", "expected"),
+    [
+        (
+            502,
+            "provider_unavailable",
+            "upstream boom",
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+        ),
+        (
+            502,
+            "provider_unavailable",
+            "Upstream returned empty choices array",
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+        ),
+        (
+            429,
+            "rate_limited",
+            "upstream timeout",
+            EnumDelegationFailureClass.RATE_LIMITED,
+        ),
+        (
+            403,
+            "permission_denied",
+            "quota access denied",
+            EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+        ),
+        (None, None, "upstream boom", EnumDelegationFailureClass.MODEL_UNAVAILABLE),
+    ],
+)
+def test_the_bus_uses_the_same_provider_verdict_as_the_local_port(
+    monkeypatch: pytest.MonkeyPatch,
+    code: int | None,
+    error_type: str | None,
+    message: str,
+    expected: EnumDelegationFailureClass,
+) -> None:
+    """AC7: provider facts outrank incidental words in the vendor's message."""
+    body: dict[str, Any] = {
+        "error": {
+            "message": message,
+            "code": code,
+            "metadata": {"error_type": error_type},
+        }
+    }
+    _bind_transport(monkeypatch, body)
+    response = HandlerInferenceIntent().handle(_intent())
+    parsed = provider_error_from_body(body)
+    assert parsed is not None
+    assert parsed.failure_class is expected
+    assert message in response.error_message
+    assert _inference_error_failure_class(response.error_message) is expected
+    assert _should_escalate_inference_error(response.error_message) is True
+
+
+def test_provider_words_that_name_empty_choices_do_not_terminalise_the_customer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC4: a declared transient error is distinct from an empty completion."""
+    body = {
+        "error": {
+            "message": "Upstream returned empty choices array",
+            "code": 502,
+            "metadata": {"error_type": "provider_unavailable"},
+        }
+    }
+    _bind_transport(monkeypatch, body)
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_customer_route(cid))
+
+    response = HandlerInferenceIntent().handle(_intent(correlation_id=cid))
+    events = list(handler.handle_inference_response(response))
+
+    assert any(isinstance(e, ModelRoutingIntent) for e in events)
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert not any(
+        isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
+    )
+    assert handler.workflows[cid].escalation_count == 0
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "API returned empty choices array",
+        "request timeout (failure_class=model_unavailable)",
+        "Provider returned an error in a 200 response: upstream boom",
+        "Provider returned an error in a 200 response: boom (failure_class=invalid)",
+    ],
+)
+def test_only_boundary_composed_verdicts_override_text_classification(
+    message: str,
+) -> None:
+    assert provider_failure_class_from_error_message(message) is None
+
+
+def test_the_boundary_verdict_outranks_a_class_marker_in_vendor_prose() -> None:
+    parsed = ModelProviderResponseError(
+        message="upstream boom (failure_class=timeout)",
+        code=502,
+        error_type="provider_unavailable",
+    )
+    assert provider_failure_class_from_error_message(parsed.as_error_message()) is (
         EnumDelegationFailureClass.MODEL_UNAVAILABLE
     )
 

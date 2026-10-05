@@ -168,7 +168,19 @@ PREFLIGHT_JOB_MARKERS: Final[tuple[str, ...]] = ("occ-preflight", "occ preflight
 #: exact name rather than a ``verify`` substring: this repo also carries
 #: ``Trigger node_redeploy Start / Verify the dev lane vendors ...``, which has
 #: nothing to do with change control.
-RECEIPT_GATE_JOB_NAMES: Final[tuple[str, ...]] = ("verify / verify",)
+#:
+#: OMN-17427: the repo-evidence family joins it, under the same pre-merge
+#: control. ``repo-evidence / dod-verify`` (the OMN-20072 pilot) waits a bounded
+#: 1500 s for ``occ-preflight / eligibility``, which itself waits on the
+#: companion, and every in-run poller of this repo is now named ``Repo Evidence
+#: Dependency`` and waits on dod-verify. Neither matched, so on omnimarket#3417
+#: (OCC#12886 merged 10:34:23Z, both reds 09:58Z) every pass logged
+#: ``no_failed_preflight`` and the PR stayed red.
+RECEIPT_GATE_JOB_NAMES: Final[tuple[str, ...]] = (
+    "verify / verify",
+    "repo-evidence / dod-verify",
+    "repo evidence dependency",
+)
 
 
 def is_preflight_job_name(name: str, *, markers: tuple[str, ...]) -> bool:
