@@ -68,6 +68,9 @@ from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
 from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    current_dispatch_progress,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -79,6 +82,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
+    ModelDelegationDispatchProgress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
     ModelDelegationReapContext,
@@ -1173,6 +1179,8 @@ class HandlerDelegateSkill:
                 execution_budget.terminal_delivery_margin_seconds
             ),
         )
+        progress = ModelDelegationDispatchProgress()
+        progress_token = current_dispatch_progress.set(progress)
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
@@ -1295,7 +1303,9 @@ class HandlerDelegateSkill:
                 provenance=request.provenance,
                 error_message=(
                     f"delegation exceeded the handler execution budget of "
-                    f"{execution_timeout_seconds}s and was cancelled; the consumer commits "
+                    f"{execution_timeout_seconds}s and was cancelled at "
+                    f"stage={progress.cancelled_stage or progress.stage}; "
+                    "the consumer commits "
                     "this terminal instead of being evicted mid-handle "
                     f"(OMN-15504){queue_clause}"
                 ),
@@ -1325,6 +1335,9 @@ class HandlerDelegateSkill:
                 ),
                 budget_evidence=budget_evidence,
             )
+
+        finally:
+            current_dispatch_progress.reset(progress_token)
 
         return delegate_skill_terminal_from_response(
             _response_from_result(

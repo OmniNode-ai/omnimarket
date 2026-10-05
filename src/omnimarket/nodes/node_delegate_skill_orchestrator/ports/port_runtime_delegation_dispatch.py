@@ -20,6 +20,9 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    dispatch_stage,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
 )
@@ -149,7 +152,8 @@ class RuntimeDelegationDispatchPort:
         )
 
         if not wait:
-            await self._publish_request(request)
+            with dispatch_stage("publish"):
+                await self._publish_request(request)
             return {
                 "status": "completed",
                 "content": "",
@@ -158,21 +162,25 @@ class RuntimeDelegationDispatchPort:
                 "quality_gate_passed": False,
             }
 
-        unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        with dispatch_stage("subscribe"):
+            unsubscribe, queue = await self._subscribe_for_result(correlation_id)
         try:
-            await self._publish_request(request)
+            with dispatch_stage("publish"):
+                await self._publish_request(request)
             timeout_seconds = float(self._config.wait_timeout_seconds)
-            terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
+            with dispatch_stage("terminal_wait"):
+                terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
         except TimeoutError:
             return {
                 "status": "timeout",
                 "error_message": (
                     f"timed out after {self._config.wait_timeout_seconds}s "
-                    "waiting for delegation result"
+                    "at stage=terminal_wait waiting for delegation result"
                 ),
             }
         finally:
-            await _unsubscribe(unsubscribe)
+            with dispatch_stage("terminal_cleanup"):
+                await _unsubscribe(unsubscribe)
 
         result: dict[str, object] = {
             "status": terminal.status,
