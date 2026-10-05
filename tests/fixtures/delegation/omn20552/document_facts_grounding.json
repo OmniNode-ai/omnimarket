@@ -1,0 +1,92 @@
+{
+  "provenance": {
+    "run_id": "de6357ab-d4e3-42de-b6a9-3ba186160860",
+    "task_type": "document",
+    "model_name": "Qwen3.8-27B",
+    "backend_id": "local-omnipc2-chat",
+    "quality_score": 1.0,
+    "quality_gate_passed": true,
+    "recorded_rubric_verdict": {
+      "rubric_version": "delegation-class-rubrics.v1",
+      "task_class": "document",
+      "outcome": "UNDETERMINED",
+      "failed_criteria": [],
+      "undetermined_criteria": [
+        "no_rubric_for_class"
+      ]
+    },
+    "finding": "The answer names only identifiers the facts carry, yet gives two causes the facts never state: that OMN-20543 requires bound tests to run against a database, and that omnimarket#3369 skipped its items because the hosted verifier lacked database access. The lane rewrote the text by hand (ledger TERMINAL 2026-10-04T22:03:38Z lane=pilot-control-9143).",
+    "finding_scope": "The deterministic rubric cannot refuse this answer: every identifier, ref, path and number in it is in the facts, and its two invented causes reuse the facts' own words. The document rubric records claims_traceable PASS, which is the false pass the class's false-pass line counts once the offline acceptance judge labels it; the judge's recorded reply rejects it as fabrication."
+  },
+  "recorded_run": {
+    "case_id": "de6357ab_document",
+    "task_class": "document",
+    "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+    "answer_text": "## Why\nTicket OMN-20543 requires bound tests to run against a database. omnibase_core#1886 adds a postgres:16-alpine service and PostgreSQL 16 tools to the dod-verify job. Previously, omnimarket#3369 had to skip real-Postgres evidence items because the hosted verifier lacked database access, causing control failures.\n\n## Change\nThis PR pins the reusable workflow in .github/workflows/call-repo-evidence-gate.yml to the squash commit of omnibase_core#1886. It updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database. It adds contracts/OMN-20543.yaml binding AC3 to that test."
+  },
+  "rubric_refused": [
+    {
+      "case_id": "document_invented_path",
+      "task_class": "document",
+      "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+      "answer_text": "## Why\nBefore omnibase_core#1886, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate.\n\n## Change\nThis PR pins .github/workflows/call-repo-evidence-gate.yml to the squash commit of omnibase_core#1886 and adds checks in tests/ci/test_postgres_service.py.",
+      "missing": [
+        "tests/ci/test_postgres_service.py"
+      ]
+    }
+  ],
+  "rubric_passed": [
+    {
+      "case_id": "de6357ab_document_grounded",
+      "task_class": "document",
+      "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+      "answer_text": "## Why\nTicket OMN-20543. Before omnibase_core#1886, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees, and the control refused them as \"the control could not run\".\n\n## Change\nThis PR pins the reusable in .github/workflows/call-repo-evidence-gate.yml to the squash commit of omnibase_core#1886 in order to give a bound test that needs a database a postgres:16-alpine service at the pull request head and in the merge-base must-fail control. It updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database and adds contracts/OMN-20543.yaml binding AC3 to that test."
+    }
+  ],
+  "judge_replay": {
+    "note": "One blind batch rendered by node_delegation_acceptance_judge_compute (render, seed omn20552) over the five cases below and judged by Codex through the harness-delegate skill (run 7279913f-515e-4cf8-845b-ea77255b65eb, model gpt-6.1-sol). The reply is replayed through the node's check operation; no model is called in tests.",
+    "harness_run": "7279913f-515e-4cf8-845b-ea77255b65eb",
+    "judge": "codex",
+    "rubric_version": "delegation-acceptance-judge.v1",
+    "cases": [
+      {
+        "judge_item_id": "i0",
+        "case_id": "de6357ab_document",
+        "task_class": "document",
+        "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+        "answer_text": "## Why\nTicket OMN-20543 requires bound tests to run against a database. omnibase_core#1886 adds a postgres:16-alpine service and PostgreSQL 16 tools to the dod-verify job. Previously, omnimarket#3369 had to skip real-Postgres evidence items because the hosted verifier lacked database access, causing control failures.\n\n## Change\nThis PR pins the reusable workflow in .github/workflows/call-repo-evidence-gate.yml to the squash commit of omnibase_core#1886. It updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database. It adds contracts/OMN-20543.yaml binding AC3 to that test."
+      },
+      {
+        "judge_item_id": "i1",
+        "case_id": "summarization_invented_cause",
+        "task_class": "summarization",
+        "request_text": "Summarize in two sentences. Facts: omniclaude dev push CI run 36948294968 on head a321c13e8 went red because jobs that install with a bare uv sync, with no retry, hit transient PyPI fetch errors. Change: all 18 bare uv sync steps in .github/workflows/ci.yml now use the UV_SYNC_ATTEMPTS retry loop; the new test fails on any unretried uv sync line.",
+        "answer_text": "CI run 36948294968 went red because the PyPI mirror was down for scheduled weekend maintenance by the hosting provider."
+      },
+      {
+        "judge_item_id": "i2",
+        "case_id": "de6357ab_document_grounded",
+        "task_class": "document",
+        "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+        "answer_text": "## Why\nTicket OMN-20543. Before omnibase_core#1886, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees, and the control refused them as \"the control could not run\".\n\n## Change\nThis PR pins the reusable in .github/workflows/call-repo-evidence-gate.yml to the squash commit of omnibase_core#1886 in order to give a bound test that needs a database a postgres:16-alpine service at the pull request head and in the merge-base must-fail control. It updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database and adds contracts/OMN-20543.yaml binding AC3 to that test."
+      },
+      {
+        "judge_item_id": "i3",
+        "case_id": "document_paraphrased_cause",
+        "task_class": "document",
+        "request_text": "Write the \"## Why\" and \"## Change\" sections (markdown, at most 120 words total, plain technical English, no marketing words) of a pull request in repository omnimarket. Facts, use only these:\n- Ticket OMN-20543. omnibase_core#1886 (merged) gives the reusable workflow job \"dod-verify\" in omnibase_core .github/workflows/receipt-gate.yml a postgres:16-alpine service, the PostgreSQL 16 server tools on PATH, and INTEGRATION_POSTGRES_* environment variables, before the head verification step, so a bound test that needs a database runs at the pull request head and in the merge-base must-fail control.\n- Before it, omnimarket#3369 had to scope its two real-Postgres evidence items local_done_gate; the hosted verifier skips those at both trees and the control refused them as \"the control could not run\".\n- This PR changes .github/workflows/call-repo-evidence-gate.yml to pin the reusable at the squash commit of omnibase_core#1886, updates tests/ci/test_repo_evidence_caller_workflow.py with test_caller_pins_a_reusable_that_gives_bound_tests_a_database, and adds contracts/OMN-20543.yaml binding AC3 to that test.\nDo not invent numbers, run ids or results.\n",
+        "answer_text": "The control refused the two real-Postgres items because the hosted verifier skipped them at both trees, so the control could not run."
+      },
+      {
+        "judge_item_id": "i4",
+        "case_id": "summarization_grounded_cause",
+        "task_class": "summarization",
+        "request_text": "Summarize in two sentences. Facts: omniclaude dev push CI run 36948294968 on head a321c13e8 went red because jobs that install with a bare uv sync, with no retry, hit transient PyPI fetch errors. Change: all 18 bare uv sync steps in .github/workflows/ci.yml now use the UV_SYNC_ATTEMPTS retry loop; the new test fails on any unretried uv sync line.",
+        "answer_text": "CI run 36948294968 failed because bare uv sync steps without retries hit transient PyPI fetch errors. All 18 steps in .github/workflows/ci.yml now use the UV_SYNC_ATTEMPTS retry loop."
+      }
+    ],
+    "reply_text": "{\"judgments\":[{\"item_id\":\"i1\",\"accept\":false,\"quality\":0,\"failure_class\":\"fabrication\",\"reason\":\"Invents scheduled weekend maintenance and a PyPI mirror outage; the facts specify transient fetch errors.\"},{\"item_id\":\"i0\",\"accept\":false,\"quality\":1,\"failure_class\":\"fabrication\",\"reason\":\"Invents a ticket requirement that bound tests run against a database; the facts describe support for a bound test that needs one.\"},{\"item_id\":\"i3\",\"accept\":false,\"quality\":1,\"failure_class\":\"incomplete\",\"reason\":\"Omits both required markdown sections and the entire description of the PR's changes.\"},{\"item_id\":\"i2\",\"accept\":true,\"quality\":3,\"failure_class\":\"none\",\"reason\":\"Provides both required sections within 120 words and accurately describes the supplied cause and changes.\"},{\"item_id\":\"i4\",\"accept\":true,\"quality\":3,\"failure_class\":\"none\",\"reason\":\"Uses exactly two sentences and accurately summarizes the CI failure and retry-loop change without adding facts.\"}]}",
+    "seed": "omn20552",
+    "prompt_sha256": "e4dc85ef5417cbb2d9edfeaf631602e1601c5aa3a0831761834b401b463413f9"
+  }
+}

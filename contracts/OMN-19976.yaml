@@ -39,3 +39,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/projection/test_sqlite_ensure_columns_concurrent_writes_omn19976.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD1"]
+  - id: "dod-omn19976-local-store-declared-columns"
+    description: "The local-mode tests run against a store the real delegation writer created, and the local store carries every column a delegation exposure declares, in a fresh store and in one created before this change. They fail where the store creates delegation_events with fewer columns than the Runs exposure declares."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_api_server_local_mode.py tests/unit/projection/test_sqlite_delegation_events_declared_columns_omn19976.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

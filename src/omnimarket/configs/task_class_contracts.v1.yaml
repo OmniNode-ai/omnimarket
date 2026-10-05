@@ -618,6 +618,101 @@ selection_fallback:
     well-formed prose answer can meet whatever its shape, and it arms the prose
     checks including identifiers_grounded.
 
+# OMN-19432: the facts-first prompt shape, and which task classes send it.
+#
+# 60 first-run false passes of the delegation gate (accepted answers two blind
+# raters called inadequate) were re-asked under controlled changes. Asking
+# again with the prompt unchanged recovered 16 of the 60 on average. Stating the
+# prompt facts-first recovered 33 (a second draw, 28): constraints restated as a
+# numbered list, counts and identifiers computed in code, code and diff lines
+# numbered, a caller-cut input marked as cut, and nothing added the task did not
+# state. Data: knowledge-base-internal
+# reports/delegation-evals/2026-09-30-wrong-answer-why (OMN-20032).
+#
+# Each class below declares `prompt_shape`. A class sends facts_first where, over
+# the two draws and both raters, the improved prompt beat the production prompt.
+# Per class, share of answers adequate (production prompt -> facts-first,
+# first rater / second rater):
+#   document         35/45 -> 80/80   research     29/29 -> 64/71
+#   review           36/50 -> 71/79   reasoning     0/0   -> 50/62
+#   code_generation  25/25 -> 75/75
+# A class stays plain where the shape did not beat the control on both raters:
+# planning (50/30 -> 50/40, a tie on the first rater), summarization
+# (33/50 -> 17/17), test (0/0 -> 0/0, one item) and code_review. code_review
+# improved (9/9 -> 25/22) and is held back by operator instruction until it is
+# re-measured; it is also withheld from delegation (see its entry), so the
+# declaration below changes nothing today. Per-class counts are small (one to
+# ten items), so the declaration is a measured starting point, and a re-measure
+# changes a class's `prompt_shape` here, not code.
+#
+# The composer (omnimarket.delegation.facts_first_prompt) reads only this
+# section. `constraint_cues` pick the task's sentences that state a constraint;
+# each is copied verbatim, never paraphrased. `limit_cues` and `limit_units`
+# find numeric limits such as "at most 100 words". `truncation_markers` are
+# literal text a caller leaves where it cut the input. The three caps bound how
+# much the facts add to the prompt.
+facts_first_prompt:
+  constraint_cues:
+    - "must"
+    - "must not"
+    - "should"
+    - "do not"
+    - "don't"
+    - "never"
+    - "only"
+    - "exactly"
+    - "at most"
+    - "at least"
+    - "no more than"
+    - "no fewer than"
+    - "fewer than"
+    - "up to"
+    - "maximum"
+    - "minimum"
+    - "limit"
+    - "without"
+    - "avoid"
+    - "ensure"
+    - "include"
+    - "cite"
+    - "return"
+  limit_cues:
+    - "at most"
+    - "no more than"
+    - "up to"
+    - "fewer than"
+    - "less than"
+    - "under"
+    - "within"
+    - "maximum of"
+    - "at least"
+    - "no fewer than"
+    - "minimum of"
+    - "exactly"
+  limit_units:
+    - "words"
+    - "sentences"
+    - "lines"
+    - "bullets"
+    - "bullet points"
+    - "paragraphs"
+    - "characters"
+    - "items"
+    - "steps"
+    - "sections"
+    - "examples"
+    - "tests"
+  truncation_markers:
+    - "[truncated]"
+    - "(truncated)"
+    - "... [truncated"
+    - "[...]"
+    - "[diff truncated"
+  max_constraints: 12
+  max_constraint_chars: 300
+  max_identifiers: 60
+  max_numbered_lines: 300
+
 # OMN-18341: complexity_contract is the trusted routing feature declaration.
 # It describes the artifact and verification obligations of the task CLASS;
 # output_contract.output_shape remains the response transport boundary (markdown
@@ -627,6 +722,7 @@ selection_fallback:
 task_classes:
   code_generation:
     complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
+    prompt_shape: facts_first
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1016,6 +1112,7 @@ task_classes:
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    prompt_shape: facts_first
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1123,6 +1220,7 @@ task_classes:
         - cheap_cloud
   research:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    prompt_shape: facts_first
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1427,6 +1525,7 @@ task_classes:
         - claude
   reasoning:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    prompt_shape: facts_first
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1598,6 +1697,7 @@ task_classes:
         - cheap_cloud
   review:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    prompt_shape: facts_first
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
@@ -1666,6 +1766,9 @@ task_classes:
   # OMN-17427: the class stays declared; delegation is withheld below.
   code_review:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    # OMN-19432: held back by operator instruction until re-measured (it improved
+    # under facts-first in the 2026-09-30 re-ask, 9% to 25%).
+    prompt_shape: plain
     # OMN-17427: withheld, with no serving tier, so not offered at the public
     # Gateway. Selection still claims its phrases to refuse code-review prompts
     # rather than route them to a neighbouring class.

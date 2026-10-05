@@ -399,3 +399,117 @@ def test_autobind_record_on_the_label_does_not_hide_a_self_accepted_binding(
     assert state.acceptance_self_accepted_bindings == (
         "dod-OmniNode-ai-omnimarket-pr-3103:AC1 accepted_by=evid-B13-2a21",
     )
+
+
+# OMN-19267: a supersession marker the contract aims at a DECLARED item that
+# happens to share the derived falsifier's id (``ac-falsifier-<label>``) used to
+# retire the verifier-derived item too, because supersession was keyed by id
+# over the declared AND the derived items. The derived falsifier then never
+# ran, and AC_FALSIFIER_NOT_VERIFIED held the verdict forever. A marker only
+# ever retires a declared item; the derived falsifier always executes and its
+# own result decides the criterion.
+_COLLIDING_DECLARED = {
+    "id": "ac-falsifier-ac1",
+    "description": "a declared item that reuses the derived falsifier id",
+    "source": "generated",
+    "checks": [
+        {
+            "check_type": "test_passes",
+            "check_value": "uv run pytest tests/test_b.py -q -k declared_copy",
+            "cwd": "${OMNI_HOME}/omnimarket",
+        }
+    ],
+}
+_RETIRING_CARRIER = {
+    "id": "dod-carrier-retires-declared-ac1",
+    "description": "retires the declared copy, and only it",
+    "source": "generated",
+    "checks": [
+        {
+            "check_type": "test_passes",
+            "check_value": "uv run pytest tests/test_b.py -q -k carrier",
+            "cwd": "${OMNI_HOME}/omnimarket",
+        }
+    ],
+    "evidence_artifact": "supersedes_dod_evidence:ac-falsifier-ac1",
+}
+
+
+def _collision_contract() -> dict[str, Any]:
+    return _contract(
+        falsifiers={"AC1": _FALSIFIER_A},
+        extra_items=[dict(_COLLIDING_DECLARED), dict(_RETIRING_CARRIER)],
+    )
+
+
+def _derived_results(state: ModelDodVerifyState) -> list[Any]:
+    return [
+        check
+        for check in state.checks
+        if _FALSIFIER_A in check.description and "::" not in check.evidence_id
+    ]
+
+
+def test_id_collision_marker_aimed_at_a_declared_item_spares_the_derived_falsifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _run(tmp_path, monkeypatch, _collision_contract())
+    derived = _derived_results(state)
+    assert len(derived) == 1
+    assert derived[0].status is EnumEvidenceCheckStatus.VERIFIED
+    # The declared copy is still retired, preserved for audit.
+    declared = [c for c in state.checks if c.evidence_id == "ac-falsifier-ac1"]
+    assert [c.status for c in declared] == [EnumEvidenceCheckStatus.SUPERSEDED]
+    # The derived id never shares a declared id, so no result is ambiguous.
+    assert derived[0].evidence_id != "ac-falsifier-ac1"
+    assert state.status is EnumDodVerifyStatus.VERIFIED
+    assert state.acceptance_basis is EnumDodAcceptanceBasis.FALSIFIER_CHECKS
+
+
+def test_id_collision_derived_falsifier_failure_still_fails_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stricter, not looser: the derived falsifier runs and its failure counts."""
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _collision_contract(),
+        failing=frozenset({_FALSIFIER_A}),
+    )
+    derived = _derived_results(state)
+    assert [c.status for c in derived] == [EnumEvidenceCheckStatus.FAILED]
+    assert state.status is EnumDodVerifyStatus.FAILED
+
+
+def test_id_collision_declared_item_cannot_stand_in_for_the_derived_falsifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A declared item sharing the derived id does not prove the derived check."""
+    original = evidence_collector.EvidenceCollector._check_evidence_item
+
+    def _skip_derived(
+        self: Any, item: dict[str, Any], *args: Any, **kwargs: Any
+    ) -> Any:
+        result = original(self, item, *args, **kwargs)
+        if item.get("source") == "generated" and _FALSIFIER_A in str(
+            item.get("description", "")
+        ):
+            return result.model_copy(
+                update={"status": EnumEvidenceCheckStatus.SKIPPED, "message": "skip"}
+            )
+        return result
+
+    monkeypatch.setattr(
+        evidence_collector.EvidenceCollector, "_check_evidence_item", _skip_derived
+    )
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _FALSIFIER_A},
+            extra_items=[dict(_COLLIDING_DECLARED)],
+        ),
+    )
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.error_message is not None
+    assert state.error_message.startswith("AC_FALSIFIER_NOT_VERIFIED")
