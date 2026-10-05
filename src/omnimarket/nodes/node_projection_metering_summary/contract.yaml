@@ -68,5 +68,48 @@ externally_consumed_topics:
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.refresh-metering-summary.v1
     producer: Snapshot caller supplying ModelMeteringSummaryFoldRequest
+# metering-summary.v1: the stored rows, served per tenant. The day rows are the
+# daily series and the all row the headline, from one fold, so they add up.
+projection_api:
+  expose: true
+  # The nested form, so the exposure-drift gate reconciles these columns
+  # against the migration DDL (it reads only projection_api.exposures).
+  exposures:
+    - topic: "onex.snapshot.projection.metering-summary.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+      key_grain: "mutable"
+      table: "metering_summary"
+      schema: "public"
+      columns:
+        - tenant_id
+        - window_kind
+        - window_start
+        - window_end
+        - as_of
+        - baseline_model
+        - pricing_manifest_version
+        - baseline_state
+        - runs_total
+        - runs_measured
+        - runs_unknown_tokens
+        - runs_unknown_spend
+        - tokens_in
+        - tokens_out
+        - spend_usd
+        - counterfactual_usd
+        - savings_usd
+        - summary_json
+      json_columns:
+        - summary_json
+      order_by: "window_kind ASC, window_start ASC, baseline_model ASC"
+      # The all row's window_start is empty, so the walk serves it first and then
+      # the days in date order. window_start is unique per tenant and baseline
+      # model, not across baseline models: a page boundary between two baselines'
+      # rows for the same window can skip one (pinned by a test).
+      cursor_column: window_start
+      freshness_column: as_of
+      limit: 500
+      bus_backed: true
+      key_columns: [tenant_id, window_kind, window_start, baseline_model]
+      tenant_column: tenant_id
 metadata:
   transport_type: kafka

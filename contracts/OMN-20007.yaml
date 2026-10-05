@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20007"
+title: "The daily spend series is bus-backed and served, so Overview can render baseline against actual"
+summary: "Under the 2026-10-04 ruling the pages read the daily savings series from metering-summary.v1's day rows, and savings-series.v1 stays listed as not served. This change declares metering-summary.v1 (node_projection_metering_summary's projection_api: bus-backed, tenant-scoped, mutable key tenant_id, window_kind, window_start, baseline_model). One check binds AC1's code half, AC3 and AC4: day and all rows folded for two tenants and stored in a local store are read back through the projection read node; the day rows come back for the reading tenant only, sum exactly to the served all row, a replayed fold serves the same rows, and the catalogue lists metering-summary.v1 ok and savings-series.v1 degraded not_yet_bus_backed (its read answers 503); the fold's own day rows sum exactly to its all row and replay identically. AC1's lab read on a lane and AC2's lab reads are not claimed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-metering-summary-day-rows-served-and-sum-to-all"
+    statement: |-
+      metering-summary.v1 is declared and served: a tenant's day rows and all row are read back through the projection read node, scoped to that tenant, with every column of the stored row, and the served day rows' spend, counterfactual and savings sum exactly (Decimal) to the served all row; savings-series.v1 stays listed degraded not_yet_bus_backed and its read answers 503. For one fold of recorded runs, the day rows sum exactly to the all-time row, unknown money staying null rather than zero, an unmeasured run counting in runs_total and in no money sum, every run landing in its UTC day and a run at as_of in none; a replayed fold, in any record order, produces identical rows, and storing it again serves the same rows.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A read of the savings-series exposure returns rows rather than 503 -- falsifier: the read still answers `not_yet_bus_backed`
+      - id: "AC3"
+        statement: |-
+          AC3: The daily series total for a window equals the Overview headline spend and savings for the same window -- falsifier: the two disagree
+      - id: "AC4"
+        statement: |-
+          AC4: A replayed fold produces the same rows -- falsifier: a second replay changes any row
+evidence_requirements:
+  - kind: "tests"
+    description: "metering-summary.v1 is served per tenant from the node contract's own declaration and its day rows sum to its all row; the fold's day rows sum to its all row and replay identically. Dropping tenant_column, dropping a column, declaring a column the table lacks, or a key that is not the store's unique key each fails at least one test; at the merge base (no declaration) every served-read test fails."
+    command: "uv run pytest tests/projection/test_omn20007_metering_summary_served.py tests/nodes/node_projection_metering_summary/test_omn20007_day_rows_sum_to_all_window.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20007-ac1-ac3-ac4-metering-summary-served"
+    description: "Day and all rows folded for two tenants and stored in a local SQLite store are read back through the projection read node with the exposures built from the node contracts: the reading tenant's four day rows and its all row come back with every column and no other tenant's rows, the served day rows' spend, counterfactual and savings sum exactly to the served all row (hand-computed 0.65, 20.55, 19.90), storing the fold again serves the same rows, a paged walk within one baseline serves each row once, the declared key equals the store's unique index, and the catalogue lists metering-summary.v1 ok and tenant-scoped and savings-series.v1 degraded not_yet_bus_backed with its read answering 503. The fold's own day rows match a hand-computed oracle, sum exactly to its all-time row, and replay identically in any record order."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20007_metering_summary_served.py tests/nodes/node_projection_metering_summary/test_omn20007_day_rows_sum_to_all_window.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC3", "AC4"]
