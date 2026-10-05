@@ -10,12 +10,11 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from omnibase_infra.runtime.dispatch_envelope_context import current_dispatch_envelope
 
 from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
@@ -26,9 +25,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
-    inner_command_id,
 )
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
@@ -197,12 +193,7 @@ class RuntimeDelegationDispatchPort:
         return result
 
     async def _publish_request(self, request: ModelDelegationRequest) -> None:
-        delivery = current_dispatch_envelope()
         envelope = ModelEventEnvelope[ModelDelegationRequest](
-            envelope_id=(
-                uuid4() if delivery is None else inner_command_id(delivery.envelope_id)
-            ),
-            parent_envelope_id=None if delivery is None else delivery.envelope_id,
             payload=request,
             correlation_id=request.correlation_id,
             envelope_timestamp=datetime.now(UTC),

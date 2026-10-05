@@ -416,8 +416,20 @@ class DelegationClaimPort:
     def pending_claims(
         self, *, correlation_id: UUID
     ) -> list[ModelStalledDelegationClaim]:
+        # Include finished commands when deciding ambiguity: a delayed duplicate
+        # inner result must not answer a new command reusing the correlation.
+        deliveries: list[UUID] = []
+        for row in self._database().query(
+            CLAIMS_TABLE, {"correlation_id": str(correlation_id)}
+        ):
+            try:
+                deliveries.append(UUID(str(row[_DELIVERY_COLUMN])))
+            except (KeyError, ValueError):
+                continue
+        if len(deliveries) != 1:
+            return []
         return self._pending_claims(
-            {"terminal_json": "", "correlation_id": str(correlation_id)}
+            {"terminal_json": "", _DELIVERY_COLUMN: str(deliveries[0])}
         )
 
     def stalled_claims(

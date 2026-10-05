@@ -3,7 +3,7 @@
 """First-claim context sufficient to answer an abandoned delegation."""
 
 from datetime import UTC, datetime
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -14,11 +14,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 
 # Shared by intake and recovery in this process; a new runtime gets a new id.
 DELEGATION_RUNTIME_INSTANCE_ID = uuid4()
-
-
-def inner_command_id(delivery_id: UUID) -> UUID:
-    """Stable inner delivery identity, distinct from a reusable correlation."""
-    return uuid5(delivery_id, "delegate-skill-inner-command")
 
 
 class ModelDelegationReapContext(BaseModel):

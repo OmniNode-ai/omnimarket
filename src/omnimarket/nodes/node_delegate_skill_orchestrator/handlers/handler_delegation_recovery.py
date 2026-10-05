@@ -8,7 +8,6 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationFailed,
     ModelDelegationResult,
 )
-from omnibase_infra.runtime.dispatch_envelope_context import current_dispatch_envelope
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     _response_from_result,
@@ -20,7 +19,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
     DELEGATION_RUNTIME_INSTANCE_ID,
-    inner_command_id,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ProtocolDelegationRecoveryPort,
@@ -39,16 +37,9 @@ class HandlerDelegationRecovery:
     ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed | None:
         if self._port is None:
             self._port = resolve_delegation_claim_store()
-        delivery = current_dispatch_envelope()
-        if delivery is None or delivery.parent_envelope_id is None:
-            return None
-        # The runtime records the inner command as this terminal's parent.
-        # Join that exact delivery: a caller may legitimately reuse correlation.
-        claims = [
-            claim
-            for claim in self._port.pending_claims(correlation_id=result.correlation_id)
-            if inner_command_id(claim.delivery_id) == delivery.parent_envelope_id
-        ]
+        # The inner workflow has several bus hops, so its final event's parent
+        # is not the initial command. Join only an unambiguous correlation.
+        claims = self._port.pending_claims(correlation_id=result.correlation_id)
         if len(claims) != 1:
             return None
         claim = claims[0]

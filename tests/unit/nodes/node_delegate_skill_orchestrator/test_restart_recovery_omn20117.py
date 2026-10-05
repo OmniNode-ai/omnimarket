@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -19,8 +18,6 @@ from omnibase_core.models.delegation.wire import (
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.cli.delegate_terminal_resolver import resolve_delegate_terminal
-from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
@@ -45,9 +42,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
-    inner_command_id,
-)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     ModelDelegationReaperConfig,
 )
@@ -55,9 +49,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_cla
     _CONTRACT_PATH,
     CLAIMS_TABLE,
     DelegationClaimPort,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
-    RuntimeDelegationDispatchPort,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
@@ -149,7 +140,7 @@ async def _recover(handler, result, delivery_id):
         ModelEventEnvelope[object](
             payload=result,
             correlation_id=result.correlation_id,
-            parent_envelope_id=inner_command_id(delivery_id),
+            parent_envelope_id=uuid4(),
         )
     ):
         return await handler.handle(result)
@@ -228,7 +219,7 @@ async def test_restart_withheld_completion_expires_with_one_typed_restart_failur
 
 
 @pytest.mark.asyncio
-async def test_recovery_does_not_steal_a_live_waiter_and_joins_by_delivery(
+async def test_recovery_does_not_steal_a_live_waiter_or_a_reused_correlation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, port, request, delivery_id, ctx = await _restart(tmp_path, monkeypatch)
@@ -249,12 +240,8 @@ async def test_recovery_does_not_steal_a_live_waiter_and_joins_by_delivery(
         correlation_id=request.correlation_id,
         reap_context=ctx.model_copy(update={"request": second_request}),
     )
-    first = await _recover(recovery, _inner(request), delivery_id)
-    second = await _recover(recovery, _inner(second_request), second_delivery)
-    assert first.command_id == delivery_id
-    assert first.prompt_text == request.prompt
-    assert second.command_id == second_delivery
-    assert second.prompt_text == second_request.prompt
+    assert await _recover(recovery, _inner(request), delivery_id) is None
+    assert await _recover(recovery, _inner(second_request), second_delivery) is None
     assert port.pending_claims(correlation_id=request.correlation_id) == []
 
 
@@ -307,53 +294,19 @@ async def test_a_completion_after_the_bound_cannot_replace_the_restart_failure(
 
 
 @pytest.mark.asyncio
-async def test_runtime_port_records_the_delivery_identity_used_by_recovery() -> None:
-    bus = EventBusInmemory(environment="test", group="restart-recovery")
-    port = RuntimeDelegationDispatchPort(event_bus=bus)
-    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
-    captured = []
-
-    async def receive(message: ModelEventMessage) -> None:
-        captured.append(json.loads(message.value))
-
-    await bus.start()
-    try:
-        await bus.subscribe(
-            contract["delegation_runtime_dispatch"]["topics"]["command"],
-            group_id=str(uuid4()),
-            on_message=receive,
-        )
-        outer = ModelEventEnvelope[object](payload={}, correlation_id=uuid4())
-        with bind_dispatch_envelope(outer):
-            await port.dispatch(
-                prompt="test",
-                task_type="test",
-                correlation_id=outer.correlation_id,
-                max_tokens=None,
-                source_file_path=None,
-                source_session_id=None,
-                wait=False,
-                execution_timeout_seconds=240,
-                terminal_delivery_margin_seconds=60,
-                quality_contract_mode="extend_task_class",
-                acceptance_criteria=(),
-                tenant_id=None,
-            )
-    finally:
-        await bus.close()
-    (published,) = captured
-    assert published["envelope_id"] == str(inner_command_id(outer.envelope_id))
-    assert published["parent_envelope_id"] == str(outer.envelope_id)
-    assert published["correlation_id"] == str(outer.correlation_id)
-
-
-@pytest.mark.asyncio
-async def test_recovery_rejects_an_unrelated_delivery_or_tenant(
+async def test_recovery_rejects_an_unrelated_correlation_or_tenant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, port, request, delivery_id, _ = await _restart(tmp_path, monkeypatch)
     recovery = HandlerDelegationRecovery(port=port)
-    assert await _recover(recovery, _inner(request), uuid4()) is None
+    assert (
+        await _recover(
+            recovery,
+            _inner(request.model_copy(update={"correlation_id": uuid4()})),
+            delivery_id,
+        )
+        is None
+    )
     assert (
         await _recover(
             recovery,
@@ -363,3 +316,25 @@ async def test_recovery_rejects_an_unrelated_delivery_or_tenant(
         is None
     )
     assert len(port.pending_claims(correlation_id=request.correlation_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_delayed_duplicate_cannot_answer_a_new_command_reusing_correlation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, port, request, delivery_id, ctx = await _restart(tmp_path, monkeypatch)
+    recovery = HandlerDelegationRecovery(port=port)
+    inner = _inner(request)
+    assert await _recover(recovery, inner, delivery_id) is not None
+    second_delivery = uuid4()
+    port.claim(
+        delivery_id=second_delivery,
+        correlation_id=request.correlation_id,
+        reap_context=ctx,
+    )
+    assert await _recover(recovery, inner, second_delivery) is None
+    output = await HandlerDelegationReaper(port=port).handle(_tick(ctx.deadline_at))
+    assert output is not None
+    (terminal,) = output.events
+    assert terminal.command_id == second_delivery
+    assert terminal.terminal_failure_cause.value == "runtime_shutdown"
