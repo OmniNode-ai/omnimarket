@@ -110,6 +110,13 @@ _CALLER_IDENTITY_WIRE_KEYS: frozenset[str] = frozenset(
     {CALLER_LANE_WIRE_KEY, SESSION_ID_WIRE_KEY}
 )
 
+#: The terminal keys that carry cross-run lineage: the run that started this one,
+#: how this attempt relates to it, and why the parent failed. The request carries
+#: them in ``metadata`` under the same names.
+LINEAGE_WIRE_KEYS: frozenset[str] = frozenset(
+    {"parent_correlation_id", "attempt_kind", "parent_failure_cause"}
+)
+
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
@@ -737,6 +744,26 @@ class ModelDelegateSkillResponse(BaseModel):
         undeclared = {
             key
             for key in _CALLER_IDENTITY_WIRE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
+
+    # Cross-run lineage, step 1 of 2, the same consumer-first order as the
+    # caller identity above: this release decodes the three lineage keys and
+    # drops them; the next declares the fields once a release carrying this is
+    # out. Lineage is attribution, not policy, so a consumer that ignores it
+    # changes no behaviour. A subclass that declares a key (the terminal
+    # projection model) keeps it; every other unknown key is still refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_lineage_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in LINEAGE_WIRE_KEYS
             if key in data and key not in cls.model_fields
         }
         if not undeclared:

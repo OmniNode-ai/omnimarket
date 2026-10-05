@@ -32,6 +32,11 @@ from omnimarket.models.delegation.delegation_lineage import (
     attempt_kind_refusal,
     parent_correlation_refusal,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    LINEAGE_WIRE_KEYS,
+    ModelDelegateSkillCompleted,
+    ModelDelegateSkillResponse,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
 )
@@ -254,3 +259,41 @@ def test_the_migration_adds_the_three_nullable_columns() -> None:
     for column in ("parent_correlation_id", "attempt_kind", "parent_failure_cause"):
         assert f"ADD COLUMN IF NOT EXISTS {column} TEXT" in sql
     assert "TEXT NOT NULL" not in sql
+
+
+_RESPONSE: dict[str, object] = {
+    "status": "completed",
+    "task_type": "research",
+    "quality_gate_passed": True,
+}
+
+
+@pytest.mark.parametrize(
+    "model", [ModelDelegateSkillResponse, ModelDelegateSkillCompleted]
+)
+def test_a_released_response_decodes_lineage_keys_and_drops_them(model: type) -> None:
+    """Consumer-first: the wire gate needs the response to tolerate the keys."""
+    decoded = model.model_validate(
+        {
+            **_RESPONSE,
+            "correlation_id": str(uuid4()),
+            "parent_correlation_id": str(uuid4()),
+            "attempt_kind": "retry",
+            "parent_failure_cause": "timeout",
+        }
+    )
+    for key in LINEAGE_WIRE_KEYS:
+        assert key not in type(decoded).model_fields
+        assert key not in decoded.model_dump()
+
+
+def test_the_response_still_refuses_an_unknown_key_beside_lineage() -> None:
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        ModelDelegateSkillResponse.model_validate(
+            {
+                **_RESPONSE,
+                "correlation_id": str(uuid4()),
+                "attempt_kind": "retry",
+                "not_a_field": "x",
+            }
+        )
