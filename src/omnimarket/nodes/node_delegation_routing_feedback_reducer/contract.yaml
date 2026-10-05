@@ -50,6 +50,9 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.routing-feedback-updated.v1"
 
+# The runtime publishes the handler's typed return on the terminal event.
+terminal_event: "onex.evt.omnimarket.routing-feedback-updated.v1"
+
 published_events:
   - event_type: "RoutingFeedbackUpdatedEvent"
     topic: "onex.evt.omnimarket.routing-feedback-updated.v1"
