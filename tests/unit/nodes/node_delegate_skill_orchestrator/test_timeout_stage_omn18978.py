@@ -14,6 +14,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     current_dispatch_progress,
     dispatch_stage,
@@ -23,9 +26,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     DispatchStage,

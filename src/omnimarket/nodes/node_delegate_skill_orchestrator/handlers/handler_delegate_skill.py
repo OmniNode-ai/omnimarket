@@ -67,17 +67,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
-from omnimarket.models.delegation.wire.model_response_source_attempt import (
-    ModelResponseSourceAttempt,
-)
-from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
-from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
-    current_dispatch_progress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
@@ -85,6 +78,13 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.models.delegation.wire.model_response_source_attempt import (
+    ModelResponseSourceAttempt,
+)
+from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    current_dispatch_progress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
