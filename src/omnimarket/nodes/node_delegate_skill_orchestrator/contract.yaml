@@ -312,8 +312,9 @@ runtime_dispatch:
 delegation_runtime_dispatch:
   topics:
     command: onex.cmd.omnibase-infra.delegation-request.v1
-    completed: onex.evt.omnibase-infra.delegation-completed.v1
-    failed: onex.evt.omnibase-infra.delegation-failed.v1
+    completed: onex.evt.omnibase-infra.delegation-completed.v2
+    failed: onex.evt.omnibase-infra.delegation-failed-routed.v2
+    failed_unrouted: onex.evt.omnibase-infra.delegation-failed-unrouted.v2
   request_message_type: omnibase-infra.delegation-request
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
@@ -458,13 +459,18 @@ cross_repo_dependencies:
     required_topics:
       - onex.cmd.omnibase-infra.delegation-request.v1
     terminal_events:
-      - onex.evt.omnibase-infra.delegation-completed.v1
-      - onex.evt.omnibase-infra.delegation-failed.v1
+      - onex.evt.omnibase-infra.delegation-completed.v2
+      - onex.evt.omnibase-infra.delegation-failed-routed.v2
+      - onex.evt.omnibase-infra.delegation-failed-unrouted.v2
     required_models:
       - name: ModelDelegationRequest
         module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request
-      - name: ModelDelegationResult
-        module: omnimarket.nodes.node_delegation_orchestrator.models
+      - name: ModelDelegationTerminalCompletedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedRoutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedUnroutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
 
 handler:
   name: HandlerDelegateSkill
