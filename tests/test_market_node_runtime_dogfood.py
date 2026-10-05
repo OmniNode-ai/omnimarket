@@ -254,7 +254,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-20496's node_canonical_clone_refresh_effect is hosted by one
     # `clone-refresh serve` process per host, not by a runtime, so it is
     # experimental with no handler_routing and lands there too: 7 -> 8.
-    assert summary["skipped"] == 8
+    # OMN-20604's node_lab_job_reducer is called in process by the lab job
+    # orchestrator, like the landing reducer, so it is experimental with no
+    # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
+    # by the submit CLI and has no handler_routing either: 9 -> 10.
+    assert summary["skipped"] == 10
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

@@ -49,6 +49,7 @@ from omnimarket.inference.provider_finish_reason import (
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.provider_response_error import (
+    IN_BODY_ERROR_MESSAGE_PREFIX,
     describe_provider_refusal,
     failure_class_for_status,
     provider_error_from_body,
@@ -227,6 +228,10 @@ class ProviderRefusalError(RuntimeError):
         super().__init__(
             message if marker.lower() in message.lower() else f"{marker}: {message}"
         )
+
+
+class ProviderThrottledError(RuntimeError):
+    """The provider answered HTTP 429, keeping its existing error text (OMN-20555)."""
 
 
 class ModelListUnavailableError(RuntimeError):
@@ -596,6 +601,7 @@ def _re_aim_intent(
     api_key: str,
     *,
     exclude: tuple[str, ...],
+    exclude_families_of: tuple[str, ...] = (),
 ) -> ModelInferenceIntent:
     """``intent`` re-aimed at the best model the key's provider list offers.
 
@@ -605,7 +611,9 @@ def _re_aim_intent(
     same class with ``PROVIDER_AUTH_FAILED``'s wording, which the orchestrator
     already classifies as an auth failure.
     """
-    discovery = discover_byok_model_sync(byok, api_key, exclude=exclude)
+    discovery = discover_byok_model_sync(
+        byok, api_key, exclude=exclude, exclude_families_of=exclude_families_of
+    )
     if discovery.model is not None:
         logger.info(
             "byok model resolved from the provider's list provider=%s plan=%s "
@@ -632,6 +640,24 @@ def _re_aim_intent(
     raise ModelListUnavailableError(
         f"model list unavailable: could not read {byok.provider}'s model list at "
         f"{byok.models_url} to resolve this route's model; no request was sent"
+    )
+
+
+def _attempt_failure_class(exc: Exception) -> EnumDelegationFailureClass:
+    """The class an attempt on the key's own list failed with (OMN-20555)."""
+    if isinstance(exc, ProviderThrottledError):
+        return EnumDelegationFailureClass.RATE_LIMITED
+    if isinstance(exc, ProviderRefusalError):
+        return exc.failure_class
+    if _is_upstream_unavailable(exc):
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    return EnumDelegationFailureClass.UNKNOWN
+
+
+def _is_upstream_unavailable(exc: Exception) -> bool:
+    """An aggregator's in-body upstream error in a 200 (OMN-18265, OMN-19205)."""
+    return isinstance(exc, InferenceUsageError) and str(exc).startswith(
+        IN_BODY_ERROR_MESSAGE_PREFIX
     )
 
 
@@ -857,8 +883,11 @@ class HandlerInferenceIntent:
         resolved from the provider's own model list at registration. The
         unresolved marker is resolved here, before the call; a 404
         model-not-found is re-resolved ONCE from the same list excluding the
-        failed model, and the call re-issued. Anything else, and every house
-        route, is the single call it always was.
+        failed model, and the call re-issued. OMN-20555 also re-aims a 429 or
+        an aggregator's in-body upstream error ONCE, excluding the failed
+        model's whole preference family. The backend and key stay the same.
+        With no other listed family the first failure stands unchanged; a
+        second failure names both attempts. Every house route stays one call.
         """
         byok = _customer_byok_row(intent)
         if byok is None or not api_key:
@@ -885,6 +914,38 @@ class HandlerInferenceIntent:
             return self._call_llm(
                 retry, call_id, api_key=api_key, credential_source=credential_source
             )
+        except (ProviderThrottledError, InferenceUsageError) as first:
+            # OMN-19205 on the bus path: the throttle belongs to the slug's
+            # upstream, which its preference-family siblings share, so the one
+            # switch leaves the whole family.
+            if not isinstance(first, ProviderThrottledError) and not (
+                _is_upstream_unavailable(first)
+            ):
+                raise
+            try:
+                retry = _re_aim_intent(
+                    intent,
+                    byok,
+                    api_key,
+                    exclude=(intent.model,),
+                    exclude_families_of=(intent.model,),
+                )
+            except (ProviderRefusalError, ModelListUnavailableError):
+                # Nothing else to aim at: the original provider failure stands.
+                raise first from None
+            try:
+                return self._call_llm(
+                    retry, call_id, api_key=api_key, credential_source=credential_source
+                )
+            except Exception as second:
+                # Keep the exception's type and served usage; only the text
+                # gains the attempt history.
+                second.args = (
+                    f"{second} | models tried on this key's own list: "
+                    f"{intent.model} ({_attempt_failure_class(first).value}), "
+                    f"{retry.model} ({_attempt_failure_class(second).value})",
+                )
+                raise
 
     def _call_llm(
         self,
@@ -1016,6 +1077,10 @@ class HandlerInferenceIntent:
                 refusal = failure_class_for_status(
                     exc.response.status_code, exc.response.text
                 )
+                if refusal is EnumDelegationFailureClass.RATE_LIMITED:
+                    raise ProviderThrottledError(
+                        _provider_http_error_message(exc)
+                    ) from exc
                 if refusal in (
                     EnumDelegationFailureClass.PROVIDER_BILLING,
                     EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
