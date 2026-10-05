@@ -13,6 +13,8 @@ Failure modes each test is written against:
   compared before and after, and the file's sha256;
 * the identity read changes the file at all (journal, pragma, vacuum): sha256
   and mtime compared;
+* the reader opens a writable connection but happens not to write on today's
+  query: a planted write through that exact connection must be refused;
 * "no identity table" must stay a typed absence, not become a sqlite error:
   ``None`` from the reader, ``IDENTITY_ABSENT`` from the requirer;
 * "table exists, no row" and "malformed value" keep their own outcomes;
@@ -30,6 +32,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_metering import metering_command
+from omnimarket.local_deployment import tenant_identity as tenant_identity_module
 from omnimarket.local_deployment.tenant_identity import (
     LOCAL_DEPLOYMENT_IDENTITY_TABLE,
     LOCAL_TENANT_IDENTITY_KEY,
@@ -102,6 +105,38 @@ def test_reading_a_recorded_identity_leaves_an_older_store_untouched(
     assert identity is not None
     assert identity.tenant_uuid == minted
     assert _fingerprint(store) == before
+
+
+def test_identity_reader_connection_refuses_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = tmp_path / "delegation.sqlite"
+    minted = uuid4()
+    _older_store(store, identity_value=str(minted), with_table=True)
+    real_connect = sqlite3.connect
+    refused_writes = 0
+
+    def connect_and_probe(*args: object, **kwargs: object) -> sqlite3.Connection:
+        nonlocal refused_writes
+        connection = real_connect(*args, **kwargs)
+        try:
+            connection.execute("CREATE TABLE omn19977_write_probe (value TEXT)")
+        except sqlite3.OperationalError as exc:
+            if "readonly" not in str(exc).lower():
+                raise
+            refused_writes += 1
+        else:
+            connection.close()
+            pytest.fail("tenant identity reader opened a writable SQLite connection")
+        return connection
+
+    monkeypatch.setattr(tenant_identity_module.sqlite3, "connect", connect_and_probe)
+
+    identity = read_local_tenant_identity(db_path=store)
+
+    assert identity is not None
+    assert identity.tenant_uuid == minted
+    assert refused_writes == 2
 
 
 def test_missing_identity_table_is_absent_and_the_store_is_untouched(
