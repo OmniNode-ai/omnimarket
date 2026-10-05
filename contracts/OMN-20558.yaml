@@ -52,7 +52,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_platform_readiness_kafka_topic_coverage.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn20558-ac4-action-ref-golden-ignores-line-shift"
+  - id: "dod-omn20558-ac4-action-ref-line-shift"
     description: "AC4 hosted probe. The action-ref characterization passes when ci.yml carries an added step and keeps refusing a moved or dropped pin. It fails at the merge base, where the golden is keyed on line numbers."
     source: "manual"
     checks:
