@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``onex work-ledger``: serve on the ledger host or send rows (OMN-20275)."""
+"""``onex work-ledger``: serve on the ledger host, send rows (OMN-20275), or request a PR handoff (OMN-20636)."""
 
 from __future__ import annotations
 
@@ -17,14 +17,32 @@ from pathlib import Path
 from uuid import UUID
 
 import click
-from pydantic import ValidationError
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel, ValidationError
 
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolBusMessage,
+    event_type_for,
+)
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.events.topics import (
+    PR_HANDOFF_ACCEPTED_TOPIC_V1,
+    PR_HANDOFF_FAILED_TOPIC_V1,
+    PR_HANDOFF_HANDED_OFF_TOPIC_V1,
+    PR_HANDOFF_REQUESTED_TOPIC_V1,
+)
+from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.pr_handoff import (
+    ModelPrHandoffAccepted,
+    ModelPrHandoffFailed,
+    ModelPrHandoffHandedOff,
+    ModelPrHandoffRequested,
+)
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
     HandlerWorkLedgerAppendEffect,
@@ -181,6 +199,135 @@ def append_command(
         if receipt.status is EnumWorkLedgerAppendStatus.ERROR:
             return 70
         return receipt.exit_code
+
+    try:
+        code = asyncio.run(main())
+    except LabRunBusError as exc:
+        click.echo(f"bus: {exc}", err=True)
+        code = 69
+    sys.exit(code)
+
+
+# OMN-20636: the answers a handoff request waits for, by the event's class name.
+_HANDOFF_ANSWERS: dict[str, type[BaseModel]] = {
+    PR_HANDOFF_ACCEPTED_TOPIC_V1: ModelPrHandoffAccepted,
+    PR_HANDOFF_HANDED_OFF_TOPIC_V1: ModelPrHandoffHandedOff,
+    PR_HANDOFF_FAILED_TOPIC_V1: ModelPrHandoffFailed,
+}
+
+
+@work_ledger_group.command("handoff")
+@_with_bus_options
+@click.option(
+    "--request-file",
+    default="-",
+    type=click.Path(dir_okay=False, allow_dash=True),
+    help="One ModelPrHandoffRequested as JSON.",
+)
+@click.option(
+    "--wait-s",
+    type=click.FloatRange(min=0),
+    default=30.0,
+    show_default=True,
+    help="How long to wait for the orchestrator's first answer; 0 publishes only.",
+)
+def handoff_command(
+    omnibase_path: Path | None,
+    bus: BusKind,
+    bus_lane: str | None,
+    kafka_bootstrap: str | None,
+    request_file: str,
+    wait_s: float,
+) -> None:
+    """Publish one PR handoff request; print the orchestrator's first answer as JSON.
+
+    The decision is node_pr_handoff_orchestrator's, on the PR watcher's live
+    observations; this verb decides nothing. Exit 0 accepted or handed off,
+    4 failed (the answer names the error_code), 75 no answer in time (the
+    request is published and will be answered on the bus), 69 bus error.
+    """
+    try:
+        with click.open_file(request_file, "r", encoding="utf-8") as source:
+            request = ModelPrHandoffRequested.model_validate_json(source.read())
+    except (OSError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    async def main() -> int:
+        async with open_lab_run_bus(
+            bus=bus,
+            lane=bus_lane,
+            kafka_bootstrap=kafka_bootstrap,
+            omni_home=omnibase_path,
+        ) as opened:
+            answers: asyncio.Queue[tuple[str, BaseModel]] = asyncio.Queue()
+            unsubscribes = []
+            group = f"pr-handoff-request.{request.correlation_id.hex[:12]}"
+            if wait_s > 0:
+                for topic, model in _HANDOFF_ANSWERS.items():
+
+                    async def on_message(
+                        message: ProtocolBusMessage,
+                        topic: str = topic,
+                        model: type[BaseModel] = model,
+                    ) -> None:
+                        try:
+                            raw = json.loads(message.value)
+                            payload = raw.get("payload", raw)
+                            answer = model.model_validate(payload)
+                        except (ValueError, AttributeError):
+                            return
+                        if (
+                            getattr(answer, "correlation_id", None)
+                            == request.correlation_id
+                        ):
+                            await answers.put((topic, answer))
+
+                    unsubscribes.append(
+                        await _subscribe(opened, topic, on_message, group, "latest")
+                    )
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=request.model_dump(mode="json"),
+                correlation_id=request.correlation_id,
+                event_type=event_type_for(PR_HANDOFF_REQUESTED_TOPIC_V1),
+                payload_type=ModelPrHandoffRequested.__name__,
+            )
+            try:
+                await opened.publish(
+                    PR_HANDOFF_REQUESTED_TOPIC_V1,
+                    request.handoff_key.encode("utf-8"),
+                    _bytes(envelope),
+                )
+                if wait_s == 0:
+                    click.echo(
+                        json.dumps(
+                            {
+                                "status": "published",
+                                "correlation_id": str(request.correlation_id),
+                            }
+                        )
+                    )
+                    return 0
+                try:
+                    topic, answer = await asyncio.wait_for(
+                        answers.get(), timeout=wait_s
+                    )
+                except TimeoutError:
+                    click.echo(
+                        json.dumps(
+                            {
+                                "status": "pending",
+                                "correlation_id": str(request.correlation_id),
+                            }
+                        )
+                    )
+                    return 75
+            finally:
+                for unsubscribe in unsubscribes:
+                    await unsubscribe()
+        click.echo(
+            json.dumps({"topic": topic, "answer": answer.model_dump(mode="json")})
+        )
+        return 4 if isinstance(answer, ModelPrHandoffFailed) else 0
 
     try:
         code = asyncio.run(main())

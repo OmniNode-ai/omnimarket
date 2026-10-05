@@ -1,0 +1,26 @@
+name: node_pr_handoff_orchestrator
+version: "0.1.0"
+description: "PR handoff workflow orchestrator: a lane's handoff request decided on the PR watcher's live observations and appended to the ledger"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_handoff_orchestrator: "omnimarket.nodes.node_pr_handoff_orchestrator"
+capabilities:
+  standalone: false
+  # The runtime's state_io seam holds its row in pr_handoff_workflow_state
+  # (omnibase_infra forward migration, OMN-20636).
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: stateful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "pr-handoff", "pr-landing", "fsm", "workflow"]
+pack: "pr_lifecycle"
+display_name: "PR Handoff Orchestrator"
+node_role: "orchestrator"

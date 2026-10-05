@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Handoff Decision Compute (OMN-20636)
+#
+# Pure computation, called in process by node_pr_handoff_orchestrator (as the
+# landing orchestrator calls node_pr_arm_gate_compute). It is handed one handoff
+# request, the PR watcher's newest observation of the PR, the live ledger holds
+# and the evaluating time, and returns ready (with the ledger rows), wait (with a
+# reason the next observation can change) or refuse (with the error code that
+# names the error chain). No clock, no file, no network.
+#
+# Rule order (pr-handoff handoff_row.sh's, with the head rule split):
+#   no observation              -> wait pr_not_observed
+#   closed or merged            -> refuse pr_not_open
+#   bot release-train PR        -> refuse withheld
+#   other head, observed before
+#     the request               -> wait head_not_observed
+#   other head, observed after  -> refuse stale_head
+#   draft (needs not companion) -> wait draft
+#   hold marker or ledger HOLD  -> refuse held
+#   no single ticket, or a body
+#     that excludes it          -> refuse missing_ticket
+#   no CLAIM names PR or ticket -> refuse not_owned
+#   no lab proof at the head    -> refuse missing_lab_proof
+#   otherwise                   -> ready, with the MSG and the closing row
+name: "node_pr_handoff_decision_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Pure ready, wait or refuse decider for one PR handoff, with the handoff ledger rows when ready."
+# The orchestrator calls it in process (as the landing controller calls
+# node_pr_landing_decision_compute), so it has no event_bus.
+lifecycle: experimental
+input_model:
+  name: "ModelPrHandoffDecisionRequest"
+  module: "omnimarket.models.pr_handoff"
+  description: "The request, the newest PR observation, live ledger holds and the evaluating time."
+output_model:
+  name: "ModelPrHandoffDecision"
+  module: "omnimarket.models.pr_handoff"
+  description: "Verdict with wait_reason or error_code, and the rows when ready."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "decide_pr_handoff"
+      handler:
+        name: "HandlerPrHandoffDecision"
+        module: "omnimarket.nodes.node_pr_handoff_decision_compute.handlers.handler_pr_handoff_decision"
+metadata:
+  description: "PR handoff readiness decider"
+  author: "OmniNode Team"
+  created: "2026-10-05"
+  tags:
+    - "compute"
+    - "pr-handoff"
+    - "pr-landing"
+    - "OMN-20636"

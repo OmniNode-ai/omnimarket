@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Handoff Ledger Effect (OMN-20636)
+#
+# The PR handoff workflow's one side effect: append the handoff MSG and the
+# requesting lane's closing row to the rolling ledger through the ledger's
+# canonical bus append (node_work_ledger_append_effect, hosted by `onex
+# work-ledger serve` on the ledger host), and answer the orchestrator for the
+# handoff_key it named. It stamps each row with req=<ledger request id> and
+# via=bus:<host>, exactly as onex-ledger's bus write does, so the ledger host
+# deduplicates a resend and never appends a handoff twice.
+#
+# Exactly one answer per command: accepted, duplicate, refused, error, or
+# pending when no receipt came within the timeout (the orchestrator resends
+# under the same ledger request id). With no ledger appender wired it answers
+# error, never silence.
+#
+# The ledger bus is a deployment fact: ONEX_PR_HANDOFF_LEDGER_BUS_LANE names the
+# lane declared in omnimarket/config/ci_bus_lanes.yaml under OMNIBASE_PATH, and
+# the host needs that lane's login. Nothing here names a machine.
+name: "node_pr_handoff_ledger_effect"
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Append the PR handoff rows through the ledger's bus append and answer for the handoff."
+input_model:
+  name: "ModelPrHandoffLedgerAppendCommand"
+  module: "omnimarket.models.pr_handoff"
+  description: "The rows, the handoff key and the ledger request id shared by every attempt."
+output_model:
+  name: "ModelPrHandoffLedgerAppended"
+  module: "omnimarket.models.pr_handoff"
+  description: "One answer per attempt: accepted, duplicate, refused, error or pending."
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 90000
+runtime_profiles:
+  - effects
+runtime_lanes:
+  - compose-dev
+  - compose-dev-202
+env_dependencies:
+  ONEX_PR_HANDOFF_LEDGER_BUS_LANE:
+    required: false
+    description: "The declared bus lane of the ledger host's work-ledger serve. Unset: every command is answered error (no appender wired)."
+  OMNIBASE_PATH:
+    required: false
+    description: "Workspace root holding omnimarket/config/ci_bus_lanes.yaml, where the lane's broker is declared."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pr_handoff.ledger_append"
+      message_category: "command"
+      handler:
+        name: "HandlerPrHandoffLedgerEffect"
+        module: "omnimarket.nodes.node_pr_handoff_ledger_effect.handlers.handler_pr_handoff_ledger_effect"
+      event_model:
+        name: "ModelPrHandoffLedgerAppendCommand"
+        module: "omnimarket.models.pr_handoff"
+      topic: onex.cmd.omnimarket.pr-handoff-ledger-append-requested.v1
+      description: "Stamp and append the rows; answer accepted, duplicate, refused, error or pending."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-handoff-ledger-append-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-handoff-ledger-appended.v1
+# The runtime publishes the handler's return on it (one answer per command).
+terminal_event: onex.evt.omnimarket.pr-handoff-ledger-appended.v1
+published_events:
+  - event_type: "PrHandoffLedgerAppended"
+    topic: onex.evt.omnimarket.pr-handoff-ledger-appended.v1
+    description: "The answer for one append attempt, keyed by handoff_key."
+metadata:
+  transport_type: kafka
+  description: "PR handoff ledger rows through the ledger's bus append"
+  author: "OmniNode Team"
+  created: "2026-10-05"
+  tags:
+    - "effect"
+    - "pr-handoff"
+    - "work-ledger"
+    - "OMN-20636"
