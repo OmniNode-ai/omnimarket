@@ -39,6 +39,7 @@ from tests.test_omn19205_c29_throttle_crosses_family import (
 from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
     FakeClient,
     FakeModels,
+    FakeProvider,
     _isolated_effects,
 )
 
@@ -49,12 +50,13 @@ _SHARED_AUTOUSE_FIXTURE = _isolated_effects
 HOUSE_REF = "llm.openrouter.api_key"
 
 
-class RecordedBusOpenRouter:
+class RecordedBusOpenRouter(FakeProvider):
     """Answers each bus POST with the response recorded for the requested model."""
 
     def __init__(self) -> None:
+        super().__init__([])
         self.recorded = _recorded()
-        self.calls: list[str] = []
+        self.models: list[str] = []
 
     def response(
         self, url: str, payload: dict[str, Any], headers: dict[str, str]
@@ -62,7 +64,7 @@ class RecordedBusOpenRouter:
         assert url == _openrouter().endpoint_url, "the switch must not change backend"
         assert headers.get("Authorization") == f"Bearer {KEY}"
         model = payload["model"]
-        self.calls.append(model)
+        self.models.append(model)
         entry = self.recorded[model]
         return httpx.Response(
             entry["http_status"], request=httpx.Request("POST", url), json=entry["body"]
@@ -74,7 +76,7 @@ def _bind(
 ) -> tuple[RecordedBusOpenRouter, FakeModels]:
     provider = RecordedBusOpenRouter()
     models = FakeModels({"data": [{"id": model} for model in listed]})
-    monkeypatch.setattr(bus_effect.httpx, "Client", FakeClient(provider))
+    monkeypatch.setattr(f"{bus_effect.__name__}.httpx.Client", FakeClient(provider))
     monkeypatch.setattr(bus_effect, "_resolve_api_key", lambda _: KEY)
     monkeypatch.setattr(discovery, "get_models_json", models)
     return provider, models
@@ -101,7 +103,7 @@ def test_byok_rate_limited_next_catalogue_model_answers(
     result = bus_effect.HandlerInferenceIntent().handle(_intent())
     assert result.error_message == "", result.error_message
     assert result.content
-    assert provider.calls == [GEMMA, NEMOTRON_SUPER]
+    assert provider.models == [GEMMA, NEMOTRON_SUPER]
     assert result.model_used == NEMOTRON_SUPER
     assert [call["url"] for call in models.calls] == [_openrouter().models_url]
     assert KEY not in str(result.model_dump())
@@ -113,7 +115,7 @@ def test_byok_throttle_switch_is_one_shot_when_the_next_family_is_down(
     """gemma 429, then nemotron-ultra's in-body 503, then stop: never a third call."""
     provider, _ = _bind(monkeypatch, [GEMMA, GEMMA_MOE, NEMOTRON_ULTRA])
     result = bus_effect.HandlerInferenceIntent().handle(_intent())
-    assert provider.calls == [GEMMA, NEMOTRON_ULTRA]
+    assert provider.models == [GEMMA, NEMOTRON_ULTRA]
     assert result.error_message
     assert GEMMA in result.error_message
     assert NEMOTRON_ULTRA in result.error_message
@@ -126,7 +128,7 @@ def test_byok_all_catalogue_models_rate_limited_keeps_the_providers_429(
     """A key listing only the throttled family has nowhere to go: the 429 stands."""
     provider, models = _bind(monkeypatch, [GEMMA, GEMMA_MOE])
     result = bus_effect.HandlerInferenceIntent().handle(_intent())
-    assert provider.calls == [GEMMA]
+    assert provider.models == [GEMMA]
     assert len(models.calls) == 1
     assert "429" in result.error_message
     assert KEY not in str(result.model_dump())
@@ -135,6 +137,6 @@ def test_byok_all_catalogue_models_rate_limited_keeps_the_providers_429(
 def test_house_route_429_never_re_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
     provider, models = _bind(monkeypatch, LISTED)
     result = bus_effect.HandlerInferenceIntent().handle(_intent(ref=HOUSE_REF))
-    assert provider.calls == [GEMMA]
+    assert provider.models == [GEMMA]
     assert models.calls == []
     assert "429" in result.error_message
