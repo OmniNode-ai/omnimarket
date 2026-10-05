@@ -188,6 +188,79 @@ async def test_a_real_terminal_arriving_after_the_reaper_is_kept_as_attempt_evid
     assert evidence["data"]["status"] == "completed"
 
 
+@pytest.mark.parametrize("slot_state", ["reaped", "committed", "not_written"])
+async def test_missing_slot_verdict_keeps_attempt_evidence_without_publishing(
+    monkeypatch, slot_state
+):
+    db, port, reaper, delivery_id, ctx = _setup()
+    published = []
+    upsert = db.upsert_returning
+
+    def missing_verdict(table, key, row, **kwargs):
+        if row["delivery_id"] == f"slot:{delivery_id}":
+            if slot_state != "not_written":
+                upsert(table, key, row, **kwargs)
+            return []
+        return upsert(table, key, row, **kwargs)
+
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    class Dispatch:
+        async def dispatch(self, **kwargs):
+            started.set()
+            await finish.wait()
+            return {
+                "status": "completed",
+                "content": "attempt with an unacknowledged slot write",
+                "quality_gate_passed": True,
+            }
+
+    handler = HandlerDelegateSkill(dispatch_port=Dispatch(), idempotency_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="test",
+        task_type="test",
+        source="claude-code",
+        correlation_id=ctx.correlation_id,
+    )
+    delivery = ModelEventEnvelope[object](
+        envelope_id=delivery_id,
+        payload={},
+        correlation_id=ctx.correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="omnimarket.delegate-skill",
+        source_tool="reaper-test",
+    )
+    with bind_dispatch_envelope(delivery):
+        task = asyncio.create_task(handler.handle(request))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    if slot_state == "reaped":
+        output = await reaper.handle(_tick(ctx.deadline_at))
+        published.extend(output.events)
+    monkeypatch.setattr(db, "upsert_returning", missing_verdict)
+    finish.set()
+    assert await task is None
+
+    (late,) = _late_rows(db, delivery_id)
+    evidence = json.loads(late["terminal_json"])
+    assert evidence["cls"] == "ModelDelegateSkillCompleted"
+    assert evidence["data"]["response"] == "attempt with an unacknowledged slot write"
+    assert _row(db, str(delivery_id))["terminal_json"] == (
+        json.dumps(_record(published[0])) if published else ""
+    )
+    monkeypatch.setattr(db, "upsert_returning", upsert)
+    output = await reaper.handle(_tick(ctx.deadline_at + timedelta(seconds=1)))
+    if output is not None:
+        published.extend(output.events)
+    assert len(published) == 1
+    terminal = published[0]
+    if slot_state == "committed":
+        assert isinstance(terminal, ModelDelegateSkillCompleted)
+    else:
+        assert terminal.terminal_failure_cause.value == "no_terminal"
+    assert await reaper.handle(_tick(ctx.deadline_at + timedelta(seconds=2))) is None
+
+
 @pytest.mark.parametrize("status", ["completed", "failed", "timeout"])
 async def test_the_reaper_never_reaps_a_command_that_already_holds_a_terminal_including_a_handler_timeout_terminal(
     status,
