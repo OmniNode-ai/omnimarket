@@ -392,6 +392,9 @@ projection_api:
         # Tier Distribution reads tier from the projection (deletes modelTier.ts).
         - cost_tier_name
         - cost_tier_type
+        # OMN-19984: the run's measured cost, so the Runs list shows each
+        # run's model, tokens, cost and correlation id from one exposure.
+        - cost_usd
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source

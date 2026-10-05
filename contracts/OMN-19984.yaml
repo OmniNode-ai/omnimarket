@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19984"
+title: "The Runs exposure serves each run's cost, so the C30 probe can read model, tokens, cost and correlation id from one exposure"
+summary: "Declares cost_usd on onex.snapshot.projection.delegation.decisions.v1 (Runs). The C30 board probe grades the dashboard clause on the Runs exposure alone, and Runs declared no cost column. The local store and the Postgres table already carry cost_usd, and the row republish sends the full stored row, so no migration or writer change is needed. Test: tests/projection/test_runs_exposure_serves_cost_omn19984.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-runs-serves-cost"
+    statement: |-
+      The Runs exposure, served by onex dashboard from the local store, carries each run's cost as the delegation writer stored it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a run the real delegation writer stored with a cost is served on Runs with that cost, and a free local run is served a measured zero, not null; the planted negative is a Runs exposure that declares no cost_usd -- falsifier: uv run pytest tests/projection/test_runs_exposure_serves_cost_omn19984.py -q fails any case
+evidence_requirements:
+  - kind: "tests"
+    description: "The Runs cost tests pass at the head and fail at the merge base, where Runs declares no cost_usd."
+    command: "uv run pytest tests/projection/test_runs_exposure_serves_cost_omn19984.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19984-ac1-runs-serves-cost"
+    description: "Runs serves the stored cost for a priced run and a measured zero for a free local run, through the real onex dashboard app over a store the real writer created."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_runs_exposure_serves_cost_omn19984.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
