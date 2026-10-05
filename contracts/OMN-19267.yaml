@@ -12,10 +12,31 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "When a contract declares an item whose id equals a derived falsifier id and a later item supersedes it, the derived falsifier still executes under an id no declared item carries; its pass verifies the criterion, its failure fails the verdict, and a verified declared item of that id cannot stand in for it."
+  - id: "req-local-reasoning-delegations-return-accepted-deliverable"
+    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC3 is not bound here: its probe reads the omninode_infra fixture, which this repository's hosted check cannot check out."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a reasoning-class delegation on the local tier returns a non-empty deliverable for a reasoning prompt, with no ambiguous_unmarked_deliverable refusal on the accepted attempt -- falsifier: onex delegate --task-type reasoning with a reasoning prompt against the lab endpoint, reading receipt.json output_refusal and result.txt"
+      - id: "AC2"
+        statement: "AC2: the per-class profile test maps reasoning and complex_reasoning to a thinking-suppressing profile, and fails red on dev before the change -- falsifier: uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
+  - id: "req-one-supersession-per-declared-check"
+    statement: "The product-repo OCC receipt runner files one supersession record per declared check per cohort, so two contract items that declare the same check never mint a byte-identical replacement pair, which OCC receipt hardening rule S1 rejects and no append-only record can repair. This defect poisoned the OMN-19267 batch windows onex_change_control#12821 and #12855 and held the Done gate of this ticket."
+    acceptance:
+      - id: "AC5"
+        statement: "When two items of one ticket's contract declare the same check, the receipt runner executes it once and writes one supersession record; the other item keeps its standing receipt, and when that receipt does not stand the runner records a write refusal and exits non-zero instead of writing a second record -- falsifier: uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q finds two records with the same replacement check_value in one cohort, or a second record written for the shared check, or a zero exit status on the refusal"
 evidence_requirements:
   - kind: "tests"
     description: "Run the verifier over a contract whose declared item collides with the derived falsifier id and is retired by a marker."
     command: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/test_occ_falsifier_checks.py -q -k id_collision"
+  - kind: "tests"
+    description: "AC1: the local dispatch port returns a non-empty, unrefused deliverable for the reasoning classes against a stand-in that answers as the measured lab server did."
+    command: "uv run pytest tests/unit/delegation/test_local_reasoning_delivers_answer_omn19267.py -q"
+  - kind: "tests"
+    description: "AC2: the per-class profile test maps reasoning and complex_reasoning to a thinking-suppressing profile."
+    command: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
+  - kind: "tests"
+    description: "Run the OCC receipt runner over a ticket whose contract declares one check on two items."
+    command: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,3 +50,27 @@ dod_evidence:
         check_value: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/test_occ_falsifier_checks.py -q -k id_collision"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn19267-ac1-local-reasoning-delivers"
+    description: "AC1 hosted probe. The real local dispatch port (system prompt, inference-protocol shaping, deliverable extraction, refusal handling) runs a reasoning and a complex_reasoning delegation against a stand-in for the lab model server that answers as the server measured on 2026-09-23 did: an untagged trace with no marker when thinking is on, a marked answer when the request carries enable_thinking false. Passes at the head; fails at the merge base with omnimarket#2809's profile change reverted, because the request then leaves thinking on and the extractor refuses the trace. The live-model half of AC1 is the lab probe on the OCC receipt for this criterion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_local_reasoning_delivers_answer_omn19267.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19267-ac2-reasoning-profiles-no-think"
+    description: "AC2 hosted probe. The per-class profile test maps reasoning and complex_reasoning to a thinking-suppressing profile. Passes at the head; fails at the merge base with omnimarket#2809's profile change reverted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-receipt-runner-one-supersession-per-check"
+    description: "Two contract items declaring one check produce one execution and one supersession record, never a byte-identical pair; an item whose receipt does not stand is refused, not given a second record. Fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
