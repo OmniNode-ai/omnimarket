@@ -4,17 +4,15 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from importlib import resources
 from typing import cast
 
 import yaml
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
-    event_type_for,
+    envelope_bytes_for,
 )
 from omnimarket.models.lab_job import ModelLabJobSpec
 from omnimarket.nodes.node_lab_job_submit_effect.models import ModelLabJobSubmitReceipt
@@ -40,15 +38,14 @@ class HandlerLabJobSubmitEffect:
     async def handle(self, spec: ModelLabJobSpec) -> ModelLabJobSubmitReceipt:
         """Publish the spec envelope and return its publication receipt."""
         topic = load_lab_job_submitted_topic()
-        envelope = ModelEventEnvelope[dict[str, object]](
-            payload=spec.model_dump(mode="json"),
-            correlation_id=uuid.uuid5(uuid.NAMESPACE_URL, spec.job_id),
-            event_type=event_type_for(topic),
-        )
         await self._bus.publish(
             topic,
             spec.job_id.encode("utf-8"),
-            json.dumps(envelope.model_dump(mode="json")).encode("utf-8"),
+            envelope_bytes_for(
+                topic,
+                spec.model_dump(mode="json"),
+                uuid.uuid5(uuid.NAMESPACE_URL, spec.job_id),
+            ),
         )
         return ModelLabJobSubmitReceipt(
             status="published", job_id=spec.job_id, topic=topic
