@@ -6,17 +6,18 @@ runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  The one Linear ticket node (OMN-20595): create, read and comment. A create is
+  The one Linear ticket node (OMN-20595): create, read, comment and transition. A create is
   judged first by the installed omniclaude ticket-creation guard (OMN-17942) on
   the exact payload filed, Backlog with no project and the caller's description
-  unchanged; with no guard found, or a refusal, nothing is created. Read and
-  comment go through the omnibase_infra Linear project-tracker adapter, with no
+  unchanged; with no guard found, or a refusal, nothing is created. A transition
+  moves a ticket to a named workflow state through the adapter's update_issue,
+  after the same guard judges the update payload. Read and comment go through the omnibase_infra Linear project-tracker adapter, with no
   stub fallback when the key is missing.
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    # One routing entry; the request's `operation` field selects create, read or comment.
+    # One routing entry; the request's `operation` field selects create, read, comment or transition.
     - operation: create_ticket
       handler:
         name: HandlerCreateTicket
@@ -36,10 +37,10 @@ descriptor:
 inputs:
   operation:
     type: str
-    description: "create (default), read or comment"
+    description: "create (default), read, comment or transition"
     required: false
     default: "create"
-    allowed_values: ["create", "read", "comment"]
+    allowed_values: ["create", "read", "comment", "transition"]
   title:
     type: str
     description: "Ticket title (create)"
@@ -55,6 +56,10 @@ inputs:
   body:
     type: str
     description: "Comment body (comment)"
+    required: false
+  state:
+    type: str
+    description: "Target workflow state name, e.g. Canceled (transition)"
     required: false
   repo:
     type: str
@@ -95,7 +100,7 @@ inputs:
 outputs:
   status:
     type: str
-    description: "created | read | commented | dry_run | error"
+    description: "created | read | commented | transitioned | dry_run | error"
   ticket_id:
     type: str
     description: "Created, read or commented Linear ticket ID (e.g., OMN-5957)"

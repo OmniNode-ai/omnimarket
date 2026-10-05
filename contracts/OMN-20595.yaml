@@ -16,10 +16,15 @@ requirements:
         statement: "AC2: a create sends the caller's description to Linear byte for byte -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through -q in omnimarket"
       - id: "AC3"
         statement: "AC3: a create the installed ticket-creation guard refuses, or for which no guard is found, raises and never calls Linear -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q in omnimarket"
+      - id: "AC4"
+        statement: "AC4: operation=transition moves a ticket to a named state only after the installed guard accepts the exact {id, state} payload, and a refusal or a missing guard raises with no write -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3 hosted probe. The ticket operation tests pass at the head and fail at the merge base, where the operations and the guard do not exist."
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -q"
+  - kind: "tests"
+    description: "AC4 hosted probe. The ticket transition tests pass at the head and fail at the merge base, where operation=transition does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,3 +54,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20595-ac4-transition"
+    description: "AC4 hosted probe. operation=transition writes only after the guard accepts the exact payload and raises with no write otherwise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
