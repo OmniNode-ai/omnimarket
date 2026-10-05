@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20578"
+title: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra"
+summary: "omnimarket carries the source migrations, ownership declarations and shape reconciliation for the routing-feedback and alert-channel liveness projection tables; omnibase_infra vendors them byte-identically and derives the projection grants. AC1 and AC2 run in omnibase_infra and are bound there as local_done_gate items, because the hosted check carries only this repository. AC3 is a dev-202 runtime log readback and is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-routing-feedback-and-alert-liveness-vendored-and-granted"
+    statement: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC1 and AC2 run in omnibase_infra. AC3 reads docker logs on omni-202, which neither this repository's hosted check nor a local checkout can reach, so it is not bound here."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the vendored migration files are byte-identical to the omnimarket source of both PRs and carry ledger rows and migration classes -- falsifier: uv run pytest tests/unit/migrations/test_vendor_routing_feedback_and_alert_liveness.py -q in omnibase_infra"
+      - id: "AC2"
+        statement: "AC2: the table grant derivation proves both tables granted to the projection principal on every shipped topology instance and catalog -- falsifier: uv run python scripts/generate_application_database_table_grants.py --check in omnibase_infra"
+      - id: "AC3"
+        statement: "AC3: a dev-202 runtime that installs both nodes starts and wires them -- falsifier: docker logs omninode-dev-202-runtime on omni-202 containing ONEX runtime failed with unexpected error after the nodes are installed"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 omnibase_infra probe. The vendored migration files match the omnimarket source and carry ledger rows and migration classes."
+    command: "uv run pytest tests/unit/migrations/test_vendor_routing_feedback_and_alert_liveness.py -q"
+  - kind: "tests"
+    description: "AC2 omnibase_infra probe. The grant derivation check proves both tables granted to the projection principal on every topology instance and catalog."
+    command: "uv run python scripts/generate_application_database_table_grants.py --check"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20578-ac1-vendored-migrations-match"
+    description: "AC1 omnibase_infra probe. The vendored migration files match the omnimarket source and carry ledger rows and migration classes."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/migrations/test_vendor_routing_feedback_and_alert_liveness.py -q"
+        cwd: "${OMNI_HOME}/omnibase_infra"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20578-ac2-table-grants-derived"
+    description: "AC2 omnibase_infra probe. The grant derivation check proves both tables granted to the projection principal on every topology instance and catalog."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/generate_application_database_table_grants.py --check"
+        cwd: "${OMNI_HOME}/omnibase_infra"
+    binds_ac: ["AC2"]
