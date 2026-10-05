@@ -532,12 +532,11 @@ class _BoundaryFailureLeg:
 # OMN-17445. ``reports_recorded_inference`` decides what the terminal says about
 # tokens, and it is not cosmetic: the delegation and savings projections are
 # built from these numbers. A routing- or inference-leg failure means the
-# CURRENT attempt returned nothing, so it served no tokens and the terminal says
-# zero -- ``workflow.inference_*`` at that moment holds a SUPERSEDED attempt's
-# counts, already banked into ``cumulative_attempt_*`` by the escalation path,
-# and reporting them here would double-count them against a call that never
-# happened. A gate-leg failure is the opposite case: the inference did return
-# and was metered, and zeroing it would understate real served tokens.
+# CURRENT attempt returned nothing; ``workflow.inference_*`` may still hold an
+# earlier attempt's counts, already banked into ``cumulative_attempt_*``.
+# Such a failure retains the last served attempt and subtracts its usage from
+# the banked totals before terminal pricing. A gate-leg failure instead reports
+# the current response plus all banked usage.
 _BOUNDARY_FAILURE_LEGS: Mapping[str, _BoundaryFailureLeg] = {
     leg.origin_topic: leg
     for leg in (
@@ -2243,6 +2242,9 @@ class DelegationWorkflowState:
     # still contributes its real ``cost_usd`` to the projection — the prior
     # behavior dropped it, leaving the row at ``cost_usd=0`` despite a real
     # metered cloud call.
+    # Preserve the last banked call's evidence when a later leg returns nothing.
+    last_served_attempt: ModelDelegationEscalationAttempt | None = None
+    last_served_routing_decision: ModelRoutingDecision | None = None
     cumulative_attempt_cost_usd: float = 0.0
     cumulative_attempt_prompt_tokens: int = 0
     cumulative_attempt_completion_tokens: int = 0
@@ -2854,6 +2856,24 @@ class HandlerDelegationWorkflow:
             if leg.reports_recorded_inference
             else 0
         )
+        cost_tier_name = workflow.current_tier_name or ""
+        prior_cost_usd = workflow.cumulative_attempt_cost_usd
+        prior_prompt_tokens = workflow.cumulative_attempt_prompt_tokens
+        prior_completion_tokens = workflow.cumulative_attempt_completion_tokens
+        # A later routing/inference boundary failure produced no current usage.
+        # Report the last real call, including free-tier calls, without pricing
+        # its already-banked usage twice. Gate failures keep the current response.
+        last_served = workflow.last_served_attempt
+        last_route = workflow.last_served_routing_decision
+        if not leg.reports_recorded_inference and last_served is not None:
+            model_used = last_served.model_used
+            endpoint_url = last_route.endpoint_url if last_route is not None else "none"
+            prompt_tokens = last_served.prompt_tokens
+            completion_tokens = last_served.completion_tokens
+            cost_tier_name = last_served.tier_name
+            prior_cost_usd -= last_served.cost_usd
+            prior_prompt_tokens -= prompt_tokens
+            prior_completion_tokens -= completion_tokens
         total_tokens = prompt_tokens + completion_tokens
         # The boundary already sanitized this string
         # (``util_error_sanitization.sanitize_error_message``) before publishing
@@ -2884,6 +2904,8 @@ class HandlerDelegationWorkflow:
         # inference the terminal cannot support.
         if leg.routing_decision_present:
             routed_backend_ref, routed_manifest_version = _route_identity(workflow)
+            if not leg.reports_recorded_inference and last_served is not None:
+                routed_backend_ref = last_served.backend_ref
             unrouted_reason = None
         else:
             routed_backend_ref, routed_manifest_version = (None, None)
@@ -2913,13 +2935,9 @@ class HandlerDelegationWorkflow:
             # OMN-17445: what this leg's failure means about tokens, declared
             # per leg rather than assumed. A routing- or inference-leg failure
             # means the CURRENT attempt returned nothing, so zero is the
-            # measured truth — and ``workflow.inference_*`` at that moment holds
-            # a SUPERSEDED attempt's counts, already banked into
-            # ``cumulative_attempt_*``, which reporting here would double-count
-            # against a call that never happened. A gate-leg failure is the
-            # opposite case: the inference did return and was metered, and
-            # zeroing it would understate real served tokens on the terminal the
-            # savings and delegation projections are built from.
+            # measured truth for that attempt. When an earlier call served
+            # tokens, the last-served snapshot above reports it separately from
+            # the remaining banked usage. Gate failures use the current response.
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
@@ -2927,7 +2945,10 @@ class HandlerDelegationWorkflow:
             failure_reason=failure_reason,
             tokens_to_compliance=0,
             compliance_attempts=workflow.compliance_attempts or 1,
-            cost_tier_name=workflow.current_tier_name or "",
+            cost_tier_name=cost_tier_name,
+            prior_attempt_cost_usd=prior_cost_usd,
+            prior_attempt_prompt_tokens=prior_prompt_tokens,
+            prior_attempt_completion_tokens=prior_completion_tokens,
             premium_counterfactual=None,
             escalation_count=workflow.escalation_count,
             # Serialized the same way every other terminal site serializes it —
@@ -2945,7 +2966,7 @@ class HandlerDelegationWorkflow:
             quality_gates_failed=[],
             # OMN-17445: the upstream call id belongs to the terminal only when
             # a response was actually folded — the gate leg. On the routing and
-            # inference legs there is no call of this attempt's to name.
+            # inference legs the current attempt has no returned call id.
             llm_call_id=(
                 workflow.inference_llm_call_id if leg.reports_recorded_inference else ""
             ),
@@ -4574,6 +4595,9 @@ class HandlerDelegationWorkflow:
         ``final_tier_cost + cumulative`` so a metered tier that was attempted then
         escalated past still contributes its real cost to the projection row.
         """
+        if prompt_tokens + completion_tokens > 0 and workflow.escalation_history:
+            workflow.last_served_attempt = workflow.escalation_history[-1]
+            workflow.last_served_routing_decision = workflow.routing_decision
         workflow.cumulative_attempt_cost_usd += cost_usd
         workflow.cumulative_attempt_prompt_tokens += prompt_tokens
         workflow.cumulative_attempt_completion_tokens += completion_tokens
