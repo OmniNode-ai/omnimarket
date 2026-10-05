@@ -14,9 +14,10 @@ handed to :class:`HandlerProjectionRead`, the same handler the runtime runs for
 ``node_projection_read_effect``. That handler, and the SQLite row source it
 reads through (OMN-20329), own every byte of SQL; this node holds none.
 
-**The store is the one the local writers fill.** With a projection runtime
-binding configured, the read goes to the database it names (the same resolver
-the node uses). With none -- a bus-less laptop install -- it reads
+**The store is the one the local writers fill.** With a projection read
+binding configured (the read overlay's, else the runtime's), the read goes to
+the database it names (the same resolver the node uses). With none -- a
+bus-less laptop install -- it reads
 ``default_evidence_db_path()``, the store ``onex delegate``'s in-process writers
 fall back to, so the dashboard shows what the developer's runs wrote.
 
@@ -61,7 +62,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 )
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import projection_runtime_binding_from_overlay_env
+from omnimarket.projection.runner import projection_read_binding_from_overlay_env
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 from omnimarket.projection.table_reader import (
     ProtocolProjectionRowSource,
@@ -78,8 +79,8 @@ class ProtocolProjectionReadNode(Protocol):
 
 
 def resolve_local_row_source() -> TableRowSource | SqliteTableRowSource:
-    """The store this install's writers fill: the binding's, else the local default."""
-    if projection_runtime_binding_from_overlay_env() is not None:
+    """The store this install's writers fill: the read binding's, else the local default."""
+    if projection_read_binding_from_overlay_env() is not None:
         return resolve_projection_read_source()
     return SqliteTableRowSource(default_evidence_db_path())
 

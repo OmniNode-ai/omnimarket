@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20552"
+title: "delegation rubric: document answers are checked against the supplied facts"
+summary: "Declares a document class in delegation_class_rubrics.v1.yaml with the claims_traceable criterion, a non-MET false-pass status, false-pass and false-refusal lines and a check-register entry, so a document attempt records a facts-grounding verdict instead of UNDETERMINED no_rubric_for_class. The recorded run de6357ab-d4e3-42de-b6a9-3ba186160860 is committed as a fixture with a replayed acceptance-judge reply. Tests: tests/unit/delegation/test_document_facts_grounding_omn20552.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-document-facts-grounding"
+    statement: |-
+      A document attempt must record a rubric verdict that checks the answer's identifiers, refs, paths, quotes and numbers against the facts it was given; the verdict may refuse acceptance only once the document class's false-pass line is configured MET.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the rubric contract declares a document class with claims_traceable, a non-MET status, false-pass and false-refusal lines and a check-register entry -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k "contract_declares or no_longer_unrubricked"
+      - id: "AC2"
+        statement: |-
+          AC2: a document answer citing a path the facts do not carry is refused by the document rubric on the attempt path and by the acceptance gate and the in-process port only when the class is configured MET -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k "refuses or attempt_path or only_when_met"
+      - id: "AC3"
+        statement: |-
+          AC3: the recorded run de6357ab replays through the acceptance judge node's render and check operations to the exact judged prompt and a fabrication reject -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k judge_replay
+evidence_requirements:
+  - kind: "tests"
+    description: "The document facts-grounding tests pass at the head and fail at the merge base, where the document class and its fixture do not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-document-rubric-ac1"
+    description: "The contract tests prove the document class, its non-MET status and that the recorded run now gets a verdict."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k 'contract_declares or no_longer_unrubricked'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-document-rubric-ac2"
+    description: "The refusal tests prove the rubric refuses an untraceable path and decides only when the class is MET, on the gate and the in-process port."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k 'refuses or attempt_path or only_when_met'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-document-rubric-ac3"
+    description: "The judge replay test proves the recorded reply answers the exact rendered prompt and rejects the recorded run as fabrication."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_document_facts_grounding_omn20552.py -q -k judge_replay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
