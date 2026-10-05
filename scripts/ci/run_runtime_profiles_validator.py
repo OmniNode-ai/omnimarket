@@ -1,17 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Run the runtime_profiles contract validator with the omnimarket allowlist.
+"""Run the runtime_profiles contract validator with no allowlist.
 
 Mirrors the required CI gate `.github/workflows/validator-runtime-profiles.yml`
-exactly: it constructs `ValidatorRuntimeProfiles` with the repo-local
-`validation/runtime_profiles_allowlist.yaml` and validates `src/`.
+exactly: it constructs `ValidatorRuntimeProfiles` with an explicitly empty
+allowlist and validates `src/`. The repo allowlist drained to empty
+(OMN-12982) and OMN-20558 deleted it; `allowlist=set()` also disables repo and
+core allowlist discovery, so ANY violating contract fails. No exception list
+remains.
 
-This script exists so the local pre-commit hook and CI run the SAME invocation.
-The validator's module `__main__` entry point resolves its allowlist from the
-omnibase_core *package* directory (`Path(__file__).parent`), which does not
-contain the omnimarket repo's frozen-violator allowlist — so invoking the bare
-module locally flags every pre-existing allowlisted contract while CI passes.
-Pointing the hook at this script removes that local/CI drift (OMN-12955).
+This script exists so the local pre-commit hook and CI run the SAME invocation
+(OMN-12955).
 """
 
 from __future__ import annotations
@@ -22,12 +21,11 @@ from omnibase_core.validation.validator_runtime_profiles import (
     ValidatorRuntimeProfiles,
 )
 
-ALLOWLIST_PATH = Path("validation/runtime_profiles_allowlist.yaml")
 SRC_ROOT = Path("src")
 
 
 def main() -> int:
-    result = ValidatorRuntimeProfiles(allowlist_path=ALLOWLIST_PATH).validate(SRC_ROOT)
+    result = ValidatorRuntimeProfiles(allowlist=set()).validate(SRC_ROOT)
     for issue in result.issues:
         print(
             f"[{issue.severity.value}] {issue.file_path}:{issue.line_number}: {issue.message}"
