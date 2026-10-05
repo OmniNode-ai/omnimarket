@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20604"
+title: "Lab job reducer decides every job transition as a pure function"
+summary: "node_lab_job_reducer is a pure handle(input) -> output with no clock and no I/O. AC1 to AC3 are bound to the reducer's tests. The lab readback is recorded in the pull request body and is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-lab-job-reducer-transitions"
+    statement: "The reducer applies each event to a job row and returns the next row and its intents. The criteria below are the ones the reducer's tests cover; each id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every transition in the table yields its expected state, and every non-terminal state has an exit -- falsifier: uv run pytest tests/test_lab_job_reducer.py -k 'transition_table or has_an_exit' -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: exactly one runtime takes a job, and a restart is built from the original brief -- falsifier: uv run pytest tests/test_lab_job_reducer.py -k 'one_takes or original_brief' -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: the alert dedup key is stable across resends, and stale attempt events are dropped -- falsifier: uv run pytest tests/test_lab_job_reducer.py -k 'dedup_key or stale_attempt' -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 hosted probe. The reducer tests pass at the head and fail at the merge base, where the reducer does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/test_lab_job_reducer.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20604-ac1-transitions"
+    description: "AC1 hosted probe. The transition table and the exit for every non-terminal state hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_job_reducer.py -k 'transition_table or has_an_exit' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20604-ac2-one-runtime-original-brief"
+    description: "AC2 hosted probe. One runtime takes a job and a restart uses the original brief."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_job_reducer.py -k 'one_takes or original_brief' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20604-ac3-dedup-and-stale"
+    description: "AC3 hosted probe. The alert dedup key is stable and stale attempt events are dropped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_job_reducer.py -k 'dedup_key or stale_attempt' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
