@@ -210,6 +210,19 @@ def test_document_facts_grounding_judge_replay_rejects_the_recorded_run():
     assert by_case["de6357ab_document"].accept is False
     assert by_case["de6357ab_document"].failure_class == "fabrication"
     assert by_case["de6357ab_document_grounded"].accept is True
+    # The replay is of the document class's false pass: the judge rejects the
+    # recorded run while the deterministic document rubric records claims_traceable
+    # PASS on the same text. Without the document class that rubric records no
+    # criterion for it, so this leg fails where the class does not exist.
+    for case in _REPLAY["cases"]:
+        if case["task_class"] != "document":
+            continue
+        document_verdict = _verdict(case)
+        assert [row.criterion_id for row in document_verdict.criteria] == [
+            "claims_traceable"
+        ]
+    assert _verdict(_REPLAY["cases"][0]).outcome == "PASS"
+    assert _verdict(_REPLAY["cases"][2]).outcome == "PASS"
 
 
 async def _dispatch(
