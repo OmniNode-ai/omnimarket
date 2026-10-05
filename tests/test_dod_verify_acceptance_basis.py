@@ -14,7 +14,9 @@ that leave the machine stubbed: the command runner and the live-PR read.
 
 from __future__ import annotations
 
+import json
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,7 @@ def _contract(
     extra_items: list[dict[str, Any]] | None = None,
     proposed_by: str = "occ-autobind",
     accepted_by: str = "author-uuid",
+    pr_item_id: str = _PR_ITEM,
 ) -> dict[str, Any]:
     accepted = [
         {
@@ -62,7 +65,7 @@ def _contract(
         for label in falsifiers
     ]
     pr_item: dict[str, Any] = {
-        "id": _PR_ITEM,
+        "id": pr_item_id,
         "description": "PR #3103 evidence.",
         "source": "generated",
         "checks": [
@@ -109,11 +112,17 @@ def _run(
     *,
     failing: frozenset[str] = frozenset(),
     behavior_extra: bool = False,
+    setup: Callable[[Path], None] | None = None,
 ) -> ModelDodVerifyState:
     omni_home = tmp_path / "omni_home"
     (omni_home / "omnimarket" / "tests").mkdir(parents=True)
     (omni_home / "omnimarket" / "tests" / "test_a.py").write_text("")
     (omni_home / "omnimarket" / "tests" / "test_b.py").write_text("")
+    # OMN-20332: omnimarket declares its runner the way every uv repo does.
+    (omni_home / "omnimarket" / "pyproject.toml").write_text("[project]\n")
+    (omni_home / "omnimarket" / "uv.lock").write_text("")
+    if setup is not None:
+        setup(omni_home)
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     executed: list[str] = []
@@ -513,3 +522,113 @@ def test_id_collision_declared_item_cannot_stand_in_for_the_derived_falsifier(
     assert state.status is EnumDodVerifyStatus.SKIPPED
     assert state.error_message is not None
     assert state.error_message.startswith("AC_FALSIFIER_NOT_VERIFIED")
+
+
+# OMN-20332: a TypeScript repository's falsifier runs under its declared pnpm
+# runner, and a repository that declares no runner fails the verdict by name.
+
+_DASH_PR_ITEM = "dod-OmniNode-ai-omnidash-pr-812"
+_TS_FALSIFIER = "pnpm test src/lib/sparkline.test.ts"
+
+
+def _omnidash(*, declared: bool) -> Callable[[Path], None]:
+    def _setup(omni_home: Path) -> None:
+        repo = omni_home / "omnidash"
+        (repo / "src" / "lib").mkdir(parents=True)
+        (repo / "src" / "lib" / "sparkline.test.ts").write_text("")
+        if declared:
+            (repo / "package.json").write_text(
+                '{"packageManager": "pnpm@10.12.1", "scripts": {"test": "vitest run"}}'
+            )
+            (repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+
+    return _setup
+
+
+def test_typescript_falsifier_runs_under_the_declared_pnpm_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(falsifiers={"AC1": _TS_FALSIFIER}, pr_item_id=_DASH_PR_ITEM),
+        failing=frozenset({_TS_FALSIFIER}),
+        setup=_omnidash(declared=True),
+    )
+    # The pnpm command is the one executed: making it fail flips the item.
+    assert _by_id(state)["ac-falsifier-ac1"] is EnumEvidenceCheckStatus.FAILED
+    assert state.acceptance_runnable_falsifier_count == 1
+    assert state.status is EnumDodVerifyStatus.FAILED
+
+
+def test_typescript_falsifier_passes_under_the_declared_pnpm_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(falsifiers={"AC1": _TS_FALSIFIER}, pr_item_id=_DASH_PR_ITEM),
+        setup=_omnidash(declared=True),
+    )
+    assert _by_id(state)["ac-falsifier-ac1"] is EnumEvidenceCheckStatus.VERIFIED
+    assert state.acceptance_basis is EnumDodAcceptanceBasis.FALSIFIER_CHECKS
+
+
+def test_repository_without_a_declared_runner_fails_the_verdict_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(falsifiers={"AC1": _TS_FALSIFIER}, pr_item_id=_DASH_PR_ITEM),
+        setup=_omnidash(declared=False),
+    )
+    failed = [c for c in state.checks if c.evidence_id == "ac-falsifier-ac1"]
+    assert len(failed) == 1
+    assert failed[0].status is EnumEvidenceCheckStatus.FAILED
+    assert "omnidash" in (failed[0].message or "")
+    assert "runner" in (failed[0].message or "")
+    assert state.status is EnumDodVerifyStatus.FAILED
+
+
+@pytest.mark.parametrize(
+    ("pin", "runner"),
+    [("pnpm@10.12.1", "pnpm test"), ("pnpm@latest", None), ("pnpm@^10", None)],
+)
+def test_only_an_exact_pnpm_pin_declares_a_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: str, runner: str | None
+) -> None:
+    repo = tmp_path / "omnidash"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps({"packageManager": pin, "scripts": {"test": "vitest run"}})
+    )
+    (repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    collector = evidence_collector.EvidenceCollector
+    assert collector._declared_test_runner("omnidash") == runner
+
+
+def test_audience_refusal_keeps_the_named_runnerless_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An early audience refusal must not drop the runnerless falsifier's name."""
+    typo = {
+        "id": "dod-typo",
+        "execution_scope": "typo",
+        "checks": [{"check_type": "command", "check_value": "true"}],
+    }
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": _TS_FALSIFIER},
+            pr_item_id=_DASH_PR_ITEM,
+            extra_items=[typo],
+        ),
+        setup=_omnidash(declared=False),
+    )
+    named = {c.evidence_id: c for c in state.checks}
+    assert named["dod-typo"].status is EnumEvidenceCheckStatus.FAILED
+    assert named["ac-falsifier-ac1"].status is EnumEvidenceCheckStatus.FAILED
+    assert "NO_DECLARED_TEST_RUNNER" in (named["ac-falsifier-ac1"].message or "")

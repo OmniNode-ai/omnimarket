@@ -29,6 +29,13 @@ class ModelDodAcceptanceSummary(BaseModel):
         default=(),
         description="Labels whose falsifier no machine can run (prose, query).",
     )
+    undeclared_runner: tuple[tuple[str, str], ...] = Field(
+        default=(),
+        description=(
+            "OMN-20332: (label, repo) pairs whose holder repository declares "
+            "no test runner, in contract order."
+        ),
+    )
     derived_item_ids: tuple[str, ...] = Field(
         default=(),
         description="Evidence ids of the derived items, in label order.",

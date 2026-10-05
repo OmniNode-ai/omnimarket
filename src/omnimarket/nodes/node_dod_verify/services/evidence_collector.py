@@ -98,6 +98,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
     derive_falsifier_items,
     is_accepted_binding,
+    unique_derived_id,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
@@ -800,6 +801,7 @@ _STAGE_SKIPPED_ENTRIES = frozenset(
 # project that does not pin one cannot be given a lock-exact toolchain, which
 # is a typed non-result rather than a licence to use whatever is on PATH.
 _PACKAGE_MANAGER_RE = re.compile(r"^pnpm@(?P<version>[^+\s]+)")
+_EXACT_PNPM_VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 
 # Directory inside a stage holding the pinned-pnpm shim. Prefixed and kept out
 # of the copy so it can never collide with a real project directory, and
@@ -3302,6 +3304,7 @@ class EvidenceCollector:
                 dod_items,
                 repo_candidates=self._contract_repo_dirs(dod_items),
                 path_exists=self._product_path_exists,
+                declared_runner=self._declared_test_runner,
             )
             dod_items = [*dod_items, *derived_items]
         else:
@@ -3318,7 +3321,7 @@ class EvidenceCollector:
             Path(contract_repo_dir) if contract_repo_dir else None,
         )
         if audience_failures:
-            return audience_failures
+            return [*audience_failures, *self._undeclared_runner_failures(dod_items)]
 
         supersession = self._resolve_supersessions(dod_items[:declared_count])
 
@@ -3546,6 +3549,10 @@ class EvidenceCollector:
                         }
                     )
             results.extend(group)
+
+        # OMN-20332: a repository that declares no runner fails each accepted
+        # falsifier by name. No guessed command runs and no label vanishes.
+        results.extend(self._undeclared_runner_failures(dod_items))
 
         # OMN-18056. STAMP THE CONTRACT'S OWN AC BINDINGS ONTO EVERY RESULT.
         #
@@ -4443,6 +4450,69 @@ class EvidenceCollector:
         if not omni_home:
             return False
         return (Path(omni_home) / repo / path).exists()
+
+    def _undeclared_runner_failures(
+        self, dod_items: list[Any]
+    ) -> list[ModelEvidenceCheckResult]:
+        """OMN-20332: one named FAILED result per falsifier with no runner."""
+        if self.acceptance_summary is None:
+            return []
+        taken_ids = {
+            item["id"]
+            for item in dod_items
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        failures: list[ModelEvidenceCheckResult] = []
+        for label, repo in self.acceptance_summary.undeclared_runner:
+            evidence_id = unique_derived_id(label, taken_ids)
+            taken_ids.add(evidence_id)
+            failures.append(
+                ModelEvidenceCheckResult(
+                    evidence_id=evidence_id,
+                    description=f"{label} falsifier, repository declares no test runner",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    binds_ac=(label,),
+                    message=(
+                        "NO_DECLARED_TEST_RUNNER: "
+                        f"${{OMNI_HOME}}/{repo} declares no test runner "
+                        "(neither uv.lock + pyproject.toml nor pnpm-lock.yaml "
+                        "+ package.json packageManager pnpm pin + scripts.test), "
+                        f"so the {label} falsifier was not run."
+                    ),
+                )
+            )
+        return failures
+
+    @staticmethod
+    def _declared_test_runner(repo: str) -> str | None:
+        """OMN-20332: the runner ``$OMNI_HOME/<repo>`` declares, never a guess."""
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            return None
+        root = Path(omni_home) / repo
+        if (root / "uv.lock").is_file() and (root / "pyproject.toml").is_file():
+            return "uv run pytest"
+        if not (root / "pnpm-lock.yaml").is_file():
+            return None
+        try:
+            version, reason = _pinned_pnpm_version(root)
+            # An exact pin only: ``pnpm@latest`` names no toolchain to resolve.
+            if version is None or reason is not None:
+                return None
+            if _EXACT_PNPM_VERSION_RE.fullmatch(version) is None:
+                return None
+            manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(manifest, dict):
+            return None
+        scripts = manifest.get("scripts")
+        if not isinstance(scripts, dict):
+            return None
+        test = scripts.get("test")
+        if isinstance(test, str) and test.strip():
+            return "pnpm test"
+        return None
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
