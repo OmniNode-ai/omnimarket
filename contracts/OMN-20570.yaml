@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20570"
+title: "The prompt-shape enum is named EnumPromptShape, so the OMN-15651 task-class admission gate stops reading it as a task-class enumeration"
+summary: "Renames EnumTaskClassPromptShape to EnumPromptShape in task_class_authority.py and its two users. Only AC3 is bound here: the facts-first prompt tests, whose changed test file imports the new name, pass at the head and fail at the merge base, where the name does not exist. AC1 is a git grep over dev and AC2 runs in omninode_infra; neither is a test this repository's hosted check can run, so neither is bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-prompt-shape-enum-renamed-behaviour-unchanged"
+    statement: "The prompt-shape enum carries a name the task-class admission gate does not read as a task-class enumeration, and prompt behaviour is unchanged by the rename. The criterion below is transcribed from the ticket body; its id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: prompt behaviour is unchanged -- falsifier: omnimarket `uv run pytest tests/unit/nodes/node_facts_first_prompt_compute` reports a failure"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC3 hosted probe. The facts-first prompt compute tests, including the changed test file that now imports EnumPromptShape, pass at the head. They fail at the merge base, where EnumPromptShape does not exist and the overlaid test cannot import it."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_facts_first_prompt_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20570-ac3-prompt-behaviour-unchanged"
+    description: "AC3 hosted probe. The facts-first prompt compute tests, including the changed test file that now imports EnumPromptShape, pass at the head. They fail at the merge base, where EnumPromptShape does not exist and the overlaid test cannot import it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_facts_first_prompt_compute -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
