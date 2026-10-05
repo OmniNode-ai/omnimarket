@@ -1,18 +1,19 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CLI entry point for node_create_ticket.
+"""CLI entry point for node_create_ticket: create, read or comment on a ticket.
 
-Validates ticket parameters, detects seam signals, generates the structured
-description body, and creates the Linear ticket via the GraphQL API
-(``HandlerCreateTicket`` resolves ``LINEAR_API_KEY`` and performs the
-``issueCreate`` call directly — see OMN-14547). A non-dry-run request that
-does not resolve to a real ``ticket_id`` raises rather than reporting a fake
-``status="created"``; this CLI catches that and reports ``status="error"``.
+A create runs the installed ticket-creation guard on the exact payload filed
+(Backlog, no project, the description unchanged) and creates nothing when the
+guard refuses or is not found. Read and comment go through the omnibase_infra
+Linear project-tracker adapter. ``LINEAR_API_KEY`` must resolve; there is no
+stub. Any refusal or failure prints ``status="error"`` with the reason in
+``validation_errors`` and exits 1.
 
 Usage:
-    python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting"
-    python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --repo omnibase_core --parent OMN-1800
-    python -m omnimarket.nodes.node_create_ticket --title "Deploy pipeline" --blocked-by OMN-1801,OMN-1802 --dry-run
+    python -m omnimarket.nodes.node_create_ticket --operation read --ticket-id OMN-1800
+    python -m omnimarket.nodes.node_create_ticket --operation comment --ticket-id OMN-1800 --body "text"
+    python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md
+    python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md --dry-run
 
 Outputs JSON to stdout: ModelCreateTicketResult model.
 """
@@ -22,8 +23,10 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
+    EnumTicketOperation,
     HandlerCreateTicket,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
@@ -36,10 +39,30 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
-        description="Validate and prepare a Linear ticket for creation."
+        description="Create, read or comment on a Linear ticket."
     )
-    parser.add_argument("--title", default="", help="Ticket title.")
-    parser.add_argument("--description", default="", help="Ticket description body.")
+    parser.add_argument(
+        "--operation",
+        default=EnumTicketOperation.CREATE.value,
+        choices=[op.value for op in EnumTicketOperation],
+        help="create (default), read or comment.",
+    )
+    parser.add_argument("--title", default="", help="Ticket title (create).")
+    parser.add_argument(
+        "--description", default="", help="Ticket description body (create)."
+    )
+    parser.add_argument(
+        "--description-file",
+        default="",
+        help="Read the description (create) from this file, byte for byte.",
+    )
+    parser.add_argument(
+        "--ticket-id", default="", help="Ticket id, e.g. OMN-1234 (read, comment)."
+    )
+    parser.add_argument("--body", default="", help="Comment body (comment).")
+    parser.add_argument(
+        "--body-file", default="", help="Read the comment body from this file."
+    )
     parser.add_argument(
         "--repo",
         default="",
@@ -70,13 +93,20 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         default=False,
-        help="Validate and report without issuing any Linear API calls.",
+        help="Validate and run the guard without issuing any Linear write.",
     )
 
     args = parser.parse_args()
-
-    if not args.title:
-        parser.error("--title is required")
+    description = (
+        Path(args.description_file).read_text(encoding="utf-8")
+        if args.description_file
+        else args.description
+    )
+    body = (
+        Path(args.body_file).read_text(encoding="utf-8")
+        if args.body_file
+        else args.body
+    )
 
     blocked_by: list[str] = (
         [b.strip() for b in args.blocked_by.split(",") if b.strip()]
@@ -84,30 +114,35 @@ def main() -> None:
         else []
     )
 
-    request = ModelCreateTicketRequest(
-        title=args.title,
-        description=args.description,
-        repo=args.repo or None,
-        parent=args.parent or None,
-        blocked_by=blocked_by,
-        team=args.team,
-        pillar=args.pillar or None,
-        dry_run=args.dry_run,
-    )
-
-    handler = HandlerCreateTicket()
+    operation = EnumTicketOperation(args.operation)
     try:
-        result = handler.handle(request)
-    except RuntimeError as exc:
-        # Fail-closed guard (OMN-14547) or secret-resolution failure — report
-        # as a structured error rather than an uncaught traceback, preserving
-        # this CLI's "always prints a ModelCreateTicketResult JSON" contract.
+        request = ModelCreateTicketRequest(
+            operation=operation,
+            title=args.title,
+            description=description,
+            ticket_id=args.ticket_id or None,
+            body=body,
+            repo=args.repo or None,
+            parent=args.parent or None,
+            blocked_by=blocked_by,
+            team=args.team,
+            pillar=args.pillar or None,
+            dry_run=args.dry_run,
+        )
+        result = HandlerCreateTicket().handle(request)
+    except (RuntimeError, ValueError, OSError) as exc:
+        # A guard refusal, a missing guard or key, an invalid request, or the
+        # fail-closed empty-id check (OMN-14547) -- reported as a structured
+        # error, preserving this CLI's "always prints a ModelCreateTicketResult
+        # JSON" contract. The exception text never carries the key.
         result = ModelCreateTicketResult(
             status="error",
-            title=request.title,
-            team=request.team,
-            validation_errors=[str(exc)],
-            dry_run=request.dry_run,
+            operation=operation,
+            title=args.title,
+            ticket_id=args.ticket_id,
+            team=args.team,
+            validation_errors=[f"{type(exc).__name__}: {exc}"],
+            dry_run=args.dry_run,
         )
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

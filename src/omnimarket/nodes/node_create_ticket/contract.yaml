@@ -6,12 +6,17 @@ runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Create a single Linear ticket from args, contract file, or plan milestone with
-  conflict resolution and ModelTicketContract generation.
+  The one Linear ticket node (OMN-20595): create, read and comment. A create is
+  judged first by the installed omniclaude ticket-creation guard (OMN-17942) on
+  the exact payload filed, Backlog with no project and the caller's description
+  unchanged; with no guard found, or a refusal, nothing is created. Read and
+  comment go through the omnibase_infra Linear project-tracker adapter, with no
+  stub fallback when the key is missing.
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    # One routing entry; the request's `operation` field selects create, read or comment.
     - operation: create_ticket
       handler:
         name: HandlerCreateTicket
@@ -20,7 +25,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket
   class: HandlerCreateTicket
-  input_model: omnimarket.nodes.node_create_ticket.models.model_create_ticket_state.ModelCreateTicketStartCommand
+  input_model: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket.ModelCreateTicketRequest
 
 descriptor:
   node_archetype: compute
@@ -29,21 +34,27 @@ descriptor:
   timeout_ms: 60000
 
 inputs:
+  operation:
+    type: str
+    description: "create (default), read or comment"
+    required: false
+    default: "create"
+    allowed_values: ["create", "read", "comment"]
   title:
     type: str
-    description: "Ticket title (mutually exclusive with from_contract, from_plan)"
+    description: "Ticket title (create)"
     required: false
-  from_contract:
+  description:
     type: str
-    description: "Path to YAML contract file"
+    description: "Ticket description (create), sent to Linear unchanged; the guard requires its Gate line and falsifiable criteria"
     required: false
-  from_plan:
+  ticket_id:
     type: str
-    description: "Path to plan markdown file"
+    description: "Ticket identifier, e.g. OMN-1234 (read, comment)"
     required: false
-  milestone:
+  body:
     type: str
-    description: "Milestone ID when using from_plan (e.g., M4)"
+    description: "Comment body (comment)"
     required: false
   repo:
     type: str
@@ -54,9 +65,14 @@ inputs:
     description: "Parent issue ID for epic relationship (e.g., OMN-1800)"
     required: false
   blocked_by:
-    type: str
-    description: "Comma-separated issue IDs that block this ticket"
+    type: list[str]
+    description: "Issue IDs that block this ticket"
     required: false
+  dry_run:
+    type: bool
+    description: "Run the guard and validation, make no Linear write"
+    required: false
+    default: false
   project:
     type: str
     description: "REFUSED when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)"
@@ -77,9 +93,12 @@ inputs:
     default: false
 
 outputs:
+  status:
+    type: str
+    description: "created | read | commented | dry_run | error"
   ticket_id:
     type: str
-    description: "Created or updated Linear ticket ID (e.g., OMN-5957)"
+    description: "Created, read or commented Linear ticket ID (e.g., OMN-5957)"
   ticket_url:
     type: str
     description: "URL of the created ticket"
