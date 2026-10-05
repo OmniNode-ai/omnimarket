@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20543"
+title: "The repo-evidence dod-verify job gives database tests a real Postgres at the head and in the merge-base control"
+summary: "omnibase_core#1886 gives the reusable dod-verify job a Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, at the head and in the merge-base control. omnimarket's evidence caller pins that reusable, so a bound test that needs a database runs in repo-evidence / dod-verify instead of being scoped local_done_gate and refused as a control that did not run."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-caller-pins-the-database-reusable"
+    statement: |-
+      omnimarket's evidence caller must pin the omnibase_core reusable whose dod-verify job provides a database to the bound tests.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: omnimarket pins the reusable at the squash commit, and a database-backed test-only binding passes repo-evidence / dod-verify while an always-pass binding is refused -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q plus the check run conclusions on omnimarket#3369 and one negative control PR
+evidence_requirements:
+  - kind: "tests"
+    description: "The caller pins the reusable that gives bound tests a database."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k gives_bound_tests_a_database"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20543-ac3-caller-pins-the-database-reusable"
+    description: "The caller pins the omnibase_core reusable at the squash commit of omnibase_core#1886; the test is absent at the merge base, so it fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k gives_bound_tests_a_database"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

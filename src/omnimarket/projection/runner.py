@@ -64,6 +64,17 @@ logger = logging.getLogger(__name__)
 
 KAFKA_BROKERS_ENV = "KAFKA_BROKERS"
 PROJECTION_RUNTIME_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY"
+# The read node's own binding, apart from the runtime binding the delegate-skill
+# claim store and evidence store follow, so a reader's credentials never become
+# their write principal. See projection_read_binding_from_overlay_env().
+PROJECTION_READ_BINDING_OVERLAY_ENV = "OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY"
+# Why projection_read_binding_from_overlay_env() returned None, for a refusal an
+# operator reads. Built here so the variable names stay owned by this module.
+PROJECTION_READ_BINDING_UNSET_DETAIL = (
+    f"neither {PROJECTION_READ_BINDING_OVERLAY_ENV} (the projection read binding) "
+    f"nor {PROJECTION_RUNTIME_BINDING_OVERLAY_ENV} (the runtime binding a read "
+    "falls back to) is set"
+)
 DEFAULT_GROUP_ID = "omnimarket-projections-v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
@@ -335,6 +346,52 @@ def projection_runtime_binding_from_overlay_env() -> (
     (the delegation env-read discipline, OMN-10915).
     """
     return _projection_runtime_binding_from_overlay_env()
+
+
+class ProjectionReadBindingOverlayError(RuntimeError):
+    """The read overlay variable is set, and the file it names did not load.
+
+    Carries the variable, its value (the file's path) and the class name of the
+    load error, which is chained as ``__cause__``. The message is built from
+    those three only: a load error can quote the file, and a validation error
+    quotes its input, which can be a database URL with its password.
+    """
+
+    def __init__(self, variable: str, path: str, cause_type: str) -> None:
+        super().__init__(
+            f"{variable} names the file {path}, which did not load ({cause_type})"
+        )
+        self.variable = variable
+        self.path = path
+        self.cause_type = cause_type
+
+
+def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding | None:
+    """Resolve the binding projection READS go through, or ``None``.
+
+    The read overlay's binding when ``OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY``
+    is set, otherwise :func:`projection_runtime_binding_from_overlay_env`
+    exactly. Only the read resolvers (the projection read node and the local
+    dashboard) call this. The delegate-skill claim store and evidence store keep
+    calling the runtime resolver, so a read binding that logs in as a reader can
+    never become their write principal (OMN-20159).
+
+    A read variable that is set but names a missing or invalid file raises
+    :class:`ProjectionReadBindingOverlayError`; it never falls back to the
+    runtime binding. With the read variable unset, a broken runtime overlay
+    raises its own load error, as it always has. A blank value is unset, as it
+    is for the runtime variable.
+    """
+    overlay_path = os.environ.get(PROJECTION_READ_BINDING_OVERLAY_ENV, "").strip()
+    if not overlay_path:
+        return _projection_runtime_binding_from_overlay_env()
+    try:
+        return load_projection_runtime_binding_overlay(overlay_path)
+    except (OSError, yaml.YAMLError, RuntimeError, ValueError) as exc:
+        # ValueError covers pydantic's ValidationError.
+        raise ProjectionReadBindingOverlayError(
+            PROJECTION_READ_BINDING_OVERLAY_ENV, overlay_path, type(exc).__name__
+        ) from exc
 
 
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:

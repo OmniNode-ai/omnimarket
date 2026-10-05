@@ -307,7 +307,8 @@ def test_rubric_recorded_not_deciding_mapper_tolerates_malformed(
 
 
 def test_rubric_recorded_not_deciding_class_without_rubric_is_undetermined() -> None:
-    handler, cid = _ready(task_class="document", answer="Synthetic document.")
+    # OMN-20552 gave document a rubric; planning still declares none.
+    handler, cid = _ready(task_class="planning", answer="Synthetic plan.")
     handler.handle_gate_result(_gate(cid, True))
     workflow = handler.workflows[cid]
     assert workflow.state is EnumDelegationState.COMPLETED
