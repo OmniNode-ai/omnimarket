@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20558"
+title: "omnimarket ratchet burn-down: delete the empty action-pin, transport-mock and runtime_profiles baselines"
+summary: "The action-pin baseline, the transport-mock baseline and the runtime_profiles allowlist are deleted and each check runs as a plain blocking check that fails on a planted violation."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ratchet-burndown"
+    statement: "Every omnimarket baseline the burn-down empties is deleted, and its check blocks a planted violation with no baseline argument."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Characterization tests pin current behaviour of every module the burn-down touches and pass unchanged before and after the refactor -- falsifier: uv run pytest on the characterization test files at the pre-refactor commit and at the PR head"
+      - id: "AC2"
+        statement: "AC2: Every baseline file the PR empties is deleted and its check fails on a planted violation with no baseline argument -- falsifier: uv run pytest tests covering each emptied ratchet with a planted violation"
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the characterization, plain-check and permanent-profile tests the burn-down adds or changes."
+    command: "uv run pytest tests/ci/test_check_action_pins.py tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20558-ratchet-burndown-tests"
+    description: "The characterization tests pin every touched module, and the plain checks refuse a planted violation with each baseline deleted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_action_pins.py tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

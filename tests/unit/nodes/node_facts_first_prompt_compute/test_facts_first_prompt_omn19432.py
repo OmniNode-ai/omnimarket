@@ -21,7 +21,7 @@ from omnimarket.delegation.acceptance_directives import state_prompt_for_task_cl
 from omnimarket.inference import task_class_authority as authority
 from omnimarket.inference.task_class_authority import (
     _DEFAULT_AUTHORITY_PATH,
-    EnumTaskClassPromptShape,
+    EnumPromptShape,
     ModelFactsFirstPromptPolicy,
     ModelTaskClassAuthority,
     resolve_facts_first_prompt_policy,
@@ -83,7 +83,7 @@ def test_the_shipped_contract_declares_the_measured_classes_facts_first() -> Non
     declared = {
         name
         for name, entry in shipped.task_classes.items()
-        if entry.prompt_shape is EnumTaskClassPromptShape.FACTS_FIRST
+        if entry.prompt_shape is EnumPromptShape.FACTS_FIRST
     }
 
     assert declared == _MEASURED_FACTS_FIRST
@@ -98,7 +98,7 @@ def test_a_class_the_contract_does_not_declare_gets_the_prompt_unchanged(
     task_class: str,
 ) -> None:
     """code_review is held back until re-measured; the others did not beat the control."""
-    assert resolve_task_class_prompt_shape(task_class) is EnumTaskClassPromptShape.PLAIN
+    assert resolve_task_class_prompt_shape(task_class) is EnumPromptShape.PLAIN
     assert (
         state_prompt_for_task_class(prompt=_REVIEW_PROMPT, task_class=task_class)
         == _REVIEW_PROMPT

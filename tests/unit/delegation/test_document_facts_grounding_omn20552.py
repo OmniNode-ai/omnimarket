@@ -26,18 +26,18 @@ from omnimarket.delegation.rubric.attempt_verdict import (
 )
 from omnimarket.delegation.rubric.contract_loader import load_delegation_class_rubrics
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
+    EnumAcceptanceOperation,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
+    ModelAcceptanceItem,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request import (
+    ModelAcceptanceJudgeRequest,
+)
 from omnimarket.models.ranges import EnumRangeVerdict
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.handler_delegation_acceptance_judge import (
     HandlerDelegationAcceptanceJudge,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
-    EnumAcceptanceOperation,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
-    ModelAcceptanceItem,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request import (
-    ModelAcceptanceJudgeRequest,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
     HandlerDelegationRubricCheck,

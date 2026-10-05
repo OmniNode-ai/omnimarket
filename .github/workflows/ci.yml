@@ -284,7 +284,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
@@ -294,7 +294,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -339,7 +339,7 @@ jobs:
       # route the malformed event to its contract-declared DLQ topic, not drop it
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.
       - name: Projection-DLQ path gate
-        run: uv run python scripts/ci/check_projection_dlq_path.py
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule dlq
       # OMN-16690: a db_io contract's declared table `access` must cover the
       # operations its handler performs. A handler that reads for idempotency
       # under `access: write` is refused fail-closed by the runtime and every
@@ -347,7 +347,12 @@ jobs:
       # isolation tests, which inject fakes with no access enforcement. SYNC
       # with pre-commit hook 'projection-contract-access'.
       - name: Projection contract-access gate
-        run: uv run python scripts/ci/check_projection_contract_access.py
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
+      # OMN-18043: every projection_api exposure declares a cursor_column, against
+      # the shrink-only baseline scripts/validation/projection_cursor_baseline.txt.
+      # SYNC with pre-commit hook 'projection-cursor-declared'.
+      - name: Projection cursor-declared gate
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor
       # OMN-17446: a REGISTRY-shaped projection (its relation is resolved
       # against by another node's `ALTER COLUMN ... TYPE ... USING` conversion,
       # or by a shared write-path module another node imports) must not be fed
@@ -401,10 +406,10 @@ jobs:
       # while the other stays green. SYNC with pre-commit hook 'coverage-ignore-parity'.
       - name: Coverage-json ignore-errors parity gate
         run: uv run python scripts/ci/check_coverage_ignore_parity.py
-      # OMN-14762 (F-19-A): action-pin ratchet — every third-party `uses:` must be
-      # pinned to a 40-char SHA; the current unpinned set is frozen in
-      # scripts/ci/action_pin_baseline.txt (burn-down only) and NEW unpinned refs
-      # fail closed. SYNC with pre-commit hook 'check-action-pins'.
+      # OMN-14762 (F-19-A): every third-party `uses:` must be pinned to a 40-char
+      # SHA. OMN-20558 pinned every frozen ref to the commit its tag resolved to
+      # and deleted the baseline, so any unpinned, non-exempt ref fails.
+      # SYNC with pre-commit hook 'check-action-pins'.
       - name: GitHub Actions pin ratchet
         run: uv run python scripts/ci/check_action_pins.py
       # SYNC: Pre-commit hook 'validate-no-env-fallbacks' at pre-commit stage (OMN-10738)
@@ -542,9 +547,9 @@ jobs:
       - name: Contract publish parity gate
         run: uv run python scripts/ci/check_contract_publish_parity.py
       # OMN-13026: Transport-mock lint. Bare AsyncMock/MagicMock without
-      # spec=/spec_set= on EventBus/transport/kafka surfaces. Ratchet: existing
-      # violations frozen in validation/transport_mock_baseline.yaml. New
-      # violations in any PR are blocked. Drain tracked by per-site tickets.
+      # spec=/spec_set= on EventBus/transport/kafka surfaces. The baseline was
+      # empty and OMN-20558 deleted it: any violation in any PR is blocked.
+      # Plain check, no baseline argument.
       # SYNC with pre-commit hook 'transport-mock-lint'.
       # Invoked via PYTHONPATH so it uses the sibling clone (already cloned
       # earlier in this job) rather than the uv-locked pin.
@@ -552,8 +557,8 @@ jobs:
         run: |
           uv run python \
             -m omnibase_core.validators.transport_mock_lint \
-            --baseline validation/transport_mock_baseline.yaml \
-            tests/
+            tests/ \
+            src/
       - name: Golden-chain coverage gate
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -757,7 +762,7 @@ jobs:
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -765,7 +770,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -791,12 +796,12 @@ jobs:
       selected_paths: ${{ steps.detect.outputs.selected_paths }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
 
@@ -895,7 +900,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -918,7 +923,7 @@ jobs:
       # `test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite` fails
       # if this step is removed or its path changed.
       - name: Checkout onex_change_control (OCC parity differential)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           repository: OmniNode-ai/onex_change_control
           ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
@@ -926,7 +931,7 @@ jobs:
           sparse-checkout: src
           persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1006,7 +1011,7 @@ jobs:
           echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
 
       - name: Restore test durations cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: .test_durations
           key: test-durations-${{ github.sha }}
@@ -1161,9 +1166,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Download per-shard test durations artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           pattern: test-durations-shard-*
           path: .test-durations-artifacts
@@ -1174,7 +1179,7 @@ jobs:
             --artifacts-dir .test-durations-artifacts \
             --output .test_durations
       - name: Save merged test durations cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: .test_durations
           key: test-durations-${{ github.sha }}
@@ -1243,12 +1248,12 @@ jobs:
             echo "CI Summary poller's dynamic-matrix rule. This job does not fork it."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         if: steps.decide.outputs.ratchet == 'true'
 
       - name: Install uv
         if: steps.decide.outputs.ratchet == 'true'
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
 
@@ -1350,7 +1355,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -1358,7 +1363,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1468,7 +1473,7 @@ jobs:
     name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_infra
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
@@ -1478,7 +1483,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1508,9 +1513,9 @@ jobs:
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1538,9 +1543,9 @@ jobs:
     name: Topic Drift Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1572,9 +1577,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Merge-check reason-code fixture-corpus gate (OMN-14765)
@@ -1620,15 +1625,15 @@ jobs:
       DIRECT_MODEL_CALL_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@f50d00fc7918d0b12ccd0d3497160325e32e7ac5"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Positive control
@@ -1719,11 +1724,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Install packaging
@@ -1749,7 +1754,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # OMN-18868: full history AND tags, both load bearing. The gate
           # resolves the last released consumer with `git tag --merged`, and a
@@ -1761,7 +1766,7 @@ jobs:
           # have to be present.
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1827,7 +1832,7 @@ jobs:
     name: Event Registry Drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -1837,7 +1842,7 @@ jobs:
       - name: Clone omniclaude
         run: git clone --depth=1 --branch v0.27.0 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1860,13 +1865,13 @@ jobs:
     name: Runtime Sweep
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -1897,7 +1902,7 @@ jobs:
       # ratchet can resolve the merge-base with the target branch (OMN-14541,
       # org-jam fix) — a shallow clone cannot prove a baseline addition
       # predates this PR.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
@@ -1905,7 +1910,7 @@ jobs:
       - name: Clone omnibase_compat
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -2367,7 +2372,7 @@ jobs:
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -2375,7 +2380,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -2406,7 +2411,7 @@ jobs:
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -2414,7 +2419,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -2452,7 +2457,7 @@ jobs:
     if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -2460,7 +2465,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -2514,9 +2519,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
 
@@ -2551,9 +2556,9 @@ jobs:
     name: Dependency Health Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Install uv
@@ -2598,15 +2603,15 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Checkout onex_change_control
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/onex_change_control
           ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
           path: onex_change_control
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           enable-cache: true
           cache-dependency-glob: 'onex_change_control/uv.lock'
@@ -2661,9 +2666,9 @@ jobs:
     name: Contract Sweep Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Install uv
@@ -2699,13 +2704,13 @@ jobs:
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - name: Clone omnibase_core (canonical aislop scanner)
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Compute changed Python/Markdown files vs PR base
@@ -2784,7 +2789,7 @@ jobs:
             echo "::error::coverage census refused: detect-changes=${DETECT_RESULT} split_count='${SPLIT_COUNT}' test=${TEST_RESULT}. The test shards did not run, so there are no shard artifacts to combine."
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -2792,7 +2797,7 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv (dependency cache — OMN-14680)
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "latest"
           enable-cache: true
@@ -2801,7 +2806,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - name: Download per-shard coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           pattern: coverage-shard-*
           path: .coverage-artifacts
@@ -2833,9 +2838,9 @@ jobs:
     name: Workflow Module Resolution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Check workflow module references (OMN-14176)
@@ -2850,13 +2855,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Ratchet non-canonical lifecycle-word classes against frozen allowlist (OMN-14350)
@@ -2901,13 +2906,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Run event chain gate
@@ -2974,20 +2979,20 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Checkout omnibase_infra (sibling, test-time overlay only)
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
           ref: v0.38.65
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Pre-pull the harness broker image
@@ -3065,7 +3070,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -3075,11 +3080,11 @@ jobs:
         with:
           version: 10
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Run the hermetic real-install legs with the toolchain REQUIRED
@@ -3117,7 +3122,7 @@ jobs:
       # fetch-depth: 0 (full history) is required so the baseline ratchet can
       # resolve the merge-base with the target branch -- a shallow clone
       # cannot prove a baseline addition predates this PR.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -3127,7 +3132,7 @@ jobs:
       # CHECKOUT_PACKAGES / CONTRACT_GRAPH_CHECKOUT_ROOT in
       # contract_topic_graph.py.
       - name: Checkout omniclaude (census-only, full topic coverage)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           repository: OmniNode-ai/omniclaude
           ref: v0.27.0
@@ -3135,7 +3140,7 @@ jobs:
           path: .contract-graph-checkouts/omniclaude
 
       - name: Checkout omniintelligence (census-only, full topic coverage)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           repository: OmniNode-ai/omniintelligence
           ref: 51e1cb356453ad325d76aea57ab371cf975df3a4
@@ -3150,7 +3155,7 @@ jobs:
       # a runtime pin, and resolving it by import is what quietly required the
       # dependency that has now been removed.
       - name: Checkout onex_change_control (census-only, full topic coverage)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           repository: OmniNode-ai/onex_change_control
           ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
@@ -3158,7 +3163,7 @@ jobs:
           path: .contract-graph-checkouts/onex_change_control
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           enable-cache: true
 
@@ -3369,15 +3374,15 @@ jobs:
       CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@f50d00fc7918d0b12ccd0d3497160325e32e7ac5"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
       - name: Positive control (planted bad sample refused, clean sample accepted)
@@ -3435,7 +3440,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
       - name: Fetch dev

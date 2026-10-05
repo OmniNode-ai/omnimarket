@@ -26,6 +26,10 @@ block is only safe if the eight survive WITHOUT it, which is true only while
 floor ever drops back below 0.47.3, that test is what fails -- loudly, naming
 the profile -- instead of the eight silently reverting to unregistered orphans.
 
+OMN-20558 then deleted the drained allowlist file itself, so the negative
+assertion now reads: the file is absent, and each of the eight passes the
+validator with an explicitly empty allowlist.
+
 Every zero this module asserts (zero allowlist entries, zero interim
 vocabulary) is paired with a positive control in the same test, because an
 empty result from a mis-shaped lookup reads exactly like a clean bill of
@@ -44,6 +48,7 @@ from omnibase_core.constants.constants_runtime_profiles import (
     REGISTERED_RUNTIME_PROFILES,
 )
 from omnibase_core.validation.validator_runtime_profiles import (
+    ValidatorRuntimeProfiles,
     load_default_allowlist,
 )
 
@@ -200,13 +205,10 @@ def test_no_contract_is_carried_by_an_allowlist_exemption(
     holding, the failure names the profile instead of leaving eight contracts
     silently registered-but-undrained.
     """
-    node_ids = _allowlist_node_ids()
-
     # POSITIVE CONTROL, per the empty-result-is-not-evidence rule: a planted
     # tenant-projection row must be visible to the lookup, and the lookup must
-    # agree with the validator's own loader on the real file. Without these,
-    # a renamed key would make the zero asserted below pass vacuously against
-    # an empty list.
+    # agree with the validator's own loader. Without these, a renamed key would
+    # make the zero asserted below pass vacuously against an empty list.
     synthetic = tmp_path / "runtime_profiles_allowlist.yaml"
     synthetic.write_text(
         "allowlist:\n  - node_id: canary_score_reducer\n    reason: positive control\n",
@@ -221,30 +223,41 @@ def test_no_contract_is_carried_by_an_allowlist_exemption(
         "the lookup must see a planted tenant-projection row, else the zero "
         "below is not evidence."
     )
-    assert set(node_ids) == set(load_default_allowlist(_ALLOWLIST_PATH)), (
-        "this lookup must agree with the validator's own loader on the real file."
+    assert set(planted) == set(load_default_allowlist(synthetic)), (
+        "this lookup must agree with the validator's own loader."
     )
 
-    carried = _carried(node_ids)
-    assert carried == [], (
-        f"these tenant-projection contracts are still carried by an allowlist "
-        f"exemption: {carried}. {PROFILE!r} is registered, so the exemption is "
-        "stale and hides whether the contracts would pass on their own."
+    # OMN-20558 deleted the repo allowlist outright, so no contract can be
+    # carried by it. Positive control: the directory it lived in still exists,
+    # so the absence is of the file and not of a mis-built path.
+    assert _ALLOWLIST_PATH.parent.is_dir(), f"{_ALLOWLIST_PATH.parent} is missing"
+    assert not _ALLOWLIST_PATH.exists(), (
+        f"{_ALLOWLIST_PATH} is back. The runtime_profiles allowlist drained to "
+        "empty and was deleted (OMN-20558); an exception list must not return."
     )
+
+    # The load-bearing half: each of the eight passes the validator with an
+    # explicitly empty allowlist, so it stands on the registration alone.
+    for node_dir in sorted(TENANT_PROJECTION_CONTRACTS):
+        result = ValidatorRuntimeProfiles(allowlist=set()).validate(
+            _contract_path(node_dir).parent
+        )
+        assert result.is_valid, (
+            f"{node_dir} fails runtime_profiles with no allowlist: "
+            f"{[i.message for i in result.issues]}. {PROFILE!r} is registered, "
+            "so nothing should need an exemption."
+        )
 
 
 @pytest.mark.unit
 def test_the_retired_interim_scaffolding_is_gone() -> None:
     """Neither the interim block nor its test survives this change."""
-    allowlist_text = _ALLOWLIST_PATH.read_text(encoding="utf-8")
-    # Positive control: the file was read and is the allowlist we mean.
-    assert "OMN-12957" in allowlist_text, (
-        f"{_ALLOWLIST_PATH} does not mention the OMN-12957 baseline freeze; "
-        "the file read did not produce the allowlist, so the zero below is "
-        "not evidence."
-    )
-    assert RETIRED_TICKET not in allowlist_text, (
-        f"the {RETIRED_TICKET} interim block is still in {_ALLOWLIST_PATH}."
+    # The whole allowlist, interim block included, is gone (OMN-20558).
+    # Positive control: the directory that held it is still there.
+    assert _ALLOWLIST_PATH.parent.is_dir(), f"{_ALLOWLIST_PATH.parent} is missing"
+    assert not _ALLOWLIST_PATH.exists(), (
+        f"{_ALLOWLIST_PATH} exists again; the {RETIRED_TICKET} interim block "
+        "lived there and the file was deleted."
     )
 
     retired_test = (

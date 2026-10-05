@@ -117,7 +117,7 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if timeout 20s bash -c 'git init "$1" \
+              if timeout 240s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach FETCH_HEAD' \
@@ -151,7 +151,7 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if timeout 20s bash -c 'git init "$1" \
+              if timeout 240s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach FETCH_HEAD' \
@@ -185,7 +185,7 @@ jobs:
               rm -rf "${target_dir}"
               # shellcheck disable=SC2016
               # The child bash, not this parent shell, expands its positional parameters.
-              if timeout 20s bash -c 'git init "$1" \
+              if timeout 240s bash -c 'git init "$1" \
                 && git -C "$1" remote add origin "$2" \
                 && git -C "$1" fetch --depth=1 origin "$3" \
                 && git -C "$1" checkout --detach FETCH_HEAD' \
