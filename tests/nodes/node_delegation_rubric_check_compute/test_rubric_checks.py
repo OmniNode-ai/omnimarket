@@ -399,6 +399,7 @@ def test_contract_loads():
         "code_review",
         "review",
         "summarization",
+        "document",
         "code_generation",
         "test",
         "tool_use",

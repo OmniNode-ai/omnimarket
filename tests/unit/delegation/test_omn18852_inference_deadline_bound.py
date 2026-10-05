@@ -268,6 +268,7 @@ def _chunked_inference_server(
     keep_alive_seconds: float,
     first_chunk_delay_seconds: float = 0.0,
     chunk_interval_seconds: float = 0.2,
+    post_received_at: list[float] | None = None,
 ) -> Iterator[str]:
     stop = Event()
     body = json.dumps(
@@ -288,6 +289,8 @@ def _chunked_inference_server(
             self.end_headers()
 
         def do_POST(self) -> None:
+            if post_received_at is not None:
+                post_received_at.append(time.monotonic())
             self.rfile.read(int(self.headers["Content-Length"]))
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -355,21 +358,41 @@ def test_keep_alive_body_cannot_extend_the_total_inference_deadline(
 def test_silence_after_a_chunk_cannot_extend_the_total_inference_deadline(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """One chunk at 0.6 s, then silence: the call ends at the 1.0 s deadline.
+
+    Without the executor bound, httpx's per-phase read timeout restarts on the
+    chunk, so the call is held until 0.6 s + 1.0 s = 1.6 s after the provider
+    received it. With the bound it ends 1.0 s after the deadline started,
+    which is just before the POST.
+
+    The clock starts when the provider receives the POST, not before
+    ``handle()``. The served-model probe and the request build both run before
+    the deadline starts, by design. The first ``httpx.Client`` in a process
+    also pays a one-time lazy ``httpcore`` import there: 0.25 s on .201, and
+    about 0.9 s on a cold GitHub runner. That cost showed up only when this
+    test ran first in its CI shard (omnimarket dev fced10cd2, run 37249701095).
+    It made 1.93 s from a call whose own log read ``elapsed_seconds=1.000``. A
+    clock started before ``handle()`` was measuring process warm-up, not
+    whether silence can extend the deadline.
+    """
+    post_received_at: list[float] = []
     with (
         _chunked_inference_server(
             keep_alive_seconds=10.0,
             first_chunk_delay_seconds=0.6,
             chunk_interval_seconds=10.0,
+            post_received_at=post_received_at,
         ) as base_url,
         caplog.at_level(logging.WARNING),
     ):
-        started = time.monotonic()
         result = HandlerInferenceIntent().handle(
             _intent(base_url=base_url, timeout_seconds=1.0, model="Qwen3.8-27B")
         )
-        elapsed = time.monotonic() - started
+        returned_at = time.monotonic()
 
-    assert elapsed < 1.5
+    assert len(post_received_at) == 1
+    held_after_dispatch = returned_at - post_received_at[0]
+    assert held_after_dispatch < 1.5
     assert result.content == ""
     assert "timed out" in result.error_message
     assert INFERENCE_TIMEOUT_LOG_TOKEN in caplog.text
