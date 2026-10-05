@@ -1,0 +1,64 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_audit_trail_compact_schedule_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Daily schedule for node_audit_trail_compactor. Subscribes to the platform
+  runtime tick and, on the one tick that falls in the configured UTC daily slot,
+  returns the compactor's command, which the runtime publishes to the
+  compactor's command topic. Every other tick returns nothing. Stateless: the
+  slot is derived from the tick's own clock and interval, so a restart cannot
+  skip or repeat the day's run.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - routing_key: platform.runtime-tick
+      handler_key: audit_trail_compact_schedule
+      handler:
+        name: HandlerAuditTrailCompactSchedule
+        module: omnimarket.nodes.node_audit_trail_compact_schedule_compute.handlers.handler_audit_trail_compact_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_audit_trail_compact_schedule_compute.handlers.handler_audit_trail_compact_schedule
+  class: HandlerAuditTrailCompactSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "audit_trail_compact_schedule"
+
+output_model:
+  name: ModelCompactorCommand
+  module: omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input
+  description: The compactor command for the day's run, or no output on a tick outside the slot.
+
+config:
+  audit_trail_compact_schedule:
+    run_hour_utc: 3
+    run_minute_utc: 0
+    lookback_days: 7
+    dry_run: false
+
+# The command the runtime publishes on the handler's behalf when the slot tick
+# returns one; the compactor's own command topic.
+terminal_event: onex.cmd.omnimarket.audit-trail-compact.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.audit-trail-compact.v1
