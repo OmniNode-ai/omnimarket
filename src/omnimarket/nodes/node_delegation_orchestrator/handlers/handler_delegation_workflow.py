@@ -3636,7 +3636,35 @@ class HandlerDelegationWorkflow:
         # carried to the three places that would otherwise buy the same answer
         # again: the typed decision recorded on the attempt, the free-tier
         # re-draft, and the up-tier escalation.
-        no_rung_can_satisfy = result.no_rung_can_satisfy
+        # Compare declared rule identities, not Python parser error wording.
+        # A second identical floor failure is evidence to review the class;
+        # missing evidence, truncation and changing failures still permit retry.
+        deterministic_failure_rules = (
+            tuple(
+                sorted(
+                    evaluation.rule
+                    for evaluation in result.rule_evaluations
+                    if not evaluation.passed
+                    and evaluation.enforcement == "blocking"
+                    and evaluation.rule in workflow.routing_decision.dod_deterministic
+                )
+            )
+            if pre_filter_rejected
+            else ()
+        )
+        repeated_deterministic_floor = (
+            bool(deterministic_failure_rules)
+            and result.finish_reason is not EnumProviderFinishReason.LENGTH
+            and bool(workflow.escalation_history)
+            and all(
+                attempt.acceptance_reason
+                is EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED
+                and not attempt.truncated
+                and attempt.deterministic_failure_rules == deterministic_failure_rules
+                for attempt in workflow.escalation_history
+            )
+        )
+        no_rung_can_satisfy = result.no_rung_can_satisfy or repeated_deterministic_floor
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
             gate_passed=result.passed,
@@ -3745,6 +3773,7 @@ class HandlerDelegationWorkflow:
                 authority_source=required_bar_authority.authority_source,
                 score_source=required_bar_authority.score_source,
                 failure_reasons=tuple(result.failure_reasons),
+                deterministic_failure_rules=deterministic_failure_rules,
                 latency_ms=elapsed_ms,
                 fallback_recommended=True,
                 acceptance_decision=acceptance_decision,
@@ -3814,7 +3843,9 @@ class HandlerDelegationWorkflow:
             # same refusal.
             error_retryable=not no_rung_can_satisfy,
             non_retryable_reason=(
-                _NO_RUNG_CAN_SATISFY_REASON
+                "repeated_deterministic_floor"
+                if repeated_deterministic_floor
+                else _NO_RUNG_CAN_SATISFY_REASON
                 if no_rung_can_satisfy
                 else "non_retryable_quality_result"
             ),
@@ -3888,10 +3919,16 @@ class HandlerDelegationWorkflow:
             compliance_attempts,
             completed=False,
             fallback_to_claude=True,
-            failure_reason=self._score_vs_bar_reason(
-                result,
-                required_bar_authority,
-                pre_filter_rejected=pre_filter_rejected,
+            failure_reason=(
+                f"repeated_deterministic_floor: task_class={workflow.request.task_type}; "
+                "review task classification; "
+                f"failed_rules={','.join(deterministic_failure_rules)}"
+                if repeated_deterministic_floor
+                else self._score_vs_bar_reason(
+                    result,
+                    required_bar_authority,
+                    pre_filter_rejected=pre_filter_rejected,
+                )
             ),
             terminal_failure_reason=terminal_failure_reason,
             required_bar_authority=required_bar_authority,
@@ -4355,7 +4392,9 @@ class HandlerDelegationWorkflow:
         """
         if pre_filter_rejected:
             return (
-                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceDecision.TERMINATE
+                if no_rung_can_satisfy
+                else EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
             )
         if not gate_passed:
