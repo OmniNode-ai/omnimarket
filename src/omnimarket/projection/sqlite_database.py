@@ -442,16 +442,6 @@ class SqliteDatabaseAdapter:
             conn.execute(
                 f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
             )
-        elif "usage_source" in columns:
-            # OMN-19968: rows written before the shared vocabulary move onto it
-            # (EnumUsageSource; omnibase_infra migration 077). Idempotent: it
-            # touches only rows still holding a retired label.
-            conn.execute(
-                "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
-                "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
-                "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
-                "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
-            )
 
     @staticmethod
     def _store_step_recorded(conn: sqlite3.Connection, step: str) -> bool:
