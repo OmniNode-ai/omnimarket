@@ -16,14 +16,14 @@ from omnimarket.adapters.codex.local_runtime_dispatch import _resolve_node_route
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.handler_delegation_acceptance_judge import (
-    HandlerDelegationAcceptanceJudge,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
     EnumAcceptanceOperation,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request import (
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request import (
     ModelAcceptanceJudgeRequest,
+)
+from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.handler_delegation_acceptance_judge import (
+    HandlerDelegationAcceptanceJudge,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_request_compute.handlers.handler_delegation_acceptance_judge_request import (
     HandlerDelegationAcceptanceJudgeRequest,

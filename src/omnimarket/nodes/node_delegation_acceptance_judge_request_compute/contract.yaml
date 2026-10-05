@@ -23,7 +23,7 @@ handler:
   module: omnimarket.nodes.node_delegation_acceptance_judge_request_compute.handlers.handler_delegation_acceptance_judge_request
   class: HandlerDelegationAcceptanceJudgeRequest
   input_model: omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillCompleted
-  output_model: omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
+  output_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
 
 descriptor:
   node_archetype: compute
