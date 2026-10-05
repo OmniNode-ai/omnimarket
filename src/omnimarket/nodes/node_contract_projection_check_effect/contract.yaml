@@ -1,0 +1,45 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_contract_projection_check_effect
+contract_name: node_contract_projection_check_effect
+node_name: node_contract_projection_check_effect
+node_type: EFFECT_GENERIC
+# Invoked directly as a pre-commit hook and CI step, never through the bus
+# (OMN-20567: no bus publication in the validator conversion phase).
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The EFFECT boundary of the contract projection checks (OMN-20567). Reads node
+  contracts, projection handler modules and the shrink-only cursor baseline from
+  the repository into the typed input of node_contract_projection_check_compute,
+  which alone decides. Its runtime module is the hook and CI entrypoint: it runs
+  the compute handler, prints the verdict, writes the canonical OMN-2362 report
+  with --report-json, and exits 0 only when nothing failed.
+
+handler:
+  module: omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather
+  class: HandlerContractProjectionGather
+  input_model: omnimarket.nodes.node_contract_projection_check_effect.models.ModelContractProjectionGatherRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_projection_gather
+      handler:
+        name: HandlerContractProjectionGather
+        module: omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather
+      handler_module: omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather
+      event_model: omnimarket.nodes.node_contract_projection_check_effect.models.ModelContractProjectionGatherRequest
+
+input_model:
+  name: ModelContractProjectionGatherRequest
+  module: omnimarket.nodes.node_contract_projection_check_effect.models
+  description: Repository root, rule, optional explicit filenames and the baseline path.
+
+output_model:
+  name: ModelProjectionContractCheckInput
+  module: omnimarket.nodes.node_contract_projection_check_compute.models
+  description: Explicit contract and handler text for the paired compute node.

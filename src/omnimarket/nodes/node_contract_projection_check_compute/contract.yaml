@@ -1,0 +1,61 @@
+name: node_contract_projection_check_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+# Invoked through node_contract_projection_check_effect's runtime as a hook and CI
+# step; it declares no bus topics, and OMN-20567 publishes nothing to the bus.
+lifecycle: experimental
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Pure definition-B projection contract checks (declared table access
+  covers handler operations, validating projection handlers route to a DLQ, every
+  projection_api exposure declares a cursor_column) emitting the canonical OMN-2362
+  validation report. Replaces the three scripts under scripts/ci and
+  scripts/validation (OMN-20567).
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: projection_contract_check
+    handler:
+      name: HandlerProjectionContractCheck
+      module: omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check
+handler:
+  module: omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check
+  class: HandlerProjectionContractCheck
+  input_model: omnimarket.nodes.node_contract_projection_check_compute.models.model_projection_contract_check_input.ModelProjectionContractCheckInput
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - main
+inputs:
+  rule:
+    type: str
+    required: true
+    description: One of access, dlq, cursor.
+  nodes:
+    type: tuple
+    required: false
+    description: Contract text and production handler modules per node, read at the boundary.
+  handlers:
+    type: tuple
+    required: false
+    description: Projection handler modules for the dlq rule.
+  cursor_baseline:
+    type: tuple
+    required: false
+    description: Frozen shrink-only baseline of exposure ids without a cursor_column.
+  require_scanned:
+    type: bool
+    required: false
+    description: A full-tree run that gathered nothing is an ERROR, never a PASS.
+outputs:
+  report:
+    type: object
+    description: omnibase_core.models.validation.model_validation_report.ModelValidationReport

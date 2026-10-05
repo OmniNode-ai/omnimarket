@@ -156,7 +156,7 @@
     "stdout": "OK: 1 exposure(s) without a cursor_column, all baselined.\n"
   },
   "cursor_write_baseline_allow_growth": {
-    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   uv run python scripts/validation/check_projection_cursor_declared.py --write-baseline\nnode_a::t#0\n",
+    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   <regenerate command>\nnode_a::t#0\n",
     "rc": 0,
     "stderr": "",
     "stdout": "baseline written: 1 exposures\n"
@@ -174,7 +174,7 @@
     "stdout": ""
   },
   "cursor_write_baseline_shrinks": {
-    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   uv run python scripts/validation/check_projection_cursor_declared.py --write-baseline\n",
+    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   <regenerate command>\n",
     "rc": 0,
     "stderr": "",
     "stdout": "baseline written: 0 exposures\n"

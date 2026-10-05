@@ -27,7 +27,7 @@ SCRIPT_FOR_RULE: dict[str, str] = {
 }
 
 NODE_MODULE = (
-    "omnimarket.nodes.node_projection_contract_check_compute."
+    "omnimarket.nodes.node_contract_projection_check_effect."
     "runtime_projection_contract_check"
 )
 
@@ -48,12 +48,21 @@ def materialize(tmp: Path, case: CorpusCase) -> None:
         target.write_text(text, encoding="utf-8")
 
 
+def _normalize_regenerate_line(text: str) -> str:
+    """The baseline header names the command that regenerates it; that command moved
+    from the deleted script to the node runtime on purpose, so it is not compared."""
+    return "\n".join(
+        "#   <regenerate command>" if line.startswith("#   uv run python") else line
+        for line in text.split("\n")
+    )
+
+
 def _observe(
     proc: subprocess.CompletedProcess[str], tmp: Path, case: CorpusCase
 ) -> Observation:
     baseline = tmp / BASELINE_REL
     after = (
-        baseline.read_text(encoding="utf-8")
+        _normalize_regenerate_line(baseline.read_text(encoding="utf-8"))
         if case.rule == "cursor" and baseline.exists()
         else None
     )

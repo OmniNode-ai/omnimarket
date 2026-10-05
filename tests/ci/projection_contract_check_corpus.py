@@ -6,7 +6,7 @@ One corpus feeds three rules (``access``, ``dlq``, ``cursor``). Each case is a
 small synthetic repo tree plus the argv a hook would pass. The same corpus is
 run through the original scripts (recorded once as golden JSON, then compared
 against the live scripts while they exist) and through the canonical
-``node_projection_contract_check_compute`` runtime, so the two must agree on
+``node_contract_projection_check_compute`` runtime, so the two must agree on
 exit code, stdout and stderr for every case.
 """
 
