@@ -1,0 +1,68 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_chain_probe_trigger_effect
+contract_name: node_hook_chain_probe_trigger_effect
+node_name: node_hook_chain_probe_trigger_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Schedules the hook->cloud chain probe. Rides the runtime heartbeat, throttles
+  to the declared interval and publishes the probe's command topic, so hook-chain
+  health is probed without an operator running it by hand. Owns no timer, loop
+  or thread: the schedule dies with the runtime it measures.
+
+handler:
+  module: omnimarket.nodes.node_hook_chain_probe_trigger_effect.handlers.handler_hook_chain_probe_trigger
+  class: HandlerHookChainProbeTrigger
+  input_model: omnimarket.nodes.node_hook_chain_probe_trigger_effect.models.model_hook_chain_probe_trigger.ModelHookChainProbeHeartbeat
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: hook_chain_probe_trigger
+      handler:
+        name: HandlerHookChainProbeTrigger
+        module: omnimarket.nodes.node_hook_chain_probe_trigger_effect.handlers.handler_hook_chain_probe_trigger
+      handler_module: omnimarket.nodes.node_hook_chain_probe_trigger_effect.handlers.handler_hook_chain_probe_trigger
+      event_model: omnimarket.nodes.node_hook_chain_probe_trigger_effect.models.model_hook_chain_probe_trigger.ModelHookChainProbeHeartbeat
+
+input_model:
+  name: ModelHookChainProbeHeartbeat
+  module: omnimarket.nodes.node_hook_chain_probe_trigger_effect.models.model_hook_chain_probe_trigger
+  description: The runtime heartbeat; nothing in the schedule depends on its contents.
+
+output_model:
+  name: ModelHookChainProbeScheduleRequest
+  module: omnimarket.nodes.node_hook_chain_probe_trigger_effect.models.model_hook_chain_probe_trigger
+  description: The probe command; None when the interval is already proven.
+
+terminal_event: onex.cmd.omnimarket.hook-chain-probe-requested.v1
+
+probe_schedule:
+  probe_interval_seconds: 900
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.cmd.omnimarket.hook-chain-probe-requested.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.hook-chain-probe-trigger-malformed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+
+dod_evidence:
+  PYTEST:
+    description: "the probe's command topic has a producer and its terminal events have a consumer"
+    command: "uv run pytest tests/test_hook_chain_probe_wiring.py -q"
+    pass_criteria: "all wiring, throttle and verdict tests pass"
+
+metadata:
+  transport_type: kafka
