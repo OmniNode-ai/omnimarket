@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19267"
+title: "local reasoning and complex_reasoning delegations return an accepted deliverable"
+summary: "The DoD verifier runs the ticket's derived acceptance-criterion falsifier even when the contract declares an item under the same id and retires it with a supersession marker; this is the verifier defect that held OMN-19267's Done gate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-derived-falsifier-not-retired-by-id-collision"
+    statement: "A supersedes_dod_evidence marker retires only a declared contract item, never a verifier-derived falsifier item, and a derived falsifier is decided by its own result."
+    acceptance:
+      - id: "AC4"
+        statement: "When a contract declares an item whose id equals a derived falsifier id and a later item supersedes it, the derived falsifier still executes under an id no declared item carries; its pass verifies the criterion, its failure fails the verdict, and a verified declared item of that id cannot stand in for it."
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the verifier over a contract whose declared item collides with the derived falsifier id and is retired by a marker."
+    command: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/test_occ_falsifier_checks.py -q -k id_collision"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-derived-falsifier-id-collision"
+    description: "A marker aimed at a declared item that shares the derived falsifier id no longer retires the derived falsifier; the derived falsifier runs and its result counts. Fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/test_occ_falsifier_checks.py -q -k id_collision"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

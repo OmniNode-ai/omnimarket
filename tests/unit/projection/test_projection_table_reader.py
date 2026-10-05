@@ -236,7 +236,7 @@ def test_the_window_is_the_newest_rows_the_cache_retained() -> None:
     query = build_window_query(cfg, order_spec=cfg.order_by_spec, tenant_id=None)
     assert '"omninode_internal"."consumer_flow_windows"' in query.sql
     assert (
-        f'ORDER BY "projection_cursor" DESC LIMIT {cfg.limit * RETAINED_WINDOW_FACTOR}'
+        f'ORDER BY "projection_cursor" DESC NULLS LAST LIMIT {cfg.limit * RETAINED_WINDOW_FACTOR}'
     ) in query.sql
     assert query.sql.endswith('ORDER BY "window_end" DESC NULLS LAST')
     assert query.params == ()
@@ -632,7 +632,7 @@ def test_the_selection_decides_which_rows_the_window_holds() -> None:
     )
     limit = cfg.limit * RETAINED_WINDOW_FACTOR
     assert f'ORDER BY "projection_cursor" ASC LIMIT {limit}' in walk.sql
-    assert f'ORDER BY "projection_cursor" DESC LIMIT {limit}' in newest.sql
+    assert f'ORDER BY "projection_cursor" DESC NULLS LAST LIMIT {limit}' in newest.sql
     assert f'ORDER BY "window_end" DESC NULLS LAST LIMIT {limit}' in ranked.sql
 
 

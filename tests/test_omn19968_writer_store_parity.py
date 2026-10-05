@@ -237,6 +237,33 @@ def _dsn(pg: _Postgres, schema: str) -> str:
     return pg.dsn(schema)
 
 
+async def _mirror_infra_usage_source_state(admin: Any, schema: str) -> None:
+    """Start the throwaway schema in the state a lab database is in.
+
+    omnibase_infra migration 031 creates ``usage_source_type`` together with
+    ``llm_call_metrics``, and migration 077 (OMN-10382) moves the type to the shared
+    vocabulary, all before omnimarket's node migrations run. 0001's typname guard
+    matches a type in any schema, so on such a server it skips creating its own
+    type. On a real lab database that is harmless because the table already exists;
+    in an empty throwaway schema it is not, so mirror the type and the table here.
+    On a server infra never migrated this is a no-op and 0001 creates everything.
+    """
+    shared = await admin.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid "
+        "WHERE t.typname = 'usage_source_type' AND e.enumlabel = 'measured')"
+    )
+    if not shared:
+        return
+    await admin.execute(
+        f"CREATE TYPE {schema}.usage_source_type AS ENUM ('measured', 'estimated', 'unknown')"
+    )
+    await admin.execute(
+        f"CREATE TABLE {schema}.llm_call_metrics (id BIGSERIAL PRIMARY KEY, "
+        f"model_id TEXT NOT NULL, usage_source {schema}.usage_source_type NOT NULL "
+        "DEFAULT 'unknown')"
+    )
+
+
 _WRITERS = {
     "delegation_events": _write_delegation,
     "llm_call_metrics": _write_llm,
@@ -255,6 +282,7 @@ async def test_writer_rows_equal_on_sqlite_and_postgres(
     sqlite_rows = _normalize(sqlite.query(table))
 
     async with _provisioned(pg) as (admin, schema):
+        await _mirror_infra_usage_source_state(admin, schema)
         for migration in _LLM_COST_MIGRATIONS:
             await admin.execute(migration.read_text(encoding="utf-8"))
         postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))

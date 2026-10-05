@@ -517,3 +517,29 @@ def test_a_draft_accepted_by_a_person_in_a_later_record_is_cleared() -> None:
         }
     ]
     assert self_accepted_bindings(items) == ()
+
+
+def test_id_collision_derived_id_never_reuses_a_declared_id() -> None:
+    """OMN-19267: a declared ``ac-falsifier-<label>`` item pushes the derived id aside."""
+    contract = _contract(
+        {
+            "AC1": "x -- falsifier: uv run pytest tests/test_a.py -q",
+            "AC2": "y -- falsifier: uv run pytest tests/test_b.py -q",
+        }
+    )
+    for declared in ("ac-falsifier-ac1", "ac-falsifier-ac1-derived"):
+        contract["dod_evidence"].append(
+            {
+                "id": declared,
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        )
+    items, summary = _derive(contract)
+    assert [item["id"] for item in items] == [
+        "ac-falsifier-ac1-derived-2",
+        "ac-falsifier-ac2",
+    ]
+    assert summary.derived_item_ids == (
+        "ac-falsifier-ac1-derived-2",
+        "ac-falsifier-ac2",
+    )
