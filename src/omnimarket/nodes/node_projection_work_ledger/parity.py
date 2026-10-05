@@ -463,6 +463,18 @@ async def _load_projection_db(
     return rows, state
 
 
+def _window(
+    utc_day: str | None, since: datetime | None, until: datetime | None
+) -> tuple[datetime, datetime]:
+    """The checked window: the whole of ``utc_day``, else ``since`` to ``until`` (or now)."""
+    if utc_day is not None:
+        start = parse_stamp(f"{utc_day}T00:00:00Z")
+        return start, start + timedelta(days=1, seconds=-1)
+    if since is None:
+        raise ValueError("no window: neither --utc-day nor --since")
+    return since, until or datetime.now(UTC).replace(microsecond=0)
+
+
 def _parse_when(value: str) -> datetime:
     return parse_stamp(value)
 
@@ -506,20 +518,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.utc_day is not None:
-        try:
-            since = parse_stamp(f"{args.utc_day}T00:00:00Z")
-        except ValueError:
-            parser.error(f"--utc-day must be YYYY-MM-DD, got {args.utc_day!r}")
-        until = since + timedelta(days=1, seconds=-1)
-    elif args.receipt:
+    if args.receipt and args.utc_day is None:
         sys.stderr.write("work_ledger_parity: error: --receipt needs --utc-day\n")
         return 2
-    elif args.since is None:
+    if args.utc_day is None and args.since is None:
         parser.error("one of --since or --utc-day is required")
-    else:
-        since = args.since
-        until = args.until or datetime.now(UTC).replace(microsecond=0)
+    try:
+        since, until = _window(args.utc_day, args.since, args.until)
+    except ValueError:
+        parser.error(f"--utc-day must be YYYY-MM-DD, got {args.utc_day!r}")
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)

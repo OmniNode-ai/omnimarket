@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20536"
+title: "A daily parity receipt: one STATUS row per UTC day carries the file, projection, missing, extra, state mismatch and unexplained counts for the previous day"
+summary: "The work-ledger parity check gains --utc-day, which checks one whole UTC day, and --receipt, which prints that day's parity receipt as one STATUS ledger row with lane=work-ledger-parity, carrying file_rows, projection_rows, missing, extra, state_mismatches, unexplained, backfilled and exact. backfilled counts projected rows carrying the emit backfill tool's source."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-daily-parity-receipt-row"
+    statement: |-
+      The parity check must print one receipt row for a UTC day whose cells are the day's counts, so phase 1 of the work-ledger cutover can exit on a receipt with every count zero and backfilled=0.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: parity takes --utc-day and emits one STATUS row with lane=work-ledger-parity carrying file_rows, projection_rows, missing, extra, state_mismatches, unexplained and backfilled=0|1 for that day -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The receipt row for a fixture day carries each count."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20536-ac1-utc-day-receipt"
+    description: "The receipt tests are absent at the merge base, so the bound command fails there and passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
