@@ -11,6 +11,7 @@ not change what the dimension does with them.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -88,3 +89,25 @@ class TestKafkaTopicCoverage:
         for topic in SOW_PHASE2_REQUIRED_TOPICS:
             assert topic.startswith("onex.evt.")
             assert topic.endswith(".v1")
+
+    def test_required_topics_are_declared_by_a_contract(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        contracts = [
+            path.read_text()
+            for path in (repo_root / "src/omnimarket/nodes").glob("*/contract.yaml")
+        ]
+        for topic in SOW_PHASE2_REQUIRED_TOPICS:
+            assert any(topic in contract for contract in contracts), topic
+
+
+@pytest.mark.unit
+class TestTopicNamingBaselineIsOnlyTheForeignTopic:
+    def test_baseline_contains_only_the_foreign_topic(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        baseline = repo_root / "scripts/validation/topic_naming_baseline.txt"
+        topics = [
+            line
+            for line in baseline.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        assert topics == ["onex.tenant.events"]
