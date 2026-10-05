@@ -72,7 +72,7 @@ def test_both_nodes_declare_their_command_and_terminal_topics() -> None:
         == "onex.evt.omnimarket.contract-projection-gathered.v1"
     )
     assert compute["runtime_profiles"] == ["main"]
-    assert effect["runtime_profiles"] == ["main"]
+    assert effect["runtime_profiles"] == ["effects"]
 
 
 def test_handler_returns_the_canonical_report_from_explicit_text() -> None:
