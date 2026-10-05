@@ -133,7 +133,6 @@ class ProtocolMeteringRefreshPublisher(Protocol):
 
     def publish(self, topic: str, request: ModelMeteringSummaryFoldRequest) -> None:
         """Deliver ``request``; raise when it was not applied."""
-        ...
 
 
 class InProcessMeteringRefreshPublisher:

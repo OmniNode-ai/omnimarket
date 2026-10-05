@@ -575,7 +575,7 @@ def test_two_refreshes_of_one_store_do_not_interleave(home: Path) -> None:
             "cost_savings_usd": None,
         },
     )
-    failures: list[BaseException] = []
+    failures: list[Exception] = []
     published = threading.Event()
 
     class _Signal:
@@ -590,7 +590,7 @@ def test_two_refreshes_of_one_store_do_not_interleave(home: Path) -> None:
                 sqlite_metering_summary.refresh_metering_after_terminal(
                     home, tenant_id=tenant, terminal_at=LAST_SECOND, publisher=_Signal()
                 )
-            except BaseException as exc:
+            except Exception as exc:
                 failures.append(exc)
 
         worker = threading.Thread(target=refresh)
