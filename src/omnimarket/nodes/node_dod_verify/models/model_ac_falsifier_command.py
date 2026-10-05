@@ -9,15 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelAcFalsifierCommand(BaseModel):
-    """One runnable ``uv run pytest`` selector and where the author named it."""
+    """One test selector after the runner head and where the author named it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    command: str = Field(
+    selector: str = Field(
         ...,
         min_length=1,
         description=(
-            "The normalised command, rebuilt from allowlisted tokens only. "
+            "The space-joined tokens after the runner head, rebuilt from "
+            "allowlisted tokens only. "
             "Never a slice of the author's text, so no shell metacharacter can "
             "reach the runner."
         ),
