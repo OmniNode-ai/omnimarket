@@ -172,6 +172,10 @@ class RunnerOutcome:
     # cannot be observed in this checkout, so nothing is recorded for them.
     skipped_other_repo: int = 0
     skipped_other_member: int = 0
+    # OMN-19267: keys whose declared check is the same check another item of
+    # the same ticket already carries this run. Their active PASS stands; the
+    # one execution is filed once, under the item that carries it.
+    skipped_shared_check: tuple[str, ...] = field(default=())
     wrote: tuple[Path, ...] = ()
     tickets_without_contract: tuple[str, ...] = ()
     failures: tuple[str, ...] = field(default=())
@@ -466,6 +470,99 @@ def covers_this_run(
     return observation.commit_sha == head_sha
 
 
+def stands_without_this_run(
+    observation: Observation | None, *, contract_entry_sha256: str
+) -> bool:
+    """Whether a key's active receipt already satisfies eligibility as it is.
+
+    OMN-19267. Weaker than :func:`covers_this_run` on purpose: PASS and bound to
+    the current contract entry, at ANY head. ``validator_occ_merge_eligibility``
+    accepts exactly that, so a key in this state needs nothing from this run.
+    It is the test for whether an item that shares its declared check with
+    another item may be left on its standing receipt.
+    """
+    return (
+        observation is not None
+        and observation.status is EnumReceiptStatus.PASS
+        and observation.contract_entry_sha256 == contract_entry_sha256
+    )
+
+
+# OMN-19267 — one declared check, one supersession, per cohort.
+#
+# OCC's Receipt Hardening Gate rule S1 (OMN-15459,
+# ``check_receipt_hardening._s1_collisions``) refuses two supersessions in one
+# cohort -- same ticket directory, same ``.supersede.<TOKEN>.`` suffix -- that
+# carry a byte-identical whitespace-normalised ``replacement.check_value``
+# while naming DIFFERENT evidence items: "One probe cannot be the
+# authoritative proof of several distinct bars ... supersede only the one item
+# this probe actually proves."
+#
+# This runner used to file one record per ITEM. A contract whose items declare
+# the same check (OMN-19267: dod-b01-19267-ac2-reasoning-profiles-no-think and
+# its second-lane acceptance dod-accept-d-19267-ac2 both run
+# test_prose_task_class_no_think_omn18967.py) therefore got two identical
+# replacements, and the window was dead on arrival: S1 rejects the pair,
+# deleting one afterwards trips the Append-Only Gate, and a repair record
+# trips SUPERSESSION_CHAIN (onex_change_control#12821, then #12855).
+#
+# So the runner groups a ticket's items by the identity S1 compares and files
+# ONE record per distinct check. Every other item in the group keeps its
+# active receipt, which is only honest when that receipt already stands for
+# eligibility (PASS, bound to the current entry). An item that shares the
+# check and does NOT stand is a write refusal: no record this runner can file
+# for it passes S1, and leaving it silently on a non-PASS receipt is the
+# silent-gate shape. The remedy is in the contract, not here.
+_SUPERSEDE_TOKEN_RE = re.compile(r"\.supersede\.([^/]+)\.ya?ml$")
+
+
+def shared_check_key(check_value: str) -> str:
+    """The identity S1 compares, for a declared check.
+
+    The gate collapses whitespace in the bound ``replacement.check_value``. The
+    product-repo prefix (:func:`bind_command_to_product_repo`) is the same for
+    every record one run writes, so two bound values are S1-identical exactly
+    when their declared checks are, collapsed the same way.
+    """
+    return " ".join(check_value.split())
+
+
+def cohort_collision(
+    record_path: Path, *, item_id: str, check_value: str
+) -> str | None:
+    """The item an existing record in ``record_path``'s cohort would collide with.
+
+    The last line of defence for the rule above, evaluated against the files
+    actually on the companion branch, so the invariant holds whatever filled
+    the cohort. Stricter than S1 by construction (no lineage or repair
+    exemption): the cost of a false refusal is one loud job, and the cost of a
+    false accept is a window no append-only record can repair.
+    """
+    match = _SUPERSEDE_TOKEN_RE.search(record_path.name)
+    if match is None:
+        return None
+    wanted = shared_check_key(check_value)
+    ticket_dir = record_path.parent.parent
+    for sibling in sorted(ticket_dir.glob(f"*/*.supersede.{match.group(1)}.yaml")):
+        if sibling == record_path:
+            continue
+        raw = _load_yaml(sibling)
+        if not isinstance(raw, dict):
+            continue
+        replacement = raw.get("replacement")
+        if not isinstance(replacement, dict):
+            continue
+        value = replacement.get("check_value")
+        if not isinstance(value, str) or shared_check_key(value) != wanted:
+            continue
+        sibling_item = raw.get("evidence_item_id")
+        if not isinstance(sibling_item, str) or not sibling_item:
+            sibling_item = sibling.parent.name
+        if sibling_item != item_id:
+            return sibling_item
+    return None
+
+
 # OMN-19050: how many executed attempts one consumer PR may record for one
 # key. The bound exists so a wedged loop cannot append without end; it is not
 # a policy about how many times a check may be re-run. Nothing observed has
@@ -598,7 +695,10 @@ def _receipt_stdout(executed: ExecutedCheck) -> str:
 # and the contract's declared check text is carried through unchanged on the
 # following line rather than rewritten. S1 (no byte-identical
 # ``replacement.check_value`` across items in a cohort) is likewise unharmed:
-# the prefix makes values more distinct, never less.
+# the prefix makes values more distinct, never less. The prefix cannot make two
+# items that DECLARE the same check distinct, though: it is the same for every
+# record one run writes. Those are grouped in ``run`` (OMN-19267, see
+# ``shared_check_key``).
 def bind_command_to_product_repo(check_value: str, *, repo: str, head_sha: str) -> str:
     """Prefix a declared check with the product-repo reference for its commit.
 
@@ -950,6 +1050,20 @@ def _is_scoped_to_other_product_pr(item_id: str, *, repo: str, pr_number: int) -
     )
 
 
+@dataclass(frozen=True)
+class _Candidate:
+    """One runner-covered key of a ticket, read before anything executes."""
+
+    item_id: str
+    check_type: str
+    check_value: str
+    current: Observation | None
+    # Answered by a PASS observed on this code and entry: nothing to run.
+    covered: bool
+    # Eligible as it stands: PASS and bound to the current entry, any head.
+    stands: bool
+
+
 def run(
     *,
     occ_root: Path,
@@ -980,6 +1094,7 @@ def run(
     failures: list[str] = []
     not_run: list[str] = []
     write_refusals: list[str] = []
+    shared: list[str] = []
 
     for ticket_id in ticket_ids:
         contract_path = contracts_root / f"{ticket_id}.yaml"
@@ -991,6 +1106,12 @@ def run(
             continue
         contract_data = _load_yaml(contract_path)
 
+        # OMN-19267: collect first, then group by the identity S1 compares, so
+        # one declared check is executed and filed once per ticket per run.
+        # Only keys that would get a SUPERSESSION record are grouped, because
+        # S1 judges only ``*.supersede.*`` files; a key with no base receipt
+        # gets its own net-new base receipt exactly as before.
+        groups: dict[tuple[str, ...], list[_Candidate]] = {}
         for item_id, check_type, check_value, cwd in _iter_executable_items(
             contract_data
         ):
@@ -1005,34 +1126,85 @@ def run(
                 # the key stays active; nothing is filed on its behalf.
                 outcome.skipped_other_repo += 1
                 continue
-
+            entry_sha256 = compute_contract_entry_sha256(contract_data, item_id)
             current = _active_observation(
                 receipts_root, ticket_id, item_id, check_type, pr_number
             )
-            if covers_this_run(
-                current,
-                head_sha=head_sha,
-                tree_sha=tree_sha,
-                contract_entry_sha256=compute_contract_entry_sha256(
-                    contract_data, item_id
-                ),
-            ):
-                outcome.skipped_already_pass += 1
+            has_base = (
+                receipts_root / ticket_id / item_id / f"{check_type}.yaml"
+            ).is_file()
+            group_key = (
+                ("supersede", shared_check_key(check_value))
+                if has_base
+                else ("base", item_id, check_type)
+            )
+            groups.setdefault(group_key, []).append(
+                _Candidate(
+                    item_id=item_id,
+                    check_type=check_type,
+                    check_value=check_value,
+                    current=current,
+                    covered=covers_this_run(
+                        current,
+                        head_sha=head_sha,
+                        tree_sha=tree_sha,
+                        contract_entry_sha256=entry_sha256,
+                    ),
+                    stands=stands_without_this_run(
+                        current, contract_entry_sha256=entry_sha256
+                    ),
+                )
+            )
+
+        for members in groups.values():
+            covered = [member for member in members if member.covered]
+            carrier: _Candidate | None = None
+            if covered:
+                outcome.skipped_already_pass += len(covered)
+                answered_by = covered[0].item_id
+            else:
+                # The record goes to the item that needs it. When every member
+                # already stands, the first in contract order carries it, which
+                # keeps the carrier stable from one head to the next.
+                carrier = next(
+                    (member for member in members if not member.stands), members[0]
+                )
+                answered_by = carrier.item_id
+
+            for member in members:
+                if member.covered or member is carrier:
+                    continue
+                key = f"{ticket_id}:{member.item_id}:{member.check_type}"
+                if member.stands:
+                    shared.append(f"{key} (same declared check as {answered_by})")
+                    continue
+                write_refusals.append(
+                    f"{key} (declares the same check as {answered_by}, and its "
+                    "active receipt is not a PASS bound to the current contract "
+                    "entry. A second record of that check in this cohort fails OCC "
+                    "S1 (OMN-15459), and no append-only record repairs that once "
+                    "pushed. Give the item a check that discriminates it, or "
+                    "declare it as the other item's lineage with evidence_artifact "
+                    "'supersedes_dod_evidence:<id>' in the contract.)"
+                )
+
+            if carrier is None:
                 continue
 
             executed = execute_check(
                 ticket_id=ticket_id,
-                evidence_item_id=item_id,
-                check_type=check_type,
-                check_value=check_value,
+                evidence_item_id=carrier.item_id,
+                check_type=carrier.check_type,
+                check_value=carrier.check_value,
                 product_root=product_root,
                 timeout_seconds=timeout_seconds,
             )
             outcome.executed += 1
+            key = f"{ticket_id}:{carrier.item_id}:{carrier.check_type}"
             if executed.not_run:
-                not_run.append(f"{ticket_id}:{item_id}:{check_type}")
+                not_run.append(key)
             elif executed.status is EnumReceiptStatus.FAIL:
-                failures.append(f"{ticket_id}:{item_id}:{check_type}")
+                failures.append(key)
 
             receipt_body = build_receipt(
                 executed,
@@ -1045,18 +1217,36 @@ def run(
                 tree_sha=tree_sha,
             )
 
-            base_path = receipts_root / ticket_id / item_id / f"{check_type}.yaml"
+            base_path = (
+                receipts_root
+                / ticket_id
+                / carrier.item_id
+                / f"{carrier.check_type}.yaml"
+            )
             if base_path.is_file():
                 # Append-only: the base receipt is born or merged evidence and
                 # is never opened for write. The executed result arrives as a
                 # net-new record beside it.
-                record_path = _next_record_path(base_path, check_type, pr_number)
+                record_path = _next_record_path(
+                    base_path, carrier.check_type, pr_number
+                )
                 if record_path is None:
                     # A refusal, not a failed check: nothing downstream will
                     # carry this fact, so it must reach the exit status.
                     write_refusals.append(
-                        f"{ticket_id}:{item_id}:{check_type} "
-                        f"(no free attempt slot for PR #{pr_number})"
+                        f"{key} (no free attempt slot for PR #{pr_number})"
+                    )
+                    continue
+                collides_with = cohort_collision(
+                    record_path,
+                    item_id=carrier.item_id,
+                    check_value=receipt_body["check_value"],
+                )
+                if collides_with is not None:
+                    write_refusals.append(
+                        f"{key} ({record_path.name} would carry the same check as "
+                        f"the record already filed for {collides_with} in this "
+                        "cohort, which OCC S1 (OMN-15459) refuses)"
                     )
                     continue
                 _dump(
@@ -1064,10 +1254,10 @@ def run(
                     build_supersession_record(
                         receipt_body,
                         ticket_id=ticket_id,
-                        evidence_item_id=item_id,
-                        check_type=check_type,
+                        evidence_item_id=carrier.item_id,
+                        check_type=carrier.check_type,
                         pr_number=pr_number,
-                        superseded=current,
+                        superseded=carrier.current,
                     ),
                 )
                 wrote.append(record_path)
@@ -1080,6 +1270,7 @@ def run(
     outcome.failures = tuple(failures)
     outcome.not_run = tuple(not_run)
     outcome.write_refusals = tuple(write_refusals)
+    outcome.skipped_shared_check = tuple(shared)
     return outcome
 
 
@@ -1138,6 +1329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "skipped_unexecutable": outcome.skipped_unexecutable,
         "skipped_other_repo": outcome.skipped_other_repo,
         "skipped_other_member": outcome.skipped_other_member,
+        "skipped_shared_check": list(outcome.skipped_shared_check),
         "wrote": [str(p) for p in outcome.wrote],
         "tickets_without_contract": list(outcome.tickets_without_contract),
         "failures": list(outcome.failures),
@@ -1153,6 +1345,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "::warning::declared check not run, GitHub credential missing in "
             f"the runner environment: {item}",
+            file=sys.stderr,
+        )
+    for item in outcome.skipped_shared_check:
+        print(
+            "::notice::declared check shared with another item of the same "
+            f"ticket; executed and filed once, this key keeps its standing PASS: {item}",
             file=sys.stderr,
         )
 
