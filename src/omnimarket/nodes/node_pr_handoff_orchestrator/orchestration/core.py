@@ -24,8 +24,6 @@ from datetime import datetime, timedelta
 from typing import Protocol
 from uuid import NAMESPACE_OID, UUID, uuid5
 
-from pydantic import BaseModel
-
 from omnimarket.events.pr_state import ModelPrStateEmitRequest
 from omnimarket.models.pr_handoff import (
     EnumPrHandoffErrorCode,
@@ -76,6 +74,12 @@ TRANSITIONS: Mapping[tuple[str, str], str] = {
     ("APPENDING", "append_attempts_exhausted"): "TIMED_OUT",
 }
 
+PrHandoffEmission = (
+    ModelPrHandoffAccepted
+    | ModelPrHandoffHandedOff
+    | ModelPrHandoffFailed
+    | ModelPrHandoffLedgerAppendCommand
+)
 PrHandoffMessage = (
     ModelPrHandoffRequested
     | ModelPrHandoffObservationIngress
@@ -121,7 +125,7 @@ class PrHandoffStepResult:
     """The row to write (None: nothing to write) and what to publish, in order."""
 
     row: ModelPrHandoffWorkflowRow | None
-    emitted: list[BaseModel] = field(default_factory=list)
+    emitted: list[PrHandoffEmission] = field(default_factory=list)
     dropped_reason: str | None = None
 
 
@@ -180,7 +184,7 @@ class _Leg:
     def __init__(self, row: ModelPrHandoffWorkflowRow, ports: PrHandoffPorts) -> None:
         self.row = row
         self.ports = ports
-        self.emitted: list[BaseModel] = []
+        self.emitted: list[PrHandoffEmission] = []
 
     @property
     def episode(self) -> ModelPrHandoffEpisode | None:
@@ -437,7 +441,9 @@ def run_leg(
             return PrHandoffStepResult(row=None, dropped_reason="an older observation")
         leg.row = start.model_copy(update={"observation": message.observation()})
         if episode is not None and episode.state is S.WAITING:
-            leg.evaluate(_observed_at(message))
+            # A decision is never stamped before the request it answers: an
+            # observation older than the request is evaluated at the request's time.
+            leg.evaluate(max(_observed_at(message), episode.request.requested_at))
         return PrHandoffStepResult(row=leg.row, emitted=leg.emitted)
     if (
         episode is None
@@ -457,6 +463,7 @@ __all__: list[str] = [
     "PR_HANDOFF_NAMESPACE",
     "TRANSITIONS",
     "NoLedgerHolds",
+    "PrHandoffEmission",
     "PrHandoffMessage",
     "PrHandoffPorts",
     "PrHandoffStepResult",

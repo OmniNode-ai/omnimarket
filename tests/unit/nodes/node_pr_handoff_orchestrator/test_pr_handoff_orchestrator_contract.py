@@ -160,9 +160,38 @@ async def test_runtime_abandoned_append_is_ended_by_the_next_request() -> None:
     assert ended[0].error_code is EnumPrHandoffErrorCode.APPEND_UNCONFIRMED
 
 
+async def test_instances_without_a_store_share_the_process_rows() -> None:
+    """The runtime may build one instance per route; a request and its observation must meet."""
+    cid = b.new_cid()
+    request_route, observation_route = (
+        HandlerPrHandoffOrchestrator(),
+        HandlerPrHandoffOrchestrator(),
+    )
+    accepted = await request_route.handle(b.request(cid, repo="omniweb", pr_number=777))
+    assert [type(e).__name__ for e in accepted] == ["ModelPrHandoffAccepted"]
+    decided = await observation_route.handle(
+        b.observation(
+            b.at(60), repo="omniweb", pr_number=777, title="feat(OMN-20636): x"
+        )
+    )
+    assert [type(e).__name__ for e in decided] == ["ModelPrHandoffLedgerAppendCommand"]
+
+
+async def test_an_observation_older_than_the_request_is_decided_at_the_request_time() -> (
+    None
+):
+    cid = b.new_cid()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    await handler.handle(b.request(cid, requested_at=b.at(600)))
+    (command,) = await handler.handle(b.observation(b.at(10)))
+    assert isinstance(command, ModelPrHandoffLedgerAppendCommand)
+    assert command.requested_at == b.at(600)
+    assert command.rows.startswith(f"{b.stamp(b.at(600))} | MSG | ")
+
+
 async def test_drops() -> None:
     cid = b.new_cid()
-    handler = HandlerPrHandoffOrchestrator()
+    handler = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
     await handler.handle(b.observation(b.at(100)))
     assert await handler.handle(b.observation(b.at(50), draft=True)) == []
     first = await handler.handle(b.request(cid, requested_at=b.at(110)))

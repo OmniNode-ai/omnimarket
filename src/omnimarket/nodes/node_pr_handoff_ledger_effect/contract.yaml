@@ -39,8 +39,11 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 90000
+# main, as node_pr_landing_github_effect: the lab effects runtimes declare no
+# ONEX_RUNTIME_LANE, so a lane-scoped contract there is a fail-closed discovery
+# error (read on dev-202, 2026-10-05: NOT attached, OMN-19408).
 runtime_profiles:
-  - effects
+  - main
 runtime_lanes:
   - compose-dev
   - compose-dev-202

@@ -19,8 +19,13 @@ from typing import Literal
 from uuid import UUID, uuid4, uuid5
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from pydantic import BaseModel
 
+from omnimarket.models.pr_handoff import (
+    ModelPrHandoffAccepted,
+    ModelPrHandoffFailed,
+    ModelPrHandoffHandedOff,
+    ModelPrHandoffLedgerAppendCommand,
+)
 from omnimarket.nodes.node_pr_handoff_decision_compute.handlers.handler_pr_handoff_decision import (
     HandlerPrHandoffDecision,
     invalid_request_reason,
@@ -50,6 +55,11 @@ from omnimarket.nodes.node_pr_handoff_orchestrator.state_codec import (
 
 logger = logging.getLogger(__name__)
 
+# The runtime may construct one handler instance per route; until the rows are
+# durable (OMN-20638) every instance in the process shares this one store, so a
+# request and the observations of its PR meet in the same row.
+_PROCESS_STORE = InMemoryPrHandoffRowStore()
+
 
 class HandlerPrHandoffOrchestrator:
     """One leg per consumed message, under the row's compare-and-set."""
@@ -66,7 +76,7 @@ class HandlerPrHandoffOrchestrator:
             holds=holds if holds is not None else NoLedgerHolds(),
         )
         self._local_store: ProtocolPrHandoffRowStore = (
-            store if store is not None else InMemoryPrHandoffRowStore()
+            store if store is not None else _PROCESS_STORE
         )
 
     @property
@@ -82,7 +92,14 @@ class HandlerPrHandoffOrchestrator:
             return shared_state_io_store()
         return self._local_store
 
-    async def handle(self, request: PrHandoffMessage) -> list[BaseModel]:
+    async def handle(
+        self, request: PrHandoffMessage
+    ) -> list[
+        ModelPrHandoffAccepted
+        | ModelPrHandoffHandedOff
+        | ModelPrHandoffFailed
+        | ModelPrHandoffLedgerAppendCommand
+    ]:
         """Apply one message to its PR's handoff row; return what to publish, in order."""
         key = request.handoff_key
 
@@ -101,6 +118,15 @@ class HandlerPrHandoffOrchestrator:
                 key,
                 type(request).__name__,
                 result.dropped_reason,
+            )
+        else:
+            episode = result.row.episode if result.row is not None else None
+            logger.info(
+                "[PR-HANDOFF] %s %s -> %s emitted=%s",
+                key,
+                type(request).__name__,
+                episode.state.value if episode is not None else "no request",
+                [type(e).__name__ for e in result.emitted],
             )
         return list(result.emitted)
 
