@@ -6,6 +6,21 @@ from collections.abc import Sequence
 
 import pytest
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
+    EnumAcceptanceOperation,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_cell_event import (
+    ModelAcceptanceCellEvent,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
+    ModelAcceptanceItem,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_receipt_join import (
+    ModelAcceptanceReceiptJoin,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
+    ModelAcceptanceVerdict,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.stats import (
     cohen_kappa,
     wilson_accept_interval,
@@ -13,26 +28,11 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.stats im
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_issue_code import (
     EnumAcceptanceIssueCode as Code,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
-    EnumAcceptanceOperation,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_run_status import (
     EnumAcceptanceRunStatus,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_cell_event import (
-    ModelAcceptanceCellEvent,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
-    ModelAcceptanceItem,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_result import (
     ModelAcceptanceJudgeResult,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_receipt_join import (
-    ModelAcceptanceReceiptJoin,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
-    ModelAcceptanceVerdict,
 )
 from tests.nodes.node_delegation_acceptance_judge_compute.builders import (
     EDIT_LOOP_TASK,

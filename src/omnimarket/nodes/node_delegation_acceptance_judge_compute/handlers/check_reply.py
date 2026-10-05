@@ -8,8 +8,11 @@ import json
 import re
 from collections import Counter
 
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_failure_class import (
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
+    ModelAcceptanceVerdict,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_issue_code import (
     EnumAcceptanceIssueCode as Code,
@@ -19,9 +22,6 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acce
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_rubric import (
     ModelAcceptanceRubric,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
-    ModelAcceptanceVerdict,
 )
 
 _FENCE = re.compile(r"\A```[A-Za-z0-9_-]*[ \t]*\n(.*)\n```\s*\Z", re.DOTALL)
