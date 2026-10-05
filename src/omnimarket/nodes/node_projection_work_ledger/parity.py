@@ -526,7 +526,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         since, until = _window(args.utc_day, args.since, args.until)
     except ValueError:
-        parser.error(f"--utc-day must be YYYY-MM-DD, got {args.utc_day!r}")
+        sys.stderr.write(
+            f"work_ledger_parity: error: --utc-day must be YYYY-MM-DD, got {args.utc_day!r}\n"
+        )
+        return 2
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)

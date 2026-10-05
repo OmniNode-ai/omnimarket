@@ -159,3 +159,24 @@ def test_utc_day_window_is_the_whole_day_and_nothing_else(
     assert report["file_rows"] == 3
     assert report["window_since"].startswith("2026-10-03T00:00:00")
     assert report["window_until"].startswith("2026-10-03T23:59:59")
+
+
+def test_utc_day_malformed_day_is_refused_with_exit_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text(ROWS[1] + "\n")
+    export = tmp_path / "projection.json"
+    export.write_text(json.dumps({"rows": [], "state": []}))
+    rc = main(
+        [
+            "--ledger",
+            str(ledger),
+            "--utc-day",
+            "not-a-day",
+            "--projection-json",
+            str(export),
+        ]
+    )
+    assert rc == 2
+    assert "--utc-day must be YYYY-MM-DD" in capsys.readouterr().err
