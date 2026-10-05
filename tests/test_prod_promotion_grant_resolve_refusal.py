@@ -14,11 +14,13 @@ from urllib.error import HTTPError, URLError
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.events.runtime_deployment import (
     GRANT_FILE_PATH,
+    EnumGrantAnchorRefusal,
     EnumGrantResolution,
     EnumOccGateState,
     EnumProdGateOutcome,
@@ -59,6 +61,10 @@ from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_com
 _CONTRACT = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_redeploy_orchestrator/contract.yaml"
+)
+_RESOLVER_CONTRACT = (
+    Path(__file__).resolve().parents[1]
+    / "src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/contract.yaml"
 )
 _SUBSCRIBE = contract_subscribe_topics(_CONTRACT)
 _TOPIC_START = next(t for t in _SUBSCRIBE if t.endswith("redeploy-start.v1"))
@@ -165,10 +171,35 @@ async def _drive(
 
 @pytest.mark.unit
 class TestGrantResolveRefusalChain:
-    @pytest.mark.parametrize("file_only", [False, True])
-    async def test_private_anchor_404(
-        self, monkeypatch: pytest.MonkeyPatch, file_only: bool
+    @pytest.mark.parametrize(
+        ("file_only", "kind", "detail"),
+        [
+            (
+                False,
+                EnumGrantAnchorRefusal.REPOSITORY_UNREADABLE,
+                "token cannot read OmniNode-ai/omninode_infra",
+            ),
+            (
+                True,
+                EnumGrantAnchorRefusal.GRANT_FILE_MISSING,
+                f"grant file {GRANT_FILE_PATH} is absent at the main commit",
+            ),
+        ],
+    )
+    async def test_private_anchor_404_is_typed_by_the_read_that_failed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        file_only: bool,
+        kind: EnumGrantAnchorRefusal,
+        detail: str,
     ) -> None:
+        """Jake's G4 finding: a mis-scoped token must not read as a missing file.
+
+        GitHub answers 404 for a private repository the token cannot read. The
+        main-commit read needs the same Contents access as the file, so a 404
+        there is the token; a 404 on the file after that read is the file.
+        """
+
         def request(url: str) -> bytes:
             if file_only and "/commits/" in url:
                 return json.dumps({"sha": _SOURCE_SHA}).encode()
@@ -181,12 +212,12 @@ class TestGrantResolveRefusalChain:
         )
         assert resolved.resolution is EnumGrantResolution.UNREADABLE
         assert resolved.provenance.http_status == 404
-        assert (
-            "unreadable (missing file or token without access)"
-            in resolved.provenance.refusal_reason
-        )
+        assert resolved.provenance.refusal_kind is kind
+        assert resolved.provenance.refusal_reason is not None
+        assert detail in resolved.provenance.refusal_reason
         assert decision.outcome is EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE
         assert completed.error_message.startswith("grant_anchor_unreadable:")
+        assert f"kind={kind.value}" in completed.error_message
         assert "http_status=404" in completed.error_message
         assert resolved.provenance.source_commit_sha == (
             _SOURCE_SHA if file_only else None
@@ -195,12 +226,35 @@ class TestGrantResolveRefusalChain:
         if file_only:
             assert f"source_commit={_SOURCE_SHA}" in completed.error_message
 
+    async def test_bare_404_from_an_injected_fetcher_is_not_classified(
+        self,
+    ) -> None:
+        """Without a read stage a 404 is neither kind; it never guesses one."""
+
+        class BareFetcher:
+            async def fetch(self) -> resolver_module.ModelGrantFetch:
+                raise HTTPError("u", 404, "Not Found", None, None)
+
+        resolved, _, completed = await _drive(
+            HandlerProdPromotionGrantResolver(BareFetcher())
+        )
+        assert resolved.provenance.refusal_kind is EnumGrantAnchorRefusal.HTTP_ERROR
+        assert "unknown stage" in completed.error_message
+
     @pytest.mark.parametrize(
-        ("status", "reason"),
-        [(401, "token rejected"), (403, "token forbidden"), (500, "HTTP 500")],
+        ("status", "reason", "kind"),
+        [
+            (401, "token rejected", EnumGrantAnchorRefusal.TOKEN_REJECTED),
+            (403, "token forbidden", EnumGrantAnchorRefusal.TOKEN_FORBIDDEN),
+            (500, "HTTP 500 (main_commit)", EnumGrantAnchorRefusal.HTTP_ERROR),
+        ],
     )
     async def test_http_error(
-        self, monkeypatch: pytest.MonkeyPatch, status: int, reason: str
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        status: int,
+        reason: str,
+        kind: EnumGrantAnchorRefusal,
     ) -> None:
         def request(url: str) -> bytes:
             raise HTTPError(url, status, "HTTP error", None, None)
@@ -212,31 +266,41 @@ class TestGrantResolveRefusalChain:
         )
         assert resolved.resolution is EnumGrantResolution.UNREADABLE
         assert resolved.provenance.http_status == status
+        assert resolved.provenance.refusal_kind is kind
         assert decision.outcome is EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE
         assert reason in completed.error_message
 
-    @pytest.mark.parametrize("raises", [True, False])
+    @pytest.mark.parametrize("outcome", ["raises", "none", "empty"])
     async def test_token_not_provisioned(
         self,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
-        raises: bool,
+        outcome: str,
     ) -> None:
-        async def missing_secret(ref: str) -> None:
-            if raises:
+        refs: list[str] = []
+
+        async def missing_secret(ref: str) -> SecretStr | None:
+            refs.append(ref)
+            if outcome == "raises":
                 raise RuntimeError("FAKE_SECRET_MUST_NEVER_APPEAR")
+            return SecretStr("") if outcome == "empty" else None
 
         monkeypatch.setattr(resolver_module, "resolve_api_key_async", missing_secret)
         with caplog.at_level(logging.WARNING, logger=resolver_module.__name__):
             resolved, decision, completed = await _drive(
                 HandlerProdPromotionGrantResolver()
             )
+        assert refs == ["ONEX_GRANT_ANCHOR_READ_TOKEN"]
         assert resolved.resolution is EnumGrantResolution.UNREADABLE
         assert resolved.provenance.http_status is None
-        assert decision.outcome is EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE
-        assert "'GITHUB_TOKEN'" in completed.error_message
         assert (
-            "did not resolve" if raises else "resolved to no value"
+            resolved.provenance.refusal_kind is EnumGrantAnchorRefusal.TOKEN_UNRESOLVED
+        )
+        assert decision.outcome is EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE
+        assert "'ONEX_GRANT_ANCHOR_READ_TOKEN'" in completed.error_message
+        assert "kind=token_unresolved" in completed.error_message
+        assert (
+            "did not resolve" if outcome == "raises" else "resolved to no value"
         ) in completed.error_message
         assert "http_status=none" in completed.error_message
         assert (
@@ -264,6 +328,10 @@ class TestGrantResolveRefusalChain:
             HandlerProdPromotionGrantResolver(fetcher)
         )
         assert resolved.resolution is EnumGrantResolution.UNPARSEABLE
+        assert (
+            resolved.provenance.refusal_kind
+            is EnumGrantAnchorRefusal.REGISTRY_UNPARSEABLE
+        )
         assert resolved.provenance.file_sha256 == hashlib.sha256(raw).hexdigest()
         assert resolved.provenance.source_commit_sha == _SOURCE_SHA
         assert resolved.provenance.codeowners_match is True
@@ -329,16 +397,36 @@ class TestGrantResolveRefusalChain:
         assert render_grant_refusal(resolved.provenance) in completed.error_message
 
     @pytest.mark.parametrize(
-        ("error", "detail"),
+        ("error", "detail", "kind"),
         [
-            (URLError("secret"), "transport error (URLError)"),
-            (TimeoutError("secret"), "transport error (TimeoutError)"),
-            (OSError("secret"), "transport error (OSError)"),
-            (RuntimeError("secret"), "resolver error (RuntimeError)"),
+            (
+                URLError("secret"),
+                "transport error (URLError)",
+                EnumGrantAnchorRefusal.TRANSPORT_ERROR,
+            ),
+            (
+                TimeoutError("secret"),
+                "transport error (TimeoutError)",
+                EnumGrantAnchorRefusal.TRANSPORT_ERROR,
+            ),
+            (
+                OSError("secret"),
+                "transport error (OSError)",
+                EnumGrantAnchorRefusal.TRANSPORT_ERROR,
+            ),
+            (
+                RuntimeError("secret"),
+                "resolver error (RuntimeError)",
+                EnumGrantAnchorRefusal.RESOLVER_ERROR,
+            ),
         ],
     )
     async def test_transport_and_safety_net(
-        self, monkeypatch: pytest.MonkeyPatch, error: Exception, detail: str
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        error: Exception,
+        detail: str,
+        kind: EnumGrantAnchorRefusal,
     ) -> None:
         def request(url: str) -> bytes:
             raise error
@@ -350,6 +438,7 @@ class TestGrantResolveRefusalChain:
         )
         assert resolved.resolution is EnumGrantResolution.UNREADABLE
         assert resolved.provenance.http_status is None
+        assert resolved.provenance.refusal_kind is kind
         assert decision.outcome is EnumProdGateOutcome.GRANT_ANCHOR_UNREADABLE
         assert detail in completed.error_message
         assert "secret" not in completed.error_message
@@ -365,6 +454,10 @@ class TestGrantResolveRefusalChain:
         )
         assert resolved.resolution is EnumGrantResolution.UNREADABLE
         assert resolved.provenance.http_status is None
+        assert (
+            resolved.provenance.refusal_kind
+            is EnumGrantAnchorRefusal.UNEXPECTED_RESPONSE
+        )
         assert "unexpected GitHub API response" in completed.error_message
 
     async def test_codeowners_error_preserves_read_bytes(
@@ -383,6 +476,9 @@ class TestGrantResolveRefusalChain:
         monkeypatch.setattr(fetcher, "_request", request)
         resolved, _, _ = await _drive(HandlerProdPromotionGrantResolver(fetcher))
         assert resolved.provenance.http_status == 403
+        assert (
+            resolved.provenance.refusal_kind is EnumGrantAnchorRefusal.TOKEN_FORBIDDEN
+        )
         assert resolved.provenance.source_commit_sha == _SOURCE_SHA
         assert resolved.provenance.file_sha256 == hashlib.sha256(raw).hexdigest()
         assert resolved.provenance.codeowners_match is False
@@ -428,7 +524,34 @@ class TestGrantRefusalValidation:
                 grant=grant,
                 evaluated_at=_EVALUATED_AT,
                 provenance=ModelGrantProvenance(
-                    codeowners_match=False, refusal_reason="unreadable"
+                    codeowners_match=False,
+                    refusal_reason="unreadable",
+                    refusal_kind=EnumGrantAnchorRefusal.REPOSITORY_UNREADABLE,
+                ),
+            )
+
+    def test_refusal_requires_kind(self) -> None:
+        with pytest.raises(ValidationError, match="requires a refusal_kind"):
+            ModelProdPromotionGrantResolvedEvent(
+                correlation_id=uuid4(),
+                resolution=EnumGrantResolution.UNREADABLE,
+                evaluated_at=_EVALUATED_AT,
+                provenance=ModelGrantProvenance(
+                    codeowners_match=False, refusal_reason="cannot read"
+                ),
+            )
+
+    def test_non_refusal_forbids_refusal_kind(self) -> None:
+        with pytest.raises(ValidationError, match="refusal_kind=None"):
+            ModelProdPromotionGrantResolvedEvent(
+                correlation_id=uuid4(),
+                resolution=EnumGrantResolution.ABSENT,
+                evaluated_at=_EVALUATED_AT,
+                provenance=ModelGrantProvenance(
+                    source_commit_sha=_SOURCE_SHA,
+                    file_sha256="a" * 64,
+                    codeowners_match=True,
+                    refusal_kind=EnumGrantAnchorRefusal.GRANT_FILE_MISSING,
                 ),
             )
 
@@ -474,3 +597,14 @@ class TestGrantRefusalValidation:
                     refusal_reason="cannot read",
                 ),
             )
+
+
+@pytest.mark.unit
+def test_anchor_token_ref_is_dedicated_and_scoped() -> None:
+    """The resolver never reuses the public-repo GITHUB_TOKEN for the private anchor."""
+    secrets = yaml.safe_load(_RESOLVER_CONTRACT.read_text(encoding="utf-8"))["secrets"]
+    assert set(secrets) == {"ONEX_GRANT_ANCHOR_READ_TOKEN"}
+    description = secrets["ONEX_GRANT_ANCHOR_READ_TOKEN"]["description"]
+    assert "OmniNode-ai/omninode_infra only" in description
+    assert "Contents: Read-only" in description
+    assert secrets["ONEX_GRANT_ANCHOR_READ_TOKEN"]["required"] is True

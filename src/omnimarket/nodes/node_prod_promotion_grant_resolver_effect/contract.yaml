@@ -12,7 +12,9 @@
 # Every resolve failure (token unresolved or rejected, HTTP error including 404
 # on the private anchor, transport error, unparseable registry) returns a typed
 # UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
-# (reason, anchor repo, path, ref, http status). The orchestrator threads it into
+# (reason, refusal kind, anchor repo, path, ref, http status). The refusal kind
+# tells a token that cannot read the private anchor (repository_unreadable) from
+# a grant file absent at a commit the token read (grant_file_missing). The orchestrator threads it into
 # a gate BLOCKED decision and redeploy-completed BLOCKED. The failure terminal
 # remains declared only for an envelope the runtime cannot hand to the handler.
 ---
@@ -34,8 +36,8 @@ description: >
   a solo CODEOWNER authors and approves their own grant; the anti-self-issuance
   guarantee is the @main fetch, not an approver-identity check. Emits the resolved
   fact plus durable audit provenance (source commit SHA, grant file path,
-  grant_id, file sha256, CODEOWNERS-match). The GitHub token is resolved at the
-  effect boundary from the contract-declared api_key_ref. No subprocess shell-out.
+  grant_id, file sha256, CODEOWNERS-match). The anchor read token is resolved at
+  the effect boundary from the contract-declared ONEX_GRANT_ANCHOR_READ_TOKEN ref. No subprocess shell-out.
   Every resolve failure (token unresolved or rejected, HTTP error including 404 on
   the private anchor, transport error, unparseable registry) is returned as a typed
   UNREADABLE / UNPARSEABLE refusal on the resolved terminal event with provenance
@@ -79,11 +81,17 @@ descriptor:
     - effects
 
 secrets:
-  # GitHub token is contract-declared so the handler reads the ref name from
-  # here — not a bare source literal. Value is resolved at the effect boundary
-  # via the canonical secret-store resolver.
-  GITHUB_TOKEN:
-    description: "GitHub token for reading the grant file from omninode_infra@main. A fine-grained token needs Contents: Read-only (Metadata read is implied) on OmniNode-ai/omninode_infra; a classic token needs the repo scope."
+  # The anchor read token is contract-declared so the handler reads the ref name
+  # from here — not a bare source literal. Value is resolved at the effect
+  # boundary via the canonical secret-store resolver, never committed.
+  # OMN-20068: a dedicated ref, not GITHUB_TOKEN. The anchor moved from the
+  # public onex_change_control to the private omninode_infra, and a token
+  # provisioned for public reads answers 404 there; a shared ref would let that
+  # token be reused silently. Store under this key a fine-grained token scoped to
+  # OmniNode-ai/omninode_infra only, with Contents: Read-only (Metadata read is
+  # implied) and nothing else.
+  ONEX_GRANT_ANCHOR_READ_TOKEN:
+    description: "Fine-grained GitHub token for reading grants/prod_promotion_grants.yaml and .github/CODEOWNERS from OmniNode-ai/omninode_infra@main: repository access OmniNode-ai/omninode_infra only, Contents: Read-only. Resolved from the secret store; a 404 on the main commit read is refused as repository_unreadable (token cannot read the private anchor), a 404 on the file after that read as grant_file_missing."
     required: true
 
 runtime_dispatch:

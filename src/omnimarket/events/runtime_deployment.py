@@ -651,6 +651,39 @@ GRANT_REFUSAL_RESOLUTIONS = frozenset(
 )
 
 
+class EnumGrantAnchorRefusal(StrEnum):
+    """Why the grant anchor could not be resolved (OMN-20068).
+
+    Carried on every UNREADABLE / UNPARSEABLE refusal so a consumer can tell a
+    token that cannot read the private anchor from a grant file that is not
+    there. GitHub answers 404, not 403, for a private repository the token
+    cannot read, so the HTTP status alone cannot make that distinction; the
+    resolver reads the ``main`` commit first (which needs the same Contents
+    read access as the file) and the stage that answered 404 decides it.
+    """
+
+    #: The contract secret ref did not resolve, or resolved to no value.
+    TOKEN_UNRESOLVED = "token_unresolved"
+    #: GitHub returned 401: the token is bad, expired or revoked.
+    TOKEN_REJECTED = "token_rejected"
+    #: GitHub returned 403: the token lacks a permission, SSO, or rate limit.
+    TOKEN_FORBIDDEN = "token_forbidden"
+    #: 404 on the ``main`` commit read: the token cannot read the repository.
+    REPOSITORY_UNREADABLE = "repository_unreadable"
+    #: 404 on the grant file after the ``main`` commit read succeeded.
+    GRANT_FILE_MISSING = "grant_file_missing"
+    #: Any other HTTP status from the anchor read.
+    HTTP_ERROR = "http_error"
+    #: No HTTP response: DNS, connection, TLS or timeout.
+    TRANSPORT_ERROR = "transport_error"
+    #: GitHub answered, but not with the shape the resolver reads.
+    UNEXPECTED_RESPONSE = "unexpected_response"
+    #: The grant file was read but is not a valid grant registry.
+    REGISTRY_UNPARSEABLE = "registry_unparseable"
+    #: An error the resolver did not classify. Still a refusal.
+    RESOLVER_ERROR = "resolver_error"
+
+
 class EnumProdGrantReason(StrEnum):
     """Typed prod-promotion authorization-grant failure reasons (OMN-13436).
 
@@ -2154,6 +2187,10 @@ class ModelGrantProvenance(BaseModel):
         default=None,
         description="Why the anchor could not be resolved; set only on an UNREADABLE / UNPARSEABLE resolution.",
     )
+    refusal_kind: EnumGrantAnchorRefusal | None = Field(
+        default=None,
+        description="Typed refusal class; set on every UNREADABLE / UNPARSEABLE resolution and only then.",
+    )
     source_commit_sha: str | None = Field(
         default=None,
         min_length=1,
@@ -2185,9 +2222,11 @@ class ModelGrantProvenance(BaseModel):
 
 def render_grant_refusal(provenance: ModelGrantProvenance) -> str:
     """Render refusal provenance as one auditable decision-reason line."""
+    kind = provenance.refusal_kind.value if provenance.refusal_kind else "none"
     detail = (
         f"{provenance.refusal_reason} "
-        f"(anchor={provenance.grant_repo}:{provenance.grant_file_path} "
+        f"(kind={kind} "
+        f"anchor={provenance.grant_repo}:{provenance.grant_file_path} "
         f"ref={provenance.source_ref} "
         f"http_status={provenance.http_status if provenance.http_status is not None else 'none'})"
     )
@@ -2242,6 +2281,8 @@ class ModelProdPromotionGrantResolvedEvent(BaseModel):
                 raise ValueError(
                     "a grant resolution refusal requires a non-empty refusal_reason"
                 )
+            if self.provenance.refusal_kind is None:
+                raise ValueError("a grant resolution refusal requires a refusal_kind")
         else:
             if (
                 self.provenance.source_commit_sha is None
@@ -2250,9 +2291,12 @@ class ModelProdPromotionGrantResolvedEvent(BaseModel):
                 raise ValueError(
                     "a non-refusal resolution requires source_commit_sha and file_sha256"
                 )
-            if self.provenance.refusal_reason is not None:
+            if (
+                self.provenance.refusal_reason is not None
+                or self.provenance.refusal_kind is not None
+            ):
                 raise ValueError(
-                    "a non-refusal resolution must have refusal_reason=None"
+                    "a non-refusal resolution must have refusal_reason=None and refusal_kind=None"
                 )
         return self
 
@@ -2418,6 +2462,7 @@ __all__ = [
     "ROLLBACK_ELIGIBLE_PHASES",
     "TERMINAL_PHASES",
     "EnumBuildSource",
+    "EnumGrantAnchorRefusal",
     "EnumGrantResolution",
     "EnumOccGateState",
     "EnumPhaseResult",

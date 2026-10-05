@@ -12,14 +12,20 @@ Anti-self-approval (OMN-10971): the grant is fetched from
 authorization that approves it, even by editing the grant file in the same change.
 
 The handler:
-  1. resolves the GitHub token from the contract ``api_key_ref`` at the effect
-     boundary (no bare ``os.environ`` read, no subprocess shell-out);
+  1. resolves the anchor read token from the contract secret ref
+     ``ONEX_GRANT_ANCHOR_READ_TOKEN`` through the secret store at the effect
+     boundary (no bare ``os.environ`` read, no subprocess shell-out). The ref
+     is dedicated so a token scoped for public repositories is never reused
+     for the private anchor (OMN-20068);
   2. fetches the grant file bytes + source commit SHA from ``main`` and probes
      whether the file is CODEOWNERS-protected on that ref;
   3. parses the YAML directly (ZERO Python import on the repository that holds it) and
      resolves it against the request key via the pure ``grant_resolver``;
-  4. returns a resolve failure as a typed UNREADABLE / UNPARSEABLE refusal,
-     never raised, or the resolved grant, plus durable audit provenance. The
+  4. returns a resolve failure as a typed UNREADABLE / UNPARSEABLE refusal with
+     an :class:`EnumGrantAnchorRefusal` kind, never raised, or the resolved
+     grant, plus durable audit provenance. A token that cannot read the private
+     anchor (404 on the ``main`` commit read) is ``repository_unreadable``; a
+     grant file absent at a commit the token did read is ``grant_file_missing``. The
      runtime wraps the returned event for dispatch/emission — this handler
      is a thin typed transform, not an envelope producer.
 
@@ -34,6 +40,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
@@ -44,6 +51,7 @@ from omnimarket.events.runtime_deployment import (
     GRANT_FETCH_REF,
     GRANT_FILE_PATH,
     GRANT_REPO,
+    EnumGrantAnchorRefusal,
     EnumGrantResolution,
     ModelGrantProvenance,
     ModelProdPromotionGrantResolveCommand,
@@ -57,6 +65,8 @@ from omnimarket.nodes.node_prod_promotion_grant_resolver_effect.grant_resolver i
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+#: Logical name of the anchor read token under the contract ``secrets`` block.
+_ANCHOR_TOKEN_SECRET = "ONEX_GRANT_ANCHOR_READ_TOKEN"
 logger = logging.getLogger(__name__)
 
 # GitHub API host for the grant-anchor read. This is the public api.github.com
@@ -68,20 +78,61 @@ _REQUEST_TIMEOUT = 30.0
 _CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 
 
-def _http_refusal_reason(code: int) -> str:
-    """Explain an anchor HTTP failure without including credentials."""
-    if code == 404:
+class EnumGrantAnchorReadStage(StrEnum):
+    """Which anchor read failed. The stage is what tells a 404 apart."""
+
+    MAIN_COMMIT = "main_commit"
+    GRANT_FILE = "grant_file"
+    CODEOWNERS = "codeowners"
+
+
+class GrantAnchorReadError(Exception):
+    """An HTTP failure on one anchor read, tagged with the read that failed."""
+
+    def __init__(self, stage: EnumGrantAnchorReadStage, status: int) -> None:
+        super().__init__(f"anchor read {stage.value} failed with HTTP {status}")
+        self.stage = stage
+        self.status = status
+
+
+def _http_refusal(
+    status: int, stage: EnumGrantAnchorReadStage | None
+) -> tuple[EnumGrantAnchorRefusal, str]:
+    """Classify an anchor HTTP failure without including credentials.
+
+    ``stage`` is ``None`` only for an injected fetcher that raised a bare
+    ``HTTPError``; the deployed fetcher always tags the stage.
+    """
+    if status == 401:
         return (
-            "unreadable (missing file or token without access): GitHub returns 404, "
-            "not 403, for a private repository the token cannot read, so a missing "
-            "grant file and a token without contents read on the anchor repository "
-            "are indistinguishable"
+            EnumGrantAnchorRefusal.TOKEN_REJECTED,
+            "token rejected: GitHub returned 401 (bad, expired or revoked token)",
         )
-    if code == 401:
-        return "token rejected: GitHub returned 401 (bad, expired or revoked token)"
-    if code == 403:
-        return "token forbidden: GitHub returned 403 (token lacks access, SSO not authorized, or rate limited)"
-    return f"anchor read failed: GitHub returned HTTP {code}"
+    if status == 403:
+        return (
+            EnumGrantAnchorRefusal.TOKEN_FORBIDDEN,
+            "token forbidden: GitHub returned 403 (token lacks a permission such as "
+            "Contents read, SSO not authorized, or rate limited)",
+        )
+    if status == 404 and stage is EnumGrantAnchorReadStage.MAIN_COMMIT:
+        return (
+            EnumGrantAnchorRefusal.REPOSITORY_UNREADABLE,
+            f"token cannot read {GRANT_REPO}: GitHub returned 404 on the "
+            f"{GRANT_FETCH_REF} commit read, which needs only Contents read; for a "
+            "private repository that is a token without access to it (or no such "
+            "repository), never a missing grant file",
+        )
+    if status == 404 and stage is EnumGrantAnchorReadStage.GRANT_FILE:
+        return (
+            EnumGrantAnchorRefusal.GRANT_FILE_MISSING,
+            f"grant file {GRANT_FILE_PATH} is absent at the {GRANT_FETCH_REF} commit "
+            "the token did read: the token can read the anchor, the file is not there",
+        )
+    where = stage.value if stage is not None else "unknown stage"
+    return (
+        EnumGrantAnchorRefusal.HTTP_ERROR,
+        f"anchor read failed: GitHub returned HTTP {status} ({where})",
+    )
 
 
 def _decode_content(content: object) -> bytes:
@@ -150,6 +201,13 @@ class GitHubMainGrantFetcher:
             body: bytes = response.read()
         return body
 
+    def _read(self, url: str, stage: EnumGrantAnchorReadStage) -> bytes:
+        """``_request`` with an HTTP failure tagged by the read that failed."""
+        try:
+            return self._request(url)
+        except urllib.error.HTTPError as exc:
+            raise GrantAnchorReadError(stage, exc.code) from exc
+
     def _file_is_codeowners_protected(self, *, ref: str) -> bool:
         """Probe whether the grant file path is CODEOWNERS-protected on a ref.
 
@@ -162,9 +220,11 @@ class GitHubMainGrantFetcher:
                 f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/contents/{candidate}?ref={ref}"
             )
             try:
-                payload = json.loads(self._request(url).decode("utf-8"))
-            except urllib.error.HTTPError as exc:
-                if exc.code == 404:
+                payload = json.loads(
+                    self._read(url, EnumGrantAnchorReadStage.CODEOWNERS).decode("utf-8")
+                )
+            except GrantAnchorReadError as exc:
+                if exc.status == 404:
                     continue
                 raise
             content = _decode_content(payload["content"]).decode("utf-8")
@@ -182,7 +242,9 @@ class GitHubMainGrantFetcher:
             f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/contents/{GRANT_FILE_PATH}"
             f"?ref={source_commit_sha}"
         )
-        payload = json.loads(self._request(url).decode("utf-8"))
+        payload = json.loads(
+            self._read(url, EnumGrantAnchorReadStage.GRANT_FILE).decode("utf-8")
+        )
         raw = _decode_content(payload["content"])
         self._provenance = self._provenance.model_copy(
             update={"file_sha256": file_sha256(raw)}
@@ -200,7 +262,9 @@ class GitHubMainGrantFetcher:
     def _resolve_main_commit_sha(self) -> str:
         """Resolve the current ``main`` tip commit SHA for provenance."""
         url = f"{_GITHUB_API_BASE}/repos/{GRANT_REPO}/commits/{GRANT_FETCH_REF}"
-        payload = json.loads(self._request(url).decode("utf-8"))
+        payload = json.loads(
+            self._read(url, EnumGrantAnchorReadStage.MAIN_COMMIT).decode("utf-8")
+        )
         sha = payload["sha"]
         if not isinstance(sha, str) or not sha:
             raise ValueError("GitHub commit response requires a non-empty sha string")
@@ -232,11 +296,23 @@ class HandlerProdPromotionGrantResolver:
             fetcher = fetcher_or_refusal
             try:
                 fetched = await fetcher.fetch()
-            except urllib.error.HTTPError as exc:
+            except GrantAnchorReadError as exc:
+                kind, reason = _http_refusal(exc.status, exc.stage)
                 return self._refuse(
                     command,
                     EnumGrantResolution.UNREADABLE,
-                    _http_refusal_reason(exc.code),
+                    kind,
+                    reason,
+                    http_status=exc.status,
+                    fetcher=fetcher,
+                )
+            except urllib.error.HTTPError as exc:
+                kind, reason = _http_refusal(exc.code, None)
+                return self._refuse(
+                    command,
+                    EnumGrantResolution.UNREADABLE,
+                    kind,
+                    reason,
                     http_status=exc.code,
                     fetcher=fetcher,
                 )
@@ -244,6 +320,7 @@ class HandlerProdPromotionGrantResolver:
                 return self._refuse(
                     command,
                     EnumGrantResolution.UNREADABLE,
+                    EnumGrantAnchorRefusal.TRANSPORT_ERROR,
                     f"anchor read failed: transport error ({type(exc).__name__})",
                     fetcher=fetcher,
                 )
@@ -251,6 +328,7 @@ class HandlerProdPromotionGrantResolver:
                 return self._refuse(
                     command,
                     EnumGrantResolution.UNREADABLE,
+                    EnumGrantAnchorRefusal.UNEXPECTED_RESPONSE,
                     f"anchor read failed: unexpected GitHub API response ({type(exc).__name__})",
                     fetcher=fetcher,
                 )
@@ -274,6 +352,7 @@ class HandlerProdPromotionGrantResolver:
                 return self._refuse(
                     command,
                     EnumGrantResolution.UNPARSEABLE,
+                    EnumGrantAnchorRefusal.REGISTRY_UNPARSEABLE,
                     " ".join(reason.split()),
                     fetched=fetched,
                 )
@@ -298,6 +377,7 @@ class HandlerProdPromotionGrantResolver:
             return self._refuse(
                 command,
                 EnumGrantResolution.UNREADABLE,
+                EnumGrantAnchorRefusal.RESOLVER_ERROR,
                 f"resolver error ({type(exc).__name__})",
                 fetcher=fetcher,
                 fetched=fetched,
@@ -307,6 +387,7 @@ class HandlerProdPromotionGrantResolver:
         self,
         command: ModelProdPromotionGrantResolveCommand,
         resolution: EnumGrantResolution,
+        kind: EnumGrantAnchorRefusal,
         reason: str,
         *,
         http_status: int | None = None,
@@ -331,16 +412,22 @@ class HandlerProdPromotionGrantResolver:
         elif isinstance(fetcher, GitHubMainGrantFetcher):
             provenance = fetcher.provenance
         provenance = provenance.model_copy(
-            update={"http_status": http_status, "refusal_reason": reason}
+            update={
+                "http_status": http_status,
+                "refusal_reason": reason,
+                "refusal_kind": kind,
+            }
         )
         logger.warning(
-            "Grant resolver refusal correlation_id=%s resolution=%s http_status=%s",
+            "Grant resolver refusal correlation_id=%s resolution=%s kind=%s http_status=%s",
             command.correlation_id,
             resolution.value,
+            kind.value,
             http_status,
             extra={
                 "correlation_id": str(command.correlation_id),
                 "resolution": resolution.value,
+                "refusal_kind": kind.value,
                 "http_status": http_status,
             },
         )
@@ -357,28 +444,32 @@ class HandlerProdPromotionGrantResolver:
     ) -> ProtocolGrantFetcher | ModelProdPromotionGrantResolvedEvent:
         if self._fetcher is not None:
             return self._fetcher
-        github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+        token_ref = contract_secret_ref(_CONTRACT_PATH, _ANCHOR_TOKEN_SECRET)
         try:
-            secret = await resolve_api_key_async(github_ref)
+            secret = await resolve_api_key_async(token_ref)
         except Exception as exc:
             return self._refuse(
                 command,
                 EnumGrantResolution.UNREADABLE,
-                f"GitHub token secret ref {github_ref!r} did not resolve "
+                EnumGrantAnchorRefusal.TOKEN_UNRESOLVED,
+                f"anchor read token secret ref {token_ref!r} did not resolve "
                 f"({type(exc).__name__}); the resolver cannot read the anchor",
             )
-        if secret is None:
+        if secret is None or not secret.get_secret_value():
             return self._refuse(
                 command,
                 EnumGrantResolution.UNREADABLE,
-                f"GitHub token secret ref {github_ref!r} resolved to no value; "
+                EnumGrantAnchorRefusal.TOKEN_UNRESOLVED,
+                f"anchor read token secret ref {token_ref!r} resolved to no value; "
                 "the resolver cannot read the anchor",
             )
         return GitHubMainGrantFetcher(token=secret.get_secret_value())
 
 
 __all__: list[str] = [
+    "EnumGrantAnchorReadStage",
     "GitHubMainGrantFetcher",
+    "GrantAnchorReadError",
     "HandlerProdPromotionGrantResolver",
     "ModelGrantFetch",
     "ProtocolGrantFetcher",
