@@ -364,6 +364,13 @@ def _unresolved(content: str) -> ModelReasoningSegmentation:
 #: The gate check name recorded when no deliverable region resolved.
 UNRESOLVED_PREAMBLE_CHECK_NAME = "deliverable_region_resolved"
 
+#: A leading trace was detected in provider text or removed by the adapter.
+LEADING_REASONING_TRACE_CHECK_NAME = "no_leading_reasoning_trace"
+LEADING_REASONING_TRACE_GATE_FAILURE_REASON = (
+    "WEAK_OUTPUT: the provider response contains a leading reasoning trace; "
+    "extracting a complete answer does not satisfy the output quality floor"
+)
+
 #: A declared trace tag remains in the answer after leading segmentation.
 RESIDUAL_REASONING_TAG_CHECK_NAME = "no_residual_reasoning_tag"
 RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON = (
@@ -384,6 +391,21 @@ UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON = (
     "reasoning trace) and no declared boundary resolved an answer behind it, "
     "so the text is the model's scratchpad rather than the deliverable"
 )
+
+
+def has_leading_reasoning_trace(segmentation: ModelReasoningSegmentation) -> bool:
+    """Whether the segmented text opened with a reasoning trace (OMN-18278).
+
+    True when a leading preamble resolved in front of an answer, or when the
+    text is declared reasoning with no answer resolved behind it. Either way
+    the raw provider text carries a trace that the deterministic
+    ``no_leading_reasoning_trace`` floor must see and refuse, even though
+    extraction can still hand the caller a clean deliverable.
+    """
+    return (
+        bool(segmentation.preamble)
+        or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    )
 
 
 def output_refusal_for_segmentation(
@@ -427,12 +449,15 @@ def output_refusal_for_segmentation(
 
 
 __all__: list[str] = [
+    "LEADING_REASONING_TRACE_CHECK_NAME",
+    "LEADING_REASONING_TRACE_GATE_FAILURE_REASON",
     "RESIDUAL_REASONING_TAG_CHECK_NAME",
     "RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON",
     "UNRESOLVED_PREAMBLE_CHECK_NAME",
     "UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON",
     "EnumReasoningBoundaryRule",
     "ModelReasoningSegmentation",
+    "has_leading_reasoning_trace",
     "output_refusal_for_segmentation",
     "segment_reasoning_preamble",
     "strip_leading_inline_reasoning",
