@@ -60,12 +60,12 @@ jobs:
 
     steps:
       - name: Checkout omnimarket
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
 
       - name: Checkout omnibase_infra (gate script only)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           repository: OmniNode-ai/omnibase_infra
           ref: v0.38.65
