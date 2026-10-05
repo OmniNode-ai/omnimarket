@@ -53,12 +53,13 @@ _TENANT = "omninode"
 
 
 # The budget surface only: the table (0019), its RLS (0041) and the applied-event
-# identity table (0056). The full node set also needs the pgcrypto extension,
+# identity table (0056) and its RLS (0057). The full node set also needs the pgcrypto extension,
 # which a stock native cluster may not ship and this surface does not use.
 _BUDGET_MIGRATIONS = (
     "0019_delegation_budget_state.sql",
     "0041_delegation_budget_state_rls_tenant_isolation.sql",
     "0056_delegation_budget_applied_events.sql",
+    "0057_delegation_budget_applied_events_rls.sql",
 )
 
 
@@ -73,6 +74,10 @@ async def _provisioned_runner(
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
         await admin.execute(_APP_DASHBOARD_ROLE_SQL)
+        await admin.execute(
+            "DO $$ BEGIN CREATE ROLE tenant_projection_writer NOLOGIN; "
+            "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        )
         for name in _BUDGET_MIGRATIONS:
             await admin.execute((_MIGRATIONS_DIR / name).read_text(encoding="utf-8"))
         pool = await asyncpg.create_pool(

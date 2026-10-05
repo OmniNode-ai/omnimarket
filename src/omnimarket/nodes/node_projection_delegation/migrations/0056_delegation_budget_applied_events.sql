@@ -15,6 +15,9 @@
 -- last_event_at. Both statements run in one transaction, so a failure rolls
 -- the identity back with the totals.
 --
+-- The row-level-security step is split into 0057 (fenced on arrival, like the
+-- other FORCE RLS steps); this file creates the table and grants the writer.
+--
 -- Idempotent CREATE so warm dev/stability volumes reconcile cleanly.
 
 CREATE TABLE IF NOT EXISTS delegation_budget_applied_events (
@@ -26,24 +29,16 @@ CREATE TABLE IF NOT EXISTS delegation_budget_applied_events (
     PRIMARY KEY (tenant_id, cost_tier_name, budget_period, correlation_id)
 );
 
-DO $$
+DO $require_tenant_projection_writer$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_dashboard') THEN
-    RAISE EXCEPTION
-      'app_dashboard role missing — apply omnibase_infra forward migration '
-      '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
-      'migration.';
-  END IF;
-END;
-$$;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'tenant_projection_writer'
+    ) THEN
+        RAISE EXCEPTION
+            'tenant_projection_writer role missing; apply flat migration 103 before node migrations';
+    END IF;
+END
+$require_tenant_projection_writer$;
 
-ALTER TABLE delegation_budget_applied_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE delegation_budget_applied_events FORCE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS tenant_isolation ON delegation_budget_applied_events;
-CREATE POLICY tenant_isolation ON delegation_budget_applied_events
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id', true))
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
-
-GRANT SELECT ON delegation_budget_applied_events TO app_dashboard;
+GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
+GRANT SELECT, INSERT, UPDATE ON delegation_budget_applied_events TO tenant_projection_writer;
