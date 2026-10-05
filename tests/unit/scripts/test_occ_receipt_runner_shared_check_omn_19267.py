@@ -386,6 +386,21 @@ def test_keys_without_a_base_receipt_are_not_grouped(tmp_path: Path) -> None:
         assert (_ticket_dir(occ_root) / item_id / "test_passes.yaml").is_file()
 
 
+@pytest.mark.unit
+def test_one_item_declaring_its_check_twice_is_one_key(tmp_path: Path) -> None:
+    item = _item(FIRST, SHARED_CHECK)
+    item["checks"].append({"check_type": "test_passes", "check_value": SHARED_CHECK})
+    occ_root = _occ_root(tmp_path, [item])
+    _write_base(occ_root, FIRST, SHARED_CHECK, status="PASS")
+
+    outcome = _run(occ_root, tmp_path)
+
+    assert outcome.executed == 1
+    assert outcome.write_refusals == ()
+    assert outcome.skipped_shared_check == ()
+    assert len(_records(occ_root, FIRST)) == 1
+
+
 def _argv(occ_root: Path, product_root: Path) -> list[str]:
     return [
         "--occ-root",

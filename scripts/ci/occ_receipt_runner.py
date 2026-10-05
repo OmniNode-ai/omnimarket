@@ -1138,7 +1138,15 @@ def run(
                 if has_base
                 else ("base", item_id, check_type)
             )
-            groups.setdefault(group_key, []).append(
+            group = groups.setdefault(group_key, [])
+            if any(
+                member.item_id == item_id and member.check_type == check_type
+                for member in group
+            ):
+                # One key declaring the same check twice is one key: S1 only
+                # compares DIFFERENT items, and one record answers both.
+                continue
+            group.append(
                 _Candidate(
                     item_id=item_id,
                     check_type=check_type,
