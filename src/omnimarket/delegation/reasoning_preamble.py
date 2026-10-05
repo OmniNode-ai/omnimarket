@@ -364,6 +364,13 @@ def _unresolved(content: str) -> ModelReasoningSegmentation:
 #: The gate check name recorded when no deliverable region resolved.
 UNRESOLVED_PREAMBLE_CHECK_NAME = "deliverable_region_resolved"
 
+#: A leading trace was detected in provider text or removed by the adapter.
+LEADING_REASONING_TRACE_CHECK_NAME = "no_leading_reasoning_trace"
+LEADING_REASONING_TRACE_GATE_FAILURE_REASON = (
+    "WEAK_OUTPUT: the provider response contains a leading reasoning trace; "
+    "extracting a complete answer does not satisfy the output quality floor"
+)
+
 #: A declared trace tag remains in the answer after leading segmentation.
 RESIDUAL_REASONING_TAG_CHECK_NAME = "no_residual_reasoning_tag"
 RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON = (
@@ -427,6 +434,8 @@ def output_refusal_for_segmentation(
 
 
 __all__: list[str] = [
+    "LEADING_REASONING_TRACE_CHECK_NAME",
+    "LEADING_REASONING_TRACE_GATE_FAILURE_REASON",
     "RESIDUAL_REASONING_TAG_CHECK_NAME",
     "RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON",
     "UNRESOLVED_PREAMBLE_CHECK_NAME",

@@ -98,6 +98,7 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
@@ -871,6 +872,7 @@ _CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
         TRUNCATION_CHECK_NAME,
         UNRESOLVED_PREAMBLE_CHECK_NAME,
         RESIDUAL_REASONING_TAG_CHECK_NAME,
+        LEADING_REASONING_TRACE_CHECK_NAME,
     }
 )
 
@@ -1101,6 +1103,13 @@ def _extract_effective_deliverable(
     workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
+    segmentation = segment_reasoning_preamble(response.content)
+    if (
+        segmentation.preamble
+        or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    ):
+        # Preserve the provider evidence for AC2 while extraction protects the caller.
+        workflow.gate_content_override = response.content
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
     # OMN-19525: the routing decision carries the shape the prompt declared.

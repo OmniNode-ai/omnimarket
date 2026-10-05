@@ -2941,7 +2941,14 @@ class LocalDelegationDispatchPort:
         output_refusal: ModelDelegationOutputRefusal | None = None
         # OMN-19434: the text the GATE judges. It is the deliverable, except in
         # one case below, where the caller still receives nothing.
-        gate_content: str | None = None
+        segmentation = segment_reasoning_preamble(raw_content)
+        gate_content: str | None = (
+            raw_content
+            if segmentation.preamble
+            or segmentation.boundary_rule
+            is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+            else None
+        )
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
             EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,
