@@ -1,4 +1,4 @@
-"""HandlerCreateTicket — the one ticket node: create, read and comment.
+"""HandlerCreateTicket — the one ticket node: create, read, comment and transition.
 
 OMN-20595: lab lanes have no Linear connector, so this node is how they file,
 read and comment on tickets.
@@ -10,6 +10,11 @@ read and comment on tickets.
   for which no guard is found, or which the guard refuses or cannot decide, is
   refused before any Linear call. Moving the guard into a shared package is an
   architecture change and is not done here.
+* ``transition`` moves a ticket to a named workflow state. The state name is
+  resolved to its Linear id for the ticket's own team, the installed guard
+  judges the exact update payload first (same refusal and no-guard behaviour as
+  a create), and the write goes through the adapter's ``update_issue``, whose
+  own Done-write gate still applies.
 * ``read`` and ``comment`` go through the omnibase_infra Linear project-tracker
   adapter (``AdapterLinearGraphQLProjectTracker``), constructed with the
   contract-declared key, so a missing key fails loud instead of reaching a stub.
@@ -102,6 +107,14 @@ query GetBacklogState($teamId: ID!) {
 }
 """
 
+_ISSUE_TEAM_STATE_QUERY = """
+query GetIssueTeamState($identifier: String!, $name: String!) {
+  issue(id: $identifier) {
+    team { states(filter: { name: { eq: $name } }) { nodes { id } } }
+  }
+}
+"""
+
 _VIEWER_QUERY = """
 query GetViewer {
   viewer { id }
@@ -187,6 +200,7 @@ class EnumTicketOperation(StrEnum):
     CREATE = "create"
     READ = "read"
     COMMENT = "comment"
+    TRANSITION = "transition"
 
 
 class ModelCreateTicketRequest(BaseModel):
@@ -200,7 +214,7 @@ class ModelCreateTicketRequest(BaseModel):
 
     operation: EnumTicketOperation = Field(
         default=EnumTicketOperation.CREATE,
-        description="create (the default), read or comment.",
+        description="create (the default), read, comment or transition.",
     )
     title: str = Field(default="", description="Ticket title (create).")
     description: str = Field(
@@ -211,6 +225,10 @@ class ModelCreateTicketRequest(BaseModel):
         default=None, description="Ticket identifier, e.g. OMN-1234 (read, comment)."
     )
     body: str = Field(default="", description="Comment body (comment).")
+    state: str = Field(
+        default="",
+        description="Target workflow state name, e.g. Canceled (transition).",
+    )
     repo: str | None = Field(default=None, description="Primary repo for scoping.")
     parent: str | None = Field(default=None, description="Parent ticket ID (OMN-XXXX).")
     blocked_by: list[str] = Field(
@@ -250,6 +268,8 @@ class ModelCreateTicketRequest(BaseModel):
     @model_validator(mode="after")
     def _fields_for_operation(self) -> ModelCreateTicketRequest:
         op = self.operation
+        if self.state.strip() and op is not EnumTicketOperation.TRANSITION:
+            raise ValueError("state is only valid with operation=transition")
         if op is EnumTicketOperation.CREATE:
             if not self.title.strip():
                 raise ValueError("operation=create requires a title")
@@ -261,6 +281,8 @@ class ModelCreateTicketRequest(BaseModel):
             )
         if op is EnumTicketOperation.COMMENT and not self.body.strip():
             raise ValueError("operation=comment requires a non-empty body")
+        if op is EnumTicketOperation.TRANSITION and not self.state.strip():
+            raise ValueError("operation=transition requires a non-empty state")
         return self
 
 
@@ -447,7 +469,16 @@ class TicketTrackerProtocol(Protocol):
 
     async def add_comment(self, issue_id: str, body: str) -> Any: ...
 
+    async def update_issue(self, issue_id: str, updates: dict[str, str]) -> Any: ...
+
     async def close(self, timeout_seconds: float = 30.0) -> None: ...
+
+
+@runtime_checkable
+class TicketStateResolverProtocol(Protocol):
+    """Resolves a workflow state name to its Linear id for one ticket's team."""
+
+    def resolve_state_id(self, ticket_id: str, state: str) -> str: ...
 
 
 def _run_coroutine[T](factory: Callable[[], Awaitable[T]]) -> T:
@@ -614,9 +645,22 @@ class LinearTicketHttpGateway:
         url = str(issue.get("url", ""))
         return identifier, url
 
+    def resolve_state_id(self, ticket_id: str, state: str) -> str:
+        """Return the id of workflow state ``state`` on ``ticket_id``'s own team."""
+        data = self._post(
+            _ISSUE_TEAM_STATE_QUERY, {"identifier": ticket_id, "name": state}
+        )
+        issue = data.get("data", {}).get("issue") or {}
+        nodes = (issue.get("team") or {}).get("states", {}).get("nodes", [])
+        if not nodes:
+            raise RuntimeError(
+                f"Linear ticket {ticket_id!r} has no workflow state named {state!r}"
+            )
+        return str(nodes[0]["id"])
+
 
 class HandlerCreateTicket:
-    """The one ticket handler: create, read and comment (OMN-20595).
+    """The one ticket handler: create, read, comment and transition (OMN-20595).
 
     Create validates input, runs the installed ticket-creation guard on the
     caller's exact payload, creates the Linear ticket with the description
@@ -637,11 +681,13 @@ class HandlerCreateTicket:
         pillar_owners_path: Path | None = None,
         tracker: TicketTrackerProtocol | None = None,
         ticket_guard: TicketGuardProtocol | None = None,
+        state_resolver: TicketStateResolverProtocol | None = None,
     ) -> None:
         self._injectable_client = linear_client
         self._pillar_owners_path = pillar_owners_path
         self._injectable_tracker = tracker
         self._injectable_guard = ticket_guard
+        self._injectable_state_resolver = state_resolver
 
     def _linear_api_key(self) -> str:
         # Ref-name sourced from contract (not a bare literal).
@@ -665,6 +711,11 @@ class HandlerCreateTicket:
             return self._injectable_tracker
         return AdapterLinearGraphQLProjectTracker(api_key=self._linear_api_key())
 
+    def _get_state_resolver(self) -> TicketStateResolverProtocol:
+        if self._injectable_state_resolver is not None:
+            return self._injectable_state_resolver
+        return LinearTicketHttpGateway(self._linear_api_key())
+
     def _get_guard(self) -> TicketGuardProtocol:
         if self._injectable_guard is not None:
             return self._injectable_guard
@@ -676,7 +727,56 @@ class HandlerCreateTicket:
             return self._read(request)
         if request.operation is EnumTicketOperation.COMMENT:
             return self._comment(request)
+        if request.operation is EnumTicketOperation.TRANSITION:
+            return self._transition(request)
         return self._create(request)
+
+    def _transition(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
+        ticket_id = str(request.ticket_id)
+        state = request.state.strip()
+        # The guard judges the exact update payload filed: the ticket id and the
+        # target state, nothing else.
+        decision = self._get_guard().check({"id": ticket_id, "state": state})
+        if not decision.admitted:
+            raise TicketGuardRefusedError(
+                "node_create_ticket: the ticket-creation guard refused this "
+                f"transition ({decision.guard_path}):\n{decision.reason}"
+            )
+        if request.dry_run:
+            return ModelCreateTicketResult(
+                status="dry_run",
+                operation=EnumTicketOperation.TRANSITION,
+                ticket_id=ticket_id,
+                team=request.team,
+                ticket_status=state,
+                guard_path=decision.guard_path,
+                dry_run=True,
+            )
+        state_id = self._get_state_resolver().resolve_state_id(ticket_id, state)
+        tracker = self._get_tracker()
+
+        async def _move() -> Any:
+            try:
+                return await tracker.update_issue(ticket_id, {"stateId": state_id})
+            finally:
+                await tracker.close()
+
+        issue = _run_coroutine(_move)
+        new_state = str(getattr(issue, "state", "") or "")
+        if not new_state:
+            raise RuntimeError(
+                f"node_create_ticket: Linear reported no state for {ticket_id} after "
+                "the update; refusing to report status='transitioned'."
+            )
+        return ModelCreateTicketResult(
+            status="transitioned",
+            operation=EnumTicketOperation.TRANSITION,
+            ticket_id=ticket_id,
+            ticket_url=str(getattr(issue, "url", "") or ""),
+            team=request.team,
+            ticket_status=new_state,
+            guard_path=decision.guard_path,
+        )
 
     def _read(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
         ticket_id = str(request.ticket_id)
@@ -841,6 +941,7 @@ __all__: list[str] = [
     "TicketGuardProtocol",
     "TicketGuardRefusedError",
     "TicketGuardUnavailableError",
+    "TicketStateResolverProtocol",
     "TicketTrackerProtocol",
     "locate_ticket_guard",
 ]

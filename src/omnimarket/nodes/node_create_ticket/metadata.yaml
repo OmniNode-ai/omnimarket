@@ -1,6 +1,6 @@
 name: node_create_ticket
 version: "1.0.0"
-description: "Create, read or comment on a Linear ticket; a create passes the installed ticket-creation guard first"
+description: "Create, read, comment or transition a Linear ticket; a create passes the installed ticket-creation guard first"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -18,7 +18,7 @@ dependencies:
   - "omnibase-infra>=0.38.65"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["planning", "linear", "ticket", "create", "read", "comment"]
+tags: ["planning", "linear", "ticket", "create", "read", "comment", "transition"]
 pack: "planning"
 display_name: "Create Ticket"
 node_role: "effect"
