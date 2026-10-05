@@ -27,7 +27,7 @@ import datetime as dt
 import uuid
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
     "ModelCloudDelegationAck",
@@ -149,6 +149,11 @@ class ModelCloudDelegationReceipt(BaseModel):
     # other from tenant configuration.
     route: str | None = None
     provider: str | None = None
+    # The receipt's public name for the effect's provider stamp. Older gateways
+    # send that same fact as provider; neither spelling is inferred from a model.
+    route_provider: str | None = Field(
+        default=None, validation_alias=AliasChoices("route_provider", "provider")
+    )
     result_content: str | None
     # OMN-18196 / OMN-18079: the provenance of the call that answered.
     #
@@ -197,7 +202,14 @@ class ModelCloudDelegationReceipt(BaseModel):
         if (self.route is None) != (self.provider is None):
             msg = "ModelCloudDelegationReceipt.route and provider must be paired"
             raise ValueError(msg)
-        for field_name in ("route", "provider"):
+        if (
+            self.route_provider is not None
+            and self.provider is not None
+            and self.route_provider != self.provider
+        ):
+            msg = "ModelCloudDelegationReceipt.route_provider and provider must agree"
+            raise ValueError(msg)
+        for field_name in ("route", "provider", "route_provider"):
             value = getattr(self, field_name)
             if value is not None and not value.strip():
                 msg = f"ModelCloudDelegationReceipt.{field_name} must be non-blank"
