@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18967"
+title: "Prose task classes suppress thinking at the provider boundary"
+summary: "Adds eight prose task-class cases to tests/unit/inference/test_adapter_inference_bridge.py. Each selects local-qwen-prose-no-think and asserts the actual POST carries chat_template_kwargs.enable_thinking=false and /no_think. The production fix is already on dev; this change is test-only."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-prose-classes-suppress-thinking-at-provider-boundary"
+    statement: "Prose task classes suppress thinking at the provider boundary. The criterion below is bound to the bridge test file that proves the POST body carries the no-think options."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every prose task class sends enable_thinking=false and /no_think in the provider POST and preserves the response -- falsifier: uv run pytest tests/unit/inference/test_adapter_inference_bridge.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The bridge tests assert the provider POST for each prose task class."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/inference/test_adapter_inference_bridge.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18967-ac1-prose-no-think-at-provider-boundary"
+    description: "AC1 hosted probe. The bridge tests assert the provider POST for each prose task class."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_adapter_inference_bridge.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
