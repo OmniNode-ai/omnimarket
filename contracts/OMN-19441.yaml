@@ -82,6 +82,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py::test_missing_slot_verdict_keeps_attempt_evidence_without_publishing -q"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k test_missing_slot_verdict_keeps_attempt_evidence_without_publishing"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
