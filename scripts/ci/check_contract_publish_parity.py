@@ -17,7 +17,8 @@ Rule
 For every ``src/omnimarket/nodes/*/contract.yaml``: each declared publish topic
 that is NOT the contract's ``terminal_event`` requires evidence of a publish or
 emit call somewhere in that node package's Python. ``terminal_event`` is exempt
-because the runtime publishes it on the handler's behalf.
+because the runtime publishes it on the handler's behalf. Reducer typed returns
+registered in published_events are also published by the runtime.
 
 The gate is a burn-down ratchet against
 ``scripts/ci/contract_publish_parity_baseline.py``: the frozen set may only
@@ -31,6 +32,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import re
 import sys
@@ -85,6 +87,10 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         node_dir = contract_path.parent
         if _has_publish_evidence(node_dir):
             continue
+        runtime_topics = _runtime_published_return_topics(node_dir, raw)
+        candidates = [topic for topic in candidates if topic not in runtime_topics]
+        if not candidates:
+            continue
         findings.append(
             ModelPublishParityFinding(
                 node=node_dir.name,
@@ -92,6 +98,74 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             )
         )
     return findings
+
+
+def _runtime_published_return_topics(
+    node_dir: Path, contract: dict[str, object]
+) -> set[str]:
+    """Recognize routed reducer models the runtime publishes via published_events.
+
+    A declaration alone is insufficient: the routed handle must have a typed
+    request and return annotation and construct that declared event model.
+    """
+    if not str(contract.get("node_type", "")).upper().startswith("REDUCER"):
+        return set()
+    published = contract.get("published_events")
+    routing = contract.get("handler_routing")
+    if not isinstance(published, list) or not isinstance(routing, dict):
+        return set()
+    handlers = routing.get("handlers")
+    if not isinstance(handlers, list):
+        return set()
+    event_topics = {
+        str(entry["event_type"]): str(entry["topic"])
+        for entry in published
+        if isinstance(entry, dict) and entry.get("event_type") and entry.get("topic")
+    }
+    topics: set[str] = set()
+    for entry in handlers:
+        ref = entry.get("handler") if isinstance(entry, dict) else None
+        if not isinstance(ref, dict):
+            continue
+        parts = str(ref.get("module", "")).split(".")
+        if node_dir.name not in parts:
+            continue
+        relative = parts[parts.index(node_dir.name) + 1 :]
+        path = node_dir.joinpath(*relative).with_suffix(".py")
+        if not path.is_file():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for cls in tree.body:
+            if not isinstance(cls, ast.ClassDef) or cls.name != ref.get("name"):
+                continue
+            for method in cls.body:
+                if (
+                    not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    or method.name != "handle"
+                ):
+                    continue
+                if method.returns is None or len(method.args.args) != 2:
+                    continue
+                annotation = method.args.args[1].annotation
+                if not isinstance(annotation, ast.Name) or not annotation.id.startswith(
+                    "Model"
+                ):
+                    continue
+                returned_names = {
+                    name.id
+                    for name in ast.walk(method.returns)
+                    if isinstance(name, ast.Name)
+                }
+                constructed_names = {
+                    call.func.id
+                    for call in ast.walk(method)
+                    if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                }
+                for name in returned_names & constructed_names:
+                    topic = event_topics.get(name.removeprefix("Model"))
+                    if topic is not None:
+                        topics.add(topic)
+    return topics
 
 
 def _has_publish_evidence(node_dir: Path) -> bool:

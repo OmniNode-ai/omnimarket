@@ -171,3 +171,6 @@ PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-
 PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
+
+PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
+PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics

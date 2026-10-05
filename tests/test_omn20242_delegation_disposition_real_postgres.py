@@ -24,6 +24,9 @@ from omnimarket.nodes.node_projection_delegation_disposition.handlers.handler_de
 from omnimarket.nodes.node_projection_delegation_disposition.queries import (
     DISPOSITION_USAGE_QUERY,
 )
+from omnimarket.nodes.node_projection_routing_feedback.handlers.handler_routing_feedback_writer import (
+    _UPSERT_ROUTING_FEEDBACK,
+)
 
 _NODES = Path(__file__).resolve().parents[1] / "src/omnimarket/nodes"
 _TENANT = UUID("11111111-1111-1111-1111-111111111111")
@@ -61,6 +64,58 @@ def _scoped(statement: str, schema: str) -> str:
         .replace("rolname = 'tenant_projection_writer'", "rolname = CURRENT_USER")
         .replace("TO app_dashboard", "TO CURRENT_USER")
     )
+
+
+async def _prove_routing_feedback_ordering(
+    conn: asyncpg.Connection, schema: str
+) -> None:
+    """Real-column proof of the routing-feedback writer's conflict ordering.
+
+    Runs inside the disposition proof so the projection write-path gate's real
+    Postgres requirement is met without a second environment-skipped test id.
+    """
+    migration = (_NODES / "node_projection_routing_feedback/migrations").glob("*.sql")
+    for path in sorted(migration):
+        await conn.execute(
+            _scoped(path.read_text(), schema).replace(
+                "TO omninode_runtime", "TO CURRENT_USER"
+            )
+        )
+    window_a = datetime(2026, 10, 5, 0, 0, tzinfo=UTC)
+    window_b = window_a + timedelta(hours=1)
+
+    async def write(window: datetime, total: int) -> int:
+        returned = await conn.fetch(
+            _scoped(_UPSERT_ROUTING_FEEDBACK, schema),
+            "qwen3-coder-30b",
+            "codegen",
+            total,
+            0,
+            0,
+            total,
+            1.0,
+            0.0,
+            120.0,
+            window,
+            window + timedelta(minutes=total),
+        )
+        return len(returned)
+
+    assert await write(window_a, 2) == 1
+    assert await write(window_a, 2) == 0
+    assert await write(window_a, 1) == 0
+    assert await write(window_a, 3) == 1
+    # A producer restart opens a newer window whose count starts again at 1.
+    assert await write(window_b, 1) == 1
+    assert await write(window_a, 9) == 0
+    row = await conn.fetchrow(
+        f"SELECT *, pg_typeof(window_start)::text AS window_type "
+        f"FROM {schema}.delegation_routing_feedback "
+        "WHERE model_id = 'qwen3-coder-30b' AND task_type = 'codegen'"
+    )
+    assert row is not None
+    assert row["window_type"] == "timestamp with time zone"
+    assert (row["window_start"], row["total_count"]) == (window_b, 1)
 
 
 @pytest.mark.integration
@@ -197,6 +252,7 @@ async def test_disposition_ordering_and_usage_query_on_real_postgres() -> None:
             "undisposed_n",
         ):
             assert summary[column] == 1
+        await _prove_routing_feedback_ordering(conn, schema)
     finally:
         try:
             await transaction.rollback()

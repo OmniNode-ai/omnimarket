@@ -181,6 +181,12 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation_disposition/migrations/0000_create_delegation_dispositions.sql
       access: read_write
       role: delegation_dispositions
+    - name: delegation_routing_feedback
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_routing_feedback/migrations/0000_create_delegation_routing_feedback.sql
+      access: read_write
+      role: routing_feedback
     # OMN-19790: tenant-scoped labels, corrected by newer observations.
     - name: delegation_eval_items
       database_ref: application
