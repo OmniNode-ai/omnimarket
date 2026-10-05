@@ -26,12 +26,10 @@ repos:
       - id: check-receipt-honesty
         require_serial: true
       # OMN-13026: bare AsyncMock/MagicMock without spec=/spec_set= on
-      # EventBus/transport/kafka surfaces. Ratchet: existing violations frozen
-      # in validation/transport_mock_baseline.yaml (101 violations, 26 files).
-      # New violations blocked. Drain tracked by OMN-13026 per-site tickets.
+      # EventBus/transport/kafka surfaces. The baseline drained to empty and
+      # OMN-20558 deleted it: any violation is blocked. No baseline argument.
       - id: transport-mock-lint
         require_serial: true
-        args: [--baseline, validation/transport_mock_baseline.yaml]
 
   # FSM YAML-vs-handler drift guard (OMN-13735). Consumes the canonical validator
   # exported by omnibase_core (check-fsm-handler-drift). Reconciles each reducer
@@ -885,15 +883,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-      # OMN-14762 (F-19-A): GitHub Actions pin ratchet. Every third-party `uses:`
-      # must be pinned to a 40-char SHA; current unpinned set frozen in
-      # scripts/ci/action_pin_baseline.txt (burn-down only), NEW unpinned fails
-      # closed. SYNC with ci.yml step 'GitHub Actions pin ratchet'. Fast, stdlib-only.
+      # OMN-14762 (F-19-A): GitHub Actions pin check. Every third-party `uses:`
+      # must be pinned to a 40-char SHA. OMN-20558 emptied and deleted the
+      # baseline: any unpinned ref fails. SYNC with ci.yml step 'GitHub Actions
+      # pin ratchet'. Fast, stdlib-only.
       - id: check-action-pins
         name: GitHub Actions pin ratchet (OMN-14762)
         language: system
         entry: uv run python scripts/ci/check_action_pins.py
-        files: ^(\.github/workflows/.*\.(yml|yaml)|scripts/ci/action_pin_baseline\.txt|scripts/ci/check_action_pins\.py)$
+        files: ^(\.github/workflows/.*\.(yml|yaml)|scripts/ci/check_action_pins\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1009,17 +1007,14 @@ repos:
       # Enforces runtime_profiles_missing (OMN-9886) + runtime_profile_unregistered
       # (declared profile not in canonical REGISTERED_RUNTIME_PROFILES) +
       # runtime_profile_no_consumer_lane (subscribing REDUCER/EFFECT names no
-      # consumer-attached profile). Pre-existing violators are frozen in
-      # validation/runtime_profiles_allowlist.yaml (drain tracked by OMN-12982).
-      # Blocks NEW orphans. Requires the omnibase_core pin to include OMN-12957's
-      # validator (new rules).
+      # consumer-attached profile). The allowlist drained to empty (OMN-12982)
+      # and OMN-20558 deleted it: ANY violating contract is blocked. Requires the
+      # omnibase_core pin to include OMN-12957's validator (new rules).
       #
       # OMN-12955: invoke via scripts/ci/run_runtime_profiles_validator.py so the
-      # repo-local allowlist (validation/runtime_profiles_allowlist.yaml) is loaded
-      # the SAME way as the required CI gate (validator-runtime-profiles.yml). The
-      # bare module entry resolves its allowlist from the omnibase_core *package*
-      # dir, not this repo, so it spuriously flagged every frozen contract locally
-      # while CI passed.
+      # hook runs the SAME invocation as the required CI gate
+      # (validator-runtime-profiles.yml): an explicitly empty allowlist, with no
+      # repo or core allowlist discovery.
       - id: onex-validate-runtime-profiles
         name: Validate runtime_profiles on node contracts (OMN-12957)
         language: system
