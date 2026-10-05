@@ -96,8 +96,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 32,
-    "table": 103,
+    "sequence": 33,
+    "table": 105,
     "view": 10
   },
   "relations": [
@@ -1499,6 +1499,50 @@
       "writers": [
         "node_projection_intent_classification",
         "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_lab_job"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for lab_job_state",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [
+        "lab_job_state"
+      ],
+      "dependent_objects": [
+        "table:lab_job_state"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_lab_job",
+      "name": "lab_job_state_projection_cursor_seq",
+      "owner_declaration": "node_projection_lab_job",
+      "partitioning": [],
+      "producer": "node_projection_lab_job",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_lab_job"
       ]
     },
     {
@@ -4861,6 +4905,130 @@
       "writers": [
         "node_projection_lab_container_memory",
         "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_lab_job"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "ck_lab_job_state_attempt_positive",
+        "ck_lab_job_state_episode_positive",
+        "ck_lab_job_state_seq_positive",
+        "ck_lab_job_state_state",
+        "pk_lab_job_state"
+      ],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:lab_job_state_projection_cursor_seq"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_lab_job_state_projection_cursor",
+        "idx_lab_job_state_state"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (job_id)",
+        "UNIQUE INDEX idx_lab_job_state_projection_cursor"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_lab_job",
+      "name": "lab_job_state",
+      "owner_declaration": "node_projection_lab_job",
+      "partitioning": [],
+      "producer": "node_projection_lab_job",
+      "readers": [
+        "node_projection_lab_job"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_lab_job"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_lab_job"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "ck_lab_job_transitions_attempt_positive",
+        "ck_lab_job_transitions_from_state",
+        "ck_lab_job_transitions_seq_positive",
+        "ck_lab_job_transitions_to_state",
+        "pk_lab_job_transitions"
+      ],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_lab_job_transitions_at"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (job_id, seq)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_lab_job",
+      "name": "lab_job_transitions",
+      "owner_declaration": "node_projection_lab_job",
+      "partitioning": [],
+      "producer": "node_projection_lab_job",
+      "readers": [
+        "node_projection_lab_job"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_lab_job"
       ]
     },
     {
@@ -8785,8 +8953,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 94,
-    "source_declared_tables": 103
+    "source_created_tables": 96,
+    "source_declared_tables": 105
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8802,7 +8970,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 94 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 96 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
