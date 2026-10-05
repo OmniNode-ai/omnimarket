@@ -73,6 +73,7 @@ from omnimarket.delegation.acceptance_directives import (
     acceptance_rule_names,
     compose_user_prompt_with_output_directives,
     render_acceptance_directives,
+    state_prompt_for_task_class,
 )
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
@@ -149,6 +150,10 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    current_dispatch_progress,
+    dispatch_stage,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -796,6 +801,9 @@ async def _run_effect_handler_with_killable_timeout(
         args=(effect_handler, request, result_queue),
         daemon=True,
     )
+    progress = current_dispatch_progress.get()
+    if progress is not None:
+        progress.stage = "effect_boot"
     boot_started = time.monotonic()
     process.start()
 
@@ -819,6 +827,8 @@ async def _run_effect_handler_with_killable_timeout(
                         timeout_seconds,
                     )
                     child_ready = True
+                    if progress is not None:
+                        progress.stage = "inference"
                     deadline = time.monotonic() + timeout_seconds
                     continue
 
@@ -2726,8 +2736,14 @@ class LocalDelegationDispatchPort:
         dod_deterministic_for_prompt, dod_heuristic_for_prompt = (
             resolve_task_class_dod_checks(task_type, prompt=prompt)
         )
+        # OMN-19432: a class that declares ``prompt_shape: facts_first`` states
+        # the facts computed from the prompt before the prompt, which follows
+        # unchanged. The gate still resolves the DoD from ``prompt`` itself,
+        # and grades against ``stated_prompt`` so a count or line number the
+        # model was told is grounded.
+        stated_prompt = state_prompt_for_task_class(prompt=prompt, task_class=task_type)
         outbound_user_prompt = compose_user_prompt_with_output_directives(
-            prompt=prompt,
+            prompt=stated_prompt,
             acceptance_directives=(
                 render_acceptance_directives(
                     acceptance_rule_names(
@@ -2864,14 +2880,15 @@ class LocalDelegationDispatchPort:
         # worker can be terminated so ``asyncio.run`` has no orphaned thread to join.
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
         try:
-            if self._effect_process_boundary:
-                result = await _run_effect_handler_with_killable_timeout(
-                    self._effect_handler,
-                    call_request,
-                    timeout_seconds=dispatch_deadline_seconds,
-                )
-            else:
-                result = self._effect_handler(call_request)
+            with dispatch_stage("inference"):
+                if self._effect_process_boundary:
+                    result = await _run_effect_handler_with_killable_timeout(
+                        self._effect_handler,
+                        call_request,
+                        timeout_seconds=dispatch_deadline_seconds,
+                    )
+                else:
+                    result = self._effect_handler(call_request)
         except TimeoutError:
             failure_message = (
                 f"delegation call did not return within "
@@ -2953,45 +2970,47 @@ class LocalDelegationDispatchPort:
         #    refusal or empty answer returns success here but must NOT be recorded
         #    as a gate PASS. Resolve the task-class DoD checks from the routing
         #    authority and evaluate the deterministic verdict and graded score.
-        gate_result = await self._evaluate_quality_gate(
-            correlation_id=correlation_id,
-            task_type=task_type,
-            prompt=prompt,
-            content=gate_content
-            if gate_content is not None
-            else (result.content or ""),
-            quality_contract_mode=quality_contract_mode,
-            acceptance_criteria=acceptance_criteria,
-            # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw
-            # one. The gate resolves a task-class default of its own when
-            # handed None; passing the resolved value makes that a no-op and
-            # removes the second, independent resolution that could otherwise
-            # grade against a schema the model was not shown.
-            response_contract=effective_response_contract,
-            deliverable_evidence=ModelDelegationDeliverableEvidence(
-                output_shape=deliverable_contract.output_shape,
-                contract_sha256=canonical_deliverable_contract_sha256(
-                    deliverable_contract
+        with dispatch_stage("quality_gate"):
+            gate_result = await self._evaluate_quality_gate(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=prompt,
+                grounding_source=stated_prompt,
+                content=gate_content
+                if gate_content is not None
+                else (result.content or ""),
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw
+                # one. The gate resolves a task-class default of its own when
+                # handed None; passing the resolved value makes that a no-op and
+                # removes the second, independent resolution that could otherwise
+                # grade against a schema the model was not shown.
+                response_contract=effective_response_contract,
+                deliverable_evidence=ModelDelegationDeliverableEvidence(
+                    output_shape=deliverable_contract.output_shape,
+                    contract_sha256=canonical_deliverable_contract_sha256(
+                        deliverable_contract
+                    ),
+                    deliverable_sha256=hashlib.sha256(
+                        (result.content or "").encode()
+                    ).hexdigest(),
+                    deliverable_chars=len(result.content or ""),
+                    preamble_chars=extraction.preamble_chars,
+                    raw_chars=extraction.raw_chars,
+                    deliverable_start=extraction.deliverable_start,
+                    deliverable_end=extraction.deliverable_end,
                 ),
-                deliverable_sha256=hashlib.sha256(
-                    (result.content or "").encode()
-                ).hexdigest(),
-                deliverable_chars=len(result.content or ""),
-                preamble_chars=extraction.preamble_chars,
-                raw_chars=extraction.raw_chars,
-                deliverable_start=extraction.deliverable_start,
-                deliverable_end=extraction.deliverable_end,
-            ),
-            # OMN-18278: what the PROVIDER said about this response, not what
-            # the text says about itself. A response cut off by the output-token
-            # budget stopped mid-thought, so the model never emitted the
-            # terminator OMN-18379's segmenter cuts at and the scratchpad is the
-            # whole response — which every content heuristic reads as ordinary
-            # prose. The gate vetoes on this signal; without it the gate has no
-            # non-heuristic way to tell the two apart.
-            finish_reason=result.finish_reason,
-            reasoning_stripped_chars=result.reasoning_stripped_chars,
-        )
+                # OMN-18278: what the PROVIDER said about this response, not what
+                # the text says about itself. A response cut off by the output-token
+                # budget stopped mid-thought, so the model never emitted the
+                # terminator OMN-18379's segmenter cuts at and the scratchpad is the
+                # whole response — which every content heuristic reads as ordinary
+                # prose. The gate vetoes on this signal; without it the gate has no
+                # non-heuristic way to tell the two apart.
+                finish_reason=result.finish_reason,
+                reasoning_stripped_chars=result.reasoning_stripped_chars,
+            )
         from omnimarket.delegation.deliverable_extraction import (
             gate_result_with_output_refusal,
         )
@@ -3080,6 +3099,7 @@ class LocalDelegationDispatchPort:
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
+        grounding_source: str | None = None,
     ) -> ModelQualityGateResult:
         """Run the canonical deterministic quality-gate reducer.
 
@@ -3125,6 +3145,11 @@ class LocalDelegationDispatchPort:
             deliverable_evidence=deliverable_evidence,
         )
 
+        # OMN-19432: ``grounding_source`` is the prompt as it was stated to the
+        # model, facts included, when the task class states facts first. The
+        # facts are computed from the prompt, so a count or line number the
+        # model was given is grounded, and an identifier in them already occurs
+        # in the prompt. ``None`` grounds on ``prompt`` as before.
         # OMN-18297: the prompt is the grounding source. The gate's declared
         # identifier classes are checked against it, so a response citing a
         # pull request, sha or run id that appears nowhere in its own input
@@ -3134,7 +3159,9 @@ class LocalDelegationDispatchPort:
         return evaluate_quality_gate(
             gate_input,
             response_contract=effective_response_contract,
-            grounding_source=prompt,
+            grounding_source=grounding_source
+            if grounding_source is not None
+            else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
         )

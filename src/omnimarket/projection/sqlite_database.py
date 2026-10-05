@@ -42,16 +42,90 @@ _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
 )
 
-# Base schema mirrors the deployed delegation_events projection target so a
-# locally created DB matches the columns the projection handler writes. The
-# correlation_id UNIQUE constraint backs the UPSERT dedup.
+# The correlation_id UNIQUE constraint backs the UPSERT dedup. ``id`` is the
+# rowid alias, so a new row gets an integer where the Postgres table's serial
+# gives one.
 _DELEGATION_EVENTS_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_events (
+    id                      INTEGER PRIMARY KEY,
     correlation_id          TEXT    NOT NULL UNIQUE,
     -- OMN-19448: nullable terminal stop reason and truncation evidence.
     finish_reason           TEXT,
     truncated               INTEGER
 )
+"""
+
+# OMN-19976: every column a contract-declared exposure over delegation_events
+# reads. The read node refuses an exposure whose declared column the relation
+# lacks (projection_column_missing), and the writer adds a column only when a
+# row carries it, so a column the local writer never sends would never exist
+# and the local dashboard could not serve Runs. They are added nullable on
+# connect; a value the writer has no field for reads as NULL, as on Postgres.
+# tests/unit/projection/test_sqlite_delegation_events_declared_columns_omn19976.py
+# fails when an exposure declares a column missing from this set.
+_DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
+    "actual_score",
+    "answering_backend",
+    "authority_source",
+    "backend_id",
+    "compliance_attempts",
+    "context_pack_hash",
+    "cost_savings_usd",
+    "cost_tier_name",
+    "cost_tier_type",
+    "cost_usd",
+    "created_at",
+    "data_source",
+    "delegated_by",
+    "delegated_to",
+    "delegation_latency_ms",
+    "escalation_count",
+    "finish_reason",
+    "host",
+    "latency_ms",
+    "model_name",
+    "override_within_bounds",
+    "pricing_manifest_version",
+    "prompt_text",
+    "quality_gate_detail",
+    "quality_gate_passed",
+    "quality_gates_checked",
+    "quality_gates_failed",
+    "request_override_applied",
+    "required_bar",
+    "response_text",
+    "routed_model",
+    "score_source",
+    "session_id",
+    "task_type",
+    "tenant_id",
+    "timestamp",
+    "tokens_input",
+    "tokens_output",
+    "tokens_to_compliance",
+    "trace_id",
+    "truncated",
+    "writer_identity",
+    "written_at",
+)
+
+# A store created before ``id`` existed cannot gain a rowid alias without a
+# table rewrite, so it gets a plain ``id`` column instead, filled from the
+# row's rowid: back-filled once, and on every insert by this trigger. Nothing
+# here VACUUMs the store, which is the one operation that renumbers the rowids
+# of a table without an alias; should someone run it by hand, the unique index
+# makes a colliding insert fail loudly rather than store a duplicate id.
+_DELEGATION_EVENTS_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_delegation_events_id
+    ON delegation_events (id)
+"""
+_DELEGATION_EVENTS_ID_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS delegation_events_assign_id
+AFTER INSERT ON delegation_events
+WHEN NEW.id IS NULL
+BEGIN
+    UPDATE delegation_events SET id = NEW.rowid WHERE rowid = NEW.rowid;
+END
 """
 
 # Columns mirror LLM_CALL_METRICS_COLUMNS; input_hash backs the canonical
@@ -304,6 +378,7 @@ class SqliteDatabaseAdapter:
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
+        self._reconcile_delegation_events(conn)
         self._reconcile_legacy_llm_call_metrics(conn)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
@@ -319,12 +394,63 @@ class SqliteDatabaseAdapter:
         self._apply_usage_source_vocabulary_step(conn, self._db_path)
         return conn
 
+    @staticmethod
+    def _delegation_events_reconciled(conn: sqlite3.Connection) -> bool:
+        rows = conn.execute("PRAGMA table_info(delegation_events)").fetchall()
+        if not set(_DELEGATION_EVENTS_DECLARED_COLUMNS) <= {
+            str(row["name"]) for row in rows
+        }:
+            return False
+        if any(row["name"] == "id" and row["pk"] for row in rows):
+            return True
+        trigger = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'trigger' "
+            "AND name = 'delegation_events_assign_id'"
+        ).fetchone()
+        return trigger is not None
+
+    @classmethod
+    def _reconcile_delegation_events(cls, conn: sqlite3.Connection) -> None:
+        if cls._delegation_events_reconciled(conn):
+            return
+        # The first opens of a fresh store arrive together (records run in
+        # flight in one process), so the column check and the ALTERs run inside
+        # one write transaction: two connections that both saw a column missing
+        # would otherwise both add it, and the second dies on a duplicate name.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = conn.execute("PRAGMA table_info(delegation_events)").fetchall()
+            existing = {str(row["name"]) for row in rows}
+            for column in _DELEGATION_EVENTS_DECLARED_COLUMNS:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE delegation_events ADD COLUMN {column}")
+            if not any(row["name"] == "id" and row["pk"] for row in rows):
+                if "id" not in existing:
+                    conn.execute("ALTER TABLE delegation_events ADD COLUMN id INTEGER")
+                conn.execute("UPDATE delegation_events SET id = rowid WHERE id IS NULL")
+                conn.execute(_DELEGATION_EVENTS_ID_INDEX)
+                conn.execute(_DELEGATION_EVENTS_ID_TRIGGER)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
     @classmethod
     def _reconcile_legacy_llm_call_metrics(cls, conn: sqlite3.Connection) -> None:
         columns = cls._existing_columns(conn, "llm_call_metrics")
         if "token_provenance" in columns and "correlation_id" not in columns:
             conn.execute(
                 f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
+            )
+        elif "usage_source" in columns:
+            # OMN-19968: rows written before the shared vocabulary move onto it
+            # (EnumUsageSource; omnibase_infra migration 077). Idempotent: it
+            # touches only rows still holding a retired label.
+            conn.execute(
+                "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+                "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+                "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+                "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
             )
 
     @staticmethod

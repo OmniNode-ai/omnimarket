@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_facts_first_prompt_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic facts-first statement of a delegated task
+  (OMN-19432). Given a prompt and the declared facts_first_prompt policy of the
+  task-class contract, returns the prompt with the facts a script can compute
+  from it stated first: its constraints as a numbered list copied from the
+  task, exact counts and numeric limits, every identifier it contains, numbered
+  code and diff lines, and a mark where the input is cut. The task follows
+  unchanged and nothing the task did not state is added. A prompt with nothing
+  to state is returned byte-identical. The handler reads no files and mutates
+  no state; which task classes send this shape is declared by prompt_shape in
+  task_class_contracts.v1.yaml and resolved by the caller.
+input_model:
+  name: ModelFactsFirstPromptRequest
+  module: omnimarket.nodes.node_facts_first_prompt_compute.models.model_facts_first_prompt_request
+output_model:
+  name: ModelFactsFirstPromptResult
+  module: omnimarket.nodes.node_facts_first_prompt_compute.models.model_facts_first_prompt_result
+handler:
+  module: omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_first_prompt
+  class: HandlerFactsFirstPrompt
+  input_model: omnimarket.nodes.node_facts_first_prompt_compute.models.model_facts_first_prompt_request.ModelFactsFirstPromptRequest
+  output_model: omnimarket.nodes.node_facts_first_prompt_compute.models.model_facts_first_prompt_result.ModelFactsFirstPromptResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_first_prompt:HandlerFactsFirstPrompt
+  handlers:
+    - operation: state_facts_first
+      handler:
+        name: HandlerFactsFirstPrompt
+        module: omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_first_prompt
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  prompt: {type: str, required: true}
+  policy: {type: object, required: true}
+outputs:
+  prompt: {type: str}
+  facts_stated: {type: bool}
+terminal_event: onex.evt.omnimarket.facts-first-prompt-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.facts-first-prompt-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.facts-first-prompt-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.facts-first-prompt-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.facts-first-prompt-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Facts-first prompt compute
+  author: OmniNode Team
+  created: "2026-10-04"
+  related_tickets: [OMN-19432]

@@ -285,6 +285,35 @@ def _declared_criteria(contract: Mapping[str, Any]) -> list[tuple[str, str]]:
     return found
 
 
+def _declared_item_ids(dod_items: Sequence[Any]) -> set[str]:
+    return {
+        item["id"]
+        for item in dod_items
+        if isinstance(item, Mapping) and isinstance(item.get("id"), str)
+    }
+
+
+def _unique_derived_id(label: str, taken: set[str]) -> str:
+    """OMN-19267: a derived id no declared item carries.
+
+    ``ac-falsifier-<label>`` unless the contract already declares that id, in
+    which case ``-derived`` (then a counter) is appended. A derived item that
+    shared a declared id was retired by any ``supersedes_dod_evidence`` marker
+    aimed at the declared one, and a VERIFIED declared item answered for it in
+    the verdict's id-keyed falsifier check. Neither may happen: the derived
+    falsifier is the author's own check and its own result decides.
+    """
+    base = f"{DERIVED_ITEM_ID_PREFIX}{label.lower()}"
+    if base not in taken:
+        return base
+    candidate = f"{base}-derived"
+    counter = 2
+    while candidate in taken:
+        candidate = f"{base}-derived-{counter}"
+        counter += 1
+    return candidate
+
+
 def derive_falsifier_items(
     contract: Mapping[str, Any],
     dod_items: Sequence[Any],
@@ -300,6 +329,7 @@ def derive_falsifier_items(
     runs it, and when none does the first candidate runs it and fails visibly.
     """
     accepted = _accepted_labels(dod_items)
+    taken_ids = _declared_item_ids(dod_items)
     items: list[dict[str, Any]] = []
     unrunnable: list[str] = []
     declared = 0
@@ -335,7 +365,8 @@ def derive_falsifier_items(
         else:
             unrunnable.append(label)
             continue
-        item_id = f"{DERIVED_ITEM_ID_PREFIX}{label.lower()}"
+        item_id = _unique_derived_id(label, taken_ids)
+        taken_ids.add(item_id)
         items.append(
             {
                 "id": item_id,
