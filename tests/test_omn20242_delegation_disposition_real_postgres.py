@@ -101,13 +101,19 @@ async def _prove_routing_feedback_ordering(
         )
         return len(returned)
 
-    assert await write(window_a, 2) == 1
-    assert await write(window_a, 2) == 0
-    assert await write(window_a, 1) == 0
-    assert await write(window_a, 3) == 1
+    written = await write(window_a, 2)
+    assert written == 1
+    written = await write(window_a, 2)
+    assert written == 0
+    written = await write(window_a, 1)
+    assert written == 0
+    written = await write(window_a, 3)
+    assert written == 1
     # A producer restart opens a newer window whose count starts again at 1.
-    assert await write(window_b, 1) == 1
-    assert await write(window_a, 9) == 0
+    written = await write(window_b, 1)
+    assert written == 1
+    written = await write(window_a, 9)
+    assert written == 0
     row = await conn.fetchrow(
         f"SELECT *, pg_typeof(window_start)::text AS window_type "
         f"FROM {schema}.delegation_routing_feedback "
