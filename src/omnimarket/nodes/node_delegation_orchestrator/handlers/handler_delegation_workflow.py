@@ -102,6 +102,7 @@ from omnimarket.delegation.reasoning_preamble import (
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_instruction import (
@@ -1103,12 +1104,10 @@ def _extract_effective_deliverable(
     workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
-    segmentation = segment_reasoning_preamble(response.content)
-    if (
-        segmentation.preamble
-        or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
-    ):
-        # Preserve the provider evidence for AC2 while extraction protects the caller.
+    if has_leading_reasoning_trace(segment_reasoning_preamble(response.content)):
+        # OMN-18278: the gate judges the raw provider text, so the
+        # no_leading_reasoning_trace floor sees the trace and refuses it; the
+        # caller still receives only the extracted deliverable.
         workflow.gate_content_override = response.content
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None

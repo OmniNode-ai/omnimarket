@@ -393,6 +393,21 @@ UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON = (
 )
 
 
+def has_leading_reasoning_trace(segmentation: ModelReasoningSegmentation) -> bool:
+    """Whether the segmented text opened with a reasoning trace (OMN-18278).
+
+    True when a leading preamble resolved in front of an answer, or when the
+    text is declared reasoning with no answer resolved behind it. Either way
+    the raw provider text carries a trace that the deterministic
+    ``no_leading_reasoning_trace`` floor must see and refuse, even though
+    extraction can still hand the caller a clean deliverable.
+    """
+    return (
+        bool(segmentation.preamble)
+        or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    )
+
+
 def output_refusal_for_segmentation(
     segmentation: ModelReasoningSegmentation,
     *,
@@ -442,6 +457,7 @@ __all__: list[str] = [
     "UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON",
     "EnumReasoningBoundaryRule",
     "ModelReasoningSegmentation",
+    "has_leading_reasoning_trace",
     "output_refusal_for_segmentation",
     "segment_reasoning_preamble",
     "strip_leading_inline_reasoning",

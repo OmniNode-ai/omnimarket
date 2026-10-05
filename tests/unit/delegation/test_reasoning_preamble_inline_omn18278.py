@@ -12,6 +12,7 @@ from omnimarket.delegation.reasoning_preamble import (
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
     strip_leading_inline_reasoning,
 )
@@ -114,6 +115,21 @@ def test_a_paired_block_after_the_answer_starts_is_left_for_the_floor() -> None:
 def test_a_leading_paired_block_with_nothing_behind_it_stays_unresolved() -> None:
     segmentation = segment_reasoning_preamble("<think>only reasoning</think>\n")
     assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("<think>weighing options</think>\n\nThe answer is 42.", True),
+        ("<think>only reasoning</think>\n", True),
+        ("The answer is 42.", False),
+        ("The answer is 42. <think>second thoughts</think> Or 41.", False),
+    ],
+)
+def test_has_leading_reasoning_trace_names_the_raw_text_the_gate_judges(
+    content: str, expected: bool
+) -> None:
+    assert has_leading_reasoning_trace(segment_reasoning_preamble(content)) is expected
 
 
 def test_residual_opening_tag_in_whole_answer_is_refused() -> None:

@@ -100,6 +100,7 @@ from omnimarket.delegation.reasoning_preamble import (
     UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
     ModelReasoningSegmentation,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_conformance import (
@@ -3139,11 +3140,7 @@ def delta(
     elif residual_tag is not None:
         # Inspect the answer before any paired-tag strip can hide a trace.
         result = _residual_reasoning_tag_result(gate_input, residual_tag)
-    elif (
-        reasoning_stripped_chars > 0
-        or segmentation.preamble
-        or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
-    ):
+    elif reasoning_stripped_chars > 0 or has_leading_reasoning_trace(segmentation):
         # Extraction must not erase the evidence the deterministic floor judges.
         # An adapter receipt is equally conclusive when the trace is already gone.
         result = _leading_reasoning_trace_result(gate_input)
