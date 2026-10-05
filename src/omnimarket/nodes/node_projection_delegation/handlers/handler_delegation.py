@@ -108,6 +108,47 @@ logger = logging.getLogger(__name__)
 
 HANDLER_ID_PROJECTION_DELEGATION = "node_projection_delegation"
 
+# OMN-20613: the atomic budget-state apply. ``applied`` yields a row only when
+# the event's identity was new, so a replayed event inserts nothing into the
+# totals. The DO UPDATE reads the stored row, never a value this process read
+# earlier, which is what makes concurrent writers add rather than overwrite.
+# ``last_event_at`` keeps the greater time and ``last_correlation_id`` follows
+# it, so an earlier event arriving late changes neither.
+_BUDGET_APPLY_SQL = """
+WITH applied AS (
+    INSERT INTO {applied}
+        (tenant_id, cost_tier_name, budget_period, correlation_id)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT DO NOTHING
+    RETURNING 1
+)
+INSERT INTO {state} AS s (
+    tenant_id, cost_tier_name, budget_period, monthly_cap_usd,
+    consumed_usd, overage_usd, headroom_remaining_usd, delegation_count,
+    last_correlation_id, first_event_at, last_event_at, created_at, updated_at
+)
+SELECT
+    $1, $2, $3, $5::numeric, $6::numeric, $7::numeric,
+    GREATEST($5::numeric - $6::numeric, 0), 1,
+    $4, $8::timestamptz, $8::timestamptz, $9::timestamptz, $9::timestamptz
+FROM applied
+ON CONFLICT (tenant_id, cost_tier_name, budget_period) DO UPDATE SET
+    monthly_cap_usd = EXCLUDED.monthly_cap_usd,
+    consumed_usd = s.consumed_usd + EXCLUDED.consumed_usd,
+    overage_usd = s.overage_usd + EXCLUDED.overage_usd,
+    headroom_remaining_usd = GREATEST(
+        EXCLUDED.monthly_cap_usd - (s.consumed_usd + EXCLUDED.consumed_usd), 0
+    ),
+    delegation_count = s.delegation_count + 1,
+    last_correlation_id = CASE
+        WHEN EXCLUDED.last_event_at >= s.last_event_at
+        THEN EXCLUDED.last_correlation_id ELSE s.last_correlation_id END,
+    first_event_at = LEAST(s.first_event_at, EXCLUDED.first_event_at),
+    last_event_at = GREATEST(s.last_event_at, EXCLUDED.last_event_at),
+    updated_at = EXCLUDED.updated_at
+"""
+
+
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
         "delegation_events",
@@ -116,6 +157,8 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "delegation_judge_verdict_events",
         # OMN-13235: per-tenant ceiling budget-state surface (cap + consumption).
         "delegation_budget_state",
+        # OMN-20613: identity of each event already applied to the budget state.
+        "delegation_budget_applied_events",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",
@@ -271,6 +314,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._table_generation: str = _by_role["generation_events"]
         self._table_judge_verdict: str = _by_role["judge_verdict_events"]
         self._table_budget_state: str = _by_role["budget_state"]
+        if "budget_applied_events" not in _by_role:
+            raise ValueError(
+                "Contract missing required table role 'budget_applied_events'"
+            )
+        self._table_budget_applied_events: str = _by_role["budget_applied_events"]
 
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
@@ -1595,66 +1643,34 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant = event.resolved_tenant()
         period = event.budget_period()
         cap = Decimal(str(cost.monthly_cap_usd))
-        drawdown = event.budget_headroom_consumed_usd
-        overage = event.cost_usd
         # OMN-15905: keep these as real datetime objects -- asyncpg's
         # TIMESTAMPTZ codec requires datetime.datetime instances, not
         # isoformat() strings, or the INSERT raises DataError.
-        now_dt = datetime.now(tz=UTC)
         event_dt = event.resolved_event_time()
+        now_dt = datetime.now(tz=UTC)
 
-        # OMN-15919: same resolver, same value as the row this method is
-        # about to upsert (``row["tenant_id"] = resolved_tenant`` below) --
-        # the existing-row lookup must run under that same GUC or an
-        # RLS-enforced writer role never sees its own prior accumulation.
-        existing_rows = await self.db.execute(
-            f"SELECT * FROM {self._table_budget_state} "
-            "WHERE tenant_id = $1 AND cost_tier_name = $2 AND budget_period = $3",
+        # OMN-20613: one transaction, no read-then-overwrite. The event's
+        # identity goes into the applied-events table; only when that insert
+        # took a row does the totals statement run, and it increments inside
+        # the database. Two writers, an A-B-A replay and a late-arriving
+        # earlier event therefore all land correctly, and a failure rolls the
+        # identity back together with the totals. ``execute`` runs the whole
+        # statement in one transaction under the row's tenant GUC (OMN-15919).
+        await self.db.execute(
+            _BUDGET_APPLY_SQL.format(
+                applied=self._table_budget_applied_events,
+                state=self._table_budget_state,
+            ),
             resolved_tenant,
             cost_tier_name,
             period,
+            event.correlation_id,
+            cap,
+            event.budget_headroom_consumed_usd,
+            event.cost_usd,
+            event_dt,
+            now_dt,
             tenant=resolved_tenant,
-        )
-        if existing_rows:
-            existing = existing_rows[0]
-            # Idempotent replay guard: the same source event already applied.
-            if str(existing.get("last_correlation_id") or "") == event.correlation_id:
-                return
-            consumed = _as_decimal_local(existing.get("consumed_usd")) + drawdown
-            overage_total = _as_decimal_local(existing.get("overage_usd")) + overage
-            count = _as_int_local(existing.get("delegation_count")) + 1
-            # asyncpg returns a native datetime for a TIMESTAMPTZ column read
-            # back via SELECT -- pass it straight through, never str()-ified.
-            first_event_at = existing.get("first_event_at") or event_dt
-        else:
-            consumed = drawdown
-            overage_total = overage
-            count = 1
-            first_event_at = event_dt
-
-        headroom_remaining = cap - consumed
-        if headroom_remaining < Decimal("0"):
-            headroom_remaining = Decimal("0")
-
-        row: dict[str, object] = {
-            "tenant_id": resolved_tenant,
-            "cost_tier_name": cost_tier_name,
-            "budget_period": period,
-            "monthly_cap_usd": cap,
-            "consumed_usd": consumed,
-            "overage_usd": overage_total,
-            "headroom_remaining_usd": headroom_remaining,
-            "delegation_count": count,
-            "last_correlation_id": event.correlation_id,
-            "first_event_at": first_event_at,
-            "last_event_at": event_dt,
-            "created_at": now_dt,
-            "updated_at": now_dt,
-        }
-        await self._dynamic_upsert(
-            table=self._table_budget_state,
-            conflict_key="tenant_id,cost_tier_name,budget_period",
-            row=row,
         )
 
     async def _project_typed_event_async(
