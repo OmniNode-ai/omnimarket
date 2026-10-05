@@ -5,8 +5,6 @@ name: node_contract_projection_check_effect
 contract_name: node_contract_projection_check_effect
 node_name: node_contract_projection_check_effect
 node_type: EFFECT_GENERIC
-runtime_profiles:
-  - effects
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -18,6 +16,15 @@ description: >
   the compute handler, prints the verdict, writes the canonical OMN-2362 report
   with --report-json, and exits 0 only when nothing failed.
 
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - effects
+runtime_profiles:
+- effects
 handler:
   module: omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather
   class: HandlerContractProjectionGather
