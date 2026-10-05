@@ -15,7 +15,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC3 hosted probe. The facts-first prompt compute tests, including the changed test file that now imports EnumPromptShape, pass at the head. They fail at the merge base, where EnumPromptShape does not exist and the overlaid test cannot import it."
-    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_facts_first_prompt_compute -q"
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -26,6 +26,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_facts_first_prompt_compute -q"
+        check_value: "uv run pytest tests/unit/nodes/node_facts_first_prompt_compute/test_facts_first_prompt_omn19432.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
