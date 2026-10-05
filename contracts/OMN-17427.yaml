@@ -48,6 +48,13 @@ requirements:
       - id: "AC10"
         statement: |-
           AC10: the delegation A/B runner handler branch tests pass, covering the default HTTP adapter, the refusal and timeout outcomes and the completed-output topic contract -- falsifier: uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q
+  - id: "req-hostile-clone-timeout"
+    statement: |-
+      The hostile reviewer's three sibling clone steps give each fetch attempt a budget at or above the measured fetch floor.
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: each sibling clone attempt in hostile-reviewer.yml is wrapped in a timeout of at least 120 seconds -- falsifier: uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q fails on a 20 second budget
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -70,6 +77,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The delegation A/B runner handler branch tests pass."
     command: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
+  - kind: "tests"
+    description: "The hostile reviewer sibling clone attempt budget is at or above the measured fetch floor."
+    command: "uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -131,3 +141,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_ab_runner/test_handler_delegation_ab_runner_branches.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC10"]
+  - id: "dod-omn17427-ac11-hostile-clone-timeout"
+    description: "The hostile reviewer sibling clone attempt budget is at or above the measured fetch floor."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]

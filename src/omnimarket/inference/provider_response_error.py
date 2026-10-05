@@ -38,7 +38,7 @@ TWO CONSUMERS, ONE PARSE
     (``_inference_error_failure_class``), while the bus-less local dispatch port
     classifies the effect result's typed ``failure_class``. So this module
     offers both from one parse — :meth:`ModelProviderResponseError.as_error_message`
-    composes text whose vocabulary the text classifier already recognises, and
+    carries the shared verdict through the text-only wire, and
     :attr:`ModelProviderResponseError.failure_class` derives the typed verdict
     from the vendor's own ``code`` / ``error_type``.
 """
@@ -92,7 +92,8 @@ class ModelProviderResponseError(BaseModel):
             detail.append(f"provider code {self.code}")
         if self.error_type:
             detail.append(f"error_type={self.error_type}")
-        suffix = f" ({', '.join(detail)})" if detail else ""
+        detail.append(f"failure_class={self.failure_class.value}")
+        suffix = f" ({', '.join(detail)})"
         return f"{IN_BODY_ERROR_MESSAGE_PREFIX}: {self.message}{suffix}"
 
     @property
@@ -113,6 +114,26 @@ class ModelProviderResponseError(BaseModel):
         if any(token in haystack for token in _AUTH_TOKENS):
             return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
         return EnumDelegationFailureClass.MODEL_UNAVAILABLE
+
+
+def provider_failure_class_from_error_message(
+    error_message: str,
+) -> EnumDelegationFailureClass | None:
+    """Read the shared verdict from a composed in-body provider error.
+
+    The bus wire carries only text. Match the boundary's prefix and trailing
+    class field so vendor prose cannot override the parser's verdict. Older
+    messages without the field keep their existing classification.
+    """
+    if not error_message.startswith(f"{IN_BODY_ERROR_MESSAGE_PREFIX}: "):
+        return None
+    match = re.search(r"(?:\(|, )failure_class=([a-z_]+)\)$", error_message)
+    if match is None:
+        return None
+    try:
+        return EnumDelegationFailureClass(match.group(1))
+    except ValueError:
+        return None
 
 
 def failure_class_for_status(
@@ -345,6 +366,7 @@ __all__: list[str] = [
     "describe_provider_refusal",
     "failure_class_for_status",
     "provider_error_from_body",
+    "provider_failure_class_from_error_message",
     "provider_message_from_text",
     "scrub_secrets",
 ]
