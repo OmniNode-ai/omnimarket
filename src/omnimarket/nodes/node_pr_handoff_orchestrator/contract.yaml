@@ -65,13 +65,14 @@ runtime_lanes:
   - compose-dev
   # Lab first (rule 24): the h202 compose lane; h201's dev lane is frozen.
   - compose-dev-202
-state_io:
-  database: "omnibase_infra"
-  table: "pr_handoff_workflow_state"
-  key: "handoff_key"
-  codec:
-    module: "omnimarket.nodes.node_pr_handoff_orchestrator.state_codec"
-    name: "StateIoCodec"
+# No state_io block yet: the rows live in the runtime process (the handler's
+# in-memory store under the same compare-and-set). A durable row needs the
+# pr_handoff_workflow_state table (omnibase_infra forward migration, its grant,
+# and the application-relation ownership manifest), tracked as OMN-20638; the
+# codec (state_codec.StateIoCodec) and the key (handoff_key, derived on every
+# ingress) are already the ones that block will name. Until then a runtime
+# restart drops a waiting request without a terminal; the lane's next request
+# for the PR starts a new one.
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: pr_handoff_workflow

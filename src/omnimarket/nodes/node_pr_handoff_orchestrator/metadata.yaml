@@ -7,8 +7,7 @@ entry_points:
     node_pr_handoff_orchestrator: "omnimarket.nodes.node_pr_handoff_orchestrator"
 capabilities:
   standalone: false
-  # The runtime's state_io seam holds its row in pr_handoff_workflow_state
-  # (omnibase_infra forward migration, OMN-20636).
+  # Rows live in the runtime process until the state_io table lands (OMN-20638).
   full_runtime: true
   requires_network: false
   requires_repo: false

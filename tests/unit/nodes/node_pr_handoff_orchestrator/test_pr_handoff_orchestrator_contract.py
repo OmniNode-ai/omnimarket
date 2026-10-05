@@ -103,7 +103,8 @@ def test_published_events_are_the_event_topic_map() -> None:
 
 
 def test_state_io_key_is_derived_on_every_ingress() -> None:
-    assert _contract()["state_io"]["key"] == "handoff_key"
+    # The row key the state_io block will name (OMN-20638); rows are in process today.
+    assert "state_io" not in _contract()
     cid = b.new_cid()
     assert b.request(cid).handoff_key == b.KEY
     assert b.observation(b.at(0)).handoff_key == b.KEY
