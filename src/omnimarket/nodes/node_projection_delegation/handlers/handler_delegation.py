@@ -41,6 +41,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
+    HandlerDelegationLineageFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
     HandlerDelegationRunAttributionFold,
     ModelDelegationRunAttributionFoldRequest,
@@ -2000,6 +2003,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 caller_lane.caller_lane_refusal,
             )
         row.update(caller_lane.row_columns())
+        # The fold names only supplied, valid lineage columns. The targeted
+        # UPSERT leaves stored lineage untouched when this terminal omits it.
+        lineage = HandlerDelegationLineageFold().handle(event)
+        if lineage.lineage_refusal is not None:
+            logger.warning(
+                "delegation terminal lineage refused (correlation_id=%s): %s",
+                event.correlation_id,
+                lineage.lineage_refusal,
+            )
+        row.update(lineage.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

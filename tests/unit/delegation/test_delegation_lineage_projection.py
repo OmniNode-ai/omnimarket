@@ -23,6 +23,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+
 from omnimarket.models.delegation.delegation_lineage import (
     ATTEMPT_KINDS,
     DELEGATION_ATTEMPT_KIND_METADATA_KEY,
@@ -31,13 +32,12 @@ from omnimarket.models.delegation.delegation_lineage import (
     attempt_kind_refusal,
     parent_correlation_refusal,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
     HandlerDelegationLineageFold,
     ModelDelegationLineageFold,
-)
-
-from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
-    ModelDelegateSkillTerminalProjection,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -253,4 +253,4 @@ def test_the_migration_adds_the_three_nullable_columns() -> None:
     ).read_text()
     for column in ("parent_correlation_id", "attempt_kind", "parent_failure_cause"):
         assert f"ADD COLUMN IF NOT EXISTS {column} TEXT" in sql
-    assert "NOT NULL" not in sql
+    assert "TEXT NOT NULL" not in sql

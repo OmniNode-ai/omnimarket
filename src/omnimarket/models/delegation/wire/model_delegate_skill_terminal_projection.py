@@ -184,7 +184,29 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("caller_lane", "callerLane"),
     )
 
-    @field_validator("ticket_id", "caller_lane", mode="before")
+    # Cross-run lineage is decoded as text so malformed attribution is
+    # refused by the pure fold without dead-lettering the terminal row.
+    parent_correlation_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_correlation_id", "parentCorrelationId"),
+    )
+    attempt_kind: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("attempt_kind", "attemptKind"),
+    )
+    parent_failure_cause: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_failure_cause", "parentFailureCause"),
+    )
+
+    @field_validator(
+        "ticket_id",
+        "caller_lane",
+        "parent_correlation_id",
+        "attempt_kind",
+        "parent_failure_cause",
+        mode="before",
+    )
     @classmethod
     def _attribution_as_text(cls, value: object) -> str | None:
         if value is None or isinstance(value, str):

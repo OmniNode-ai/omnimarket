@@ -3745,6 +3745,7 @@
         "idx_delegation_events_context_pack_hash",
         "idx_delegation_events_created_at",
         "idx_delegation_events_delegated_to",
+        "idx_delegation_events_parent_correlation_id",
         "idx_delegation_events_score_vs_bar",
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",

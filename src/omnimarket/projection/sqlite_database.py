@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS delegation_events (
 _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "actual_score",
     "answering_backend",
+    "attempt_kind",
     "authority_source",
     "backend_id",
     "compliance_attempts",
@@ -85,6 +86,8 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "latency_ms",
     "model_name",
     "override_within_bounds",
+    "parent_correlation_id",
+    "parent_failure_cause",
     "pricing_manifest_version",
     "prompt_text",
     "quality_gate_detail",
