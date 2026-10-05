@@ -1,0 +1,30 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20636"
+title: "PR handoff over the bus, decided by a mechanical orchestrator"
+summary: "Adds the PR handoff orchestrator, decision compute and ledger effect nodes plus the work-ledger bus CLI. AC1 is bound to the handoff chain, node and work-ledger bus tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pr-handoff-over-the-bus"
+    statement: "PR handoff runs over the bus, decided by a mechanical orchestrator on the PR watcher's observations. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the handoff chains, orchestrator, decision compute, ledger effect and work-ledger bus tests pass at the head -- falsifier: uv run pytest tests/chains/pr_handoff tests/unit/nodes/node_pr_handoff_orchestrator tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_ledger_effect tests/unit/work_ledger_bus -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The handoff chain, node and work-ledger bus tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/chains/pr_handoff tests/unit/nodes/node_pr_handoff_orchestrator tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_ledger_effect tests/unit/work_ledger_bus -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20636-ac1-pr-handoff-tests"
+    description: "AC1 hosted probe. The handoff chain, node and work-ledger bus tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/pr_handoff tests/unit/nodes/node_pr_handoff_orchestrator tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_ledger_effect tests/unit/work_ledger_bus -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
