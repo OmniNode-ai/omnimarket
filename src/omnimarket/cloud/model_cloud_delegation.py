@@ -131,7 +131,7 @@ class ModelCloudDelegationReceipt(BaseModel):
     a receipt paraphrased by a client is not a receipt.
     """
 
-    model_config = _RESPONSE_CONFIG
+    model_config = ConfigDict(**_RESPONSE_CONFIG, validate_by_name=True)
 
     workflow_id: uuid.UUID
     tenant_id: uuid.UUID
