@@ -13,11 +13,11 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: parity takes --utc-day and emits one STATUS row with lane=work-ledger-parity carrying file_rows, projection_rows, missing, extra, state_mismatches, unexplained and backfilled=0|1 for that day -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q
+          AC1: parity takes --utc-day and emits one STATUS row with lane=work-ledger-parity carrying file_rows, projection_rows, missing, extra, state_mismatches, unexplained and backfilled=0|1 for that day -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_receipt.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The receipt row for a fixture day carries each count."
-    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q"
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_receipt.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,6 +28,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k utc_day_receipt -q"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_receipt.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
