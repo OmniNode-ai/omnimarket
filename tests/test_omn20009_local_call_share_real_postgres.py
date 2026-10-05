@@ -87,6 +87,9 @@ def routing() -> Iterator[Any]:
                 "NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION; END IF; "
                 "END$$;"
             )
+            # omnibase_infra forward 098 provisions this on a lane; migrations
+            # 0043, 0047 and 0051 need it, and a fresh CI database lacks it.
+            cur.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
             cur.execute(f"CREATE SCHEMA {schema}")
             cur.execute(f"SET search_path TO {schema}, public")
             for path in sorted(_MIGRATIONS.glob("*.sql")):
