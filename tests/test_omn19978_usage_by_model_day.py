@@ -304,9 +304,9 @@ def test_a_store_written_by_the_previous_release_opens_and_keeps_its_relabel(
     tmp_path: Path,
 ) -> None:
     """The store every existing install has: llm_call_metrics already carries
-    usage_source (so the connect-time relabel UPDATE runs and opens an implicit
-    transaction), and the usage tables predate the new columns and triggers.
-    Opening it must add the columns, and must commit the relabel, not undo it."""
+    usage_source with a retired label, and the usage tables predate the new
+    columns and triggers, so both one-time store steps are pending. Opening it
+    must add the columns, and must commit the relabel, not undo it."""
     path = tmp_path / "previous-release.sqlite"
     conn = sqlite3.connect(path)
     conn.execute(
