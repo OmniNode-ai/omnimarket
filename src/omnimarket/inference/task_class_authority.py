@@ -379,6 +379,55 @@ class ModelTaskClassExecutionBudget(BaseModel):
     terminal_delivery_margin_seconds: int = Field(ge=1)
 
 
+class EnumPromptShape(StrEnum):
+    """How the delegate states a task of one class to the model (OMN-19432).
+
+    ``plain`` sends the caller's prompt as written. ``facts_first`` sends the
+    facts a script can compute from the prompt first, then the prompt itself,
+    unchanged. The class declares which; no code names a class.
+    """
+
+    PLAIN = "plain"
+    FACTS_FIRST = "facts_first"
+
+
+class ModelFactsFirstPromptPolicy(BaseModel):
+    """What the facts-first composer reads and how much of it it states.
+
+    Every word and bound the composer uses is declared here, so changing what
+    counts as a stated constraint is a contract change, not a code change.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    constraint_cues: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Phrases that make a sentence of the task a stated constraint, matched "
+            "on word boundaries and case-insensitively."
+        ),
+    )
+    limit_cues: tuple[str, ...] = Field(
+        min_length=1,
+        description="Phrases that introduce a numeric limit, such as 'at most'.",
+    )
+    limit_units: tuple[str, ...] = Field(
+        min_length=1,
+        description="Units a numeric limit counts, such as 'words' or 'sentences'.",
+    )
+    truncation_markers: tuple[str, ...] = Field(
+        default=(),
+        description="Literal text a caller leaves where it cut the input.",
+    )
+    max_constraints: int = Field(ge=1)
+    max_constraint_chars: int = Field(ge=20)
+    max_identifiers: int = Field(ge=1)
+    max_numbered_lines: int = Field(
+        ge=0,
+        description="Code lines past which line numbers are not stated (0 disables).",
+    )
+
+
 class ModelTaskClassOutputContract(BaseModel):
     """Default output boundary that applies when a caller declares no schema."""
 
@@ -740,6 +789,13 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
     complexity_contract: ModelTaskClassComplexityContract | None = Field(default=None)
+    prompt_shape: EnumPromptShape = Field(
+        default=EnumPromptShape.PLAIN,
+        description=(
+            "How a task of this class is stated to the model (OMN-19432). "
+            "Absent means the caller's prompt goes out as written."
+        ),
+    )
     size_band_thresholds: ModelSizeBandThresholds | None = None
     routing_availability: ModelRoutingAvailability | None = Field(
         default=None,
@@ -777,6 +833,13 @@ class ModelTaskClassAuthority(BaseModel):
         default_factory=dict
     )
     size_band_thresholds: ModelSizeBandThresholds | None = None
+    facts_first_prompt: ModelFactsFirstPromptPolicy | None = Field(
+        default=None,
+        description=(
+            "What the facts-first composer reads (OMN-19432). Required by every "
+            "class that declares ``prompt_shape: facts_first``."
+        ),
+    )
     selection_fallback: ModelSelectionFallback | None = Field(
         default=None,
         description=(
@@ -784,6 +847,20 @@ class ModelTaskClassAuthority(BaseModel):
             "unclaimed prompt is refused and the caller must name a class."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_facts_first_policy_declared(self) -> ModelTaskClassAuthority:
+        wanting = sorted(
+            name
+            for name, entry in self.task_classes.items()
+            if entry.prompt_shape is EnumPromptShape.FACTS_FIRST
+        )
+        if wanting and self.facts_first_prompt is None:
+            raise ValueError(
+                "task classes declare prompt_shape facts_first but the contract "
+                f"has no facts_first_prompt policy: {', '.join(wanting)}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_selection_fallback(self) -> ModelTaskClassAuthority:
@@ -1194,13 +1271,32 @@ def resolve_task_class_output_contract(task_class: str) -> ModelTaskClassOutputC
     return entry.output_contract
 
 
+def resolve_task_class_prompt_shape(task_class: str) -> EnumPromptShape:
+    """Return how ``task_class`` states a task, or ``plain`` for an unknown class.
+
+    An unknown class sends the prompt as written: the shape is an addition to a
+    request, never a condition of making one.
+    """
+    entry = _delegation_task_class_authority().task_classes.get(task_class)
+    if entry is None:
+        return EnumPromptShape.PLAIN
+    return entry.prompt_shape
+
+
+def resolve_facts_first_prompt_policy() -> ModelFactsFirstPromptPolicy | None:
+    """Return the declared facts-first policy, or ``None`` when absent."""
+    return _delegation_task_class_authority().facts_first_prompt
+
+
 __all__ = [
     "EnumGatewayExposure",
+    "EnumPromptShape",
     "EnumQualityRuleEnforcement",
     "EnumRoutingAvailabilityStatus",
     "EnumTaskTypeResolution",
     "ModelBandEdges",
     "ModelDelegationOutputAuthority",
+    "ModelFactsFirstPromptPolicy",
     "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
     "ModelQualityRule",
@@ -1219,10 +1315,12 @@ __all__ = [
     "TaskClassSelectionError",
     "load_task_class_authority",
     "resolve_delegation_output_authority",
+    "resolve_facts_first_prompt_policy",
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
     "resolve_size_band_thresholds",
     "resolve_task_class_execution_budget",
     "resolve_task_class_output_contract",
+    "resolve_task_class_prompt_shape",
     "withheld_delegation_refusal",
 ]

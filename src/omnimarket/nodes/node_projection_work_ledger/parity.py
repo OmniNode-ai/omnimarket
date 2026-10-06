@@ -19,6 +19,26 @@ parity over one full UTC day.
 
 Rows the emit path can never carry (a legacy or tool-internal type) are counted
 apart, never as mismatches, and never silently dropped.
+
+``--explain`` (OMN-20535) adds an ``explain`` object that classifies each row missing
+from the projection by the evidence on the emitting host's state directory
+(``--state-dir``, else ``ONEX_STATE_DIR``, else ``$OMNI_HOME/.onex_state``; none of
+them is an error): ``journal-pending`` when the hook-emit journal still holds it,
+``journal-dead-letter`` when the drainer's quarantine or its loss log
+(``hook_emit_journal_losses.jsonl``) names it, ``failure-log`` when the dual write's
+``work-ledger-emit-failures.jsonl`` names it, else ``unexplained``. Each evidence
+source is reported with its path, or as ``absent:`` when it is not there, so a
+missing source is never read as an empty one. The exit code is unchanged.
+
+``--utc-day YYYY-MM-DD`` (OMN-20536) sets the window to that whole UTC day, and
+``--receipt`` (which needs it, and implies ``--explain``) prints the daily parity
+receipt instead of the report: one STATUS ledger row, ``lane=work-ledger-parity``,
+carrying ``file_rows``, ``projection_rows``, ``missing``, ``extra``,
+``state_mismatches``, ``unexplained``, ``backfilled`` and ``exact`` for that day.
+``backfilled`` is 1 when any of the day's projected rows carries the emit backfill
+tool's source, ``onex-ledger-emit-backfill``; ``exact=yes`` needs every count at
+zero, ``backfilled=0`` and at least one row. The receipt's exit code is 0 for an
+exact day and 1 otherwise, so a caller appends the row on 0 or 1 and on nothing else.
 """
 
 from __future__ import annotations
@@ -30,7 +50,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -44,10 +64,23 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_
     ModelWorkLedgerFoldRequest,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (
+    EnumParityLossClass,
     EnumParityMismatchKind,
+    ModelParityExplain,
+    ModelParityExplainedRow,
+    ModelParityExplainEvidence,
     ModelParityMismatch,
     ModelWorkLedgerParityReport,
 )
+
+FAILURE_LOG_NAME = "work-ledger-emit-failures.jsonl"
+JOURNAL_DIR_NAME = "hook_emit_journal"
+QUARANTINE_DIR_NAME = "quarantine"
+LOSS_LOG_NAME = "hook_emit_journal_losses.jsonl"
+_LEDGER_EVENT_PREFIX = "work.ledger."
+BACKFILL_SOURCE = "onex-ledger-emit-backfill"
+RECEIPT_LANE = "work-ledger-parity"
+RECEIPT_ACTOR = "script:work-ledger-parity"
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
@@ -55,6 +88,10 @@ _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
 _SELECT_ROWS = """
     SELECT row_id, row_ts FROM omninode_internal.work_ledger_rows
     WHERE row_ts >= $1 AND row_ts <= $2
+"""
+_SELECT_SOURCES = """
+    SELECT source, count(*) AS n FROM omninode_internal.work_ledger_rows
+    WHERE row_ts >= $1 AND row_ts <= $2 GROUP BY source
 """
 _SELECT_STATE = """
     SELECT entity_key, kind, opened_at, closed_at FROM omninode_internal.work_ledger_state
@@ -172,6 +209,174 @@ def compare(
     )
 
 
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    return entries
+
+
+def _journal_row_ids(directory: Path) -> tuple[dict[str, str], int]:
+    """``row_id`` -> file name for each work-ledger record directly under ``directory``,
+    and how many record files could not be read (reported, never silently skipped)."""
+    found: dict[str, str] = {}
+    unreadable = 0
+    for path in sorted(directory.glob("*.json")):
+        if path.name.endswith(".reason.json"):
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            unreadable += 1
+            continue
+        if not isinstance(record, dict):
+            continue
+        event_type = record.get("event_type")
+        payload = record.get("payload")
+        if not (
+            isinstance(event_type, str) and event_type.startswith(_LEDGER_EVENT_PREFIX)
+        ):
+            continue
+        row_id = payload.get("row_id") if isinstance(payload, dict) else None
+        if isinstance(row_id, str) and row_id:
+            found[row_id] = path.name
+    return found, unreadable
+
+
+def load_explain_evidence(
+    *,
+    state_dir: Path,
+    journal_dir: Path | None = None,
+    loss_log_path: Path | None = None,
+) -> ModelParityExplainEvidence:
+    """Read the four evidence sources. Never raises on an absent source.
+
+    The paths are the producers' own: the dual write's failure log under
+    ``state_dir``; the journal at ``journal_dir`` (the drainer's
+    ``ONEX_HOOK_EMIT_JOURNAL_DIR``), else ``state_dir/hook_emit_journal``; the
+    drainer's loss log at ``loss_log_path`` (its ``ONEX_HOOK_EMIT_LOSS_LOG``), else
+    beside the journal directory.
+    """
+    journal = journal_dir if journal_dir is not None else state_dir / JOURNAL_DIR_NAME
+    quarantine = journal / QUARANTINE_DIR_NAME
+    failure_log = state_dir / FAILURE_LOG_NAME
+    loss_log = (
+        loss_log_path if loss_log_path is not None else journal.parent / LOSS_LOG_NAME
+    )
+    sources: dict[str, str] = {}
+    pending: dict[str, str] = {}
+    dead_letter: dict[str, str] = {}
+    failures: dict[str, str] = {}
+
+    for name, path in (("journal", journal), ("quarantine", quarantine)):
+        if not path.is_dir():
+            sources[name] = f"absent:{path}"
+            continue
+        found, unreadable = _journal_row_ids(path)
+        sources[name] = str(path) + (
+            f" (unreadable={unreadable})" if unreadable else ""
+        )
+        for row_id, file_name in found.items():
+            if name == "journal":
+                pending[row_id] = f"queued in the journal as {file_name}"
+            else:
+                dead_letter[row_id] = (
+                    f"dead-lettered to {QUARANTINE_DIR_NAME}/{file_name}"
+                )
+
+    if loss_log.is_file():
+        sources["loss_log"] = str(loss_log)
+        for entry in _jsonl(loss_log):
+            lost_id = entry.get("row_id")
+            if isinstance(lost_id, str) and lost_id:
+                dead_letter.setdefault(
+                    lost_id,
+                    f"drainer loss log: {entry.get('disposition')} "
+                    f"{entry.get('journal_file') or ''}".strip(),
+                )
+    else:
+        sources["loss_log"] = f"absent:{loss_log}"
+
+    if failure_log.is_file():
+        sources["failure_log"] = str(failure_log)
+        for entry in _jsonl(failure_log):
+            skipped_id = entry.get("row_id")
+            if isinstance(skipped_id, str) and skipped_id:
+                failures.setdefault(
+                    skipped_id,
+                    f"dual write skipped it: {str(entry.get('reason', ''))[:160]}",
+                )
+    else:
+        sources["failure_log"] = f"absent:{failure_log}"
+
+    return ModelParityExplainEvidence(
+        pending=pending, dead_letter=dead_letter, failure_log=failures, sources=sources
+    )
+
+
+def explain_missing(
+    missing_row_ids: list[str], evidence: ModelParityExplainEvidence
+) -> ModelParityExplain:
+    """Classify each missing row. Pure.
+
+    Precedence: a record still queued is pending whatever else is recorded about it; a
+    drainer loss outranks a dual-write failure line, because the record reached the journal.
+    """
+    rows: list[ModelParityExplainedRow] = []
+    for row_id in missing_row_ids:
+        if row_id in evidence.pending:
+            loss_class, detail = (
+                EnumParityLossClass.JOURNAL_PENDING,
+                evidence.pending[row_id],
+            )
+        elif row_id in evidence.dead_letter:
+            loss_class = EnumParityLossClass.JOURNAL_DEAD_LETTER
+            detail = evidence.dead_letter[row_id]
+        elif row_id in evidence.failure_log:
+            loss_class, detail = (
+                EnumParityLossClass.FAILURE_LOG,
+                evidence.failure_log[row_id],
+            )
+        else:
+            loss_class, detail = EnumParityLossClass.UNEXPLAINED, ""
+        rows.append(
+            ModelParityExplainedRow(row_id=row_id, loss_class=loss_class, detail=detail)
+        )
+    counts = Counter(r.loss_class for r in rows)
+    return ModelParityExplain(
+        failure_log=counts[EnumParityLossClass.FAILURE_LOG],
+        journal_dead_letter=counts[EnumParityLossClass.JOURNAL_DEAD_LETTER],
+        journal_pending=counts[EnumParityLossClass.JOURNAL_PENDING],
+        unexplained=counts[EnumParityLossClass.UNEXPLAINED],
+        evidence=dict(evidence.sources),
+        rows=tuple(rows),
+    )
+
+
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value) if value else None
+
+
+def resolve_state_dir(explicit: Path | None) -> Path:
+    """``--state-dir``, else ``ONEX_STATE_DIR``, else ``$OMNI_HOME/.onex_state``; else KeyError."""
+    if explicit is not None:
+        return explicit
+    if os.environ.get("ONEX_STATE_DIR"):
+        return Path(os.environ["ONEX_STATE_DIR"])
+    if os.environ.get("OMNI_HOME"):
+        return Path(os.environ["OMNI_HOME"]) / ".onex_state"
+    raise KeyError(
+        "--explain needs the emitting host's state directory: pass --state-dir, "
+        "or set ONEX_STATE_DIR or OMNI_HOME"
+    )
+
+
 def load_projection_json(
     path: Path,
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
@@ -180,6 +385,65 @@ def load_projection_json(
     rows = {str(r["row_id"]): str(r["row_ts"]) for r in data.get("rows", [])}
     state = {str(s["entity_key"]): dict(s) for s in data.get("state", [])}
     return rows, state
+
+
+def load_projection_sources_json(
+    path: Path, since: datetime, until: datetime
+) -> dict[str, int]:
+    """Projected rows in the window per ``source`` (absent counts as ``unknown``)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    counts: Counter[str] = Counter()
+    for r in data.get("rows", []):
+        if since <= parse_stamp(str(r["row_ts"])[:20]) <= until:
+            counts[str(r.get("source") or "unknown")] += 1
+    return dict(counts)
+
+
+async def _load_projection_sources_db(
+    dsn: str, since: datetime, until: datetime
+) -> dict[str, int]:
+    import asyncpg  # lazy: only the live read needs a database driver
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        return {
+            str(r["source"]): int(r["n"])
+            for r in await conn.fetch(_SELECT_SOURCES, since, until)
+        }
+    finally:
+        await conn.close()
+
+
+def receipt_exact(report: ModelWorkLedgerParityReport) -> bool:
+    """Phase 1's bar: exact parity and no backfilled row in the window."""
+    return report.exact and not report.projection_sources.get(BACKFILL_SOURCE, 0)
+
+
+def receipt_row(report: ModelWorkLedgerParityReport, day: str, now: datetime) -> str:
+    """The daily parity receipt for ``day``: one STATUS ledger row. Pure."""
+    kinds = Counter(m.kind for m in report.mismatches)
+    missing = kinds[EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION]
+    extra = kinds[EnumParityMismatchKind.ROW_MISSING_IN_FILE]
+    state = sum(
+        kinds[k]
+        for k in (
+            EnumParityMismatchKind.STATE_MISSING_IN_PROJECTION,
+            EnumParityMismatchKind.STATE_OPENED_AT_DIFFERS,
+            EnumParityMismatchKind.STATE_CLOSED_AT_DIFFERS,
+        )
+    )
+    unexplained = report.explain.unexplained if report.explain is not None else missing
+    backfilled = 1 if report.projection_sources.get(BACKFILL_SOURCE, 0) else 0
+    exact = "yes" if receipt_exact(report) else "no"
+    cells = [
+        f"{now:%Y-%m-%dT%H:%M:%SZ}", "STATUS", f"lane={RECEIPT_LANE}",
+        f"actor={RECEIPT_ACTOR}", "model=none", f"day={day}",
+        f"file_rows={report.file_rows}", f"projection_rows={report.projection_rows}",
+        f"missing={missing}", f"extra={extra}", f"state_mismatches={state}",
+        f"unexplained={unexplained}", f"backfilled={backfilled}", f"exact={exact}",
+        f"Work-ledger parity receipt for UTC day {day}",
+    ]  # fmt: skip
+    return " | ".join(cells)
 
 
 async def _load_projection_db(
@@ -199,6 +463,18 @@ async def _load_projection_db(
     return rows, state
 
 
+def _window(
+    utc_day: str | None, since: datetime | None, until: datetime | None
+) -> tuple[datetime, datetime]:
+    """The checked window: the whole of ``utc_day``, else ``since`` to ``until`` (or now)."""
+    if utc_day is not None:
+        start = parse_stamp(f"{utc_day}T00:00:00Z")
+        return start, start + timedelta(days=1, seconds=-1)
+    if since is None:
+        raise ValueError("no window: neither --utc-day nor --since")
+    return since, until or datetime.now(UTC).replace(microsecond=0)
+
+
 def _parse_when(value: str) -> datetime:
     return parse_stamp(value)
 
@@ -213,8 +489,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--archive-dir", type=Path, help="directory holding the archive splits"
     )
+    parser.add_argument("--since", type=_parse_when, help="UTC, YYYY-MM-DDTHH:MM:SSZ")
     parser.add_argument(
-        "--since", required=True, type=_parse_when, help="UTC, YYYY-MM-DDTHH:MM:SSZ"
+        "--utc-day", help="YYYY-MM-DD: the window is that whole UTC day (OMN-20536)"
+    )
+    parser.add_argument(
+        "--receipt",
+        action="store_true",
+        help="print the daily parity receipt row for --utc-day (implies --explain)",
     )
     parser.add_argument("--until", type=_parse_when, help="UTC; default now")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -223,29 +505,69 @@ def main(argv: list[str] | None = None) -> int:
         "--dsn-env", help="name of the env var holding the lab database DSN"
     )
     parser.add_argument("--format", choices=("json", "text"), default="json")
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="classify each row missing from the projection (OMN-20535)",
+    )
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        help="the emitting host's state directory for --explain "
+        "(default: $ONEX_STATE_DIR, else $OMNI_HOME/.onex_state)",
+    )
     args = parser.parse_args(argv)
 
+    if args.receipt and args.utc_day is None:
+        sys.stderr.write("work_ledger_parity: error: --receipt needs --utc-day\n")
+        return 2
+    if args.utc_day is None and args.since is None:
+        parser.error("one of --since or --utc-day is required")
+    try:
+        since, until = _window(args.utc_day, args.since, args.until)
+    except ValueError:
+        sys.stderr.write(
+            f"work_ledger_parity: error: --utc-day must be YYYY-MM-DD, got {args.utc_day!r}\n"
+        )
+        return 2
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
-    until = args.until or datetime.now(UTC).replace(microsecond=0)
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)
         if args.projection_json is not None:
             proj_rows, proj_state = load_projection_json(args.projection_json)
+            sources = load_projection_sources_json(args.projection_json, since, until)
         else:
-            proj_rows, proj_state = asyncio.run(
-                _load_projection_db(os.environ[args.dsn_env], args.since, until)
-            )
+            dsn = os.environ[args.dsn_env]
+            proj_rows, proj_state = asyncio.run(_load_projection_db(dsn, since, until))
+            sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
         report = compare(
             file_rows=file_rows,
             projection_rows=proj_rows,
             projection_state=proj_state,
-            since=args.since,
+            since=since,
             until=until,
-        )
+        ).model_copy(update={"projection_sources": sources})
+        if args.explain or args.receipt:
+            missing = [
+                m.key
+                for m in report.mismatches
+                if m.kind is EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION
+            ]
+            evidence = load_explain_evidence(
+                state_dir=resolve_state_dir(args.state_dir),
+                journal_dir=_env_path("ONEX_HOOK_EMIT_JOURNAL_DIR"),
+                loss_log_path=_env_path("ONEX_HOOK_EMIT_LOSS_LOG"),
+            )
+            report = report.model_copy(
+                update={"explain": explain_missing(missing, evidence)}
+            )
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"work_ledger_parity: error: {exc!r}\n")
         return 2
 
+    if args.receipt:
+        sys.stdout.write(receipt_row(report, args.utc_day, datetime.now(UTC)) + "\n")
+        return 0 if receipt_exact(report) else 1
     if args.format == "json":
         sys.stdout.write(report.model_dump_json(indent=2) + "\n")
     else:
@@ -257,6 +579,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         for m in report.mismatches[:50]:
             sys.stdout.write(f"  {m.kind.value} {m.key} {m.detail}\n")
+        if report.explain is not None:
+            e = report.explain
+            sys.stdout.write(
+                f"explain failure-log={e.failure_log} journal-dead-letter={e.journal_dead_letter} "
+                f"journal-pending={e.journal_pending} unexplained={e.unexplained}\n"
+            )
     return 0 if report.exact else 1
 
 

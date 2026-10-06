@@ -22,6 +22,7 @@ newer projection version.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -35,20 +36,96 @@ from omnibase_core.models.projection.model_upsert_plan import (
     build_upsert_plan,
 )
 
+logger = logging.getLogger(__name__)
+
 _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
 )
 
-# Base schema mirrors the deployed delegation_events projection target so a
-# locally created DB matches the columns the projection handler writes. The
-# correlation_id UNIQUE constraint backs the UPSERT dedup.
+# The correlation_id UNIQUE constraint backs the UPSERT dedup. ``id`` is the
+# rowid alias, so a new row gets an integer where the Postgres table's serial
+# gives one.
 _DELEGATION_EVENTS_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_events (
+    id                      INTEGER PRIMARY KEY,
     correlation_id          TEXT    NOT NULL UNIQUE,
     -- OMN-19448: nullable terminal stop reason and truncation evidence.
     finish_reason           TEXT,
     truncated               INTEGER
 )
+"""
+
+# OMN-19976: every column a contract-declared exposure over delegation_events
+# reads. The read node refuses an exposure whose declared column the relation
+# lacks (projection_column_missing), and the writer adds a column only when a
+# row carries it, so a column the local writer never sends would never exist
+# and the local dashboard could not serve Runs. They are added nullable on
+# connect; a value the writer has no field for reads as NULL, as on Postgres.
+# tests/unit/projection/test_sqlite_delegation_events_declared_columns_omn19976.py
+# fails when an exposure declares a column missing from this set.
+_DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
+    "actual_score",
+    "answering_backend",
+    "authority_source",
+    "backend_id",
+    "compliance_attempts",
+    "context_pack_hash",
+    "cost_savings_usd",
+    "cost_tier_name",
+    "cost_tier_type",
+    "cost_usd",
+    "created_at",
+    "data_source",
+    "delegated_by",
+    "delegated_to",
+    "delegation_latency_ms",
+    "escalation_count",
+    "finish_reason",
+    "host",
+    "latency_ms",
+    "model_name",
+    "override_within_bounds",
+    "pricing_manifest_version",
+    "prompt_text",
+    "quality_gate_detail",
+    "quality_gate_passed",
+    "quality_gates_checked",
+    "quality_gates_failed",
+    "request_override_applied",
+    "required_bar",
+    "response_text",
+    "routed_model",
+    "score_source",
+    "session_id",
+    "task_type",
+    "tenant_id",
+    "timestamp",
+    "tokens_input",
+    "tokens_output",
+    "tokens_to_compliance",
+    "trace_id",
+    "truncated",
+    "writer_identity",
+    "written_at",
+)
+
+# A store created before ``id`` existed cannot gain a rowid alias without a
+# table rewrite, so it gets a plain ``id`` column instead, filled from the
+# row's rowid: back-filled once, and on every insert by this trigger. Nothing
+# here VACUUMs the store, which is the one operation that renumbers the rowids
+# of a table without an alias; should someone run it by hand, the unique index
+# makes a colliding insert fail loudly rather than store a duplicate id.
+_DELEGATION_EVENTS_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_delegation_events_id
+    ON delegation_events (id)
+"""
+_DELEGATION_EVENTS_ID_TRIGGER = """
+CREATE TRIGGER IF NOT EXISTS delegation_events_assign_id
+AFTER INSERT ON delegation_events
+WHEN NEW.id IS NULL
+BEGIN
+    UPDATE delegation_events SET id = NEW.rowid WHERE rowid = NEW.rowid;
+END
 """
 
 # Columns mirror LLM_CALL_METRICS_COLUMNS; input_hash backs the canonical
@@ -211,7 +288,7 @@ CREATE TABLE IF NOT EXISTS llm_call_metrics (
     total_tokens       INTEGER,
     estimated_cost_usd REAL,
     latency_ms         REAL,
-    usage_source       TEXT NOT NULL DEFAULT 'MISSING',
+    usage_source       TEXT NOT NULL DEFAULT 'unknown',
     usage_is_estimated INTEGER NOT NULL DEFAULT 0,
     usage_raw          TEXT,
     input_hash         TEXT,
@@ -225,6 +302,19 @@ _LLM_CALL_METRICS_INPUT_HASH_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
     ON llm_call_metrics (input_hash)
 """
+
+# One-time data steps on a local store, the SQLite counterpart of a forward
+# migration: each runs once, committed together with its row here. The table is
+# created by the first step that writes, never on a plain connect, so a
+# read-only store that predates it can still be opened.
+_STORE_STEPS_TABLE = "omnimarket_sqlite_store_steps"
+_STORE_STEPS_DDL = f"""
+CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
+    step       TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+)
+"""
+_USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -288,6 +378,7 @@ class SqliteDatabaseAdapter:
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
+        self._reconcile_delegation_events(conn)
         self._reconcile_legacy_llm_call_metrics(conn)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
@@ -300,7 +391,49 @@ class SqliteDatabaseAdapter:
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
+        self._apply_usage_source_vocabulary_step(conn, self._db_path)
         return conn
+
+    @staticmethod
+    def _delegation_events_reconciled(conn: sqlite3.Connection) -> bool:
+        rows = conn.execute("PRAGMA table_info(delegation_events)").fetchall()
+        if not set(_DELEGATION_EVENTS_DECLARED_COLUMNS) <= {
+            str(row["name"]) for row in rows
+        }:
+            return False
+        if any(row["name"] == "id" and row["pk"] for row in rows):
+            return True
+        trigger = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'trigger' "
+            "AND name = 'delegation_events_assign_id'"
+        ).fetchone()
+        return trigger is not None
+
+    @classmethod
+    def _reconcile_delegation_events(cls, conn: sqlite3.Connection) -> None:
+        if cls._delegation_events_reconciled(conn):
+            return
+        # The first opens of a fresh store arrive together (records run in
+        # flight in one process), so the column check and the ALTERs run inside
+        # one write transaction: two connections that both saw a column missing
+        # would otherwise both add it, and the second dies on a duplicate name.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = conn.execute("PRAGMA table_info(delegation_events)").fetchall()
+            existing = {str(row["name"]) for row in rows}
+            for column in _DELEGATION_EVENTS_DECLARED_COLUMNS:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE delegation_events ADD COLUMN {column}")
+            if not any(row["name"] == "id" and row["pk"] for row in rows):
+                if "id" not in existing:
+                    conn.execute("ALTER TABLE delegation_events ADD COLUMN id INTEGER")
+                conn.execute("UPDATE delegation_events SET id = rowid WHERE id IS NULL")
+                conn.execute(_DELEGATION_EVENTS_ID_INDEX)
+                conn.execute(_DELEGATION_EVENTS_ID_TRIGGER)
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @classmethod
     def _reconcile_legacy_llm_call_metrics(cls, conn: sqlite3.Connection) -> None:
@@ -311,6 +444,72 @@ class SqliteDatabaseAdapter:
             )
 
     @staticmethod
+    def _store_step_recorded(conn: sqlite3.Connection, step: str) -> bool:
+        if (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (_STORE_STEPS_TABLE,),
+            ).fetchone()
+            is None
+        ):
+            return False
+        return (
+            conn.execute(
+                f"SELECT 1 FROM {_STORE_STEPS_TABLE} WHERE step = ?", (step,)
+            ).fetchone()
+            is not None
+        )
+
+    @classmethod
+    def _apply_usage_source_vocabulary_step(
+        cls, conn: sqlite3.Connection, db_path: Path
+    ) -> None:
+        """OMN-19968: move rows written before the shared vocabulary onto it, once.
+
+        The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
+        migration 077). It runs once per store, and the relabel and its record
+        commit together. A store that has recorded it opens with reads only.
+        Every connection goes through here, reads included, and an UPDATE takes a
+        write lock even when it matches nothing.
+
+        The decision reads the store's step record, never llm_call_metrics rows:
+        this module is shared by nodes that do not own that table.
+        """
+        if cls._store_step_recorded(conn, _USAGE_SOURCE_VOCABULARY_STEP):
+            return
+        if "usage_source" not in cls._existing_columns(conn, "llm_call_metrics"):
+            return
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_STORE_STEPS_DDL)
+            conn.execute(
+                "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+                "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+                "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+                "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+            )
+            conn.execute(
+                f"INSERT OR IGNORE INTO {_STORE_STEPS_TABLE} (step, applied_at) "
+                "VALUES (?, ?)",
+                (_USAGE_SOURCE_VOCABULARY_STEP, datetime.now(UTC).isoformat()),
+            )
+            conn.commit()
+        except sqlite3.Error as exc:
+            conn.rollback()
+            # A store this process cannot write is still read, with the labels
+            # it holds. Anything else, a busy store included, is a real failure.
+            if not (
+                isinstance(exc, sqlite3.OperationalError)
+                and (exc.sqlite_errorcode & 0xFF) == sqlite3.SQLITE_READONLY
+            ):
+                raise
+            logger.warning(
+                "%s is read-only and has not moved llm_call_metrics.usage_source "
+                "onto the shared vocabulary; reading it as it is",
+                db_path,
+            )
+
+    @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
         return {str(row["name"]) for row in rows}
@@ -318,11 +517,26 @@ class SqliteDatabaseAdapter:
     def _ensure_columns(
         self, conn: sqlite3.Connection, table: str, row: dict[str, object]
     ) -> None:
-        existing = self._existing_columns(conn, table)
-        for column in row:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
-        conn.commit()
+        # OMN-19976: several writers, threads or processes, can reach a fresh
+        # store together, and each one's first write adds columns. Reading the
+        # columns with no lock and then altering let two writers both see one
+        # missing; the second ALTER failed with "duplicate column name" and
+        # that writer's row was lost. So the columns are read again under the
+        # write lock and only those still missing are added, in one
+        # transaction that rolls back whole. A row whose columns all exist,
+        # which is every steady-state write, returns before taking the lock.
+        if set(row) <= self._existing_columns(conn, table):
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._existing_columns(conn, table)
+            for column in row:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @staticmethod
     def _encode(column: str, value: object) -> object:

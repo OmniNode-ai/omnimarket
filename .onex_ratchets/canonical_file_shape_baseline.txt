@@ -134,8 +134,6 @@ scripts/ci/check_node_metadata_dependencies.py
 scripts/ci/check_occ_companion_merged.py
 scripts/ci/check_one_occ_producer.py
 scripts/ci/check_pr_hold_marker.py
-scripts/ci/check_projection_contract_access.py
-scripts/ci/check_projection_dlq_path.py
 scripts/ci/check_projection_write_path_db_gate.py
 scripts/ci/check_registry_projection_reconcile.py
 scripts/ci/check_rls_read_tenant_seam.py
@@ -250,7 +248,6 @@ scripts/validation/check_exposed_identifiers.py
 scripts/validation/check_internal_relation_tenant_posture.py
 scripts/validation/check_leaked_literals.sh
 scripts/validation/check_precommit_additional_dependencies.sh
-scripts/validation/check_projection_cursor_declared.py
 scripts/validation/dep_health_gate_cache.py
 scripts/validation/detect_llm_config_hardcoding.py
 scripts/validation/gen_exposed_identifier_entry.py

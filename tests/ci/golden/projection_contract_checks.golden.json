@@ -1,0 +1,242 @@
+{
+  "access_allow_marker_skips_line": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_attribute_constant": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_clean_read_write": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_contract_without_db_io_and_non_mapping_contract": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_literal_table_arg": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_missing_access_declaration": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='None' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_multiline_call": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_read_only_but_writes": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='read' but the handler performs a WRITE at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: write in contract.yaml (or drop the write).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_tests_dir_and_test_files_excluded": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_two_nodes_independent_constants": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_two_tables_one_narrow": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'audit' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:7. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_unresolved_read_flags_write_only_table": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "access_unresolved_read_with_read_write_table": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection contract-access gate OK: every db_io declaration covers its handler's operations.\n"
+  },
+  "access_write_only_but_reads": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection contract-access gate FAILED (OMN-16690) \u2014 a db_io contract declares an access capability narrower than the one its handler uses. The runtime enforces the declaration fail-closed, so every event on these paths is refused and quarantined while the caller still sees a 202:\n  - node_a: table 'orders' declares access='write' but the handler performs a READ at src/omnimarket/nodes/node_a/handler.py:6. The runtime refuses this with PermissionError and quarantines every event. Declare access: read_write in contract.yaml (or drop the read).\n\nFix the CONTRACT (declare what the handler does) \u2014 never weaken the runtime guard.\n",
+    "stdout": ""
+  },
+  "cursor_all_declared_clean": {
+    "baseline_after": "# header\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 0 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_baseline_entry_now_fixed_reports_shrink": {
+    "baseline_after": "# header\nnode_a::t#0\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "1 exposure(s) now declare a cursor_column and can leave the baseline \u2014 run --write-baseline to shrink it:\n  node_a::t#0\n\nOK: 0 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_expose_false_and_non_mapping_ignored": {
+    "baseline_after": "# header\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 0 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_hard_membership_violation": {
+    "baseline_after": "# header\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare a cursor_column that is not among their declared columns:\n  node_a::t#0: cursor_column 'ghost' is not among the declared columns ['id', 'name'] (missing column: 'ghost')\n\nThis is never baselined. Add the column to `columns`, or declare the cursor_column the exposure actually selects.\n",
+    "stdout": ""
+  },
+  "cursor_hard_violation_no_columns_list": {
+    "baseline_after": "# header\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare a cursor_column that is not among their declared columns:\n  node_a::t#0: cursor_column 'id' is declared but the exposure declares no columns list\n\nThis is never baselined. Add the column to `columns`, or declare the cursor_column the exposure actually selects.\n",
+    "stdout": ""
+  },
+  "cursor_missing_cursor_baselined": {
+    "baseline_after": "# header\nnode_a::t#0\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 1 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_nested_exposures_indexed_ids": {
+    "baseline_after": "# header\nnode_a::t#1\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare no cursor_column and are not in the baseline:\n  node_a::t#2\n\nWithout a cursor_column the serving path cannot populate next_cursor (api_server.py gates on `cfg.cursor_column is not None`), so a truncated page reports next_cursor: null and a caller cannot tell it is truncated.\n",
+    "stdout": ""
+  },
+  "cursor_new_and_hard_together": {
+    "baseline_after": "# header\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare a cursor_column that is not among their declared columns:\n  node_b::u#0: cursor_column 'ghost' is not among the declared columns ['id'] (missing column: 'ghost')\n\nThis is never baselined. Add the column to `columns`, or declare the cursor_column the exposure actually selects.\nFAIL: 1 projection_api exposure(s) declare no cursor_column and are not in the baseline:\n  node_a::t#0\n\nWithout a cursor_column the serving path cannot populate next_cursor (api_server.py gates on `cfg.cursor_column is not None`), so a truncated page reports next_cursor: null and a caller cannot tell it is truncated.\n",
+    "stdout": ""
+  },
+  "cursor_new_missing_cursor_not_in_baseline": {
+    "baseline_after": "# header\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare no cursor_column and are not in the baseline:\n  node_a::t#0\n\nWithout a cursor_column the serving path cannot populate next_cursor (api_server.py gates on `cfg.cursor_column is not None`), so a truncated page reports next_cursor: null and a caller cannot tell it is truncated.\n",
+    "stdout": ""
+  },
+  "cursor_quoted_column_names_compared_unquoted": {
+    "baseline_after": "# header\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 0 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_star_columns_accepted": {
+    "baseline_after": "# header\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 0 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_unnamed_table": {
+    "baseline_after": "# header\nnode_a::unnamed#0\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "OK: 1 exposure(s) without a cursor_column, all baselined.\n"
+  },
+  "cursor_write_baseline_allow_growth": {
+    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   <regenerate command>\nnode_a::t#0\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "baseline written: 1 exposures\n"
+  },
+  "cursor_write_baseline_refused_on_hard_violation": {
+    "baseline_after": "# header\n",
+    "rc": 1,
+    "stderr": "FAIL: 1 projection_api exposure(s) declare a cursor_column that is not among their declared columns:\n  node_a::t#0: cursor_column 'ghost' is not among the declared columns ['id'] (missing column: 'ghost')\n\nThis is never baselined. Add the column to `columns`, or declare the cursor_column the exposure actually selects.\nREFUSING to write a baseline while a cursor_column is absent from its declared columns (--allow-growth does not apply).\n",
+    "stdout": ""
+  },
+  "cursor_write_baseline_refuses_growth": {
+    "baseline_after": "# header\nnode_z::z#0\n",
+    "rc": 1,
+    "stderr": "REFUSING to write a baseline that grows.\nThese exposures are NEW violations, not pre-existing ones:\n  + node_a::t#0\nDeclare a cursor_column instead, or pass --allow-growth with a reason.\n",
+    "stdout": ""
+  },
+  "cursor_write_baseline_shrinks": {
+    "baseline_after": "# OMN-18043 \u2014 projection_api exposures that declare no cursor_column.\n# This list may only SHRINK. Regenerate with:\n#   <regenerate command>\n",
+    "rc": 0,
+    "stderr": "",
+    "stdout": "baseline written: 0 exposures\n"
+  },
+  "dlq_allow_marker_skips": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_dlq_topics_wired": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_explicit_paths_clean_file_only": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_explicit_paths_precommit_mode": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection-DLQ gate FAILED \u2014 a validating projection handler must route malformed events to a contract-declared DLQ topic, not drop them silently (OMN-13548 / D-03):\n  - src/omnimarket/nodes/node_projection_b/handlers/handler_b.py: references ValidationError but wires no DLQ route (expected one of route_to_dlq, _route_malformed_to_dlq, dlq_topics \u2014 see omnimarket.projection.dlq.route_to_dlq, OMN-13548)\n",
+    "stdout": ""
+  },
+  "dlq_no_validation_error_out_of_scope": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_non_handler_file_and_non_projection_node_not_scanned": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_private_route_symbol_wired": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_route_to_dlq_wired": {
+    "baseline_after": null,
+    "rc": 0,
+    "stderr": "",
+    "stdout": "Projection-DLQ gate OK: all validating projection handlers route to DLQ.\n"
+  },
+  "dlq_two_violations_sorted": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection-DLQ gate FAILED \u2014 a validating projection handler must route malformed events to a contract-declared DLQ topic, not drop them silently (OMN-13548 / D-03):\n  - src/omnimarket/nodes/node_projection_a/handlers/handler_a.py: references ValidationError but wires no DLQ route (expected one of route_to_dlq, _route_malformed_to_dlq, dlq_topics \u2014 see omnimarket.projection.dlq.route_to_dlq, OMN-13548)\n  - src/omnimarket/nodes/node_projection_b/handlers/handler_b.py: references ValidationError but wires no DLQ route (expected one of route_to_dlq, _route_malformed_to_dlq, dlq_topics \u2014 see omnimarket.projection.dlq.route_to_dlq, OMN-13548)\n",
+    "stdout": ""
+  },
+  "dlq_validation_error_without_route": {
+    "baseline_after": null,
+    "rc": 1,
+    "stderr": "Projection-DLQ gate FAILED \u2014 a validating projection handler must route malformed events to a contract-declared DLQ topic, not drop them silently (OMN-13548 / D-03):\n  - src/omnimarket/nodes/node_projection_a/handlers/handler_a.py: references ValidationError but wires no DLQ route (expected one of route_to_dlq, _route_malformed_to_dlq, dlq_topics \u2014 see omnimarket.projection.dlq.route_to_dlq, OMN-13548)\n",
+    "stdout": ""
+  }
+}

@@ -67,7 +67,13 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation.wire.model_response_source_attempt import (
+    ModelResponseSourceAttempt,
+)
 from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    current_dispatch_progress,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -80,7 +86,11 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
+    ModelDelegationDispatchProgress,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    DELEGATION_RUNTIME_INSTANCE_ID,
     ModelDelegationReapContext,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
@@ -681,6 +691,32 @@ def _attempt_records(
     return records
 
 
+def _response_source_attempt(
+    result: dict[str, object], attempts: list[ModelDelegateSkillAttemptRecord]
+) -> ModelResponseSourceAttempt | None:
+    """Carry the workflow's response-source marker onto the caller's terminal."""
+    raw = result.get("attempts")
+    if not isinstance(raw, list):
+        raw = result.get("escalation_history")
+    if not isinstance(raw, list | tuple):
+        return None
+    records = [item for item in raw if isinstance(item, dict)]
+    sources = [
+        index
+        for index, item in enumerate(records)
+        if item.get("supplied_response") is True
+    ]
+    if not sources:
+        return None
+    if len(sources) != 1:
+        raise ValueError("response_source_attempt requires exactly one source marker")
+    index = sources[0]
+    attempt = attempts[index]
+    return ModelResponseSourceAttempt(
+        attempt_index=index, tier=attempt.tier, backend_id=attempt.backend_id
+    )
+
+
 def _preamble_rule(raw: dict[str, object]) -> str | None:
     """The reasoning-preamble rule a rung recorded, or None when no gate judged it.
 
@@ -808,7 +844,7 @@ def _response_from_result(
     tenant_id: str | None,
     queue_wait_ms: int | None,
     execution_duration_ms: int,
-    budget_evidence: ModelDelegationBudgetEvidence,
+    budget_evidence: ModelDelegationBudgetEvidence | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -1002,6 +1038,7 @@ def _response_from_result(
         escalation_count=_as_int(result.get("escalation_count")),
         attempts_count=_response_attempts_count(result, attempts),
         attempts=attempts,
+        response_source_attempt=_response_source_attempt(result, attempts),
         # OMN-18852: queue and execution as separate terminal facts. The
         # dispatch port reports neither -- both are measured by the handler,
         # which is the only party that knows when it picked the record up.
@@ -1173,6 +1210,8 @@ class HandlerDelegateSkill:
                 execution_budget.terminal_delivery_margin_seconds
             ),
         )
+        progress = ModelDelegationDispatchProgress()
+        progress_token = current_dispatch_progress.set(progress)
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
@@ -1295,7 +1334,9 @@ class HandlerDelegateSkill:
                 provenance=request.provenance,
                 error_message=(
                     f"delegation exceeded the handler execution budget of "
-                    f"{execution_timeout_seconds}s and was cancelled; the consumer commits "
+                    f"{execution_timeout_seconds}s and was cancelled at "
+                    f"stage={progress.cancelled_stage or progress.stage}; "
+                    "the consumer commits "
                     "this terminal instead of being evicted mid-handle "
                     f"(OMN-15504){queue_clause}"
                 ),
@@ -1325,6 +1366,9 @@ class HandlerDelegateSkill:
                 ),
                 budget_evidence=budget_evidence,
             )
+
+        finally:
+            current_dispatch_progress.reset(progress_token)
 
         return delegate_skill_terminal_from_response(
             _response_from_result(
@@ -1422,6 +1466,8 @@ def _request_reap_context(
         caller_lane=_request_caller_lane(request),
         session_id=_request_session_id(request),
         provenance=request.provenance,
+        runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
+        request=request,
         deadline_at=datetime.now(UTC)
         + timedelta(
             seconds=execution_seconds

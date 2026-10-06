@@ -106,7 +106,7 @@ async def test_envelope_through_real_dispatch_writes_llm_call_metrics_row() -> N
     assert total_tokens == 28471
     assert estimated_cost_usd == pytest.approx(0.17897125)
     assert latency_ms == pytest.approx(19820.0)
-    assert usage_source == "API"  # MEASURED -> API
+    assert usage_source == "measured"  # MEASURED -> measured
     assert usage_is_estimated is False
     assert session_id == "b45a01ea-0000-0000-0000-000000000001"
     assert run_id is None

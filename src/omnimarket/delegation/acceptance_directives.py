@@ -27,8 +27,17 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from omnimarket.inference.task_class_authority import (
+    EnumPromptShape,
     EnumQualityRuleEnforcement,
+    resolve_facts_first_prompt_policy,
     resolve_quality_rule,
+    resolve_task_class_prompt_shape,
+)
+from omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_first_prompt import (
+    HandlerFactsFirstPrompt,
+)
+from omnimarket.nodes.node_facts_first_prompt_compute.models.model_facts_first_prompt_request import (
+    ModelFactsFirstPromptRequest,
 )
 
 __all__ = [
@@ -36,6 +45,7 @@ __all__ = [
     "acceptance_rule_names",
     "compose_user_prompt_with_output_directives",
     "render_acceptance_directives",
+    "state_prompt_for_task_class",
 ]
 
 ACCEPTANCE_DIRECTIVES_HEADER = (
@@ -96,6 +106,29 @@ def render_acceptance_directives(rule_names: Iterable[str]) -> str | None:
         return None
     return "\n".join(
         [ACCEPTANCE_DIRECTIVES_HEADER, *(f"- {text}" for text in directives)]
+    )
+
+
+def state_prompt_for_task_class(*, prompt: str, task_class: str) -> str:
+    """Return ``prompt`` stated the way the contract says ``task_class`` is stated.
+
+    OMN-19432. A class that declares ``prompt_shape: facts_first`` gets the facts
+    computed from the prompt ahead of it, the prompt itself unchanged after them.
+    A class that declares ``plain``, or nothing, and a class the contract does not
+    know, get ``prompt`` byte-identical. The class list is the contract's alone.
+    """
+    if resolve_task_class_prompt_shape(task_class) is not EnumPromptShape.FACTS_FIRST:
+        return prompt
+    policy = resolve_facts_first_prompt_policy()
+    if policy is None:
+        raise ValueError(
+            f"task class {task_class!r} declares prompt_shape facts_first but the "
+            "contract has no facts_first_prompt policy"
+        )
+    return (
+        HandlerFactsFirstPrompt()
+        .handle(ModelFactsFirstPromptRequest(prompt=prompt, policy=policy))
+        .prompt
     )
 
 

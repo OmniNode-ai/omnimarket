@@ -429,6 +429,16 @@ async def read_projection_page(
 ) -> ProjectionPage:
     """The page of one contract-declared exposure, or the named refusal."""
     if topic not in topic_map:
+        matches = [
+            cfg.topic for cfg in topic_map.values() if topic in cfg.route_aliases
+        ]
+        if len(matches) > 1:
+            return ProjectionPage(
+                409, {"error": "ambiguous_projection_alias", "alias": topic}
+            )
+        if matches:
+            topic = matches[0]
+    if topic not in topic_map:
         return ProjectionPage(
             404,
             {
@@ -520,11 +530,20 @@ async def read_projection_page(
     # `since` filter and the truncation test below must see the whole set, or
     # no page at the contract limit advertises a cursor and no walk passes that
     # many rows. OMN-20152: the window is read from the writer's table.
-    # OMN-20327: a read without ``since`` is page one of the ascending cursor
-    # walk over every key, not the newest ``limit * 4`` rows -- a walk that
-    # starts inside the newest window can never reach the keys older than it.
-    # A ranked exposure ranks the WHOLE set in the source, not a recency cut.
+    # OMN-20327: for an exposure that declares a cursor, a read without
+    # ``since`` is page one of the ascending cursor walk over every key, not
+    # the newest ``limit * 4`` rows -- a walk that starts inside the newest
+    # window can never reach the keys older than it. OMN-19971: an exposure
+    # with no cursor cannot walk (``since`` is refused above, so no page after
+    # the first exists); it serves its newest rows, as the cache did. A ranked
+    # exposure ranks the WHOLE set in the source, not a recency cut.
     ranked_window = cfg.page_selection == "order_by" and since is None
+    if ranked_window:
+        selection = "ranked"
+    elif cfg.cursor_column is not None:
+        selection = "walk"
+    else:
+        selection = "newest"
     try:
         all_rows = await source.rows(
             cfg,
@@ -532,9 +551,18 @@ async def read_projection_page(
             tenant_id=scope_tenant,
             since=since,
             correlation_id=correlation_id,
-            selection="ranked" if ranked_window else "walk",
+            selection=selection,
         )
-        latest_event_at = await source.latest_event_at(cfg, tenant_id=scope_tenant)
+        # OMN-19971: one window read per page. The unfiltered newest window
+        # already holds the newest row; any other window leaves the source to
+        # read the newest value with a bounded query, never a second window.
+        latest_event_at = await source.latest_event_at(
+            cfg,
+            tenant_id=scope_tenant,
+            window_rows=(
+                all_rows if selection == "newest" and correlation_id is None else None
+            ),
+        )
     except ProjectionReadError as exc:
         return ProjectionPage(exc.status_code, read_refusal(topic, exc))
     filtered_rows = filter_rows(

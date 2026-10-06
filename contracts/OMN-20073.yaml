@@ -14,6 +14,8 @@ requirements:
         statement: "The six PR CI-start pollers admit only a successful repo-evidence / dod-verify check from GitHub Actions on the current head; absent, nonpassing and newer pending verdicts refuse admission."
       - id: "AC2"
         statement: "CI Summary enforces repo evidence on PR admission and retains the existing OCC queue contexts until OR.2 supports merge_group."
+      - id: "AC3"
+        statement: "The repo-evidence caller pins the omnibase_core reusable whose caller-evidence dod-verify job exempts dependency bots and a pin-only writer-app bump, so a bot version bump is not refused for binding no evidence of its own."
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -21,6 +23,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Exercise CI Summary's repo-owned verdict and queue context policy."
     command: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k summary"
+  - kind: "tests"
+    description: "The caller pins the reusable that carries the bot version-bump exemption."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k bot_bump_exemption"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -k summary"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-repo-evidence-bot-bump-exemption"
+    description: "The repo-evidence caller pins an omnibase_core reusable that carries the dependency-bot and pin-only writer-app exemption in its dod-verify job."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k bot_bump_exemption"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

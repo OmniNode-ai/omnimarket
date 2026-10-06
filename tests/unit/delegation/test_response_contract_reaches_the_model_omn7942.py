@@ -400,18 +400,10 @@ async def test_a_fenced_json_answer_satisfies_the_declared_contract(
 
 
 @pytest.mark.unit
-async def test_a_reasoning_trace_before_the_answer_is_stripped_before_validation(
+async def test_a_reasoning_trace_before_a_conforming_answer_fails_the_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A PIN on behaviour that already holds, not a change (OMN-18278 crit. 1).
-
-    ``delta`` segments the reasoning preamble at line 1916 before branching
-    into the response-contract evaluator, and the evaluator additionally strips
-    paired think tags. This test exists because the 2026-09-18 report read the
-    12/12 failure as an unstripped preamble; measured, the shape that survives
-    is an UNTAGGED prose preamble, which no boundary rule claims and which the
-    conveyed instruction -- not a widened strip heuristic -- is the remedy for.
-    """
+    """AC2 refuses a leading trace even when extraction finds valid JSON."""
     handler, _ = _make_handler(
         tmp_path,
         monkeypatch,
@@ -427,8 +419,8 @@ async def test_a_reasoning_trace_before_the_answer_is_stripped_before_validation
 
     response = await handler.handle(request)
 
-    assert response.status == "completed"
-    assert response.quality_gate_passed is True
+    assert response.status != "completed"
+    assert response.quality_gate_passed is False
 
 
 # --------------------------------------------------------------------------
@@ -453,16 +445,10 @@ _SERVED_MODEL_ANSWER_BEHIND_AN_UNTAGGED_PREAMBLE = (
 
 
 @pytest.mark.unit
-async def test_the_served_models_untagged_preamble_no_longer_fails_a_conforming_answer(
+async def test_the_served_models_untagged_reasoning_fails_despite_a_conforming_answer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The residual the conveyed schema exposed rather than removed.
-
-    Before this change the evaluator parsed from character zero, so this
-    response -- which CONTAINS a fully conforming object -- failed as
-    MALFORMED. Three local attempts failed that way on every run and the
-    router climbed to a metered cloud rung each time.
-    """
+    """Declared reasoning cannot pass solely because JSON was recoverable."""
     handler, _ = _make_handler(
         tmp_path,
         monkeypatch,
@@ -478,8 +464,8 @@ async def test_the_served_models_untagged_preamble_no_longer_fails_a_conforming_
 
     response = await handler.handle(request)
 
-    assert response.status == "completed"
-    assert response.quality_gate_passed is True
+    assert response.status != "completed"
+    assert response.quality_gate_passed is False
 
 
 @pytest.mark.unit
@@ -574,14 +560,14 @@ async def test_the_caller_receives_the_conforming_object_not_the_prose_around_it
     """Passing the gate is not the same as serving the caller.
 
     The register classifier of OMN-18625 calls ``json.loads`` on what it is
-    handed. A run that scores 1.0 and returns the model's scratchpad with the
+    handed. A run that scores 1.0 and returns surrounding prose with the
     object buried in it breaks that caller just as hard as a failed run, so
     the response seam substitutes the value the gate graded.
     """
     handler, _ = _make_handler(
         tmp_path,
         monkeypatch,
-        content=_SERVED_MODEL_ANSWER_BEHIND_AN_UNTAGGED_PREAMBLE,
+        content="Classifier result:\n" + _CONFORMING_ANSWER,
     )
     request = ModelDelegateSkillRequest(
         prompt="Classify this ledger row.",
@@ -594,7 +580,7 @@ async def test_the_caller_receives_the_conforming_object_not_the_prose_around_it
     response = await handler.handle(request)
 
     assert response.status == "completed"
-    assert json.loads(response.response) == {"category": "ruling", "confidence": 0.95}
+    assert json.loads(response.response) == json.loads(_CONFORMING_ANSWER)
 
 
 @pytest.mark.unit

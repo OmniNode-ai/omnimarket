@@ -156,29 +156,29 @@ class TestBuildRow:
         }
         assert expected_keys.issubset(row.keys())
 
-    def test_measured_maps_to_api(self) -> None:
+    def test_measured_maps_to_measured(self) -> None:
         row = _build_row(_minimal_event(usage_source="MEASURED"))
-        assert row["usage_source"] == "API"
+        assert row["usage_source"] == "measured"
         assert row["usage_is_estimated"] is False
 
     def test_api_usage_source_preserved(self) -> None:
         row = _build_row(_minimal_event(usage_source="API"))
-        assert row["usage_source"] == "API"
+        assert row["usage_source"] == "measured"
         assert row["usage_is_estimated"] is False
 
     def test_estimated_usage_source(self) -> None:
         row = _build_row(_minimal_event(usage_source="ESTIMATED"))
-        assert row["usage_source"] == "ESTIMATED"
+        assert row["usage_source"] == "estimated"
         assert row["usage_is_estimated"] is True
 
-    def test_unknown_usage_source_maps_to_missing(self) -> None:
+    def test_unknown_usage_source_maps_to_unknown(self) -> None:
         row = _build_row(_minimal_event(usage_source="UNKNOWN"))
-        assert row["usage_source"] == "MISSING"
+        assert row["usage_source"] == "unknown"
         assert row["usage_is_estimated"] is True
 
-    def test_garbage_usage_source_maps_to_missing(self) -> None:
+    def test_garbage_usage_source_maps_to_unknown(self) -> None:
         row = _build_row(_minimal_event(usage_source="GARBAGE"))
-        assert row["usage_source"] == "MISSING"
+        assert row["usage_source"] == "unknown"
 
     def test_source_from_reporting_source(self) -> None:
         row = _build_row(_minimal_event(reporting_source="ab-compare"))
@@ -309,7 +309,9 @@ class TestBuildRow:
 
     # --- OMN-12994: usage_normalized.source fallback ---
 
-    def test_usage_normalized_source_api_maps_to_api_when_no_top_level(self) -> None:
+    def test_usage_normalized_source_api_maps_to_measured_when_no_top_level(
+        self,
+    ) -> None:
         """ContractLlmCallMetrics wire shape: usage_normalized.source='api', no top-level usage_source."""
         data: dict[str, Any] = {
             "model_id": "Qwen3.6-35B-A3B",
@@ -319,8 +321,8 @@ class TestBuildRow:
             "usage_normalized": {"source": "api"},
         }
         row = _build_row(data)
-        assert row["usage_source"] == "API", (
-            "usage_normalized.source='api' must resolve to API (MEASURED), not MISSING"
+        assert row["usage_source"] == "measured", (
+            "usage_normalized.source='api' must resolve to measured, not unknown"
         )
         assert row["usage_is_estimated"] is False
 
@@ -335,10 +337,10 @@ class TestBuildRow:
             "usage_normalized": {"source": "estimated"},
         }
         row = _build_row(data)
-        assert row["usage_source"] == "ESTIMATED"
+        assert row["usage_source"] == "estimated"
         assert row["usage_is_estimated"] is True
 
-    def test_usage_normalized_source_missing_maps_to_missing_when_no_top_level(
+    def test_usage_normalized_source_missing_maps_to_unknown_when_no_top_level(
         self,
     ) -> None:
         data: dict[str, Any] = {
@@ -347,7 +349,7 @@ class TestBuildRow:
             "usage_normalized": {"source": "missing"},
         }
         row = _build_row(data)
-        assert row["usage_source"] == "MISSING"
+        assert row["usage_source"] == "unknown"
 
     def test_top_level_usage_source_takes_priority_over_usage_normalized(self) -> None:
         """Top-level usage_source wins over usage_normalized.source."""
@@ -360,9 +362,9 @@ class TestBuildRow:
             "usage_normalized": {"source": "missing"},
         }
         row = _build_row(data)
-        assert row["usage_source"] == "API"  # MEASURED → API from top-level
+        assert row["usage_source"] == "measured"  # MEASURED -> measured from top-level
 
-    def test_usage_normalized_absent_falls_back_to_missing(self) -> None:
+    def test_usage_normalized_absent_falls_back_to_unknown(self) -> None:
         """No top-level usage_source and no usage_normalized → MISSING (unchanged)."""
         data: dict[str, Any] = {
             "model_id": "some-model",
@@ -371,7 +373,7 @@ class TestBuildRow:
             "total_tokens": 150,
         }
         row = _build_row(data)
-        assert row["usage_source"] == "MISSING"
+        assert row["usage_source"] == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +521,7 @@ class TestRealEventPayload:
         }
         row = _build_row(event)
 
-        assert row["usage_source"] == "API"
+        assert row["usage_source"] == "measured"
         assert row["usage_is_estimated"] is False
         assert row["latency_ms"] == pytest.approx(19820.0)
         assert row["source"] == "ab-compare"

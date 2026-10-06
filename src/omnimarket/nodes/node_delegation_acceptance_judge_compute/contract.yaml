@@ -26,7 +26,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.handler_delegation_acceptance_judge
   class: HandlerDelegationAcceptanceJudge
-  input_model: omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
+  input_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
 
 descriptor:
   node_archetype: compute
