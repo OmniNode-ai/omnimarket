@@ -13,8 +13,8 @@ import pytest
 import yaml
 
 from omnimarket.adapters.codex.local_runtime_dispatch import _resolve_node_route
-from omnimarket.models.delegation.wire.model_delegate_skill_response import (
-    ModelDelegateSkillCompleted,
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
 )
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
     EnumAcceptanceOperation,
@@ -49,8 +49,9 @@ def _contracts() -> dict[str, dict[str, Any]]:
     }
 
 
-def _completed() -> ModelDelegateSkillCompleted:
-    return ModelDelegateSkillCompleted(
+def _completed() -> ModelDelegateSkillTerminalProjection:
+    return ModelDelegateSkillTerminalProjection(
+        status="completed",
         correlation_id=uuid4(),
         task_type="document",
         model_name="the-served-model",
@@ -87,7 +88,7 @@ def test_registered_route_resolves_to_the_typed_handler() -> None:
     )
     assert (
         getattr(import_module(route.input_model_module), route.input_model_name)
-        is ModelDelegateSkillCompleted
+        is ModelDelegateSkillTerminalProjection
     )
 
 
