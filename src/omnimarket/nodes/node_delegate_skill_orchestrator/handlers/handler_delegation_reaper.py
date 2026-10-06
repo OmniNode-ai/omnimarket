@@ -11,7 +11,7 @@ from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCa
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
 )

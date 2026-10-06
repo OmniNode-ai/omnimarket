@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17122"
+title: "The delegate-skill node resolves canonical delegation wire models without shims"
+summary: "The delegate-skill request and response shim modules are deleted and the node contract resolves the canonical omnimarket.models.delegation.wire models. AC1 is bound to the node contract tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-canonical-wire-models-without-shims"
+    statement: "The node contract references canonical wire models and the deleted shim modules no longer import. The criterion below is the one the contract tests cover; its id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the delegate-skill node contract resolves the canonical wire models and the deleted shim modules fail to import -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The node contract tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17122-ac1-canonical-wire-models"
+    description: "AC1 hosted probe. The node contract resolves the canonical wire models without shims."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

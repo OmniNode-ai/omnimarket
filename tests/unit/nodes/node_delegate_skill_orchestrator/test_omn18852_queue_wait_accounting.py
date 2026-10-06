@@ -31,6 +31,9 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.inference.task_class_authority import ModelTaskClassExecutionBudget
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
 )
@@ -39,9 +42,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 
 
