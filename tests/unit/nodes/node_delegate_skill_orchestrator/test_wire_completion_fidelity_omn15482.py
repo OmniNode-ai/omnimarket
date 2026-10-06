@@ -43,11 +43,11 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as local_port_module,

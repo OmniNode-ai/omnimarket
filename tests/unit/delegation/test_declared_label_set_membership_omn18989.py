@@ -360,11 +360,11 @@ async def test_declared_labels_survive_the_gate_and_terminal(
     shape: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """AC1-3: replay a75a211c's corruption, a valid control, and a visible retry."""
+    from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+        ModelDelegateSkillRequest,
+    )
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
         HandlerDelegateSkill,
-    )
-    from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-        ModelDelegateSkillRequest,
     )
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
         port_local_delegation_dispatch as dispatch,

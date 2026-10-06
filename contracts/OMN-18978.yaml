@@ -31,3 +31,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-local-watchdog-inference-stage"
+    description: "The local effect watchdog timeout after worker readiness names stage=inference; the test fails at the merge base, where the watchdog message carries no stage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_local_watchdog_timeout_names_inference_after_worker_boot -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

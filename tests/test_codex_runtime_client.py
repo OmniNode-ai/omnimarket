@@ -40,6 +40,12 @@ from omnimarket.adapters.codex.runtime_client import (
     main,
 )
 from omnimarket.events.pr_lifecycle_triage import ModelPrTriageInput
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+)
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
@@ -47,12 +53,6 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
 from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
     HandlerCoderabbitTriage,
     ModelCoderabbitTriageCommand,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
-    ModelDelegateSkillResponse,
 )
 from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
     HandlerLocalReview,

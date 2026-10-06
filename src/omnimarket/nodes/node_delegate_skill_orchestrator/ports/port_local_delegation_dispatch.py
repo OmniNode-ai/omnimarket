@@ -233,6 +233,11 @@ from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.projection.sqlite_metering_summary import (
+    InProcessMeteringRefreshPublisher,
+    ProtocolMeteringRefreshPublisher,
+    refresh_metering_after_terminal,
+)
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
 )
@@ -974,8 +979,12 @@ class LocalDelegationDispatchPort:
         quota_reader: ProtocolProviderQuotaReader | None = None,
         quota_observation_sink: ProtocolProviderQuotaObservationSink | None = None,
         terminal_publisher: EmitEffectTopicPublisher | None = None,
+        metering_refresh_publisher: ProtocolMeteringRefreshPublisher | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-19977: where the end-of-delegate metering refresh is delivered.
+        # None is mode 1: in-process, to the metering node, on the local store.
+        self._metering_refresh_publisher = metering_refresh_publisher
         # OMN-20154: this path reads provider quota state from the SAME durable
         # projection the runtime reads, and delivers each call's observation to
         # it (through node_event_emit_effect: spool, then the bus). A laptop
@@ -2918,7 +2927,8 @@ class LocalDelegationDispatchPort:
         except TimeoutError:
             failure_message = (
                 f"delegation call did not return within "
-                f"{dispatch_deadline_seconds:.0f}s (endpoint {backend.endpoint_ref} "
+                f"{dispatch_deadline_seconds:.0f}s at stage=inference "
+                f"(endpoint {backend.endpoint_ref} "
                 f"unreachable or unresponsive)"
             )
             logger.warning(
@@ -3365,6 +3375,7 @@ class LocalDelegationDispatchPort:
                 "No identity will be invented or defaulted for it."
             )
         payload["tenant_id"] = tenant_id
+        terminal_at: datetime | None = None
         try:
             # The projection confirms a UUID identity against the evidence
             # store's own tenant_registry_mirror. `onex local init` writes that
@@ -3383,9 +3394,12 @@ class LocalDelegationDispatchPort:
             )
 
             terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
-            self._projection_handler.project_delegate_skill_terminal(
+            projected = self._projection_handler.project_delegate_skill_terminal(
                 terminal, self._evidence_db
             )
+            if projected.rows_upserted > 0:
+                # The row's created_at is this instant (OMN-13171).
+                terminal_at = terminal.emitted_at
             try:
                 call_event = ModelLlmCallCompletedEvent(
                     call_id=str(correlation_id),
@@ -3424,6 +3438,12 @@ class LocalDelegationDispatchPort:
                 "Failed to project local delegation evidence for correlation_id=%s",
                 correlation_id,
                 exc_info=True,
+            )
+        if terminal_at is not None:
+            self._refresh_metering_summary(
+                correlation_id=correlation_id,
+                tenant_id=tenant_id,
+                terminal_at=terminal_at,
             )
         # OMN-20154: the SAME terminal the local row was projected from also
         # goes on the bus, on this node's own contract terminal topic, so the
@@ -3501,6 +3521,51 @@ class LocalDelegationDispatchPort:
                     call_id,
                     exc_info=True,
                 )
+
+    def _refresh_metering_summary(
+        self, *, correlation_id: UUID, tenant_id: str, terminal_at: datetime
+    ) -> None:
+        """End-of-delegate metering refresh (OMN-19977), after the terminal row.
+
+        In mode 1 the metering fold runs in-process at the end of each
+        ``onex delegate``: the run's UTC day and the all row, or every row for
+        the tenant when the baseline or pricing manifest changed. It runs only
+        once the terminal row is durable, and only on the local SQLite evidence
+        store; a store bound by overlay to a shared database (OMN-14015) has its
+        own lane writer, which this process must not fold local runs into.
+
+        A failure never fails the delegation, and is never silent: it is logged
+        and said on stderr, where ``onex delegate``'s caller sees it, and
+        ``onex metering`` then reports the row as stale until the next run.
+        """
+        if not isinstance(self._evidence_db, SqliteDatabaseAdapter):
+            logger.debug(
+                "metering summary refresh skipped for correlation_id=%s: the "
+                "evidence store is not the local SQLite file",
+                correlation_id,
+            )
+            return
+        store = self._evidence_db.db_path
+        try:
+            refresh_metering_after_terminal(
+                store,
+                tenant_id=tenant_id,
+                terminal_at=terminal_at,
+                publisher=self._metering_refresh_publisher
+                or InProcessMeteringRefreshPublisher(store),
+            )
+        except Exception as exc:
+            logger.warning(
+                "metering summary refresh failed for correlation_id=%s",
+                correlation_id,
+                exc_info=True,
+            )
+            sys.stderr.write(
+                f"onex: delegation {correlation_id} finished, but its metering "
+                f"summary was not refreshed ({type(exc).__name__}: {exc}). "
+                "`onex metering` reports the row as stale until the next "
+                "delegation refreshes it.\n"
+            )
 
     def _publish_terminal(
         self, payload: Mapping[str, object], *, quality_passed: bool
