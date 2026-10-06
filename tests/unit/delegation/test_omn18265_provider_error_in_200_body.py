@@ -87,6 +87,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TENANT_OVERLAY_TIER_NAME,
+    next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -589,6 +590,76 @@ def test_the_customer_route_is_retried_rather_than_terminalised() -> None:
         isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
     ), "a same-route retry is not a tier escalation and emits no escalation proof"
     assert handler.workflows[cid].escalation_count == 0
+    assert routing[0].payload == handler.workflows[cid].request
+    assert routing[0].min_tier_name is None
+    assert not routing[0].excluded_backend_refs
+
+    retried = list(handler.handle_routing_decision(_customer_route(cid)))
+    inference = [e for e in retried if isinstance(e, ModelInferenceIntent)]
+    assert len(inference) == 1
+    assert inference[0].correlation_id == cid
+    assert inference[0].tenant_id == routing[0].payload.tenant_id
+    assert inference[0].api_key_ref == LIVE_TENANT_REF
+    assert inference[0].model == FREE_MODEL
+    assert inference[0].base_url == OPENROUTER_URL
+    assert handler.workflows[cid].escalation_count == 0
+
+
+def test_a_provider_error_on_a_platform_route_still_escalates(
+    monkeypatch: pytest.MonkeyPatch, frontier_unconfigured_bifrost: None
+) -> None:
+    """AC5: the same 200-body outage follows the platform's declared ladder."""
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    request = ModelDelegationRequest(
+        prompt="Write a test.",
+        task_type="test",
+        correlation_id=cid,
+        emitted_at=datetime.now(UTC),
+    )
+    route = ModelRoutingDecision(
+        correlation_id=cid,
+        task_type="test",
+        selected_model="qwen-coder",
+        selected_backend_id=uuid5(NAMESPACE_DNS, "omninode.ai/backends/local-coder"),
+        selected_backend_ref="local-coder",
+        endpoint_url="http://local.test:8000/v1/chat/completions",
+        cost_tier="low",
+        tier_name="local",
+        max_context_tokens=65536,
+        max_tokens=64,
+        system_prompt="s",
+        rationale="platform route",
+    )
+    next_tier = next_eligible_tier("local", frozenset(), task_type="test")
+    assert next_tier is not None
+    handler.handle_delegation_request(request)
+    handler.handle_routing_decision(route)
+    _bind_transport(monkeypatch, LIVE_PROVIDER_ERROR_BODY)
+    response = HandlerInferenceIntent().handle(
+        _intent(
+            correlation_id=cid,
+            base_url=route.endpoint_url,
+            model=route.selected_model,
+            tenant_id=None,
+            api_key_ref=None,
+        )
+    )
+
+    events = list(handler.handle_inference_response(response))
+
+    routing = [e for e in events if isinstance(e, ModelRoutingIntent)]
+    assert len(routing) == 1
+    assert routing[0].min_tier_name == next_tier
+    assert routing[0].payload == request
+    escalations = [
+        e for e in events if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
+    ]
+    assert len(escalations) == 1
+    assert escalations[0].failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert handler.workflows[cid].escalation_count == 1
+    assert handler.workflows[cid].customer_route_retry_count == 0
 
 
 def test_the_retry_budget_is_bounded_and_then_the_workflow_terminalises() -> None:
