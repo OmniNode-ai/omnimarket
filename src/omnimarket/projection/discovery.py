@@ -594,9 +594,23 @@ def _parse_projection_api_section(
         )
         return None
 
+    raw_route_aliases = section.get("route_aliases", [])
+    if not isinstance(raw_route_aliases, list) or any(
+        not isinstance(alias, str) or not alias.strip() or alias != alias.strip()
+        for alias in raw_route_aliases
+    ):
+        logger.error(
+            "Contract %r (path: %s): projection_api.route_aliases must be a "
+            "list of non-empty strings — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+
     return ProjectionTableConfig(
         topic=topic,
         table=table,
+        route_aliases=tuple(raw_route_aliases),
         schema_name=schema_name,
         columns=columns,
         json_columns=json_columns,

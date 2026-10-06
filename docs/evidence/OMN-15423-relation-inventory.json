@@ -6496,6 +6496,8 @@
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
+        "node_pr_handoff_decision_compute",
+        "node_pr_handoff_orchestrator",
         "node_pr_landing_github_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_fix_effect",

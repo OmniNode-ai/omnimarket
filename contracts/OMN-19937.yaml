@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19937"
+title: "The board_probe_results projection route resolves to its canonical topic"
+summary: "Adds contract-declared route_aliases so GET /projection/board_probe_results resolves through the shared read_projection_page to the canonical projection topic. Malformed aliases are excluded and ambiguous aliases return HTTP 409. AC1 is bound to the focused test file. The h201 dev route readback is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-board-probe-results-route-alias-resolves"
+    statement: "The board_probe_results route alias resolves to the canonical projection topic instead of returning unknown_topic. AC1 is the label the binding item claims through binds_ac. The h201 dev route readback is not bound here: it reads the lab dev table, which this repository's hosted check cannot reach."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a declared route alias resolves through read_projection_page to the canonical topic, malformed aliases are excluded and ambiguous aliases return HTTP 409 -- falsifier: uv run pytest tests/test_omn19937_board_probe_results_projection.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The focused tests prove the alias resolves to the canonical topic, malformed aliases are excluded and ambiguous aliases return 409."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19937_board_probe_results_projection.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19937-ac1-route-alias-resolves"
+    description: "AC1 hosted probe. The focused tests prove the alias resolves to the canonical topic, malformed aliases are excluded and ambiguous aliases return 409."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19937_board_probe_results_projection.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

@@ -432,6 +432,7 @@ def gate_result_with_output_refusal(
             "fail_category": "fail_deterministic",
             "failure_reasons": (
                 f"DELIVERABLE_EXTRACTION: {refusal.reason.value}",
+                *refusal.contract_failure_reasons,
                 *reasons,
             ),
             "fallback_recommended": True,
