@@ -352,7 +352,7 @@ def derive_falsifier_items(
     *,
     repo_candidates: Sequence[str],
     path_exists: Callable[[str, str], bool],
-    declared_runner: Callable[[str], str | None],
+    declared_runner: Callable[[str, str], str | None],
 ) -> tuple[list[dict[str, Any]], ModelDodAcceptanceSummary]:
     """One executable evidence item per accepted, runnable criterion falsifier.
 
@@ -360,7 +360,8 @@ def derive_falsifier_items(
     PR-bound items name, in contract order. ``path_exists(repo, path)`` says
     whether a clone holds the selector's first path; the repo that holds it
     runs it, and when none does the first candidate runs it and fails visibly.
-    ``declared_runner(repo)`` supplies that repository's test runner prefix;
+    ``declared_runner(repo, first_path)`` supplies that repository's test runner
+    prefix for the selector's first path (a bare Python form depends on it);
     a repository that declares none is reported for the collector to fail.
     """
     accepted = _accepted_labels(dod_items)
@@ -401,7 +402,7 @@ def derive_falsifier_items(
         else:
             unrunnable.append(label)
             continue
-        runner = declared_runner(repo)
+        runner = declared_runner(repo, parsed.first_path)
         if runner is None:
             # OMN-20332: no declared runner means a named failure, never a guess.
             undeclared_runner.append((label, repo))
