@@ -27,13 +27,13 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffLedgerAppendCommand,
     ModelPrHandoffLedgerAppended,
 )
-from omnimarket.nodes.node_pr_handoff_ledger_effect.protocols import (
-    ProtocolPrHandoffLedgerAppender,
-)
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_pr_handoff_ledger_effect.protocols import (
+    ProtocolPrHandoffLedgerAppender,
 )
 
 logger = logging.getLogger(__name__)

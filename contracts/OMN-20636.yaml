@@ -25,6 +25,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/chains/pr_handoff tests/unit/nodes/node_pr_handoff_orchestrator tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_ledger_effect tests/unit/work_ledger_bus -q"
+        check_value: "uv run pytest tests/chains/pr_handoff/test_golden_chain_pr_handoff.py tests/unit/nodes/node_pr_handoff_orchestrator tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_ledger_effect tests/unit/work_ledger_bus -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]

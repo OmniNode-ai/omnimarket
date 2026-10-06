@@ -15,6 +15,11 @@ from omnimarket.models.pr_handoff import (
     EnumPrHandoffLedgerStatus,
     ModelPrHandoffLedgerAppendCommand,
 )
+from omnimarket.models.work_ledger_append import (
+    EnumWorkLedgerAppendStatus,
+    ModelWorkLedgerAppendReceipt,
+    ModelWorkLedgerAppendRequest,
+)
 from omnimarket.nodes.node_pr_handoff_ledger_effect.handlers import (
     HandlerPrHandoffLedgerEffect,
 )
@@ -23,11 +28,6 @@ from omnimarket.nodes.node_pr_handoff_ledger_effect.handlers.handler_pr_handoff_
     BusLaneLedgerAppender,
     appender_from_environment,
     stamp_rows,
-)
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
-    EnumWorkLedgerAppendStatus,
-    ModelWorkLedgerAppendReceipt,
-    ModelWorkLedgerAppendRequest,
 )
 from tests.chains.pr_handoff import _builders as b
 

@@ -42,6 +42,13 @@ output_model:
   name: "ModelPrHandoffDecision"
   module: "omnimarket.models.pr_handoff"
   description: "Verdict with wait_reason or error_code, and the rows when ready."
+# Addressable the way the other directly-invoked compute nodes are; nothing
+# publishes the command (the orchestrator calls the handler in process).
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-handoff-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-handoff-decision-completed.v1"
+    failure: "onex.evt.omnimarket.pr-handoff-decision-failed.v1"
 descriptor:
   node_archetype: compute
   purity: pure

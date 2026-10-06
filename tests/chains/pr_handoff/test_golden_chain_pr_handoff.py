@@ -28,7 +28,7 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffHandedOff,
     ModelPrHandoffLedgerAppended,
 )
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
 )
 from tests.chains.chain_assert import (

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
