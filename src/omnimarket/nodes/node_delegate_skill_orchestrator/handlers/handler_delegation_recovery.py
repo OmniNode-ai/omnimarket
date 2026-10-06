@@ -9,13 +9,13 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationResult,
 )
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-    _response_from_result,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
     delegate_skill_terminal_from_response,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    _response_from_result,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
     DELEGATION_RUNTIME_INSTANCE_ID,
