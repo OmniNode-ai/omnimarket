@@ -75,6 +75,8 @@ prepush_table_text() {
 #
 # Resolution is fail-fast with no default (CLAUDE.md rule 8): there is no
 # fallback path and no built-in address. OMNI_HOME unset, or the file absent,
+# The owner is ONEX_WORKSPACE_CONFIG_ROOT or the sibling operator repository.
+# The retiring registry config is never read. Missing owner data
 # leaves path columns UNRESOLVED and emits a diagnostic. A row with incomplete
 # overlay data is resolved the same way: `-` for ssh_target and empty for
 # uv/workroot, so lab placement is SKIPPED and the caller falls through to the
@@ -102,7 +104,7 @@ prepush_table_text() {
 # unhydrated.
 PREPUSH_HOST_OVERLAY_DIRECTIVE="#!placement-overlay"
 
-# prepush_overlay_rel -- the overlay path relative to $OMNI_HOME as DECLARED BY
+# prepush_overlay_rel -- the overlay path relative to the owning config root as DECLARED BY
 # THE COMMITTED TABLE, or rc=1. No repo literal, no branch, no default.
 prepush_overlay_rel() {
   local rel
@@ -127,7 +129,7 @@ prepush_overlay_path() {
       "$rel" >&2
     return 1
   fi
-  path="${OMNI_HOME}/${rel}"
+  path="${ONEX_WORKSPACE_CONFIG_ROOT:-${OMNI_HOME}/../omnibase_internal}/${rel}"
   if [ ! -f "$path" ]; then
     printf 'placement overlay absent at %s\n' "$path" >&2
     return 1

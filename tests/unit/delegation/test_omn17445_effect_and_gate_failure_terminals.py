@@ -1089,7 +1089,15 @@ async def test_the_escalation_ladder_still_rides_inference_response_v1() -> None
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "final_outcome",
-    ["exhausted", "completed", "routing_failure", "inference_failure", "gate_failure"],
+    [
+        "exhausted",
+        "completed",
+        "routing_failure",
+        "inference_failure",
+        "inference_error",
+        "metered_inference_error",
+        "gate_failure",
+    ],
 )
 @pytest.mark.parametrize(
     "tiers", [("cheap_cloud", "claude"), ("free_local", "free_local")]
@@ -1203,6 +1211,34 @@ async def test_research_terminal_retains_real_usage_after_escalation(
                 _boundary_terminal(cid, origin_topic=_INFERENCE_REQUEST_TOPIC)
             )
             last_model, prompt_tokens, completion_tokens = "served-model-1", 101, 201
+        elif final_outcome in {"inference_error", "metered_inference_error"}:
+            metered = final_outcome == "metered_inference_error"
+            events = await handler.handle(
+                _make_inference_response(
+                    cid, error_message="connection refused"
+                ).model_copy(
+                    update={
+                        "model_used": "final-model",
+                        "prompt_tokens": 102 if metered else 0,
+                        "completion_tokens": 202 if metered else 0,
+                        "total_tokens": 304 if metered else 0,
+                    }
+                )
+            )
+            if metered:
+                last_model, prompt_tokens, completion_tokens = "final-model", 102, 202
+                expected_cost += recompute_actual_cost_and_savings(
+                    tier_name=tiers[-1],
+                    prompt_tokens=102,
+                    completion_tokens=202,
+                    premium_counterfactual=None,
+                ).cash_cost_usd
+            else:
+                last_model, prompt_tokens, completion_tokens = (
+                    "served-model-1",
+                    101,
+                    201,
+                )
         else:
             await handler.handle(
                 _make_inference_response(cid).model_copy(
@@ -1249,6 +1285,12 @@ async def test_research_terminal_retains_real_usage_after_escalation(
     assert terminal.prompt_tokens == prompt_tokens
     assert terminal.completion_tokens == completion_tokens
     assert terminal.total_tokens == prompt_tokens + completion_tokens
+    if final_outcome == "inference_error":
+        assert terminal.endpoint_url == "https://served-1.invalid/v1/chat/completions"
+        assert terminal.terminal_failure_reason == "max_escalations_reached"
+        assert terminal.failure_reason == "connection refused"
+        assert terminal.escalation_history[-1]["model_used"] == "final-model"
+        assert terminal.escalation_history[-1]["prompt_tokens"] == 0
     assert terminal.cumulative_attempt_cost == pytest.approx(expected_cost)
     assert terminal.cumulative_input_tokens == 201 + (
         102 if last_model == "final-model" else 0

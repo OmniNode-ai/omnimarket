@@ -31,6 +31,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 import yaml
@@ -55,6 +56,11 @@ from tests.helpers.cache_row_source import CacheRowSource
 
 _SCOPED_TOPIC = "onex.snapshot.projection.omn15797-scoped.v1"
 _UNSCOPED_TOPIC = "onex.snapshot.projection.omn15797-unscoped.v1"
+# OMN-19972: a tenant named by slug is served under the UUID the registry
+# records for it -- the form the writers stamp -- so the served rows carry it.
+_ALPHA_UUID = UUID("a1a1a1a1-0000-4000-8000-000000000001")
+_BETA_UUID = UUID("b2b2b2b2-0000-4000-8000-000000000002")
+_TENANT_REGISTRY = {"tenant-alpha": _ALPHA_UUID, "tenant-beta": _BETA_UUID}
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +153,9 @@ def _client(
     topic_map: dict[str, ProjectionTableConfig], cache: SnapshotCache
 ) -> Iterator[TestClient]:
     app.dependency_overrides[get_topic_map] = lambda: topic_map
-    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(
+        cache, tenant_registry=_TENANT_REGISTRY
+    )
     try:
         yield TestClient(app)
     finally:
@@ -217,13 +225,17 @@ def test_scoped_exposure_with_tenant_returns_only_that_tenants_rows() -> None:
         cache,
         _SCOPED_TOPIC,
         "cred-a",
-        {"api_key_ref": "cred-a", "tenant_id": "tenant-alpha", "provider": "openai"},
+        {"api_key_ref": "cred-a", "tenant_id": str(_ALPHA_UUID), "provider": "openai"},
     )
     _seed(
         cache,
         _SCOPED_TOPIC,
         "cred-b",
-        {"api_key_ref": "cred-b", "tenant_id": "tenant-beta", "provider": "anthropic"},
+        {
+            "api_key_ref": "cred-b",
+            "tenant_id": str(_BETA_UUID),
+            "provider": "anthropic",
+        },
     )
 
     with _client(topic_map, cache) as client:
@@ -232,8 +244,8 @@ def test_scoped_exposure_with_tenant_returns_only_that_tenants_rows() -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["row_count"] == 1
-    assert {row["tenant_id"] for row in body["rows"]} == {"tenant-alpha"}
-    assert body["tenant"] == "tenant-alpha"
+    assert {row["tenant_id"] for row in body["rows"]} == {str(_ALPHA_UUID)}
+    assert body["tenant"] == str(_ALPHA_UUID)
 
 
 def test_scoped_exposure_uses_lane_tenant_when_no_param(
@@ -251,13 +263,17 @@ def test_scoped_exposure_uses_lane_tenant_when_no_param(
         cache,
         _SCOPED_TOPIC,
         "cred-a",
-        {"api_key_ref": "cred-a", "tenant_id": "tenant-alpha", "provider": "openai"},
+        {"api_key_ref": "cred-a", "tenant_id": str(_ALPHA_UUID), "provider": "openai"},
     )
     _seed(
         cache,
         _SCOPED_TOPIC,
         "cred-b",
-        {"api_key_ref": "cred-b", "tenant_id": "tenant-beta", "provider": "anthropic"},
+        {
+            "api_key_ref": "cred-b",
+            "tenant_id": str(_BETA_UUID),
+            "provider": "anthropic",
+        },
     )
 
     with _client(topic_map, cache) as client:
@@ -265,7 +281,8 @@ def test_scoped_exposure_uses_lane_tenant_when_no_param(
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert {row["tenant_id"] for row in body["rows"]} == {"tenant-beta"}
+    assert {row["tenant_id"] for row in body["rows"]} == {str(_BETA_UUID)}
+    assert body["tenant"] == str(_BETA_UUID)
 
 
 def test_tenant_param_on_unscoped_exposure_is_rejected_not_ignored() -> None:

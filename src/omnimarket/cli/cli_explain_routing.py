@@ -4,6 +4,7 @@
 
     python -m omnimarket.cli.cli_explain_routing
     python -m omnimarket.cli.cli_explain_routing --fail-on-shadow
+    python -m omnimarket.cli.cli_explain_routing --fail-on-unbound-local
 
 The delegation routing config an `onex delegate` run actually resolves is not
 any one file. It is the committed contract
@@ -85,6 +86,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "contract declares, so this command can be used as a probe."
         ),
     )
+    parser.add_argument(
+        "--fail-on-unbound-local",
+        action="store_true",
+        help=(
+            "Exit 1 when a local backend has an endpoint but no model_name: "
+            "the binding the routing reducer refuses at dispatch as "
+            "local_model_binding_missing (OMN-17427)."
+        ),
+    )
     return parser
 
 
@@ -122,6 +132,24 @@ def _render_report(provenance: ModelBifrostOverlayProvenance) -> str:
         lines.append(f"backends[{backend_id}]")
         lines.extend(entries)
         lines.append("")
+
+    unbound = provenance.unbound_local_backends()
+    if unbound:
+        lines.append(
+            f"{len(unbound)} local backend(s) bound to an endpoint and no model "
+            "(local_model_binding_missing; delegation refuses these at dispatch):"
+        )
+        for endpoint in unbound:
+            lines.append(
+                f"  - backends[{endpoint.backend_id}].model_name is null; its "
+                f"endpoint {endpoint.value} was supplied by "
+                f"{endpoint.source.value} {endpoint.source_ref}"
+            )
+        lines.append(
+            "Set model_name to the id that endpoint's /v1/models serves, in the "
+            "lane overlay that supplies the endpoint (the packaged contract "
+            "leaves it null by design, OMN-17099).\n"
+        )
 
     shadows = provenance.shadows()
     if not shadows:
@@ -182,6 +210,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     sys.stdout.write(_render_report(provenance) + "\n")
 
     if args.fail_on_shadow and provenance.shadows():
+        return 1
+    if args.fail_on_unbound_local and provenance.unbound_local_backends():
         return 1
     return 0
 
