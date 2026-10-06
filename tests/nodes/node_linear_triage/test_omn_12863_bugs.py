@@ -214,7 +214,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.marked_done == 0, (
             "OCC-only merged PR must not trigger mark_done; "
@@ -236,7 +236,9 @@ class TestBugBOccReceiptPrsExcluded:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False: this test exercises the approved-close path
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1, (
             "Merged PR in real repo must trigger mark_done; "
@@ -261,7 +263,9 @@ class TestBugBOccReceiptPrsExcluded:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False: this test exercises the approved-close path
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1, (
             "Mixed OCC+real merged PRs: the real PR should still trigger mark_done"
@@ -286,7 +290,7 @@ class TestBugBOccReceiptPrsExcluded:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.marked_done == 0, (
             "OCC-repo PR from repo-scoped search must not mark done"
