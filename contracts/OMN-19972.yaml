@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19972"
 title: "serve a slug-named tenant read as its registry UUID"
-summary: "This PR delivers the product serving-path half of AC3 (a slug-named tenant read is served as its registry UUID); AC3 itself is discharged by the omn19972-lane lab readback cited in the PR body, not by these tests. AC1 and AC2 are omnibase_infra's and are not claimed."
+summary: "This PR delivers the product serving-path half of AC3 (a slug-named tenant read is served as its registry UUID); the full AC3 readback is the dedicated-lab receipt of 2026-10-06T05:36:43Z (MANIFEST sha256 3b44d5ed1cc79b61652ccead4b1659bf0293fbe25c2c5ab8a1a0327e12878305), correlation 524182b0-1fd7-4493-97a4-d365b5c880a5: one Runs row returned identically via registry UUID and slug (byte-equality digest 4ff8a6cf20d9e53b), while an unknown slug returned HTTP 422 tenant_context_unresolved. These tests prove only the product contribution; the lab receipt proves the full AC3 readback. AC1 and AC2 are omnibase_infra's and are not claimed."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -48,28 +48,31 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn19972-tenant-context-regression"
-    description: "The OMN-15797 tenant-context regression suite uses registry UUID-stamped rows. This test proves the product serving-path contribution only; it does not bind or discharge AC3's dedicated-lab readback."
+    binds_ac: ["AC3"]
+    description: "The OMN-15797 Runs exposure test reads a slug-named tenant and serves only rows stamped with its UUID. This binds only the product serving-path half of AC3; the dedicated-lab readback separately proves the full criterion."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/projection/test_omn15797_serving_tenant_context.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-slug-happy-path"
-    description: "Lane and requested slug happy paths, including ranked walks, resolve to the registry UUID before reading. This test proves the product serving-path contribution only; it does not bind or discharge AC3's dedicated-lab readback."
+    binds_ac: ["AC3"]
+    description: "Lane and requested slug happy paths, including ranked walks, resolve to the registry UUID before reading. This binds only the product serving-path half of AC3; the dedicated-lab readback separately proves the full criterion."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/projection/test_omn19972_serving_tenant_registry.py -q -p no:cacheprovider -p no:warnings -p no:randomly -k '(lane_configured or requested_slug or ranked_walk) and not sqlite'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-unregistered-slug"
-    description: "Unregistered slugs and a missing registry relation refuse with a typed response and issue no window read. This test proves the product serving-path contribution only; it does not bind or discharge AC3's dedicated-lab readback."
+    binds_ac: ["AC3"]
+    description: "Unregistered slugs and a missing registry relation refuse with a typed response and issue no window read. This binds only the product serving-path half of AC3; the dedicated-lab readback separately proves the full criterion."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/projection/test_omn19972_serving_tenant_registry.py -q -p no:cacheprovider -p no:warnings -p no:randomly -k '(unregistered or missing_registry) and not sqlite'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-house-slug-and-drift"
-    description: "The house slug uses its stamped UUID row, while closed-mapping drift refuses instead of reading another tenant. This test proves the product serving-path contribution only; it does not bind or discharge AC3's dedicated-lab readback."
+    description: "The house slug uses its stamped UUID row, while closed-mapping drift refuses instead of reading another tenant. This is an additional compatibility proof and does not bind or discharge AC3's dedicated-lab readback."
     source: "manual"
     checks:
       - check_type: "test_passes"
