@@ -2,20 +2,16 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20578"
 title: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra"
-summary: "omnimarket carries the source migrations, ownership declarations and shape reconciliation for the routing-feedback and alert-channel liveness projection tables; omnibase_infra vendors them byte-identically and derives the projection grants. AC1 and AC2 run in omnibase_infra and are listed as unbound local_done_gate items, because the hosted check carries only this repository and cannot control them; AC1 is bound to the omnimarket prerequisite test, which it can run. AC3 is a dev-202 runtime log readback and is not bound."
+summary: "omnimarket carries the source migrations, ownership declarations and shape reconciliation for the routing-feedback and alert-channel liveness projection tables; omnibase_infra vendors them byte-identically and derives the projection grants. The ticket's AC1 and AC2 run in omnibase_infra and are listed as unbound local_done_gate items, because the hosted check carries only this repository and cannot control them; AC1 is bound to the omnimarket prerequisite test, which it can run. The ticket's AC3 is a dev-202 runtime log readback and is neither listed nor bound here."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-routing-feedback-and-alert-liveness-vendored-and-granted"
-    statement: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC1 and AC2 run in omnibase_infra. AC3 reads docker logs on omni-202, which neither this repository's hosted check nor a local checkout can reach, so it is not bound here."
+    statement: "The routing-feedback and alert-channel liveness projection tables are vendored and granted in omnibase_infra. The criterion below is transcribed from the ticket body; its id is the label a binding item claims through binds_ac. The ticket's AC2 (grant derivation, run in omnibase_infra) and AC3 (a dev-202 runtime log readback) cannot run in this repository's hosted check, so they stay in the ticket and in the unbound local_done_gate items, not in this repo-owned acceptance list."
     acceptance:
       - id: "AC1"
         statement: "AC1: the vendored migration files are byte-identical to the omnimarket source of both PRs and carry ledger rows and migration classes -- falsifier: uv run pytest tests/unit/migrations/test_vendor_routing_feedback_and_alert_liveness.py -q in omnibase_infra"
-      - id: "AC2"
-        statement: "AC2: the table grant derivation proves both tables granted to the projection principal on every shipped topology instance and catalog -- falsifier: uv run python scripts/generate_application_database_table_grants.py --check in omnibase_infra"
-      - id: "AC3"
-        statement: "AC3: a dev-202 runtime that installs both nodes starts and wires them -- falsifier: docker logs omninode-dev-202-runtime on omni-202 containing ONEX runtime failed with unexpected error after the nodes are installed"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 omnibase_infra probe. The vendored migration files match the omnimarket source and carry ledger rows and migration classes."
