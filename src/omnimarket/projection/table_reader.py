@@ -1137,7 +1137,21 @@ class TableRowSource:
             try:
                 pool = await self._pool(cfg)
                 relation = qualified_relation(cfg)
-                async with pool.acquire() as connection:
+                async with (
+                    pool.acquire() as connection,
+                    connection.transaction(readonly=True),
+                ):
+                    # SET LOCAL on a previous scoped read leaves an empty
+                    # custom GUC after commit. UUID RLS policies may cast it
+                    # while planning even this LIMIT 0 query (OMN-20006).
+                    # This context is only for the zero-row schema probe;
+                    # it supplies no identity to a served read or write.
+                    if cfg.tenant_column is not None:
+                        await connection.execute(
+                            "SELECT set_config($1, $2, true)",
+                            TENANT_GUC,
+                            str(UUID(int=0)),
+                        )
                     # The exposure's own column list, so a contract that
                     # declares a column the table lacks is not ready either.
                     await connection.execute(
