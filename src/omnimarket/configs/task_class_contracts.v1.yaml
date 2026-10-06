@@ -1403,6 +1403,7 @@ task_classes:
         - names_resolve
         - final_artifact_only
         - uses_pytest_mark_unit
+        - pytest_tests_present
       heuristic:
         - no_refusal
         - covers_edge_cases
