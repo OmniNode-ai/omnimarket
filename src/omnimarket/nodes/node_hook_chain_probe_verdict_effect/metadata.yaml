@@ -1,0 +1,24 @@
+name: node_hook_chain_probe_verdict_effect
+version: "1.0.0"
+description: "Record the hook-chain probe verdict and log a broken chain."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_hook_chain_probe_verdict_effect: "omnimarket.nodes.node_hook_chain_probe_verdict_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: event_publish
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "hook-ledger", "observability"]
+pack: "observability"
+display_name: "Hook Chain Probe Verdict Effect"
+node_role: "effect"

@@ -29,7 +29,16 @@ import pytest
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     ModelCreateTicketRequest,
+    ModelTicketGuardDecision,
 )
+
+
+class _AdmitGuard:
+    """The ticket-creation guard seam (OMN-20595), admitting every create."""
+
+    def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
+        del tool_input
+        return ModelTicketGuardDecision(admitted=True, guard_path="/test/guard.py")
 
 
 class _EmptyIdLinearClient:
@@ -99,7 +108,9 @@ def test_empty_ticket_id_raises_instead_of_reporting_created() -> None:
     returned status="created" with ticket_id="" — a green-over-nothing
     facade. Post-fix, that same empty-id shape raises.
     """
-    handler = HandlerCreateTicket(linear_client=_EmptyIdLinearClient())
+    handler = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(), linear_client=_EmptyIdLinearClient()
+    )
     request = ModelCreateTicketRequest(title="A ticket Linear silently drops")
 
     with pytest.raises(RuntimeError, match="empty ticket_id"):
@@ -114,7 +125,7 @@ def test_empty_ticket_id_raises_instead_of_reporting_created() -> None:
 def test_successful_create_yields_non_empty_ticket_id() -> None:
     """A successful Linear create must produce a real ticket_id and ticket_url."""
     client = _SuccessLinearClient()
-    handler = HandlerCreateTicket(linear_client=client)
+    handler = HandlerCreateTicket(ticket_guard=_AdmitGuard(), linear_client=client)
     request = ModelCreateTicketRequest(
         title="Add rate limiting to API",
         description="Protect the public endpoints.",
@@ -131,14 +142,14 @@ def test_successful_create_yields_non_empty_ticket_id() -> None:
     assert client.calls[0]["title"] == "Add rate limiting to API"
     assert client.calls[0]["team"] == "Omninode"
     assert client.calls[0]["parent"] == "OMN-1000"
-    # description_body is the synthesized DoD checklist, not the raw input
-    assert "## Definition of Done" in str(client.calls[0]["description"])
+    # OMN-20595: the caller's description reaches Linear unchanged
+    assert client.calls[0]["description"] == "Protect the public endpoints."
 
 
 def test_successful_create_with_no_parent_passes_none() -> None:
     """When no parent is given, the client receives parent=None (not "")."""
     client = _SuccessLinearClient()
-    handler = HandlerCreateTicket(linear_client=client)
+    handler = HandlerCreateTicket(ticket_guard=_AdmitGuard(), linear_client=client)
     result = handler.handle(ModelCreateTicketRequest(title="No parent here"))
 
     assert result.status == "created"
@@ -157,7 +168,7 @@ def test_missing_secret_raises_when_no_injectable_client() -> None:
         "omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket.resolve_api_key_loop_safe",
         return_value=None,
     ):
-        handler = HandlerCreateTicket()
+        handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
         with pytest.raises(RuntimeError, match="LINEAR_API_KEY"):
             handler.handle(request)
 
@@ -172,7 +183,7 @@ def test_dry_run_never_calls_linear_client() -> None:
     request = ModelCreateTicketRequest(title="Dry run only", dry_run=True)
     # No linear_client injected and no secret patched — if the handler tried
     # to resolve one, this would raise. It must not reach that code path.
-    handler = HandlerCreateTicket()
+    handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
     result = handler.handle(request)
     assert result.status == "dry_run"
 
@@ -180,7 +191,7 @@ def test_dry_run_never_calls_linear_client() -> None:
 def test_validation_error_never_calls_linear_client() -> None:
     """A validation error must short-circuit before any Linear client is constructed."""
     request = ModelCreateTicketRequest(title="Bad parent", parent="NOT-VALID")
-    handler = HandlerCreateTicket()
+    handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
     result = handler.handle(request)
     assert result.status == "error"
 
@@ -255,16 +266,12 @@ def test_gateway_refuses_when_the_team_has_no_backlog_state() -> None:
         )
 
 
-def test_start_command_refuses_a_project_naming_the_ruling() -> None:
+def test_request_refuses_a_project_naming_the_ruling() -> None:
     from pydantic import ValidationError
 
-    from omnimarket.nodes.node_create_ticket.models.model_create_ticket_state import (
-        ModelCreateTicketStartCommand,
-    )
-
-    assert ModelCreateTicketStartCommand(title="ok").project == ""
+    assert ModelCreateTicketRequest(title="ok").project == ""
     with pytest.raises(ValidationError, match="OMN-17427"):
-        ModelCreateTicketStartCommand(title="x", project="Sprint 2026-09-28")
+        ModelCreateTicketRequest(title="x", project="Sprint 2026-09-28")
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +295,9 @@ def _owners_file(tmp_path: Path) -> Path:
 def _create(tmp_path: Path, **kwargs: object) -> dict[str, object]:
     client = _SuccessLinearClient()
     handler = HandlerCreateTicket(
-        linear_client=client, pillar_owners_path=_owners_file(tmp_path)
+        ticket_guard=_AdmitGuard(),
+        linear_client=client,
+        pillar_owners_path=_owners_file(tmp_path),
     )
     handler.handle(ModelCreateTicketRequest(title="t", **kwargs))  # type: ignore[arg-type]
     return client.calls[0]
@@ -308,7 +317,9 @@ def test_no_pillar_leaves_the_creator_default(tmp_path: Path) -> None:
 
 def test_undeclared_pillar_fails_loud(tmp_path: Path) -> None:
     handler = HandlerCreateTicket(
-        linear_client=_SuccessLinearClient(), pillar_owners_path=_owners_file(tmp_path)
+        ticket_guard=_AdmitGuard(),
+        linear_client=_SuccessLinearClient(),
+        pillar_owners_path=_owners_file(tmp_path),
     )
     with pytest.raises(RuntimeError, match="payments"):
         handler.handle(ModelCreateTicketRequest(title="t", pillar="payments"))
@@ -316,6 +327,7 @@ def test_undeclared_pillar_fails_loud(tmp_path: Path) -> None:
 
 def test_missing_map_fails_loud_when_a_pillar_applies(tmp_path: Path) -> None:
     handler = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(),
         linear_client=_SuccessLinearClient(),
         pillar_owners_path=tmp_path / "absent.yaml",
     )

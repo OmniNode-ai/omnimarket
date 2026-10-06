@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20574"
+title: "The audit trail is compacted daily from the runtime tick"
+summary: "Adds node_audit_trail_compact_schedule_compute, a stateless compute node that maps the 03:00 UTC runtime tick to one compact command. AC1 and AC2 are bound to its golden chain and runtime-boot tests. AC3 is a dev-202 bus readback and is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-audit-trail-compacted-daily-from-the-tick"
+    statement: "The audit trail is compacted daily from the runtime tick. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC3 is not bound here: it reads the dev-202 redpanda, which this repository's hosted check cannot reach."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a tick at 03:00 UTC yields exactly one compact command and a tick at 04:00 UTC yields none -- falsifier: uv run pytest tests/test_golden_chain_audit_trail_compact_schedule.py -k tick -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the scheduler node boots under wire_from_manifest and publishes to the contract topic, and the test fails when the contract publish topic is removed -- falsifier: uv run pytest tests/test_audit_trail_compact_schedule_runtime_boot.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The golden chain's tick tests prove one compact command at 03:00 UTC, none at 04:00 UTC and exactly one firing tick per day; the topic-graph producer test in the same file is not selected because it needs checkouts of sibling repositories that the hosted check does not carry. They pass at the head and fails at the merge base, where the scheduler node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/test_golden_chain_audit_trail_compact_schedule.py -k tick -q"
+  - kind: "tests"
+    description: "AC2 hosted probe. The runtime-boot test proves the scheduler boots under wire_from_manifest and publishes to the contract topic. It passes at the head and fails at the merge base, where the scheduler node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/test_audit_trail_compact_schedule_runtime_boot.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20574-ac1-tick-yields-one-compact-command"
+    description: "AC1 hosted probe. The golden chain's tick tests prove one compact command at 03:00 UTC, none at 04:00 UTC and exactly one firing tick per day; the topic-graph producer test in the same file is not selected because it needs checkouts of sibling repositories that the hosted check does not carry. They pass at the head and fails at the merge base, where the scheduler node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_audit_trail_compact_schedule.py -k tick -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20574-ac2-scheduler-boots-and-publishes"
+    description: "AC2 hosted probe. The runtime-boot test proves the scheduler boots under wire_from_manifest and publishes to the contract topic. It passes at the head and fails at the merge base, where the scheduler node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_audit_trail_compact_schedule_runtime_boot.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

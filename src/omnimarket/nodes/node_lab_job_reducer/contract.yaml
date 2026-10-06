@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLabJobReducer
+#
+# The pure decision core of the lab job supervisor: given the stored job row
+# and one normalised event, return the next row, the transitions taken (or why
+# the event was dropped) and the intents the transition asks for.
+# Definition-B:
+#
+#   handle(ModelLabJobReduceInput) -> ModelLabJobReduceOutput
+#
+# Stateless and deterministic: no clock read (time comes from the event), no
+# I/O, no language model. Every restart is built from the job's original
+# brief, recorded on the row at submission or adoption; a time-box split
+# appends a continuation to that brief and never nests one continuation in
+# another. The first runtime whose take of an attempt reaches the reducer owns
+# it; a take by any other runtime is refused with a take_refused intent, so a
+# consumer-group redelivery cannot run one attempt on two runtimes.
+#
+# The job orchestrator calls it in process, so the reducer has no bus surface:
+# no event_bus, no handler_routing, and runtime auto-wiring prepares it as
+# SKIPPED with no subscription on every profile.
+name: "node_lab_job_reducer"
+contract_name: "node_lab_job_reducer"
+node_name: "node_lab_job_reducer"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "REDUCER_GENERIC"
+# Experimental until the job orchestrator calls this handler in the runtime.
+lifecycle: experimental
+description: >
+  Pure definition-B reducer for the lab job supervisor. Maps the stored job
+  row and one normalised event to the next row, the transitions and the typed
+  intents (dispatch, take_refused, kill_attempt, alert). States: queued,
+  dispatched, running, checking, stopping, retrying, stalled, failed,
+  alerting, alerted, done. Drops events for another attempt, duplicate
+  submissions and everything but an operator resolution on a finished
+  episode. Never reads a clock, never performs I/O.
+input_model:
+  name: "ModelLabJobReduceInput"
+  module: "omnimarket.nodes.node_lab_job_reducer.models"
+  description: "The stored job row (None on first sight) and one event."
+output_model:
+  name: "ModelLabJobReduceOutput"
+  module: "omnimarket.nodes.node_lab_job_reducer.models"
+  description: "The next row, the transitions or the drop reason, and the intents."
+metadata:
+  description: "Pure transition function of the lab job supervisor."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-05"
+  tags:
+    - reducer
+    - lab-job
+    - fsm
+    - pure
+  related_tickets:
+    - "OMN-20604"

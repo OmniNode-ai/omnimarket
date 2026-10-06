@@ -6,11 +6,11 @@ import re
 
 import pytest
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
+    EnumAcceptanceFailureClass,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.parse_rubric import (
     parse_rubric,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_failure_class import (
-    EnumAcceptanceFailureClass,
 )
 from tests.nodes.node_delegation_acceptance_judge_compute.builders import (
     EDIT_LOOP_TASK,

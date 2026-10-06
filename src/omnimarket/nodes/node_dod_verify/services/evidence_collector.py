@@ -98,6 +98,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
     derive_falsifier_items,
     is_accepted_binding,
+    unique_derived_id,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
@@ -800,6 +801,19 @@ _STAGE_SKIPPED_ENTRIES = frozenset(
 # project that does not pin one cannot be given a lock-exact toolchain, which
 # is a typed non-result rather than a licence to use whatever is on PATH.
 _PACKAGE_MANAGER_RE = re.compile(r"^pnpm@(?P<version>[^+\s]+)")
+_EXACT_PNPM_VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+
+# OMN-20332: the two runner forms for a repo that is neither a uv project nor a
+# pnpm project. The npm form is ``npm ci`` then ``npm test -- --run``, and the
+# ``npm ci`` is the BUILD step of the staged tree the check runs in
+# (``_ensure_hermetic_npm_env``), not part of the check command: it installs
+# exactly what ``package-lock.json`` declares on the build budget, never into
+# the shared clone, and the per-check ceiling is charged to the tests alone.
+# ``--run`` makes vitest run once instead of watching. The bare form carries
+# its own dependencies for Python tests in a repo with no Python project.
+_NPM_TEST_RUNNER = "npm test -- --run"
+_NPM_INVOCATION_RE = re.compile(r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)npm\s", re.MULTILINE)
+_BARE_PYTEST_RUNNER = "uv run --no-project --with pytest --with pyyaml python -m pytest"
 
 # Directory inside a stage holding the pinned-pnpm shim. Prefixed and kept out
 # of the copy so it can never collide with a real project directory, and
@@ -988,6 +1002,26 @@ def _pnpm_project_root(start: Path) -> Path | None:
     return None
 
 
+def _npm_project_root(start: Path) -> Path | None:
+    """Nearest ancestor of ``start`` (inclusive) that is a locked npm project.
+
+    ``package-lock.json`` + ``package.json`` and no ``pnpm-lock.yaml``: a pnpm
+    project is staged by ``_pnpm_project_root`` under its own pin, never here.
+    """
+    try:
+        candidate = start.resolve()
+    except OSError:
+        return None
+    for directory in (candidate, *candidate.parents):
+        if (
+            (directory / "package-lock.json").is_file()
+            and (directory / "package.json").is_file()
+            and not (directory / "pnpm-lock.yaml").is_file()
+        ):
+            return directory
+    return None
+
+
 def _hermetic_node_root() -> Path:
     """Directory the per-project staged trees are built under."""
     raw = os.environ.get(_HERMETIC_NODE_ROOT_ENV, "").strip()
@@ -996,7 +1030,9 @@ def _hermetic_node_root() -> Path:
     return Path.home() / ".cache" / "onex" / "dod-verify-node"
 
 
-def _hermetic_node_stage_path(project_root: Path) -> Path:
+def _hermetic_node_stage_path(
+    project_root: Path, lockfile: str = "pnpm-lock.yaml"
+) -> Path:
     """Deterministic stage path for one locked JS project.
 
     Keyed by the project's absolute path AND its ``pnpm-lock.yaml`` bytes, so
@@ -1007,7 +1043,7 @@ def _hermetic_node_stage_path(project_root: Path) -> Path:
     """
     digest = hashlib.sha256()
     digest.update(str(project_root).encode("utf-8"))
-    digest.update((project_root / "pnpm-lock.yaml").read_bytes())
+    digest.update((project_root / lockfile).read_bytes())
     return _hermetic_node_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
 
 
@@ -3302,6 +3338,7 @@ class EvidenceCollector:
                 dod_items,
                 repo_candidates=self._contract_repo_dirs(dod_items),
                 path_exists=self._product_path_exists,
+                declared_runner=self._declared_test_runner,
             )
             dod_items = [*dod_items, *derived_items]
         else:
@@ -3318,7 +3355,7 @@ class EvidenceCollector:
             Path(contract_repo_dir) if contract_repo_dir else None,
         )
         if audience_failures:
-            return audience_failures
+            return [*audience_failures, *self._undeclared_runner_failures(dod_items)]
 
         supersession = self._resolve_supersessions(dod_items[:declared_count])
 
@@ -3546,6 +3583,10 @@ class EvidenceCollector:
                         }
                     )
             results.extend(group)
+
+        # OMN-20332: a repository that declares no runner fails each accepted
+        # falsifier by name. No guessed command runs and no label vanishes.
+        results.extend(self._undeclared_runner_failures(dod_items))
 
         # OMN-18056. STAMP THE CONTRACT'S OWN AC BINDINGS ONTO EVERY RESULT.
         #
@@ -4443,6 +4484,87 @@ class EvidenceCollector:
         if not omni_home:
             return False
         return (Path(omni_home) / repo / path).exists()
+
+    def _undeclared_runner_failures(
+        self, dod_items: list[Any]
+    ) -> list[ModelEvidenceCheckResult]:
+        """OMN-20332: one named FAILED result per falsifier with no runner."""
+        if self.acceptance_summary is None:
+            return []
+        taken_ids = {
+            item["id"]
+            for item in dod_items
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        failures: list[ModelEvidenceCheckResult] = []
+        for label, repo in self.acceptance_summary.undeclared_runner:
+            evidence_id = unique_derived_id(label, taken_ids)
+            taken_ids.add(evidence_id)
+            failures.append(
+                ModelEvidenceCheckResult(
+                    evidence_id=evidence_id,
+                    description=f"{label} falsifier, repository declares no test runner",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    binds_ac=(label,),
+                    message=(
+                        "NO_DECLARED_TEST_RUNNER: "
+                        f"${{OMNI_HOME}}/{repo} declares no test runner "
+                        "(neither uv.lock + pyproject.toml, nor a .py path with no pyproject.toml, "
+                        "nor package-lock.json + scripts.test, nor pnpm-lock.yaml "
+                        "+ package.json packageManager pnpm pin + scripts.test), "
+                        f"so the {label} falsifier was not run."
+                    ),
+                )
+            )
+        return failures
+
+    @staticmethod
+    def _declared_test_runner(repo: str, first_path: str) -> str | None:
+        """OMN-20332: the runner ``$OMNI_HOME/<repo>`` declares, never a guess.
+
+        Forms, in order:
+
+        * ``uv.lock`` + ``pyproject.toml``: ``uv run pytest``.
+        * a ``.py`` falsifier path in a repo with no ``pyproject.toml``: the
+          bare form, which names its own dependencies (omnidash's ``tests/ci``
+          are Python files in a repo with no Python project).
+        * ``pnpm-lock.yaml`` + an exact ``packageManager`` pnpm pin +
+          ``scripts.test``: ``pnpm test``.
+        * ``package-lock.json`` + ``scripts.test`` (and no pnpm lockfile):
+          ``npm ci`` (in a staged tree) then ``npm test -- --run``.
+        """
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            return None
+        root = Path(omni_home) / repo
+        if (root / "uv.lock").is_file() and (root / "pyproject.toml").is_file():
+            return "uv run pytest"
+        if first_path.endswith(".py"):
+            if (root / "pyproject.toml").is_file():
+                return None
+            return _BARE_PYTEST_RUNNER
+        has_pnpm_lock = (root / "pnpm-lock.yaml").is_file()
+        if not has_pnpm_lock and not (root / "package-lock.json").is_file():
+            return None
+        try:
+            manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(manifest, dict):
+            return None
+        scripts = manifest.get("scripts")
+        test = scripts.get("test") if isinstance(scripts, dict) else None
+        if not (isinstance(test, str) and test.strip()):
+            return None
+        if not has_pnpm_lock:
+            return _NPM_TEST_RUNNER
+        # An exact pin only: ``pnpm@latest`` names no toolchain to resolve.
+        version, reason = _pinned_pnpm_version(root)
+        if version is None or reason is not None:
+            return None
+        if _EXACT_PNPM_VERSION_RE.fullmatch(version) is None:
+            return None
+        return "pnpm test"
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
@@ -6503,6 +6625,93 @@ class EvidenceCollector:
         self._hermetic_node_envs[project_root] = result
         return result
 
+    def _ensure_hermetic_npm_env(
+        self, project_root: Path
+    ) -> tuple[Path | None, str | None]:
+        """Build (once) a ``package-lock.json``-exact staged tree for npm.
+
+        The npm sibling of ``_ensure_hermetic_node_env``: the clone is copied
+        into a stage keyed by (project root, lockfile bytes), ``npm ci`` runs in
+        the stage on the BUILD budget, and the clone is neither installed into
+        nor read from afterwards. ``npm ci`` deletes and rebuilds
+        ``node_modules``, so running it in the shared clone would disrupt
+        whatever else is using that tree.
+        """
+        cached = self._hermetic_node_envs.get(project_root)
+        if cached is not None:
+            return cached
+
+        result: tuple[Path | None, str | None]
+        npm = shutil.which("npm")
+        if npm is None:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} npm is not on PATH, so "
+                f"{project_root}'s `package-lock.json` cannot be installed "
+                "exactly and NOTHING was executed against the product.",
+            )
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        try:
+            stage = _hermetic_node_stage_path(project_root, "package-lock.json")
+            stage.mkdir(parents=True, exist_ok=True)
+            self._refresh_node_stage_source(project_root, stage)
+        except OSError as exc:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} could not stage {project_root}: {exc}",
+            )
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        if not (stage / "node_modules").is_dir():
+            timeout_s = _hermetic_sync_timeout_s()
+            build_env = dict(os.environ)
+            build_env["CI"] = "1"
+            try:
+                proc = subprocess.run(
+                    [npm, "ci"],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s,
+                    cwd=str(stage),
+                    env=build_env,
+                )
+            except subprocess.TimeoutExpired:
+                failure = (
+                    f"`npm ci` for {project_root} exceeded its {timeout_s}s "
+                    f"build ceiling ({_HERMETIC_SYNC_TIMEOUT_ENV} raises it). "
+                    "No check ran."
+                )
+            except OSError as exc:
+                failure = f"could not spawn `npm ci` for {project_root}: {exc}"
+            else:
+                detail = (proc.stderr or proc.stdout or "").strip()[:600]
+                if proc.returncode != 0:
+                    failure = (
+                        f"`npm ci` for {project_root} exited "
+                        f"{proc.returncode}: {detail}"
+                    )
+                elif not (stage / "node_modules").is_dir():
+                    failure = (
+                        f"`npm ci` reported success for {project_root} but "
+                        f"{stage / 'node_modules'} is absent."
+                    )
+                else:
+                    failure = ""
+            if failure:
+                # A failed or timed-out install can leave a partial modules
+                # tree, which the next collector would adopt as a finished one.
+                shutil.rmtree(stage / "node_modules", ignore_errors=True)
+                result = (None, f"{_HERMETIC_ENV_FAILURE_MARKER} {failure}")
+                self._hermetic_node_envs[project_root] = result
+                return result
+
+        result = (stage, None)
+        self._hermetic_node_envs[project_root] = result
+        return result
+
     @staticmethod
     def _refresh_node_stage_source(project_root: Path, stage: Path) -> None:
         """Replace the stage's source with the clone's, keeping the modules.
@@ -6647,6 +6856,15 @@ class EvidenceCollector:
                 )
                 if node_err is not None:
                     return False, node_err
+        elif run_cwd is not None and _NPM_INVOCATION_RE.search(cmd_str) is not None:
+            # OMN-20332: the npm sibling. ``npm ci`` happens in the stage.
+            npm_project_root = _npm_project_root(Path(run_cwd))
+            if npm_project_root is not None:
+                node_stage_path, node_err = self._ensure_hermetic_npm_env(
+                    npm_project_root
+                )
+                if node_err is not None:
+                    return False, node_err
         staged_path: str | None = None
         if node_stage_path is not None:
             # The pinned pnpm shim first, so the version that adjudicates is
@@ -6718,6 +6936,15 @@ class EvidenceCollector:
                     [str(interpreter_bin), run_env.get("PATH", "")]
                 )
                 interpreter_routed = True
+
+        # OMN-20332: the bare Python runner names its own dependencies, so an
+        # inherited venv or import path must not supply any of them: a pass
+        # that depends on ambient packages is a property of the invoking host.
+        if cmd_str.startswith(_BARE_PYTEST_RUNNER):
+            if run_env is None:
+                run_env = dict(os.environ)
+            run_env.pop("PYTHONPATH", None)
+            run_env.pop("VIRTUAL_ENV", None)
 
         hermetic_env_path: Path | None = None
         # Deliberately mutually exclusive with the JS staging above rather than

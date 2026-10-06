@@ -1,0 +1,68 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_chain_probe_verdict_effect
+contract_name: node_hook_chain_probe_verdict_effect
+node_name: node_hook_chain_probe_verdict_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Consumes the hook->cloud chain probe's completed and failed events, logs a
+  broken chain at ERROR and publishes the recorded health. A failed event with no
+  verdict is never healthy.
+
+handler:
+  module: omnimarket.nodes.node_hook_chain_probe_verdict_effect.handlers.handler_hook_chain_probe_verdict
+  class: HandlerHookChainProbeVerdict
+  input_model: omnimarket.nodes.node_hook_chain_probe_verdict_effect.models.model_hook_chain_probe_verdict.ModelHookChainProbeOutcome
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: hook_chain_probe_verdict
+      handler:
+        name: HandlerHookChainProbeVerdict
+        module: omnimarket.nodes.node_hook_chain_probe_verdict_effect.handlers.handler_hook_chain_probe_verdict
+      handler_module: omnimarket.nodes.node_hook_chain_probe_verdict_effect.handlers.handler_hook_chain_probe_verdict
+      event_model: omnimarket.nodes.node_hook_chain_probe_verdict_effect.models.model_hook_chain_probe_verdict.ModelHookChainProbeOutcome
+
+input_model:
+  name: ModelHookChainProbeOutcome
+  module: omnimarket.nodes.node_hook_chain_probe_verdict_effect.models.model_hook_chain_probe_verdict
+  description: Either terminal event of the probe.
+
+output_model:
+  name: ModelHookChainHealthRecorded
+  module: omnimarket.nodes.node_hook_chain_probe_verdict_effect.models.model_hook_chain_probe_verdict
+  description: Recorded hook-chain health.
+
+terminal_event: onex.evt.omnimarket.hook-chain-health-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.hook-chain-probe-completed.v1
+    - onex.evt.omnimarket.hook-chain-probe-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.hook-chain-health-recorded.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.hook-chain-probe-verdict-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.hook-chain-health-recorded.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+
+dod_evidence:
+  PYTEST:
+    description: "the probe's command topic has a producer and its terminal events have a consumer"
+    command: "uv run pytest tests/test_hook_chain_probe_wiring.py -q"
+    pass_criteria: "all wiring, throttle and verdict tests pass"
+
+metadata:
+  transport_type: kafka

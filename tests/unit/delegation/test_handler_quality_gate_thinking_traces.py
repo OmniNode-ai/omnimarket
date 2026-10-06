@@ -120,7 +120,7 @@ def test_check_compiles_without_errors_mixed_thinking_and_fence() -> None:
 
 
 @pytest.mark.unit
-def test_quality_gate_strips_thinking_traces_before_compile_check() -> None:
+def test_quality_gate_refuses_thinking_traces_before_compile_check() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
         task_type="code_generation",
@@ -129,7 +129,11 @@ def test_quality_gate_strips_thinking_traces_before_compile_check() -> None:
         dod_heuristic=(),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
+    assert delta(
+        gate_input.model_copy(update={"llm_response_content": _CLEAN_CODE})
+    ).passed
     assert not any("compile" in r for r in result.failure_reasons)
 
 
@@ -144,12 +148,16 @@ def test_quality_gate_compile_check_with_thinking_and_fences() -> None:
         dod_heuristic=(),
     )
     result = delta(gate_input)
-    assert result.passed is True
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
+    assert delta(
+        gate_input.model_copy(update={"llm_response_content": _CLEAN_CODE})
+    ).passed
     assert not any("compile" in r for r in result.failure_reasons)
 
 
 @pytest.mark.unit
-def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
+def test_quality_gate_refuses_thinking_traces_before_concise_check() -> None:
     # Thinking trace adds hundreds of words; clean answer is short
     verbose_thinking = "<think>\n" + ("word " * 300) + "\n</think>\n"
     short_answer = "The answer is 42."
@@ -162,8 +170,8 @@ def test_quality_gate_strips_thinking_traces_before_concise_check() -> None:
     )
     result = delta(gate_input)
     assert result.passed is False
-    assert result.quality_score == pytest.approx(1.0)
-    assert any("reject-only" in r for r in result.failure_reasons)
+    assert result.quality_score == 0.0
+    assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
 
 
 @pytest.mark.unit
@@ -214,7 +222,7 @@ def test_quality_gate_passes_existing_tests_is_skipped_never_phantom_pass() -> N
 
 
 @pytest.mark.unit
-def test_quality_gate_code_generation_with_thinking_passes_all_checks() -> None:
+def test_quality_gate_code_generation_with_thinking_fails_the_floor() -> None:
     """Full code_generation DoD with thinking trace — mirrors the B9 failure case."""
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),

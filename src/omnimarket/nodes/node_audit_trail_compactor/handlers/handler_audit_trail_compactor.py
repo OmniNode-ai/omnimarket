@@ -18,9 +18,9 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from omnimarket.models.model_audit_trail_compactor_command import ModelCompactorCommand
 from omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input import (
     ModelAuditEntry,
-    ModelCompactorCommand,
 )
 from omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_result import (
     ModelCompactorResult,

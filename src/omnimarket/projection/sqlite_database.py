@@ -22,6 +22,7 @@ newer projection version.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -34,6 +35,8 @@ from omnibase_core.models.projection.model_upsert_plan import (
     SQL_EXPRESSION_SENTINEL_PREFIX,
     build_upsert_plan,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
@@ -353,6 +356,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
     ON llm_call_metrics (input_hash)
 """
 
+# One-time data steps on a local store, the SQLite counterpart of a forward
+# migration: each runs once, committed together with its row here. The table is
+# created by the first step that writes, never on a plain connect, so a
+# read-only store that predates it can still be opened.
+_STORE_STEPS_TABLE = "omnimarket_sqlite_store_steps"
+_STORE_STEPS_DDL = f"""
+CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
+    step       TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+)
+"""
+_USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
+
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
 _JSON_COLUMNS = frozenset(
@@ -429,6 +445,7 @@ class SqliteDatabaseAdapter:
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
+        self._apply_usage_source_vocabulary_step(conn, self._db_path)
         return conn
 
     @staticmethod
@@ -520,15 +537,71 @@ class SqliteDatabaseAdapter:
             conn.execute(
                 f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
             )
-        elif "usage_source" in columns:
-            # OMN-19968: rows written before the shared vocabulary move onto it
-            # (EnumUsageSource; omnibase_infra migration 077). Idempotent: it
-            # touches only rows still holding a retired label.
+
+    @staticmethod
+    def _store_step_recorded(conn: sqlite3.Connection, step: str) -> bool:
+        if (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (_STORE_STEPS_TABLE,),
+            ).fetchone()
+            is None
+        ):
+            return False
+        return (
+            conn.execute(
+                f"SELECT 1 FROM {_STORE_STEPS_TABLE} WHERE step = ?", (step,)
+            ).fetchone()
+            is not None
+        )
+
+    @classmethod
+    def _apply_usage_source_vocabulary_step(
+        cls, conn: sqlite3.Connection, db_path: Path
+    ) -> None:
+        """OMN-19968: move rows written before the shared vocabulary onto it, once.
+
+        The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
+        migration 077). It runs once per store, and the relabel and its record
+        commit together. A store that has recorded it opens with reads only.
+        Every connection goes through here, reads included, and an UPDATE takes a
+        write lock even when it matches nothing.
+
+        The decision reads the store's step record, never llm_call_metrics rows:
+        this module is shared by nodes that do not own that table.
+        """
+        if cls._store_step_recorded(conn, _USAGE_SOURCE_VOCABULARY_STEP):
+            return
+        if "usage_source" not in cls._existing_columns(conn, "llm_call_metrics"):
+            return
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_STORE_STEPS_DDL)
             conn.execute(
                 "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
                 "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
                 "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
                 "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+            )
+            conn.execute(
+                f"INSERT OR IGNORE INTO {_STORE_STEPS_TABLE} (step, applied_at) "
+                "VALUES (?, ?)",
+                (_USAGE_SOURCE_VOCABULARY_STEP, datetime.now(UTC).isoformat()),
+            )
+            conn.commit()
+        except sqlite3.Error as exc:
+            conn.rollback()
+            # A store this process cannot write is still read, with the labels
+            # it holds. Anything else, a busy store included, is a real failure.
+            if not (
+                isinstance(exc, sqlite3.OperationalError)
+                and (exc.sqlite_errorcode & 0xFF) == sqlite3.SQLITE_READONLY
+            ):
+                raise
+            logger.warning(
+                "%s is read-only and has not moved llm_call_metrics.usage_source "
+                "onto the shared vocabulary; reading it as it is",
+                db_path,
             )
 
     @staticmethod
@@ -539,11 +612,26 @@ class SqliteDatabaseAdapter:
     def _ensure_columns(
         self, conn: sqlite3.Connection, table: str, row: dict[str, object]
     ) -> None:
-        existing = self._existing_columns(conn, table)
-        for column in row:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
-        conn.commit()
+        # OMN-19976: several writers, threads or processes, can reach a fresh
+        # store together, and each one's first write adds columns. Reading the
+        # columns with no lock and then altering let two writers both see one
+        # missing; the second ALTER failed with "duplicate column name" and
+        # that writer's row was lost. So the columns are read again under the
+        # write lock and only those still missing are added, in one
+        # transaction that rolls back whole. A row whose columns all exist,
+        # which is every steady-state write, returns before taking the lock.
+        if set(row) <= self._existing_columns(conn, table):
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._existing_columns(conn, table)
+            for column in row:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @staticmethod
     def _encode(column: str, value: object) -> object:

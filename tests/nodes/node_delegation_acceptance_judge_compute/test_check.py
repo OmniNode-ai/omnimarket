@@ -4,11 +4,11 @@
 
 import pytest
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
+    EnumAcceptanceOperation,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_issue_code import (
     EnumAcceptanceIssueCode as Code,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
-    EnumAcceptanceOperation,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_run_status import (
     EnumAcceptanceRunStatus,
