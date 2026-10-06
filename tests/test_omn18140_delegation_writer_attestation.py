@@ -94,17 +94,22 @@ def _delegation_exposures() -> list[ProjectionTableConfig]:
     ]
 
 
+_DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
+_TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"
+
+
+def _exposure_for(topic: str) -> ProjectionTableConfig:
+    matches = [e for e in _delegation_exposures() if e.topic == topic]
+    assert len(matches) == 1, f"expected one exposure for {topic!r}, got {len(matches)}"
+    return matches[0]
+
+
 def _row_exposure() -> ProjectionTableConfig:
-    scoped = [
-        exposure
-        for exposure in _delegation_exposures()
-        if exposure.tenant_scoped and exposure.bus_backed
-    ]
-    assert len(scoped) == 1, (
-        "leg 4 reads the FIRST exposure over delegation_events that is both "
-        f"tenant-scoped and bus-backed; found {len(scoped)}"
-    )
-    return scoped[0]
+    """The exposure leg 4 reads: the decisions list, tenant-scoped and bus-backed."""
+    exposure = _exposure_for(_DECISIONS_TOPIC)
+    assert exposure.tenant_scoped
+    assert exposure.bus_backed
+    return exposure
 
 
 def _wire_record(payload: dict[str, Any], *, event_type: str) -> bytes:
@@ -227,9 +232,7 @@ class TestTheExposureLeg4ReadsIsDeclaredCorrectly:
     unreadable fails here first.
     """
 
-    def test_exactly_one_delegation_exposure_is_tenant_scoped_and_bus_backed(
-        self,
-    ) -> None:
+    def test_the_decisions_exposure_is_tenant_scoped_and_bus_backed(self) -> None:
         exposure = _row_exposure()
         assert exposure.bus_backed is True
         assert exposure.tenant_scoped is True
@@ -263,15 +266,25 @@ class TestTheExposureLeg4ReadsIsDeclaredCorrectly:
         assert exposure.freshness_column == "written_at"
         assert exposure.order_by == "written_at DESC"
 
-    def test_the_other_delegation_exposures_stay_unscoped_and_unbacked(self) -> None:
+    def test_the_correlation_trace_exposure_is_served_and_tenant_scoped(self) -> None:
+        """The per-correlation detail surface serves prompt_text/response_text and
+        cost_usd, so it is bus-backed (not a 503) AND tenant-scoped."""
+        exposure = _exposure_for(_TRACE_TOPIC)
+        assert exposure.bus_backed is True
+        assert exposure.key_columns == ("correlation_id",)
+        assert exposure.tenant_column == "tenant_id"
+        assert exposure.tenant_scoped is True
+        assert "tenant_id" in exposure.columns
+        assert "cost_usd" in exposure.columns
+
+    def test_every_other_delegation_exposure_stays_unscoped_and_unbacked(
+        self,
+    ) -> None:
         """Widening the rest is a separate decision with its own publish sites;
         flipping one without one is the confident-empty failure."""
-        others = [
-            exposure
-            for exposure in _delegation_exposures()
-            if exposure.topic != _row_exposure().topic
-        ]
-        assert others, "fixture is wrong: this table has more than one exposure"
+        served = {_DECISIONS_TOPIC, _TRACE_TOPIC}
+        others = [e for e in _delegation_exposures() if e.topic not in served]
+        assert others, "fixture is wrong: this table has more than two exposures"
         for exposure in others:
             assert exposure.bus_backed is False, exposure.topic
             assert exposure.tenant_scoped is False, exposure.topic
@@ -428,7 +441,12 @@ class TestTheRepublishCarriesTheStoredRow:
         returned = [
             name.strip() for name in statement.split(" RETURNING ", 1)[1].split(",")
         ]
-        assert returned == list(_row_exposure().columns)
+        union = list(
+            dict.fromkeys(
+                [*_row_exposure().columns, *_exposure_for(_TRACE_TOPIC).columns]
+            )
+        )
+        assert returned == union
 
     def test_the_published_row_is_the_returned_row_not_the_proposed_one(self) -> None:
         """The republish describes what Postgres STORED.
@@ -480,3 +498,40 @@ class TestTheRepublishCarriesTheStoredRow:
         )
         topic = _row_exposure().topic
         assert not [value for sent_topic, value in sent if sent_topic == topic]
+
+
+class TestTheCorrelationTraceExposureIsRepublishedToo:
+    def test_the_stored_row_reaches_the_trace_topic_with_its_detail_columns(
+        self,
+    ) -> None:
+        correlation_id = str(uuid4())
+        trace = _exposure_for(_TRACE_TOPIC)
+        stored = dict.fromkeys(
+            dict.fromkeys([*_row_exposure().columns, *trace.columns])
+        ) | {
+            "correlation_id": correlation_id,
+            "tenant_id": "a-tenant-outside-the-house",
+            "writer_identity": "tenant_projection_writer",
+            "written_at": _ENVELOPE_TIMESTAMP,
+            "prompt_text": "the prompt",
+            "response_text": "the response",
+            "cost_usd": 0.5,
+        }
+        db = _returning_db(stored)
+        runner = _runner(db)
+        sent = _intercept_snapshot_sends(runner)
+        asyncio.run(
+            runner.project_event(
+                TASK_DELEGATED_TOPIC_V1,
+                _task_delegated_delivery(correlation_id=correlation_id),
+                MessageMeta(partition=0, offset=1, fallback_id="f", topic="t"),
+            )
+        )
+        by_topic = {t: json.loads(v) for t, v in sent}
+        assert _TRACE_TOPIC in by_topic, sorted(by_topic)
+        trace_row = by_topic[_TRACE_TOPIC]["row"]
+        assert trace_row["prompt_text"] == "the prompt"
+        assert trace_row["cost_usd"] == 0.5
+        assert trace_row["tenant_id"] == "a-tenant-outside-the-house"
+        # The lean decisions list does not carry the heavy detail columns.
+        assert "prompt_text" not in by_topic[_DECISIONS_TOPIC]["row"]

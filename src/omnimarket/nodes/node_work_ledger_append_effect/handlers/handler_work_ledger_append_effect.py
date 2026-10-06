@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from typing import Literal
 
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
