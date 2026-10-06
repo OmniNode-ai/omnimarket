@@ -28,6 +28,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider"
+        check_value: "uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
