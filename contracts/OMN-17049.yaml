@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17049"
+title: "The readiness gate orchestrator declares terminal_events and a walker test pins its state machine"
+summary: "Adds terminal_events to node_readiness_gate_orchestrator's contract, with success mapped to the readiness-gate-completed event and failure mapped to the readiness-gate-blocked event, both already in publish_topics. AC1 is bound to the walker test that proves the declared state machine and terminal events."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-readiness-gate-terminal-events"
+    statement: "The readiness gate orchestrator declares terminal_events and a walker test pins its state machine. The criterion below is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the orchestrator contract declares terminal_events for success and failure and the walker finds no unreachable or dead state -- falsifier: uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The walker test passes at the head and fails at the merge base with a terminal_events KeyError."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17049-ac1-terminal-events-walker"
+    description: "AC1 hosted probe. The walker test passes at the head and fails at the merge base with a terminal_events KeyError."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
