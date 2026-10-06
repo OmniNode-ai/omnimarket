@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
@@ -96,14 +97,23 @@ class NodeLogPersistenceEffect:
         )
         return self._pool
 
-    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+    def handle(self, request: object) -> dict[str, object]:
         """Persist bus activity through the contract-resolved projection database.
 
         The runtime supplies the database from db_io. This dispatch shape avoids
         the legacy async path's optional ONEX_PG_DSN and silent skipped writes.
         Delegation terminals produce execution logs, never copies of model text.
+
+        ``request`` is the runtime-injected payload mapping (with ``_db``,
+        ``_topic`` and envelope metadata), the shape the db_io projection
+        dispatch arm sends; see node_hook_event_capture for the same contract.
         """
-        db, payload, meta = split_projection_input(input_data)
+        if not isinstance(request, Mapping):
+            raise TypeError(
+                "NodeLogPersistenceEffect.handle() expects the runtime-injected "
+                f"payload mapping (with _db/_topic), got {type(request).__name__}"
+            )
+        db, payload, meta = split_projection_input(dict(request))
         topic = meta.get("_topic")
         if topic in _SUBSCRIBE_TOPICS[1:]:
             terminal_cls = (

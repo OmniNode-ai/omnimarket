@@ -312,6 +312,12 @@ def test_runtime_dispatch_requires_database() -> None:
 
 
 @pytest.mark.unit
+def test_runtime_dispatch_rejects_non_mapping_request() -> None:
+    with pytest.raises(TypeError, match="payload mapping"):
+        NodeLogPersistenceEffect(pg_dsn="").handle("not-a-mapping")
+
+
+@pytest.mark.unit
 def test_runtime_contract_routes_each_subscribed_topic() -> None:
     contract_path = (
         Path(__file__).parents[4]
