@@ -38,13 +38,14 @@ import tempfile
 from pathlib import Path, PurePosixPath
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
 LIB = REPO_ROOT / "scripts" / "hooks" / "prepush_dispatch.sh"
 TABLE = REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv"
 
-#: Where the PRIVATE placement overlay lives, relative to $OMNI_HOME. The hook
+#: Where the PRIVATE placement overlay lives, relative to the owning config root. The hook
 #: resolves it from the table's own `#!placement-overlay` directive;
 #: test_the_overlay_path_matches_the_hook pins the two together so this
 #: constant cannot drift into a comforting fiction.
@@ -498,7 +499,10 @@ def test_hydration_fills_the_placement_columns_from_the_private_overlay(
     having moved.
     """
     home = _omni_home_with_overlay(tmp_path, _SYNTHETIC_OVERLAY)
-    completed = _hydrated_rows(table_repo, {**os.environ, "OMNI_HOME": str(home)})
+    completed = _hydrated_rows(
+        table_repo,
+        {**os.environ, "OMNI_HOME": str(home), "ONEX_WORKSPACE_CONFIG_ROOT": str(home)},
+    )
     assert completed.returncode == 0, completed.stderr
     rows = [line.split("\t") for line in completed.stdout.splitlines() if line]
     assert rows, "expected hydrated rows"
@@ -575,7 +579,10 @@ def test_partial_overlay_row_skips_the_whole_placement_row(
         "#label\tssh_target\tuv_abs_path\tworkroot\n"
         "h101\t198.51.100.101\t/opt/synthetic/bin/uv\t\n",
     )
-    completed = _hydrated_rows(table_repo, {**os.environ, "OMNI_HOME": str(home)})
+    completed = _hydrated_rows(
+        table_repo,
+        {**os.environ, "OMNI_HOME": str(home), "ONEX_WORKSPACE_CONFIG_ROOT": str(home)},
+    )
     assert completed.returncode == 0, completed.stderr
     rows = [line.split("\t") for line in completed.stdout.splitlines() if line]
     by_label = {r[0]: r for r in rows}
@@ -641,7 +648,7 @@ host_load_ratio() {{ return 1; }}
             "PREPUSH_SLOT_OVERRIDE_MAP": "",
             "PREPUSH_MEM_OVERRIDE_MAP": "",
             # OMN-18027. The placement columns hydrate from
-            # $OMNI_HOME/config/lab/... on a real workstation. Left inherited,
+            # ${ONEX_WORKSPACE_CONFIG_ROOT}/config/lab/... on a real workstation. Left inherited,
             # every one of these tests would read a DIFFERENT table on a
             # developer machine than in CI, where no such file exists -- the
             # test would pass in both places while asserting two different
@@ -650,6 +657,7 @@ host_load_ratio() {{ return 1; }}
             # addresses are reserved-documentation values, so these tests are
             # identical everywhere and none of them can print a real one.
             "OMNI_HOME": str(_synthetic_overlay_home()),
+            "ONEX_WORKSPACE_CONFIG_ROOT": str(_synthetic_overlay_home()),
         },
     )
 
@@ -694,12 +702,23 @@ def _repo_with_table(tmp_path: Path, table_text: str, name: str = "synth") -> Pa
     (repo / "scripts" / "hooks" / "prepush_hosts.tsv").write_text(
         table_text, encoding="utf-8"
     )
-    subprocess.run(["git", "init", "-q", "."], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "init", "-q", "."],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "table"],
         cwd=repo,
         check=True,
+        env=scrub_git_location_env(os.environ),
     )
     return repo
 
@@ -713,12 +732,23 @@ def table_repo(tmp_path: Path) -> Path:
     (repo / "scripts" / "hooks" / "prepush_hosts.tsv").write_text(
         TABLE.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    subprocess.run(["git", "init", "-q", "."], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "init", "-q", "."],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "table"],
         cwd=repo,
         check=True,
+        env=scrub_git_location_env(os.environ),
     )
     return repo
 
@@ -2149,15 +2179,27 @@ def remote_run_env(tmp_path: Path) -> dict[str, Path]:
     src = tmp_path / "src"
     (src / "tests").mkdir(parents=True)
     (src / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n")
-    subprocess.run(["git", "init", "-q", "."], cwd=src, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=src, check=True)
+    subprocess.run(
+        ["git", "init", "-q", "."],
+        env=scrub_git_location_env(os.environ),
+        cwd=src,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "add", "-A"],
+        env=scrub_git_location_env(os.environ),
+        cwd=src,
+        check=True,
+    )
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "t"],
+        env=scrub_git_location_env(os.environ),
         cwd=src,
         check=True,
     )
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
+        env=scrub_git_location_env(os.environ),
         cwd=src,
         capture_output=True,
         text=True,
@@ -2169,6 +2211,7 @@ def remote_run_env(tmp_path: Path) -> dict[str, Path]:
     rundir.mkdir(parents=True)
     subprocess.run(
         ["git", "bundle", "create", str(rundir / "tree.bundle"), "HEAD"],
+        env=scrub_git_location_env(os.environ),
         cwd=src,
         check=True,
         capture_output=True,
@@ -2375,6 +2418,7 @@ def test_the_dispatched_repo_name_comes_from_origin_not_worktree_basename(
         ["git", "remote", "add", "origin", "git@github.com:OmniNode-ai/omnimarket.git"],
         cwd=repo,
         check=True,
+        env=scrub_git_location_env(os.environ),
     )
 
     out = _driver(
@@ -2924,7 +2968,12 @@ def test_the_local_leg_uses_the_table_uv_dir_not_only_the_actors_home(
         f"token in the public table; got {committed_uvs}"
     )
     hydrated = _hydrated_rows(
-        table_repo, {**os.environ, "OMNI_HOME": str(_synthetic_overlay_home())}
+        table_repo,
+        {
+            **os.environ,
+            "OMNI_HOME": str(_synthetic_overlay_home()),
+            "ONEX_WORKSPACE_CONFIG_ROOT": str(_synthetic_overlay_home()),
+        },
     )
     assert hydrated.returncode == 0, hydrated.stderr
     hydrated_uvs = [
@@ -2981,6 +3030,7 @@ def test_the_wrapper_materializes_the_base_ref_in_the_transplanted_tree(
     tree = remote_run_env["rundir"] / "tree"
     resolved = subprocess.run(
         ["git", "rev-parse", "origin/dev"],
+        env=scrub_git_location_env(os.environ),
         cwd=tree,
         capture_output=True,
         text=True,
@@ -4211,3 +4261,28 @@ def test_the_acceptance_branch_names_the_count_it_gates_on() -> None:
         "acceptance no longer compares the collected count to zero on any "
         "EXECUTABLE line (a comment mentioning the comparison does not count)"
     )
+
+
+def test_config_migration_reads_overlay_from_owner(tmp_path: Path) -> None:
+    """OMN-19743: the retired root's overlay cannot hydrate a host row."""
+    root = tmp_path / "omni_home"
+    owner = tmp_path / "omnibase_internal"
+    rel = "config/lab/prepush_hosts.omnimarket.overlay.tsv"
+    old = root / rel
+    new = owner / rel
+    for p in (old, new):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# fixture\n")
+    env = {**os.environ, "OMNI_HOME": str(root), "TEST_OVERLAY_REL": rel}
+    env.pop("ONEX_WORKSPACE_CONFIG_ROOT", None)
+    lib = Path(__file__).resolve().parents[2] / "scripts/hooks/prepush_dispatch.sh"
+    command = 'source "$1"; '
+    command += 'prepush_table_text() { printf "#!placement-overlay %s\\n" "$TEST_OVERLAY_REL"; }; prepush_overlay_path'
+    result = subprocess.run(
+        ["bash", "-c", command, "test", str(lib), rel],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert Path(result.stdout).resolve() == new.resolve()

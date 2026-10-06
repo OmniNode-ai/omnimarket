@@ -242,6 +242,8 @@ jobs:
 
       - name: Run Layer-2 golden-task runner (scoreboard)
         id: runner
+        # Preflight failures still need the runner's fatal scoreboard (AC3).
+        if: always()
         run: |
           uv run python -m tests.delegation_golden.runner \
             --out delegation_regression_scoreboard.json
@@ -292,5 +294,5 @@ jobs:
         with:
           name: delegation-regression-scoreboard
           path: delegation_regression_scoreboard.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30

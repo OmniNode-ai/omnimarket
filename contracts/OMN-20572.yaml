@@ -12,6 +12,8 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: a pure compute node subscribed to onex.evt.omnimarket.delegate-skill-completed.v1 publishes exactly one request on onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1 for a completed payload and none for a payload that is not complete -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: the judge request node decodes the delegate-skill-completed payloads as published, including the publish-time keys actual_score, required_bar, causation_id, emitted_at, schema_version and entity_id, instead of refusing them -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The wiring test proves one request for a completed payload and none for an incomplete one. It passes at the head and fails at the merge base, where the node does not exist."
@@ -29,3 +31,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20572-ac3-published-terminal-decode"
+    description: "AC3 hosted probe. The published-terminal test decodes recorded published payloads and drives each through the judge render path. It passes at the head and fails at the merge base, where the test file does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
