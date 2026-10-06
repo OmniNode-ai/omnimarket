@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19454
+title: "The install canary reads the state root it told the delegate to write"
+summary: "run_install_canary.py now passes an explicit --state-root under the run directory to onex delegate, so the canary validates the same state root the delegate wrote to instead of cwd/.onex_state while the installed CLI defaults to HOME/.onex_state. The canary test fixture models the HOME default so a missing flag fails."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-canary-state-root"
+    statement: |-
+      The install canary passes an explicit state root to the delegate and validates artifacts under that root.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The canary passes --state-root run_dir/.onex_state to onex delegate and the main-stage test fails if the flag is absent -- falsifier: uv run pytest tests/test_omn19454_install_canary.py passes
+evidence_requirements:
+  - kind: tests
+    description: "AC1: the install canary tests pass with the delegate fixture writing to the state root named on the command line, or HOME when the flag is missing"
+    command: "uv run pytest tests/test_omn19454_install_canary.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-ac1-canary-state-root
+    description: "AC1: the canary passes an explicit --state-root to onex delegate and its tests pass"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_omn19454_install_canary.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

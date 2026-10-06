@@ -22,6 +22,12 @@ from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated
     EnumControlStatus,
     ModelControlGradeRequest,
 )
+from omnimarket.nodes.node_delegated_test_control_compute.tests.test_collection_control_omn19361 import (
+    test_call_failure_on_mutation_is_headline_grade as test_call_failure_on_mutation_is_headline_grade,
+)
+from omnimarket.nodes.node_delegated_test_control_compute.tests.test_collection_control_omn19361 import (
+    test_collection_control_without_call_failure_is_accepted_weak as test_collection_control_without_call_failure_is_accepted_weak,
+)
 
 pytestmark = pytest.mark.unit
 

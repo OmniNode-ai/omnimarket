@@ -1,0 +1,24 @@
+name: node_pr_handoff_ledger_effect
+version: "0.1.0"
+description: "Effect: append the PR handoff rows through the ledger's bus append and answer for the handoff"
+pack: pr_lifecycle
+node_role: effect
+display_name: "PR Handoff Ledger Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_handoff_ledger_effect: "omnimarket.nodes.node_pr_handoff_ledger_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr-handoff", "work-ledger"]

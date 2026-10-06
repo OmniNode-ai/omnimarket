@@ -311,11 +311,10 @@ class TestEveryBusBackedExposureHasAnInProcessPublisher:
 
         handler = HandlerProjectionDelegation(publisher=None)
         served = {e.topic for e in handler._aggregate_exposures}
-        if handler._row_exposure is not None:
-            served.add(handler._row_exposure.topic)
+        served.update(e.topic for e in handler._row_exposures)
 
         assert served == set(bus_backed), sorted(set(bus_backed) ^ served)
-        assert len(bus_backed) == 5, bus_backed
+        assert len(bus_backed) == 6, bus_backed
 
     def test_an_unservable_bus_backed_shape_fails_construction(
         self, tmp_path: Path

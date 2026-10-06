@@ -12,6 +12,7 @@ from omnimarket.delegation.reasoning_preamble import (
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
     strip_leading_inline_reasoning,
 )
@@ -89,7 +90,7 @@ def test_residual_tag_refuses_and_climbs(
     assert tag in rule.detail
 
 
-def test_a_leading_paired_block_is_segmented_off_and_the_answer_passes() -> None:
+def test_a_leading_paired_block_is_segmented_off_and_the_gate_refuses() -> None:
     answer = json.dumps({"answer": "42"})
     content = "  <think>weighing options</think>\n\n" + answer
     segmentation = segment_reasoning_preamble(content)
@@ -97,7 +98,8 @@ def test_a_leading_paired_block_is_segmented_off_and_the_answer_passes() -> None
     assert segmentation.answer == answer
     contract: dict[str, object] = {"type": "object", "required": ["answer"]}
     result = delta(_input(content), response_contract=contract)
-    assert result.passed
+    assert not result.passed
+    assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
     assert result.reasoning_preamble_rule == "leading_paired_block"
 
 
@@ -115,6 +117,21 @@ def test_a_leading_paired_block_with_nothing_behind_it_stays_unresolved() -> Non
     assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("<think>weighing options</think>\n\nThe answer is 42.", True),
+        ("<think>only reasoning</think>\n", True),
+        ("The answer is 42.", False),
+        ("The answer is 42. <think>second thoughts</think> Or 41.", False),
+    ],
+)
+def test_has_leading_reasoning_trace_names_the_raw_text_the_gate_judges(
+    content: str, expected: bool
+) -> None:
+    assert has_leading_reasoning_trace(segment_reasoning_preamble(content)) is expected
+
+
 def test_residual_opening_tag_in_whole_answer_is_refused() -> None:
     result = delta(_input("Final answer with <think> inside"))
     assert not result.passed
@@ -123,7 +140,7 @@ def test_residual_opening_tag_in_whole_answer_is_refused() -> None:
 
 
 @pytest.mark.parametrize("adapter_stripped", [False, True])
-def test_clean_answer_is_unchanged_after_leading_segmentation(
+def test_clean_answer_passes_but_a_stripped_trace_still_fails(
     adapter_stripped: bool,
 ) -> None:
     answer = json.dumps({"answer": "Final answer."})
@@ -139,10 +156,9 @@ def test_clean_answer_is_unchanged_after_leading_segmentation(
         _input(content), reasoning_stripped_chars=count, response_contract=contract
     )
     assert clean.passed
-    assert segmented.passed
-    assert segmented.quality_score == clean.quality_score
-    assert segmented.rule_evaluations == clean.rule_evaluations
-    assert segmented.failure_reasons == clean.failure_reasons
+    assert not segmented.passed
+    assert segmented.quality_score == 0.0
+    assert segmented.rule_evaluations[0].rule == "no_leading_reasoning_trace"
 
 
 def test_policy_exposes_residual_tags_and_defaults_to_none_declared() -> None:
@@ -191,3 +207,50 @@ def test_existing_floors_keep_precedence(
 ) -> None:
     result = delta(_input(content), finish_reason=finish_reason)
     assert result.rule_evaluations[0].rule == expected_rule
+
+
+@pytest.mark.parametrize("task_type", ["document", "code_generation", "unknown-task"])
+@pytest.mark.parametrize("with_contract", [False, True])
+@pytest.mark.parametrize("adapter_stripped", [False, True])
+@pytest.mark.parametrize(
+    "trace",
+    [
+        "We need answer user...</think>\n\n",
+        "<think>weighing options</think>\n\n",
+        "Here's a thinking process:\n\n# Answer\n",
+    ],
+)
+def test_leading_trace_is_a_blocking_floor_even_with_a_complete_answer(
+    task_type: str,
+    with_contract: bool,
+    adapter_stripped: bool,
+    trace: str,
+) -> None:
+    answer = json.dumps({"answer": "Final answer."})
+    contract: dict[str, object] | None = (
+        {"type": "object", "required": ["answer"]} if with_contract else None
+    )
+    result = delta(
+        _input(answer if adapter_stripped else trace + answer).model_copy(
+            update={"task_type": task_type}
+        ),
+        reasoning_stripped_chars=len(trace) if adapter_stripped else 0,
+        response_contract=contract,
+        judge_adequacy_score=1.0,
+    )
+    assert not result.passed
+    assert result.fail_category == "fail_deterministic"
+    assert result.quality_score == 0.0
+    assert result.fallback_recommended
+    rule = result.rule_evaluations[0]
+    assert rule.rule == "no_leading_reasoning_trace"
+    assert rule.enforcement is EnumQualityRuleEnforcement.BLOCKING
+    assert not rule.passed
+    assert "leading reasoning trace" in rule.detail
+    clean = delta(
+        _input(answer).model_copy(update={"task_type": task_type}),
+        response_contract=contract,
+        judge_adequacy_score=1.0,
+    )
+    if with_contract:
+        assert clean.passed

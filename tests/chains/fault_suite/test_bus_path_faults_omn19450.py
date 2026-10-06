@@ -75,6 +75,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     RuntimeDelegationDispatchPort,
 )
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+    TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
     TOPIC_ID_DELEGATION_REQUEST,
 )
@@ -257,7 +258,11 @@ async def _run_fault(
             on_message=orchestrator_stand_in,
         )
         handler = HandlerDelegateSkill(
-            dispatch_port=RuntimeDelegationDispatchPort(event_bus=bus)
+            dispatch_port=RuntimeDelegationDispatchPort(
+                event_bus=bus,
+                completed_topic=TOPIC_ID_DELEGATION_COMPLETED,
+                failed_topic=TOPIC_ID_DELEGATION_FAILED,
+            )
         )
         consumer = await handler.handle(
             ModelDelegateSkillRequest(

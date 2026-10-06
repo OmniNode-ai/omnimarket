@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Ledger-host append effect, reached over the bus (OMN-20275)."""
 
-from omnimarket.nodes.node_work_ledger_append_effect.handlers import (
-    HandlerWorkLedgerAppendEffect,
-)
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.handlers import (
+    HandlerWorkLedgerAppendEffect,
 )
 
 

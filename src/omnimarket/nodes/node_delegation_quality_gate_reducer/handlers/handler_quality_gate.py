@@ -92,12 +92,15 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
+    LEADING_REASONING_TRACE_GATE_FAILURE_REASON,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
     ModelReasoningSegmentation,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_conformance import (
@@ -2890,6 +2893,29 @@ def _unresolved_preamble_result(
     )
 
 
+def _leading_reasoning_trace_result(
+    gate_input: ModelQualityGateInput,
+) -> ModelQualityGateResult:
+    """Refuse a leading trace even when an answer can be recovered (OMN-18278)."""
+    reasons = (LEADING_REASONING_TRACE_GATE_FAILURE_REASON,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=LEADING_REASONING_TRACE_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=LEADING_REASONING_TRACE_GATE_FAILURE_REASON,
+            ),
+        ),
+    )
+
+
 def _residual_reasoning_tag_result(
     gate_input: ModelQualityGateInput, tag: str
 ) -> ModelQualityGateResult:
@@ -3027,7 +3053,7 @@ def delta(
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
 ) -> ModelQualityGateResult:
-    """Segment off a leaked reasoning preamble, then evaluate the answer.
+    """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
     OMN-18379. Every check below this line judges the ANSWER SEGMENT, never the
     scratchpad a local model sometimes ships in front of it. The defect this
@@ -3042,6 +3068,8 @@ def delta(
     resolves, the WHOLE response is evaluated exactly as before this ticket and
     the result says ``no_boundary_found`` — text is never dropped on a guess.
 
+    OMN-18278: a resolved leading preamble, or the adapter receipt that one
+    was removed, vetoes acceptance even when a complete answer follows it.
     The stripped preamble travels on the result so a verdict can be audited
     against precisely the text it judged.
 
@@ -3112,6 +3140,10 @@ def delta(
     elif residual_tag is not None:
         # Inspect the answer before any paired-tag strip can hide a trace.
         result = _residual_reasoning_tag_result(gate_input, residual_tag)
+    elif reasoning_stripped_chars > 0 or has_leading_reasoning_trace(segmentation):
+        # Extraction must not erase the evidence the deterministic floor judges.
+        # An adapter receipt is equally conclusive when the trace is already gone.
+        result = _leading_reasoning_trace_result(gate_input)
     else:
         segmented_input = (
             gate_input
