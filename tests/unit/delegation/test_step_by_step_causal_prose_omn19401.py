@@ -13,11 +13,27 @@ with "Consequently"/"However"/"Additionally" rather than the literal tokens
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     _HEURISTIC_CONTAINS_ANY_CHECKS,
     _check_contains_any,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    delta as quality_gate_delta,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
+    ModelQualityGateInput,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    resolve_task_class_dod_checks,
+)
+
+_HASH_MAP_PROMPT = (
+    "Explain why a hash map lookup is on average constant time, "
+    "and when it degrades, in under 120 words."
 )
 
 # Verbatim response text from correlation_id 174ea493-c4b8-4174-aac4-b158d439b424.
@@ -51,6 +67,44 @@ def _run_step_by_step_check(content: str) -> str | None:
 def test_causal_prose_hash_map_answer_no_longer_vetoed() -> None:
     """The exact reproduction case from OMN-19401 must now pass."""
     assert _run_step_by_step_check(_HASH_MAP_RESPONSE) is None
+
+
+@pytest.mark.unit
+def test_hash_map_prompt_response_passes_reasoning_quality_gate() -> None:
+    """The base class DoD accepts the pair without a prompt-layout waiver."""
+    deterministic, heuristic = resolve_task_class_dod_checks("reasoning")
+    assert "step_by_step_explanation" in heuristic
+    result = quality_gate_delta(
+        ModelQualityGateInput(
+            correlation_id=UUID("174ea493-c4b8-4174-aac4-b158d439b424"),
+            task_type="reasoning",
+            llm_response_content=_HASH_MAP_RESPONSE,
+            grounding_source=_HASH_MAP_PROMPT,
+            dod_deterministic=deterministic,
+            dod_heuristic=heuristic,
+        )
+    )
+
+    assert result.passed is True
+    assert result.failure_reasons == ()
+
+
+@pytest.mark.unit
+def test_causal_markers_alone_cannot_authorize_quality_gate_pass() -> None:
+    """Accepting causal structure preserves the marker rule's reject-only role."""
+    result = quality_gate_delta(
+        ModelQualityGateInput(
+            correlation_id=UUID("174ea493-c4b8-4174-aac4-b158d439b424"),
+            task_type="reasoning",
+            llm_response_content=_HASH_MAP_RESPONSE,
+            dod_deterministic=("response_non_empty",),
+            dod_heuristic=("step_by_step_explanation",),
+        )
+    )
+
+    assert result.passed is False
+    assert result.quality_score == pytest.approx(1.0)
+    assert any("reject-only" in reason for reason in result.failure_reasons)
 
 
 @pytest.mark.unit
