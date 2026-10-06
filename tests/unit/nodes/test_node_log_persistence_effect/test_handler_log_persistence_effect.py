@@ -9,9 +9,11 @@ No real database — asyncpg pool is mocked throughout.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -90,7 +92,7 @@ async def test_handle_skips_when_pool_is_none() -> None:
     handler = NodeLogPersistenceEffect(pool=None, pg_dsn="")
     entry = _make_entry()
 
-    result = await handler.handle(entry)
+    result = await handler.persist(entry)
 
     assert isinstance(result, ModelLogPersistenceResult)
     assert result.status == "skipped"
@@ -117,7 +119,7 @@ async def test_handle_inserts_correct_params() -> None:
     pool, conn = _make_pool(fetchval_return=entry.entry_id)
     handler = NodeLogPersistenceEffect(pool=pool)
 
-    result = await handler.handle(entry)
+    result = await handler.persist(entry)
 
     assert result.status == "written"
     assert result.entry_id == entry.entry_id
@@ -149,7 +151,7 @@ async def test_handle_idempotent_when_conflict() -> None:
     pool, _conn = _make_pool(fetchval_return=None)
     handler = NodeLogPersistenceEffect(pool=pool)
 
-    result = await handler.handle(entry)
+    result = await handler.persist(entry)
 
     assert result.status == "idempotent"
     assert result.entry_id == entry.entry_id
@@ -170,7 +172,7 @@ async def test_handle_returns_error_on_db_exception() -> None:
     pool.acquire = MagicMock(return_value=_AsyncContextManager(conn))
     handler = NodeLogPersistenceEffect(pool=pool)
 
-    result = await handler.handle(entry)
+    result = await handler.persist(entry)
 
     assert result.status == "error"
     assert result.error_message is not None
@@ -218,3 +220,115 @@ def test_contract_declares_the_log_persistence_completed_terminal_event() -> Non
         contract["terminal_event"] == "onex.evt.omnimarket.log-persistence-completed.v1"
     )
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_canonical_logger_payload_reaches_runtime_database() -> None:
+    """Exercise the real producer's wire model through the bus dispatch shape."""
+    from omnibase_core.models.logging.model_structured_log_entry import (
+        ModelStructuredLogEntry,
+    )
+
+    from omnimarket.logging.structured_logger import StructuredEventLogger
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    correlation = uuid4()
+    logger = StructuredEventLogger("node_build_loop")
+    entry = await logger.error(
+        "build failed", operation="build", correlation_id=correlation, duration_ms=12.5
+    )
+    payload = json.loads(entry.model_dump_json())
+    # Exactly the model used by the actual producer, rather than a legacy fixture.
+    ModelStructuredLogEntry.model_validate(payload)
+    db = InmemoryDatabaseAdapter()
+    payload.update(
+        {
+            "_db": db,
+            "_topic": "onex.evt.platform.log-entry.v1",
+            "_envelope_id": str(uuid4()),
+        }
+    )
+    handler = NodeLogPersistenceEffect(pg_dsn="")
+    result = handler.handle(payload)
+    assert result["rows_upserted"] == 1
+    rows = db.query("log_entries")
+    assert len(rows) == 1
+    assert rows[0]["entry_id"] == entry.entry_id
+    assert rows[0]["timestamp"] == entry.timestamp
+    assert rows[0]["node_name"] == "node_build_loop"
+    assert rows[0]["function_name"] == "build"
+    assert rows[0]["level"] == "error"
+    assert rows[0]["correlation_id"] == str(correlation)
+    assert rows[0]["duration_ms"] == 12.5
+    handler.handle(payload)
+    assert len(db.query("log_entries")) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["completed", "failed"])
+def test_delegation_terminal_materializes_execution_log(status: str) -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    correlation, event_id = uuid4(), uuid4()
+    timestamp = datetime(2026, 10, 6, tzinfo=UTC)
+    payload = {
+        "status": status,
+        "correlation_id": str(correlation),
+        "task_type": "document",
+        "response": "private model output must not be copied into execution logs",
+        "model_name": "lab-model",
+        "quality_gate_passed": status == "completed",
+        "execution_duration_ms": 125,
+        "_db": db,
+        "_topic": f"onex.evt.omnimarket.delegate-skill-{status}.v1",
+        "_envelope_id": str(event_id),
+        "_envelope_timestamp": timestamp,
+    }
+    handler = NodeLogPersistenceEffect(pg_dsn="")
+    result = handler.handle(payload)
+    assert result["rows_upserted"] == 1
+    row = db.query("log_entries")[0]
+    assert row["entry_id"] == event_id
+    assert row["timestamp"] == timestamp
+    assert row["correlation_id"] == str(correlation)
+    assert row["message"] == f"Delegation {status}"
+    assert row["level"] == ("info" if status == "completed" else "error")
+    assert row["duration_ms"] == 125
+    assert "private model output" not in str(row)
+    handler.handle(payload)
+    assert len(db.query("log_entries")) == 1
+    # A different source event sharing a correlation remains distinct.
+    payload["_envelope_id"] = str(uuid4())
+    handler.handle(payload)
+    assert len(db.query("log_entries")) == 2
+
+
+@pytest.mark.unit
+def test_runtime_dispatch_requires_database() -> None:
+    with pytest.raises(TypeError, match="DatabaseAdapter"):
+        NodeLogPersistenceEffect(pg_dsn="").handle({})
+
+
+@pytest.mark.unit
+def test_runtime_contract_routes_each_subscribed_topic() -> None:
+    contract_path = (
+        Path(__file__).parents[4]
+        / "src/omnimarket/nodes/node_log_persistence_effect/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["handler_routing"]["routing_strategy"] == "topic_match"
+    assert {h["topic"] for h in contract["handler_routing"]["handlers"]} == set(
+        contract["event_bus"]["subscribe_topics"]
+    )
+
+
+@pytest.mark.unit
+def test_runtime_selects_contract_database_dispatch_arm() -> None:
+    """Guard the real runtime seam that previously bypassed database binding."""
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _typed_def_b_input_model,
+    )
+
+    assert _typed_def_b_input_model(NodeLogPersistenceEffect(pg_dsn="")) is None
