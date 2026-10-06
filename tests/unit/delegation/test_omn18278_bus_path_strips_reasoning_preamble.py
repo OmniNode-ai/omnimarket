@@ -242,21 +242,28 @@ class TestBusPathSegmentsTheResponse:
         assert isinstance(gate_intent, ModelQualityGateIntent)
         return gate_intent
 
+    @pytest.mark.parametrize(
+        "trace",
+        [_SCRATCHPAD, "<think>weighing options\n", " \n<think>weighing options\n"],
+    )
     def test_gate_intent_preserves_the_trace_for_the_blocking_floor(
         self,
         workflow: HandlerDelegationWorkflow,
         request_dto: ModelDelegationRequest,
+        trace: str,
     ) -> None:
         """The gate sees the trace even when extraction found a complete answer."""
-        gate_intent = self._drive_to_gate_intent(
-            workflow, request_dto, _LEAKED_RESPONSE
-        )
+        content = trace + "### ANSWER\n" + _ANSWER
+        gate_intent = self._drive_to_gate_intent(workflow, request_dto, content)
 
-        assert gate_intent.payload.llm_response_content == _LEAKED_RESPONSE
+        assert gate_intent.payload.llm_response_content == content
         result = HandlerQualityGateIntent().handle(gate_intent)
         assert not result.passed
         assert result.fail_category == "fail_deterministic"
-        assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
+        assert result.rule_evaluations[0].rule in {
+            "no_leading_reasoning_trace",
+            "no_residual_reasoning_tag",
+        }
 
     def test_workflow_content_is_the_answer_so_the_terminal_is(
         self,
