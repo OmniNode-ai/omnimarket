@@ -951,6 +951,7 @@ def _response_from_result(
         )
     else:
         cost_savings_usd = 0.0
+    manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -992,7 +993,11 @@ def _response_from_result(
         model_cloud_baseline=baseline.model,
         baseline_source=baseline.selection_case,
         baseline_state=baseline.state,
-        pricing_manifest_version=baseline.pricing_manifest_version,
+        pricing_manifest_version=(
+            baseline.pricing_manifest_version
+            if manifest_version is None
+            else manifest_version
+        ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,

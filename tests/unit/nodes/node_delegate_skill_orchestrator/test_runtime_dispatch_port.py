@@ -147,7 +147,11 @@ async def test_runtime_dispatch_port_publishes_message_type_not_topic_as_event_t
             group_id=f"delegate-skill-port-event-type-test-{uuid4()}",
             on_message=on_command,
         )
-        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        port = RuntimeDelegationDispatchPort(
+            event_bus=bus,
+            completed_topic=TOPIC_DELEGATION_COMPLETED,
+            failed_topic=TOPIC_DELEGATION_FAILED,
+        )
         await port.dispatch(
             prompt="Write tests",
             task_type="test",
@@ -266,7 +270,11 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             group_id=f"delegate-skill-port-test-{uuid4()}",
             on_message=on_command,
         )
-        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        port = RuntimeDelegationDispatchPort(
+            event_bus=bus,
+            completed_topic=TOPIC_DELEGATION_COMPLETED,
+            failed_topic=TOPIC_DELEGATION_FAILED,
+        )
         result = await port.dispatch(
             prompt="Write tests",
             task_type="test",
@@ -358,7 +366,11 @@ async def test_runtime_dispatch_port_threads_verified_tenant_id_onto_published_r
             group_id=f"delegate-skill-port-tenant-test-{uuid4()}",
             on_message=on_command,
         )
-        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        port = RuntimeDelegationDispatchPort(
+            event_bus=bus,
+            completed_topic=TOPIC_DELEGATION_COMPLETED,
+            failed_topic=TOPIC_DELEGATION_FAILED,
+        )
         await port.dispatch(
             prompt="Write tests",
             task_type="test",
@@ -478,7 +490,11 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
             group_id=f"delegate-skill-port-test-{uuid4()}",
             on_message=on_command,
         )
-        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        port = RuntimeDelegationDispatchPort(
+            event_bus=bus,
+            completed_topic=TOPIC_DELEGATION_COMPLETED,
+            failed_topic=TOPIC_DELEGATION_FAILED,
+        )
         result = await port.dispatch(
             prompt="Write tests",
             task_type="test",
@@ -559,7 +575,11 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
             group_id=f"delegate-skill-port-test-{uuid4()}",
             on_message=on_command,
         )
-        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        port = RuntimeDelegationDispatchPort(
+            event_bus=bus,
+            completed_topic=TOPIC_DELEGATION_COMPLETED,
+            failed_topic=TOPIC_DELEGATION_FAILED,
+        )
         result = await port.dispatch(
             prompt="Write tests",
             task_type="test",

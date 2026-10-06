@@ -227,26 +227,27 @@ class RuntimeDelegationDispatchPort:
                 return
             await queue.put(terminal)
 
-        unsubscribe_completed = await self._event_bus.subscribe(
+        unsubscribers = []
+        for topic in (
             self._config.topics.completed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
-        unsubscribe_failed = await self._event_bus.subscribe(
             self._config.topics.failed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
+            self._config.topics.failed_unrouted,
+        ):
+            if topic is not None:
+                unsubscribers.append(
+                    await self._event_bus.subscribe(
+                        topic,
+                        None,
+                        on_message,
+                        group_id=(
+                            f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+                        ),
+                    )
+                )
 
         async def unsubscribe() -> None:
-            await unsubscribe_completed()
-            await unsubscribe_failed()
+            for unsubscribe_topic in unsubscribers:
+                await unsubscribe_topic()
 
         return unsubscribe, queue
 
@@ -273,8 +274,21 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
         topic = payload.get("topic")
         if isinstance(topic, str) and topic:
             flattened["terminal_topic"] = topic
-        return flattened
-    return payload
+        payload = flattened
+    if "routing_disposition" not in payload:
+        return payload
+    # V2 carries the routed backend identity and the producer's manifest version.
+    # Its quality evaluation is nested; expose the same facts to the receipt.
+    flattened = dict(payload)
+    flattened["provider"] = payload.get("backend_ref") or ""
+    flattened["pricing_manifest_version"] = payload.get("pricing_manifest_version", 0)
+    evaluation = payload.get("quality_bar_evaluation")
+    if isinstance(evaluation, dict):
+        flattened.update(evaluation)
+    failure = payload.get("terminal_failure_reason")
+    if isinstance(failure, str):
+        flattened["failure_reason"] = failure
+    return flattened
 
 
 def _short_topic_alias(topic: str) -> str | None:
@@ -329,7 +343,8 @@ def _parse_delegation_terminal(
     topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
     failed_alias = _short_topic_alias(failed_topic)
     is_failed = (
-        topic == failed_topic
+        terminal_payload.get("terminal_outcome") == "failed"
+        or topic == failed_topic
         or (failed_alias is not None and topic == failed_alias)
         or bool(terminal_payload.get("failure_reason"))
     )
