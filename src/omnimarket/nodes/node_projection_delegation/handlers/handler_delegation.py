@@ -1654,7 +1654,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # earlier event therefore all land correctly, and a failure rolls the
         # identity back together with the totals. ``execute`` runs the whole
         # statement in one transaction under the row's tenant GUC (OMN-15919).
-        await self.db.execute(
+        await self.db_for(self._table_budget_applied_events, operation="write").execute(
             _BUDGET_APPLY_SQL.format(
                 applied=self._table_budget_applied_events,
                 state=self._table_budget_state,

@@ -252,3 +252,24 @@ class TestBudgetStateAtomicWrite:
                 UTC
             )
             assert row["last_correlation_id"] == "happened-late"
+
+    async def test_the_apply_runs_on_the_applied_events_write_binding(
+        self, local_dsn: str
+    ) -> None:
+        class _Bindings:
+            def write_binding_for(self, table: str) -> str:
+                return f"write:{table}"
+
+            def read_binding_for(self, table: str) -> str:
+                raise AssertionError("the budget apply is a write")
+
+        async with _provisioned_runner(local_dsn) as (runner, conn, _schema):
+            routed = {f"write:{runner._table_budget_applied_events}": runner._db}
+            runner._standalone_bindings = _Bindings()
+            runner._db_by_binding = routed
+            with patch(f"{_HANDLER}.resolve_tier_cost", return_value=_budgeted_tier()):
+                await _apply(runner, "routed-by-binding")
+            row = await _state(conn)
+            assert row is not None
+            assert row["delegation_count"] == 1
+            assert await _applied(conn) == 1
