@@ -280,21 +280,25 @@ class TestNeitherVerdictPathCanReachTheHouseTenant:
                 "(OMN-18565, OMN-18139)"
             )
 
-    def test_the_terminal_path_legitimately_does_reach_it(self) -> None:
+    def test_a_non_delegation_writer_legitimately_does_reach_it(self) -> None:
         """Positive control on the assertion above.
 
         The house-tenant ruling (2026-08-02, OMN-16831 option D) is UNCHANGED
-        for a terminal event: it owns the row and is its authority on every
-        other column, so an unattributed terminal is still stamped with the
-        house tenant EXPLICITLY, by the writer. Only a derived, partial event is
-        forbidden from authoring attribution.
+        for the non-delegation relations, which still stamp the house tenant
+        explicitly through ``house_tenant_write_stamp``. It no longer holds for
+        a delegation TERMINAL: the 2026-10-06 operator ruling (OMN-20651) made
+        an unattributed terminal write no row, so the terminal can no longer
+        serve as this control.
 
         Without this control, a misspelled needle above would pass on both
         paths and the module would assert nothing at all.
         """
-        source = inspect.getsource(handler_projection_delegation.terminal_write_tenant)
+        from omnimarket.nodes.node_projection_routing_decision.handlers import (
+            handler_projection_routing_decision,
+        )
+
+        source = inspect.getsource(handler_projection_routing_decision)
         assert "house_tenant_write_stamp" in source, (
-            "the terminal fallback no longer reaches the house tenant, so the "
-            "assertion above is no longer discriminating -- either the ruling "
-            "changed (update both) or this module now proves nothing"
+            "no non-delegation writer reaches the house tenant any more, so the "
+            "assertion above is no longer discriminating -- pick another control"
         )

@@ -152,8 +152,11 @@ def _verdict() -> ModelQualityGateResult:
 
 
 def _terminal() -> ModelTaskDelegatedEvent:
+    # OMN-20651: a terminal that declares no tenant now writes no row, so this
+    # module's terminal declares one; its subject is the NOT NULL column set.
     return ModelTaskDelegatedEvent(
         correlation_id=CORRELATION_ID,
+        tenant_id="omninode",
         session_id="s1",
         task_type="code_review",
         delegated_to="local",

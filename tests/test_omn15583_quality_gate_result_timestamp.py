@@ -162,9 +162,12 @@ def _delegation_completed_delivery(*, correlation_id: str) -> dict[str, Any]:
 
 
 def _delegate_skill_terminal_delivery(*, correlation_id: str) -> dict[str, Any]:
+    # OMN-20651: a terminal that declares no tenant now writes no row; this
+    # delivery declares the same tenant as its siblings above.
     return {
         "status": "completed",
         "correlation_id": correlation_id,
+        "tenant_id": _TENANT,
         "task_type": "code-review",
         "quality_gate_passed": True,
         "quality_score": 0.9,

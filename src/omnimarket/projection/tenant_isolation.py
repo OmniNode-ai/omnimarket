@@ -70,6 +70,27 @@ class TenantRequiredError(ValueError):
     """
 
 
+class UnattributedTerminalRefusedError(TenantRequiredError):
+    """A delegation TERMINAL that declares no resolvable tenant (OMN-20651).
+
+    Operator ruling 2026-10-06T17:27Z: with ``ONEX_TENANT_ID`` empty and no
+    tenant declared by the delegation, stamping the writer's own configured
+    tenant (or the house tenant) is a defect. The terminal writes no row; each
+    writer turns this into its runtime's refusal (the sync kernel path logs and
+    returns zero rows, the async runner routes to its DLQ).
+    """
+
+    def __init__(self, *, table: str, correlation_id: str | None = None) -> None:
+        self.table = table
+        self.correlation_id = correlation_id
+        super().__init__(
+            f"{table} terminal write refused (OMN-20651): the delegation declares "
+            f"no resolvable tenant (correlation_id={correlation_id}); no row is "
+            "written and neither the writer's configured tenant nor the house "
+            "tenant is stamped in its place"
+        )
+
+
 class TenantScopedWriteUnboundError(ValueError):
     """Raised when a tenant-scoped WRITE is issued with no bound tenant (OMN-15919).
 
@@ -484,7 +505,17 @@ def terminal_write_tenant(
 ) -> tuple[str, frozenset[str]]:
     """The tenant a TERMINAL projection write names, and whether it may rewrite one.
 
-    Returns ``(value, insert_only_columns)``.
+    Returns ``(value, insert_only_columns)`` for a resolved tenant, and raises
+    :class:`UnattributedTerminalRefusedError` for an unresolved one.
+
+    OMN-20651 (operator ruling 2026-10-06T17:27Z): an unattributed delegation
+    terminal writes NO row. The insert-only house-tenant arm described below
+    (OMN-18565) is withdrawn for delegation terminals -- it let a lane with an
+    empty ``ONEX_TENANT_ID`` stamp its writer's own configured tenant on a
+    delegation that declared none. Callers check for an unresolved tenant first
+    and refuse in their runtime's own way; this raise is the backstop. The
+    history below is kept because it explains why a resolved tenant is still
+    named on both arms.
 
     OMN-18565. Both delegation writers -- the sync kernel handler and the async
     runner -- used to OMIT ``tenant_id`` entirely when they could not resolve
@@ -534,10 +565,12 @@ def terminal_write_tenant(
     """
     if resolved_tenant_uuid is not None:
         return resolved_tenant_uuid, frozenset()
-    return (
-        str(house_tenant_write_stamp(table=table)["tenant_id"]),
-        TENANT_INSERT_ONLY_COLUMNS,
-    )
+    # OMN-20651: an unattributed terminal is REFUSED, not stamped. The
+    # insert-only house arm described above is withdrawn for delegation
+    # terminals by the 2026-10-06 operator ruling; callers check for an
+    # unresolved tenant first and refuse in their runtime's own way, so this
+    # raise is the backstop that makes a missed check fail closed.
+    raise UnattributedTerminalRefusedError(table=table)
 
 
 def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
@@ -568,6 +601,7 @@ __all__: list[str] = [
     "TENANT_INSERT_ONLY_COLUMNS",
     "TenantContextMissingError",
     "TenantRequiredError",
+    "UnattributedTerminalRefusedError",
     "UnmappedTenantIdentityError",
     "house_tenant_write_stamp",
     "require_tenant_id",

@@ -1749,6 +1749,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             event.tenant_id, event_timestamp=safe_parse_date(event.timestamp)
         )
+        if resolved_tenant_uuid is None:
+            # OMN-20651: an unattributed terminal AUTHORS NO ROW (operator
+            # ruling 2026-10-06T17:27Z). This runner owns a contract-declared
+            # DLQ, so the record is captured there with a typed reason and the
+            # offset advances -- the async twin of the verdict refusal.
+            return await self._route_malformed_to_dlq(
+                event.model_dump(mode="json"),
+                "delegation terminal refused (OMN-20651): the delegation declares no "
+                "resolvable tenant; no row is written and neither the writer's "
+                "configured tenant nor the house tenant is stamped in its place",
+                meta,
+            )
         # OMN-18565: NAMED UNCONDITIONALLY. Migration 0042 removes the column
         # DEFAULT this used to fall through to, so a write that names no tenant
         # is now refused by NOT NULL rather than silently house-attributed by
@@ -2010,6 +2022,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             row_model.tenant_id, event_timestamp=row_model.timestamp
         )
+        if resolved_tenant_uuid is None:
+            # OMN-20651: same refusal as _project_typed_event_async.
+            await self._route_malformed_to_dlq(
+                event.model_dump(mode="json"),
+                "delegation terminal refused (OMN-20651): the delegation declares no "
+                "resolvable tenant; no row is written and neither the writer's "
+                "configured tenant nor the house tenant is stamped in its place",
+                meta,
+            )
+            return
         # OMN-18565: NAMED UNCONDITIONALLY, same reason as the typed-event path.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=self._table_delegation

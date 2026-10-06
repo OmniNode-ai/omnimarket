@@ -873,6 +873,20 @@ class HandlerProjectionDelegation:
             event.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
+        if resolved_tenant_uuid is None:
+            # OMN-20651: an unattributed terminal AUTHORS NO ROW (operator
+            # ruling 2026-10-06T17:27Z). Refused WITHOUT RAISING for the same
+            # reason as the verdict path below: on the kernel seam a raised
+            # tenant refusal withholds the offset and wedges the partition
+            # (OMN-17379). Zero rows, with the reason named.
+            logger.error(
+                "delegation terminal REFUSED for correlation_id=%s (OMN-20651): "
+                "the delegation declares no resolvable tenant, so no row is "
+                "written; the writer's configured tenant and the house tenant "
+                "are not stamped in its place.",
+                row["correlation_id"],
+            )
+            return ModelProjectionResult(rows_upserted=0, table=TABLE)
         # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
         # column DEFAULT this used to fall through to is removed by 0042, and
         # the insert-only arm it returns when nothing resolved is not a policy
@@ -1090,6 +1104,20 @@ class HandlerProjectionDelegation:
             row_model.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
         )
+        if resolved_tenant_uuid is None:
+            # OMN-20651: an unattributed terminal AUTHORS NO ROW (operator
+            # ruling 2026-10-06T17:27Z). Refused WITHOUT RAISING for the same
+            # reason as the verdict path below: on the kernel seam a raised
+            # tenant refusal withholds the offset and wedges the partition
+            # (OMN-17379). Zero rows, with the reason named.
+            logger.error(
+                "delegation terminal REFUSED for correlation_id=%s (OMN-20651): "
+                "the delegation declares no resolvable tenant, so no row is "
+                "written; the writer's configured tenant and the house tenant "
+                "are not stamped in its place.",
+                row["correlation_id"],
+            )
+            return ModelProjectionResult(rows_upserted=0, table=TABLE)
         # OMN-18565: NAMED UNCONDITIONALLY, same reason as project() above.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE

@@ -68,7 +68,6 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 _TENANT = "beta-business-proof"
 _CORRELATION_ID = "9c6a9b1e-3f7a-4b8e-8a5a-2c1d0e4f7a11"
@@ -280,27 +279,26 @@ class TestDelegationCompletedTerminalWriterParity:
             f"wall-clock isoformat() string (got {type(by_column['timestamp'])!r})"
         )
 
-    def test_canonical_terminal_failed_still_refuses_write_without_tenant_only_if_enforced(
+    def test_canonical_terminal_without_a_tenant_writes_no_row(
         self,
     ) -> None:
-        """Baseline (non-enforcement lane): a terminal with NO tenant_id still
-        writes -- proving the tenant seam is additive (stamps when present) and
-        not a regression of the OMN-14058 interim default when isolation
-        enforcement is off.
+        """A terminal with NO tenant_id writes no row, even with isolation
+        enforcement off.
 
-        OMN-18565 changed WHO records the fallback, not whether the write
-        succeeds. It used to be the relation's column DEFAULT, reached by
-        omitting the key; it is now the writer, which names the house tenant
-        explicitly and holds it INSERT-ONLY so a late unattributed terminal
-        still cannot rewrite an attribution an earlier write recorded. The
-        stored byte is the same. Migration 0042 removes the DEFAULT, because a
-        schema-authored attribution is what let a tenant-less quality-gate
-        verdict create a row the real terminal was then refused on under FORCE
-        ROW LEVEL SECURITY.
+        This used to assert the opposite: OMN-18565 had the writer name the
+        house tenant explicitly on an INSERT-ONLY arm for an unattributed
+        terminal. The operator ruling of 2026-10-06T17:27Z (OMN-20651) withdrew
+        that for delegation terminals -- with ``ONEX_TENANT_ID`` empty and no
+        tenant declared, stamping the writer's configured tenant or the house
+        tenant is a defect. The async runner now routes the record to its DLQ
+        with a typed reason, so the offset still advances and nothing is lost
+        silently.
         """
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
-        runner._db = mock_db  # type: ignore[assignment]
+        dlq = AsyncMock(return_value=True)
+        runner._db = mock_db
+        vars(runner)["_route_malformed_to_dlq"] = dlq  # shadows the method
 
         topic = runner._topic_delegation_failed
         assert topic, "contract must declare a delegation-failed topic"
@@ -320,13 +318,15 @@ class TestDelegationCompletedTerminalWriterParity:
             for c in mock_db.execute.await_args_list
             if str(c.args[0]).strip().startswith("INSERT INTO delegation_events")
         ]
-        assert len(insert_calls) == 1
-        by_column = _param_by_column(insert_calls[0].args)
-        # OMN-18565: the house tenant is NAMED by the writer, in the
-        # representation this relation's column expects, and is never a
-        # hand-stamped None (OMN-14058) nor a value the schema invented.
-        assert by_column["tenant_id"] == str(HOUSE_TENANT_UUID)
-        assert by_column["quality_gate_passed"] is False
+        assert insert_calls == [], (
+            "an unattributed delegation terminal was written; OMN-20651 "
+            "requires no row and no house-tenant stamp"
+        )
+        assert dlq.await_count == 1
+        assert dlq.await_args is not None
+        reason = dlq.await_args.args[1]
+        assert "OMN-20651" in reason
+        assert "tenant" in reason
 
 
 @pytest.mark.unit
@@ -477,9 +477,11 @@ def _real_delegate_skill_terminal_payload(*, correlation_id: str) -> dict[str, A
     fields not given here (``emitted_at``, etc.) fall back to their typed
     defaults via ``_payload_with_envelope_timestamp``.
     """
+    # OMN-20651: a terminal that declares no tenant now writes no row.
     return {
         "status": "completed",
         "correlation_id": correlation_id,
+        "tenant_id": _TENANT,
         "task_type": "code-review",
         "quality_gate_passed": True,
         "quality_score": 0.9,

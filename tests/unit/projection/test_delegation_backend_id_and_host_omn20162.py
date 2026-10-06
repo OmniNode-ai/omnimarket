@@ -52,10 +52,17 @@ def _attempt(
     }
 
 
+#: OMN-20651: a delegation terminal that declares no tenant now writes no row,
+#: so every fixture here declares one. This module is about backend id and host,
+#: not attribution; ``omninode`` resolves without a registry row.
+_DECLARED_TENANT = "omninode"
+
+
 def _skill_terminal(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "status": "completed",
         "correlation_id": str(uuid4()),
+        "tenant_id": _DECLARED_TENANT,
         "task_type": "test",
         "provider": "local",
         "model_name": "qwen3.8-27b",
@@ -80,6 +87,7 @@ def _canonical_terminal(**extra: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "_event_type": "delegation-completed",
         "correlation_id": str(uuid4()),
+        "tenant_id": _DECLARED_TENANT,
         "task_type": "test",
         "model_used": "qwen3.8-27b",
         "quality_passed": True,
