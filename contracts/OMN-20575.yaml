@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20575"
+title: "Routing feedback is consumed into a projection from a canonical reducer"
+summary: "Flips the routing-feedback reducer to a canonical definition-B signature and adds a projection fold and writer for public.delegation_routing_feedback. AC1 is bound to the definition-B flip test. AC2 and AC3 are not bound: the projection tests need a Postgres this contract's hosted binding is not proven against here, and AC3 is a dev-202 database readback."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-routing-feedback-reducer-is-definition-b"
+    statement: "The routing-feedback reducer takes a typed terminal payload and returns a typed event or None. The criterion below is transcribed from the ticket body; its id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the reducer takes a typed terminal payload and returns a typed routing-feedback event or None, with no envelope in its signature -- falsifier: uv run pytest tests/test_routing_feedback_defb_flip.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The definition-B flip test proves the reducer signature carries a typed payload in and a typed event or None out, with no envelope. It passes at the head and fails at the merge base, where the reducer still takes the envelope."
+    command: "env -u PYTHONPATH uv run pytest tests/test_routing_feedback_defb_flip.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20575-ac1-reducer-definition-b"
+    description: "AC1 hosted probe. The definition-B flip test proves the reducer signature carries a typed payload in and a typed event or None out, with no envelope. It passes at the head and fails at the merge base, where the reducer still takes the envelope."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_routing_feedback_defb_flip.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

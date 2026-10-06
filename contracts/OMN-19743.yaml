@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19743"
+title: "Pre-push placement config resolves from its owner"
+summary: "The pre-push placement hydration reads its private overlay from ONEX_WORKSPACE_CONFIG_ROOT or the registry's sibling omnibase_internal repository, and a conflicting overlay under the retiring registry cannot supply placement data. AC1 is bound to the config-owner overlay test."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-placement-config-resolves-from-owner"
+    statement: "The pre-push reader resolves placement config from its owner. The criterion below is the one the host-table tests cover; its id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the pre-push placement hydration reads its overlay from the config owner and ignores a conflicting overlay under the retiring registry -- falsifier: uv run pytest tests/scripts/test_prepush_host_table.py -k test_config_migration_reads_overlay_from_owner -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The config-owner overlay test passes at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/scripts/test_prepush_host_table.py -k test_config_migration_reads_overlay_from_owner -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19743-ac1-placement-config-from-owner"
+    description: "AC1 hosted probe. The pre-push placement hydration resolves its overlay from the config owner."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/scripts/test_prepush_host_table.py -k test_config_migration_reads_overlay_from_owner -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

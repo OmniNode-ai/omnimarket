@@ -453,6 +453,10 @@ def resolve_serving_tenant(tenant_value: object, *, topic: str) -> str:
     ``tenant_column`` -- the opt-in IS the contract declaration, so a second
     env-var ratchet in front of it would only make the declaration a no-op.
 
+    The value is returned as NAMED, slug or UUID. It is not yet the value the
+    rows are stored under: the serving path resolves a slug to its registry
+    UUID before any read (``read_page.serving_tenant_scope``, OMN-19972).
+
     Raises:
         TenantContextMissingError: no tenant could be resolved.
     """
