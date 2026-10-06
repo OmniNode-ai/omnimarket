@@ -443,6 +443,124 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Join the real producer and consumer, including a manifest change in flight."""
+    from datetime import UTC, datetime
+
+    from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+        ModelDelegationTerminalCompletedV2,
+    )
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
+    from omnimarket.events.delegation import ModelDelegationRequest
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+        load_runtime_delegation_dispatch_config,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+        TOPIC_ID_DELEGATION_COMPLETED_V2,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow_module,
+    )
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+        ModelQualityGateResult,
+    )
+    from omnimarket.pricing import get_manifest_version_int
+    from tests.unit.delegation.test_omn17802_v2_terminal_route_boundary import (
+        _make_routing_decision,
+        _make_success_response,
+    )
+
+    correlation_id = uuid4()
+    backend_ref = "local-heavy-reasoning"
+    route_version = get_manifest_version_int() + 1
+    config = load_runtime_delegation_dispatch_config().model_copy(
+        update={"wait_timeout_seconds": 1}
+    )
+    bus = EventBusInmemory(environment="test", group="producer-receipt")
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        command = ModelEventEnvelope[ModelDelegationRequest].model_validate_json(
+            message.value
+        )
+        producer = workflow_module.HandlerDelegationWorkflow(workflows={})
+        producer.handle_delegation_request(command.payload)
+        monkeypatch.setattr(
+            workflow_module, "get_manifest_version_int", lambda: route_version
+        )
+        producer.handle_routing_decision(
+            _make_routing_decision(correlation_id, backend_ref=backend_ref)
+        )
+        # Neither the producer's now-current manifest nor the consumer's local
+        # manifest is the one that priced this route.
+        monkeypatch.setattr(
+            workflow_module, "get_manifest_version_int", lambda: route_version + 1
+        )
+        producer.handle_inference_response(_make_success_response(correlation_id))
+        events = producer.handle_gate_result(
+            ModelQualityGateResult(
+                correlation_id=correlation_id, passed=True, quality_score=0.95
+            )
+        )
+        terminals = [
+            event
+            for event in events
+            if isinstance(event, ModelDelegationTerminalCompletedV2)
+        ]
+        assert len(terminals) == 1, "producer must emit a real routed v2 completion"
+        terminal = terminals[0]
+        envelope = ModelEventEnvelope[ModelDelegationTerminalCompletedV2](
+            payload=terminal,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=TOPIC_ID_DELEGATION_COMPLETED_V2,
+        )
+        await bus.publish(
+            TOPIC_ID_DELEGATION_COMPLETED_V2,
+            None,
+            envelope.model_dump_json().encode(),
+            None,
+        )
+
+    try:
+        await bus.subscribe(
+            config.topics.command, group_id="producer-receipt", on_message=on_command
+        )
+        handler = HandlerDelegateSkill(
+            dispatch_port=RuntimeDelegationDispatchPort(event_bus=bus, config=config)
+        )
+        receipt = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="Prove producer identity survives the bus",
+                task_type="test",
+                source="claude-code",
+                correlation_id=correlation_id,
+                tenant_id="test-tenant",
+            )
+        )
+    finally:
+        await bus.close()
+
+    assert receipt.status == "completed", receipt.error_message
+    assert receipt.provider == backend_ref
+    assert "://" not in receipt.provider
+    assert receipt.pricing_manifest_version == route_version
+    assert receipt.quality_gate_passed is True
+    assert receipt.attempts_count == len(receipt.attempts) == 1
+    attempt = receipt.attempts[-1]
+    assert attempt.backend_id == backend_ref
+    assert attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+    assert attempt.quality_gate_passed is True
+
+
+@pytest.mark.unit
 def test_captured_deployed_bus_receipt_preserves_identity_attempt_and_manifest() -> (
     None
 ):
