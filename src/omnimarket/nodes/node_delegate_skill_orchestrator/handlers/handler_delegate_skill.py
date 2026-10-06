@@ -1465,10 +1465,8 @@ def _request_reap_context(
         caller_lane=_request_caller_lane(request),
         session_id=_request_session_id(request),
         provenance=request.provenance,
+        # Grace is the whole recovery window after execution. Adding the
+        # caller's delivery margin again delays recovery beyond budget + grace.
         deadline_at=datetime.now(UTC)
-        + timedelta(
-            seconds=execution_seconds
-            + budget.terminal_delivery_margin_seconds
-            + config.grace_seconds
-        ),
+        + timedelta(seconds=execution_seconds + config.grace_seconds),
     )
