@@ -424,6 +424,12 @@ def main() -> None:
         help="Correlation ID (UUID) for this run (default: auto-generated)",
     )
     parser.add_argument(
+        "--delegation-correlation-id",
+        type=uuid.UUID,
+        default=None,
+        help="Correlation ID (UUID) of the delegation run this verification judges",
+    )
+    parser.add_argument(
         "--output-path",
         type=Path,
         default=None,
@@ -443,6 +449,7 @@ def main() -> None:
 
     command = ModelDodVerifyStartCommand(
         correlation_id=correlation_id,
+        delegation_correlation_id=args.delegation_correlation_id,
         ticket_id=args.ticket_id,
         contract_path=args.contract_path,
         dry_run=args.dry_run,
