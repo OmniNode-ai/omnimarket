@@ -30,10 +30,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
   - id: "dod-omn18265-provider-5xx-precedence"
-    description: "Numeric provider codes in 500..599 classify as MODEL_UNAVAILABLE before vendor keyword heuristics, on both the bus and the local port."
+    description: "Numeric 5xx provider codes and an explicit provider_unavailable classify as MODEL_UNAVAILABLE before vendor keyword heuristics, on both the bus and the local port."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -k test_server_error_codes_outrank_vendor_words_on_both_paths -q"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -k test_declared_provider_unavailability_outranks_vendor_words_on_both_paths -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]

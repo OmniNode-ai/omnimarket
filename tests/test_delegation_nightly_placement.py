@@ -14,6 +14,7 @@ is not evidence that the thing it checks is true.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -120,3 +121,61 @@ class TestNightlyLaneWiring:
         assert job_lane == lane_expr, (
             "the title and the job must resolve the lane from one expression"
         )
+
+
+@pytest.mark.unit
+class TestNightlyFailureEvidence:
+    """An unreachable lane still leaves an artifact describing the failure."""
+
+    def test_scoreboard_runs_after_preflight_failure(self) -> None:
+        job = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))["jobs"][
+            "golden-tasks"
+        ]
+        runner_step = next(step for step in job["steps"] if step.get("id") == "runner")
+        assert runner_step.get("if") == "always()", (
+            "a failed preflight must not skip the runner's fatal scoreboard"
+        )
+
+    def test_missing_scoreboard_fails_the_upload(self) -> None:
+        job = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))["jobs"][
+            "golden-tasks"
+        ]
+        upload = next(
+            step
+            for step in job["steps"]
+            if step.get("with", {}).get("name") == "delegation-regression-scoreboard"
+        )
+        assert upload["if"] == "always()"
+        assert upload["with"]["if-no-files-found"] == "error", (
+            "an absent failure artifact must not be accepted as a warning"
+        )
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            RuntimeError("lane password not set"),
+            TimeoutError("lane connection timed out"),
+        ],
+        ids=["missing-credential", "unreachable-lane"],
+    )
+    def test_runner_writes_fatal_scoreboard(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: Exception
+    ) -> None:
+        from tests.delegation_golden import runner
+
+        async def fail_corpus() -> runner.Scoreboard:
+            raise failure
+
+        output = tmp_path / "scoreboard.json"
+        monkeypatch.setattr(runner, "run_corpus", fail_corpus)
+        monkeypatch.setattr(runner.sys, "argv", ["runner", "--out", str(output)])
+
+        assert runner._main() == 1
+        scoreboard = json.loads(output.read_text(encoding="utf-8"))
+        assert scoreboard["fatal"] == {
+            "error_class": type(failure).__name__,
+            "error": str(failure),
+        }
+        assert scoreboard["lane"] == runner._LANE
+        assert scoreboard["results"] == []
+        assert scoreboard["summary"]["total"] == 0
