@@ -1143,7 +1143,7 @@ class TableRowSource:
                 ):
                     # SET LOCAL on a previous scoped read leaves an empty
                     # custom GUC after commit. UUID RLS policies may cast it
-                    # while planning even this LIMIT 0 query (OMN-20006).
+                    # while planning even this LIMIT 0 query (OMN-20666).
                     # This context is only for the zero-row schema probe;
                     # it supplies no identity to a served read or write.
                     if cfg.tenant_column is not None:

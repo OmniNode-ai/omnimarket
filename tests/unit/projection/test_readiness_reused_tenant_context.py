@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20006: readiness after a scoped read must survive asyncpg's GUC reset."""
+"""OMN-20666: readiness after a scoped read must survive asyncpg's GUC reset."""
 
 from contextlib import asynccontextmanager
 from typing import Any
