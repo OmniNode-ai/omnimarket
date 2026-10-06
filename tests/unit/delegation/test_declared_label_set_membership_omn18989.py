@@ -40,6 +40,10 @@ every check here and always will.
 
 from __future__ import annotations
 
+import json
+from decimal import Decimal
+from pathlib import Path
+
 import pytest
 
 from omnimarket.delegation.response_contract_conformance import (
@@ -50,6 +54,10 @@ from omnimarket.delegation.structured_output import (
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect import (
+    ModelLlmDelegationCallRequest,
+    ModelLlmDelegationCallResult,
 )
 
 #: The two labels the reproduced prompt declared, in prose, and the corruption
@@ -321,3 +329,119 @@ def test_the_resolved_backend_and_the_helper_compose() -> None:
     )
     assert response_format is not None
     assert response_format["type"] == "json_schema"
+
+
+class _SchemaIgnoringEffect:
+    """Record requests and replay the captured token despite the provider enum."""
+
+    def __init__(self, answers: list[str]) -> None:
+        self.answers = answers
+        self.calls: list[ModelLlmDelegationCallRequest] = []
+
+    def __call__(
+        self, request: ModelLlmDelegationCallRequest
+    ) -> ModelLlmDelegationCallResult:
+        self.calls.append(request)
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            content=self.answers[min(len(self.calls) - 1, len(self.answers) - 1)],
+            tokens_in=11,
+            tokens_out=22,
+            latency_ms=5,
+            actual_cost_usd=Decimal("0"),
+            savings_usd=Decimal("0"),
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("shape", ["invalid", "valid", "invalid_then_valid"])
+async def test_declared_labels_survive_the_gate_and_terminal(
+    shape: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC1-3: replay a75a211c's corruption, a valid control, and a visible retry."""
+    from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+        ModelDelegateSkillRequest,
+    )
+    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+        HandlerDelegateSkill,
+    )
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_local_delegation_dispatch as dispatch,
+    )
+    from omnimarket.routing import delegation_backend_resolution
+
+    monkeypatch.setattr(
+        delegation_backend_resolution,
+        "load_bifrost_backends",
+        lambda **_: [
+            {
+                "backend_id": "local-heavy-reasoning",
+                "endpoint_url": "http://example.invalid/v1/chat/completions",
+                "model_name": "Qwen3.8-27B",
+                "tier": "local",
+                "max_tokens": 8192,
+                "timeout_ms": 240000,
+                "capabilities": ["reasoning", "document"],
+                "supports_response_format_json_schema": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(dispatch, "tier_max_retries", lambda _: 1)
+    invalid = json.dumps(
+        {"deployed_revision": GARBLED, "probe_generation_bound": LABELS[0]}
+    )
+    valid = json.dumps(
+        {"deployed_revision": LABELS[1], "probe_generation_bound": LABELS[0]}
+    )
+    answers = {
+        "invalid": [invalid],
+        "valid": [valid],
+        "invalid_then_valid": [invalid, valid],
+    }[shape]
+    effect = _SchemaIgnoringEffect(answers)
+    port = dispatch.LocalDelegationDispatchPort(
+        effect_handler=effect,
+        evidence_db_path=tmp_path / "delegation.sqlite",
+        effect_process_boundary=False,
+    )
+    monkeypatch.setattr(port, "_resolve_sibling_backend", lambda **_: None)
+    monkeypatch.setattr(port, "_resolve_next_backend", lambda **_: None)
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Classify deployed_revision and probe_generation_bound using the declared labels.",
+            task_type="document",
+            source="codex",
+            backend_id="local-heavy-reasoning",
+            response_contract=CLASSIFIER_CONTRACT,
+        )
+    )
+
+    expected_count = 1 if shape == "valid" else 2
+    assert response.attempts_count == len(response.attempts) == len(effect.calls)
+    assert response.attempts_count == expected_count
+    for call in effect.calls:
+        assert call.response_format is not None
+        assert call.response_format["json_schema"]["schema"] == CLASSIFIER_CONTRACT
+
+    if shape == "invalid":
+        assert response.status == "failed"
+        assert response.quality_gate_passed is False
+        assert any(
+            "SCHEMA_VIOLATION" in reason and GARBLED in reason
+            for reason in response.quality_gates_failed
+        )
+    else:
+        assert response.status == "completed"
+        assert response.quality_gate_passed is True
+        assert response.quality_gates_failed == []
+        assert response.response == valid
+
+    if shape != "valid":
+        rejected = response.attempts if shape == "invalid" else response.attempts[:1]
+        for attempt in rejected:
+            assert attempt.quality_gate_passed is False
+            assert "SCHEMA_VIOLATION" in attempt.error_message
+            assert GARBLED in attempt.error_message
+    if shape != "invalid":
+        assert response.attempts[-1].quality_gate_passed is True

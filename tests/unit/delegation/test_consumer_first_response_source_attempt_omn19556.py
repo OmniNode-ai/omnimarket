@@ -1,13 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19556, consumer first: a released consumer must decode the next shape.
+"""Response-source provenance after the consumer-first decoder was released.
 
-The change after this consumer's release names, on a failed delegate-skill
-terminal, which attempt its response came from (attempt index, tier and backend
-id) under ``response_source_attempt``. The terminal model is ``extra="forbid"``,
-so a consumer released without tolerance would refuse every terminal carrying
-the key (OMN-18852 / OMN-18868). This release accepts exactly that key,
-discards it, and still refuses any other unknown key.
+The field now survives decoding while legacy absent/null payloads still decode.
+Unknown keys remain forbidden.
 """
 
 from __future__ import annotations
@@ -33,6 +29,16 @@ def _terminal(status: str, **extra: object) -> dict[str, object]:
         "correlation_id": str(uuid4()),
         "status": status,
         "task_type": "document",
+        "response": "answer",
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder",
+                "model_id": "local-model",
+                "quality_gate_passed": status == "completed",
+                "finish_reason": "stop",
+            }
+        ],
         **extra,
     }
 
@@ -41,7 +47,7 @@ def test_the_terminal_accepts_a_response_source_attempt() -> None:
     model = ModelDelegateSkillResponse.model_validate(
         _terminal("failed", response_source_attempt=_SOURCE)
     )
-    assert "response_source_attempt" not in model.model_dump()
+    assert model.model_dump().get("response_source_attempt") == _SOURCE
 
 
 def test_the_terminal_accepts_a_null_response_source_attempt() -> None:
@@ -63,8 +69,8 @@ def test_the_completed_and_failed_terminals_accept_a_response_source_attempt() -
     failed = ModelDelegateSkillFailed.model_validate(
         _terminal("failed", response_source_attempt=_SOURCE)
     )
-    assert "response_source_attempt" not in completed.model_dump()
-    assert "response_source_attempt" not in failed.model_dump()
+    assert completed.model_dump()["response_source_attempt"] == _SOURCE
+    assert failed.model_dump()["response_source_attempt"] == _SOURCE
 
 
 def test_a_terminal_without_a_response_source_attempt_still_decodes() -> None:

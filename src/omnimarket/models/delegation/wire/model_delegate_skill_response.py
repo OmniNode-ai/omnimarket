@@ -44,6 +44,9 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation.wire.model_response_source_attempt import (
+    ModelResponseSourceAttempt,
+)
 from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
 
 # OMN-19436 first accepted ``finish_reason`` and ``truncated`` on attempts,
@@ -78,11 +81,8 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # longer listed here: the set holds only terminal keys still awaiting their own
 # declared field.
 #
-# OMN-19556: ``response_source_attempt`` names which attempt (index, tier and
-# backend id) a failed terminal's response came from, once the failed terminal
-# keeps the best answered rung's response. The second half declares it, with a
-# validator that refuses a named attempt that has no answer, and stamps it.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"response_source_attempt"})
+# Response-source provenance is declared after its consumer-first release.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -551,6 +551,11 @@ class ModelDelegateSkillResponse(BaseModel):
         "attempts include the terminal attempt; escalation_history fallback may "
         "contain rejected attempts only. attempts_count remains authoritative.",
     )
+    response_source_attempt: ModelResponseSourceAttempt | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Recorded attempt that supplied response, including a retained refused answer.",
+    )
     # OMN-19436: terminal facts belong to the accepted rung, else the last rung.
     finish_reason: EnumProviderFinishReason | None = Field(
         default=None,
@@ -811,6 +816,36 @@ class ModelDelegateSkillResponse(BaseModel):
         if isinstance(attempts, (list, tuple)) and attempts:
             data = {**data, "attempts_count": len(attempts)}
         return data
+
+    @model_validator(mode="after")
+    def validate_response_source_attempt(self) -> Self:
+        """A named response source must identify an answered recorded attempt."""
+        source = self.response_source_attempt
+        if source is None:
+            return self
+        if not self.response.strip() or source.attempt_index >= len(self.attempts):
+            raise ValueError(
+                "response_source_attempt requires a response and recorded attempt"
+            )
+        attempt = self.attempts[source.attempt_index]
+        if (source.tier, source.backend_id) != (attempt.tier, attempt.backend_id):
+            raise ValueError(
+                "response_source_attempt identity must match the recorded attempt"
+            )
+        if (
+            attempt.failure_class
+            not in {
+                None,
+                EnumDelegationFailureClass.QUALITY_GATE_FAILED,
+                EnumDelegationFailureClass.RUBRIC_FAILED,
+                EnumDelegationFailureClass.INVALID_JSON,
+            }
+            or attempt.finish_reason is None
+            or attempt.acceptance_reason
+            is EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
+        ):
+            raise ValueError("response_source_attempt names an attempt with no answer")
+        return self
 
     @model_validator(mode="after")
     def validate_terminal_truncation(self) -> Self:
