@@ -90,6 +90,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_d
     ModelDelegationDispatchProgress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    DELEGATION_RUNTIME_INSTANCE_ID,
     ModelDelegationReapContext,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
@@ -843,7 +844,7 @@ def _response_from_result(
     tenant_id: str | None,
     queue_wait_ms: int | None,
     execution_duration_ms: int,
-    budget_evidence: ModelDelegationBudgetEvidence,
+    budget_evidence: ModelDelegationBudgetEvidence | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -1465,6 +1466,8 @@ def _request_reap_context(
         caller_lane=_request_caller_lane(request),
         session_id=_request_session_id(request),
         provenance=request.provenance,
+        runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
+        request=request,
         deadline_at=datetime.now(UTC)
         + timedelta(
             seconds=execution_seconds
