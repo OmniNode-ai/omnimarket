@@ -290,8 +290,25 @@ async def test_bus_receipt_binds_provider_accepted_attempt_gate_and_manifest_ver
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("outcome", ["completed", "failed_routed", "failed_unrouted"])
-async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
+@pytest.mark.parametrize(
+    ("outcome", "invalid_field"),
+    [
+        ("completed", None),
+        ("failed_routed", None),
+        ("failed_unrouted", None),
+        ("completed", "backend_url"),
+        ("completed", "pricing_absent"),
+        ("completed", "pricing_zero"),
+        ("completed", "routing_disposition_absent"),
+        ("completed", "routing_identity_absent"),
+        ("completed", "quality_comparison"),
+        ("completed", "evaluation_provider"),
+    ],
+)
+async def test_v2_bus_terminal_identity_reaches_receipt(
+    outcome: str,
+    invalid_field: str | None,
+) -> None:
     from datetime import UTC, datetime
 
     from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
@@ -400,6 +417,28 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
             event_type=topic,
             source_tool="receipt-v2-test",
         )
+        if invalid_field is not None:
+            # A malformed terminal must not win the wait just because it has
+            # the expected correlation id. The valid producer terminal follows
+            # it on the same bus, so the receipt must bind that valid evidence.
+            malformed = json.loads(envelope.model_dump_json())
+            payload = malformed["payload"]
+            if invalid_field == "backend_url":
+                payload["backend_ref"] = _ENDPOINT_URL
+            elif invalid_field == "pricing_absent":
+                del payload["pricing_manifest_version"]
+            elif invalid_field == "pricing_zero":
+                payload["pricing_manifest_version"] = 0
+            elif invalid_field == "routing_disposition_absent":
+                del payload["routing_disposition"]
+            elif invalid_field == "routing_identity_absent":
+                for field in ("routing_disposition", "terminal_outcome", "backend_ref"):
+                    del payload[field]
+            elif invalid_field == "quality_comparison":
+                payload["quality_bar_evaluation"]["score_vs_required_bar"] = "below_bar"
+            elif invalid_field == "evaluation_provider":
+                payload["quality_bar_evaluation"]["provider"] = _ENDPOINT_URL
+            await bus.publish(topic, None, json.dumps(malformed).encode(), None)
         await bus.publish(topic, None, envelope.model_dump_json().encode(), None)
 
     try:
@@ -438,6 +477,7 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
         )
         assert response.attempts[-1].quality_gate_passed is True
         assert response.quality_score == 0.95
+        assert response.score_vs_required_bar == "at_or_above_bar"
     else:
         assert response.error_message == terminal.terminal_failure_reason
 
