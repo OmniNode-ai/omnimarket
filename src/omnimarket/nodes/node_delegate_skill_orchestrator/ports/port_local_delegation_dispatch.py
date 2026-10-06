@@ -51,6 +51,8 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -1224,6 +1226,10 @@ class LocalDelegationDispatchPort:
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
         cumulative_cost_usd = Decimal("0")
+        # OMN-20006: what each banked call consumed, on the model that served
+        # it, so the usage rows split the run's cost per model. Appended
+        # wherever cumulative_cost_usd is, so the two always agree.
+        attempt_usage: list[_AttemptUsage] = []
         attempts: list[dict[str, object]] = []
         escalation_count = 0
         # OMN-14220: best authored artifact seen across attempts (highest gate score,
@@ -1507,6 +1513,9 @@ class LocalDelegationDispatchPort:
                 # (typically zero) metered cost directly — mirrors the
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
+                attempt_usage.append(
+                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                )
                 attempts.append(
                     {
                         "tier": current_tier,
@@ -1621,6 +1630,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     # Transport failure: the gate never ran, so nothing was scored.
                     actual_score=None,
                     required_bar=None,
@@ -1685,6 +1695,11 @@ class LocalDelegationDispatchPort:
             # BEFORE deciding pass/fail so a rejected metered tier's spend is
             # counted even if we escalate away from it (OMN-13849).
             cumulative_cost_usd += result.actual_cost_usd
+            attempt_usage.append(
+                _AttemptUsage.of(
+                    result, model_id=result.served_model_id or backend.model_id
+                )
+            )
 
             attempt_tier = _routing_tier_name(backend)
 
@@ -1895,6 +1910,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=baseline_savings,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
                 )
@@ -2115,6 +2131,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
                 )
@@ -3201,6 +3218,7 @@ class LocalDelegationDispatchPort:
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
         required_bar: float | None,
+        attempt_usage: Sequence[_AttemptUsage] = (),
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -3223,6 +3241,12 @@ class LocalDelegationDispatchPort:
         routed every local terminal through the text fallback, where a run
         whose rungs answered and were refused on quality could be recorded as
         a provider quota failure.
+
+        OMN-20006: ``attempt_usage`` is what each banked call consumed, in
+        order. It becomes one usage-by-model-day call per call that reached a
+        provider, on that call's own model and with its own usage source, so an
+        escalated run's cost splits per model and still sums to ``cost_usd``.
+        Empty (the default, for callers that project no usage) writes none.
         """
         payload: dict[str, object] = {
             "status": "completed" if quality_passed else "failed",
@@ -3387,32 +3411,14 @@ class LocalDelegationDispatchPort:
                     correlation_id,
                     exc_info=True,
                 )
-            # OMN-20006: the same call, folded into the usage-by-model-day tables
-            # the Usage page reads, keyed by this run's correlation id and dated
-            # by the terminal's own emitted_at, so its UTC day is the delegation
-            # row's. Its own guard: a failed usage write must neither break the
-            # response nor take the call-metrics row down with it.
-            try:
-                usage_event = ModelUsageCallEvent(
-                    call_id=str(correlation_id),
-                    model_name=model_id,
-                    tenant_id=tenant_id,
-                    prompt_tokens=result.tokens_in,
-                    completion_tokens=result.tokens_out,
-                    estimated_cost_usd=float(cost_usd),
-                    usage_source=EnumUsageSource.MEASURED,
-                    timestamp=terminal.emitted_at,
-                )
-                apply_usage_call(
-                    HandlerProjectionUsageByModelDay().handle(usage_event),
-                    self._evidence_db,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to project local usage-by-model-day for correlation_id=%s",
-                    correlation_id,
-                    exc_info=True,
-                )
+            # OMN-20006: the run's calls, each on its own model, folded into the
+            # usage-by-model-day tables the Usage page reads.
+            self._project_usage(
+                correlation_id=correlation_id,
+                tenant_id=tenant_id,
+                emitted_at=terminal.emitted_at,
+                attempt_usage=attempt_usage,
+            )
         except Exception:
             logger.warning(
                 "Failed to project local delegation evidence for correlation_id=%s",
@@ -3427,6 +3433,61 @@ class LocalDelegationDispatchPort:
         # local store. Idempotent downstream: the projection upserts on
         # correlation_id.
         self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _project_usage(
+        self,
+        *,
+        correlation_id: UUID,
+        tenant_id: str,
+        emitted_at: datetime,
+        attempt_usage: Sequence[_AttemptUsage],
+    ) -> None:
+        """Fold each call into the usage-by-model-day tables (OMN-20006).
+
+        One call per attempt that reached a provider, on the model that served
+        it, with its own tokens, cost and usage source: an escalated run's
+        spend is split per model, and an attempt whose cost was not measured is
+        never booked as measured because a later one was. A call that carried
+        no usage at all (refused before a provider answered) is not a usage
+        call; its banked cost is zero, so the per-model sum still equals the
+        run's cost. A single call keeps the run's correlation id as its key;
+        several take ``<correlation id>:<n>`` in attempt order.
+
+        Dated by the terminal's own emitted_at, so its UTC day is the
+        delegation row's. Each call has its own guard: a failed usage write
+        must neither break the response nor take the call-metrics row, or
+        another attempt's usage, down with it.
+        """
+        calls = [usage for usage in attempt_usage if usage.carries_usage]
+        for ordinal, usage in enumerate(calls, start=1):
+            call_id = (
+                str(correlation_id)
+                if len(calls) == 1
+                else f"{correlation_id}:{ordinal}"
+            )
+            try:
+                usage_event = ModelUsageCallEvent(
+                    call_id=call_id,
+                    model_name=usage.model_id,
+                    tenant_id=tenant_id,
+                    prompt_tokens=usage.tokens_in,
+                    completion_tokens=usage.tokens_out,
+                    estimated_cost_usd=float(usage.cost_usd),
+                    usage_source=usage.usage_source,
+                    timestamp=emitted_at,
+                )
+                apply_usage_call(
+                    HandlerProjectionUsageByModelDay().handle(usage_event),
+                    self._evidence_db,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to project local usage-by-model-day for "
+                    "correlation_id=%s call_id=%s",
+                    correlation_id,
+                    call_id,
+                    exc_info=True,
+                )
 
     def _publish_terminal(
         self, payload: Mapping[str, object], *, quality_passed: bool
@@ -3460,6 +3521,41 @@ def _local_terminal_topic(*, success: bool) -> str | None:
         logger.warning("delegate-skill terminal topic unresolved from %s", contract)
         return None
     return str(topic)
+
+
+@dataclass(frozen=True, slots=True)
+class _AttemptUsage:
+    """What one banked effect call consumed, on the model that served it."""
+
+    model_id: str
+    tokens_in: int
+    tokens_out: int
+    cost_usd: Decimal
+    usage_source: EnumUsageSource
+    answered: bool
+
+    @classmethod
+    def of(
+        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+    ) -> _AttemptUsage:
+        return cls(
+            model_id=model_id,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.actual_cost_usd,
+            usage_source=result.usage_source,
+            answered=result.success,
+        )
+
+    @property
+    def carries_usage(self) -> bool:
+        """A provider answered, or the call still recorded tokens or cost."""
+        return (
+            self.answered
+            or self.cost_usd != 0
+            or self.tokens_in != 0
+            or self.tokens_out != 0
+        )
 
 
 class _AttemptOutcome:
