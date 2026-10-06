@@ -24,7 +24,9 @@ tenant_column`` is served ONLY under a resolved tenant. A request whose tenant
 context cannot be resolved returns ``422 tenant_context_unresolved``, and a
 ``?tenant=`` on an exposure with no tenant column returns ``422
 unsupported_filter`` rather than being silently dropped. The table read scopes
-by the row's own tenant column and sets ``app.tenant_id`` for RLS.
+by the row's own tenant column and sets ``app.tenant_id`` for RLS, both to the
+registry UUID when the tenant was named by slug (OMN-19972); a slug the
+registry cannot resolve is the same ``422 tenant_context_unresolved``.
 
 There is no hardcoded topic whitelist. The single source of truth is the
 contract.yaml files discovered via ``onex.nodes`` entry points.
@@ -71,8 +73,8 @@ from omnimarket.projection.read_page import (
     pagination_order_spec,
     read_projection_page,
     read_refusal,
+    serving_tenant_scope,
     sort_for_presentation,
-    tenant_scope,
     unranked_order_value_refusal,
 )
 from omnimarket.projection.read_page import (
@@ -95,16 +97,6 @@ _TENANT_CONTEXT_DEGRADED_REASON = TENANT_CONTEXT_DEGRADED_REASON
 _pagination_order_spec = pagination_order_spec
 _filter_rows = filter_rows
 _sort_for_presentation = sort_for_presentation
-
-
-def resolve_tenant_scope(
-    cfg: ProjectionTableConfig, topic: str, requested_tenant: str | None
-) -> tuple[str | None, JSONResponse | None]:
-    """:func:`~omnimarket.projection.read_page.tenant_scope` as an HTTP refusal."""
-    tenant, refusal = tenant_scope(cfg, topic, requested_tenant)
-    if refusal is not None:
-        return None, JSONResponse(status_code=422, content=refusal)
-    return tenant, None
 
 
 def _unranked_order_value_refusal(
@@ -569,9 +561,13 @@ async def _evidence_projection_response(
     # rather than answered unscoped. No evidence-pipeline exposure declares a
     # tenant_column today, so this is inert until one does -- which is the
     # point: it cannot be flipped on and quietly bypass the guard here.
-    scope_tenant, tenant_refusal = resolve_tenant_scope(cfg, topic, None)
+    # OMN-19972: the same resolver as projection_query, so a lane configured
+    # with its slug is served the registry UUID its rows carry here too.
+    scope_tenant, tenant_refusal = await serving_tenant_scope(cfg, topic, None, source)
     if tenant_refusal is not None:
-        return tenant_refusal
+        return JSONResponse(
+            status_code=tenant_refusal.status_code, content=tenant_refusal.body
+        )
 
     effective_limit = min(limit or cfg.limit, cfg.limit)
     generated_at = datetime.now(UTC).isoformat()
