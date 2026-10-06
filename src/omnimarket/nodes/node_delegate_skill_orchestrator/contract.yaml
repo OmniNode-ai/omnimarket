@@ -312,8 +312,9 @@ runtime_dispatch:
 delegation_runtime_dispatch:
   topics:
     command: onex.cmd.omnibase-infra.delegation-request.v1
-    completed: onex.evt.omnibase-infra.delegation-completed.v1
-    failed: onex.evt.omnibase-infra.delegation-failed.v1
+    completed: onex.evt.omnibase-infra.delegation-completed.v2
+    failed: onex.evt.omnibase-infra.delegation-failed-routed.v2
+    failed_unrouted: onex.evt.omnibase-infra.delegation-failed-unrouted.v2
   request_message_type: omnibase-infra.delegation-request
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
@@ -425,6 +426,10 @@ input_subscriptions:
     operation: delegate-skill.orchestrate
   - topic: onex.intent.platform.runtime-tick.v1
     operation: delegate-skill.reap_scheduled_run
+  - topic: onex.evt.omnibase-infra.delegation-completed.v1
+    operation: delegate-skill.recover_completed
+  - topic: onex.evt.omnibase-infra.delegation-failed.v1
+    operation: delegate-skill.recover_failed
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}
@@ -432,6 +437,8 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.delegate-skill.v1
     - onex.intent.platform.runtime-tick.v1
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
   publish_topics:
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
@@ -458,13 +465,18 @@ cross_repo_dependencies:
     required_topics:
       - onex.cmd.omnibase-infra.delegation-request.v1
     terminal_events:
-      - onex.evt.omnibase-infra.delegation-completed.v1
-      - onex.evt.omnibase-infra.delegation-failed.v1
+      - onex.evt.omnibase-infra.delegation-completed.v2
+      - onex.evt.omnibase-infra.delegation-failed-routed.v2
+      - onex.evt.omnibase-infra.delegation-failed-unrouted.v2
     required_models:
       - name: ModelDelegationRequest
         module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request
-      - name: ModelDelegationResult
-        module: omnimarket.nodes.node_delegation_orchestrator.models
+      - name: ModelDelegationTerminalCompletedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedRoutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedUnroutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
 
 handler:
   name: HandlerDelegateSkill
@@ -493,6 +505,26 @@ handler_routing:
       event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
       event_type: platform.runtime-tick
       description: Close overdue commands or heal their unhanded terminal slots.
+    - operation: delegate-skill.recover_completed
+      message_category: event
+      handler:
+        name: HandlerDelegationRecovery
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_recovery
+      event_model:
+        name: ModelDelegationCompleted
+        module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result
+      event_type: omnibase-infra.delegation-completed
+      description: Recover a completed inner result after its outer runtime restarted.
+    - operation: delegate-skill.recover_failed
+      message_category: event
+      handler:
+        name: HandlerDelegationRecovery
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_recovery
+      event_model:
+        name: ModelDelegationFailed
+        module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result
+      event_type: omnibase-infra.delegation-failed
+      description: Recover a failed inner result after its outer runtime restarted.
 
 error_handling:
   retry_policy:

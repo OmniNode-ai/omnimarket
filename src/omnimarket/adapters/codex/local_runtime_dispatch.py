@@ -57,6 +57,9 @@ _DELEGATION_REQUEST_TOPIC = ".".join(
 _DELEGATION_COMPLETED_TOPIC = ".".join(
     ("onex", "evt", "omnibase-infra", "delegation-completed", "v1")
 )
+_DELEGATION_FAILED_TOPIC = ".".join(
+    ("onex", "evt", "omnibase-infra", "delegation-failed", "v1")
+)
 
 
 class ModelLocalRuntimeEvidence(BaseModel):
@@ -465,8 +468,13 @@ class LocalRuntimeDispatch:
         # EventBusInmemory satisfies the publish/subscribe surface the port needs;
         # the protocol's headers arg is intentionally wider (object) than the
         # concrete's typed ModelEventHeaders, so structural typing needs the cast.
+        # The in-memory delegation effect installed above publishes the v1
+        # terminal pair, so the port waits on those topics explicitly instead of
+        # the contract's v2 default (OMN-17013).
         return RuntimeDelegationDispatchPort(
-            event_bus=cast(ProtocolDelegationEventBus, self._bus)
+            event_bus=cast(ProtocolDelegationEventBus, self._bus),
+            completed_topic=_DELEGATION_COMPLETED_TOPIC,
+            failed_topic=_DELEGATION_FAILED_TOPIC,
         )
 
     def _build_evidence(

@@ -108,7 +108,7 @@ async def test_handler_budget_names_the_bus_stage_and_keeps_it_after_cleanup(
     assert f"stage={stage}" in terminal.error_message
     assert "stage=terminal_cleanup" not in terminal.error_message
     assert terminal.terminal_failure_cause == "timeout"
-    assert bus.unsubscribed == (0 if stage == "subscribe" else 2)
+    assert bus.unsubscribed == (0 if stage == "subscribe" else 3)
     assert current_dispatch_progress.get() is None
 
 
@@ -266,3 +266,59 @@ async def test_local_attempt_records_the_stage_of_the_cancelled_await(
         assert progress.cancelled_stage == stage
     finally:
         current_dispatch_progress.reset(token)
+
+
+async def test_local_watchdog_timeout_names_inference_after_worker_boot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(local_port, "_observed_child_boot_seconds", None)
+    context = MagicMock()
+    process = context.Process.return_value
+    process.is_alive.return_value = True
+    monkeypatch.setattr(local_port, "_resolve_effect_process_context", lambda: context)
+    messages = iter([("ready",)])
+    monkeypatch.setattr(
+        local_port, "_read_effect_worker_message", lambda _queue: next(messages, None)
+    )
+    monkeypatch.setattr(local_port, "_DISPATCH_TIMEOUT_BUFFER_SECONDS", 0)
+    backend = resolve_delegation_backend(
+        "document",
+        backends=[
+            {
+                "backend_id": "local-coder",
+                "model_name": "test-model",
+                "endpoint_url": "https://inference.example/v1/chat/completions",
+                "tier": "local",
+                "capabilities": ["document"],
+                "max_tokens": 4096,
+                "timeout_ms": 1,
+            }
+        ],
+    )
+    port = local_port.LocalDelegationDispatchPort(
+        effect_handler=lambda _request: pytest.fail("worker must never return"),
+        evidence_db_path=tmp_path / "evidence.sqlite",
+    )
+
+    outcome = await asyncio.wait_for(
+        port._run_single_attempt(
+            backend=backend,
+            prompt="Summarize the facts.",
+            task_type="document",
+            correlation_id=uuid4(),
+            max_tokens=None,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+        ),
+        timeout=5,
+    )
+
+    assert outcome.timeout_result is not None
+    assert outcome.timeout_result.failure_class == "timeout"
+    assert "stage=inference" in outcome.failure_message
+    assert outcome.timeout_result.error_message == outcome.failure_message
+    assert outcome.result is None
+    assert outcome.gate_result is None
+    process.terminate.assert_called()
+    context.Queue.return_value.close.assert_called_once()
+    context.Queue.return_value.join_thread.assert_called_once()

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Ledger append models."""
 
-from omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append import (
+from omnimarket.models.work_ledger_append.model_work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
