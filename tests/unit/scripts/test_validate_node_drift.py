@@ -366,3 +366,44 @@ def test_orphan_node_check_passes_bidirectional_contract(
     )
 
     assert result.passed is True
+
+
+@pytest.mark.unit
+def test_contractless_node_declared_not_full_runtime_passes(
+    drift_module: ModuleType, tmp_path: Path
+) -> None:
+    """A migrations-only directory declares full_runtime false and has no contract."""
+    stub = tmp_path / "node_migrations_only"
+    stub.mkdir()
+    (stub / "metadata.yaml").write_text(
+        "name: migrations_only\ncapabilities:\n  full_runtime: false\n"
+    )
+
+    result = drift_module.validate_node(stub, entry_points=set(), strict=True)
+
+    assert result.passed is True
+    assert result.findings == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        None,
+        "name: runtime_node\ncapabilities:\n  full_runtime: true\n",
+        "name: runtime_node\ncapabilities:\n  standalone: true\n",
+    ],
+)
+def test_contractless_node_not_declared_stub_still_fails(
+    drift_module: ModuleType, tmp_path: Path, metadata: str | None
+) -> None:
+    """Only an explicit full_runtime false exempts a node from the contract check."""
+    node = tmp_path / "node_runtime"
+    node.mkdir()
+    if metadata is not None:
+        (node / "metadata.yaml").write_text(metadata)
+
+    result = drift_module.validate_node(node, entry_points=set(), strict=False)
+
+    assert result.passed is False
+    assert [f.check for f in result.findings] == ["contract_exists"]
