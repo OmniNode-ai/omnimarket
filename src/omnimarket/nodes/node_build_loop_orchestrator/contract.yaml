@@ -230,6 +230,11 @@ sub_handler_dependencies:
     optional: true
 
 terminal_event: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+# The failure terminal is what HandlerBuildLoopOrchestrator._publish_failed_event
+# publishes when handle() raises; success is the consumer's completed event.
+terminal_events:
+  success: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+  failure: onex.evt.omnimarket.build-loop-failed.v1
 
 event_bus:
   subscribe_topics:
@@ -302,7 +307,15 @@ state_machine:
     - version: {major: 1, minor: 0, patch: 0}
       state_name: RELEASING
       state_type: operational
-      description: "Release phase of the close_out and full modes. The orchestrator has no sub-handler for it (_execute_phase returns Unknown phase), so it can only retry and then fail; OMN-19548 records this."
+      description: "Release phase of the close_out and full modes. The orchestrator has no sub-handler for it (_execute_phase returns Unknown phase), so a live run can only retry and then fail; OMN-19548 records this. The machine still declares the exits next_phase takes."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: DEPLOYING
+      state_type: operational
+      description: "Deploy phase of the close_out and full modes, after RELEASING (next_phase). No orchestrator sub-handler, same as RELEASING."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: POST_VERIFY
+      state_type: operational
+      description: "Post-deploy verification phase of the close_out and full modes, the last phase before COMPLETE (next_phase). No orchestrator sub-handler, same as RELEASING."
     - version: {major: 1, minor: 0, patch: 0}
       state_name: COMPLETE
       state_type: terminal
@@ -377,6 +390,22 @@ state_machine:
       from_state: BUILDING
       to_state: RELEASING
       trigger: build_dispatch_completed_full
+    # close_out and full modes continue RELEASING -> DEPLOYING -> POST_VERIFY -> COMPLETE (next_phase).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: releasing_to_deploying
+      from_state: RELEASING
+      to_state: DEPLOYING
+      trigger: release_completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: deploying_to_post_verify
+      from_state: DEPLOYING
+      to_state: POST_VERIFY
+      trigger: deploy_completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_verify_to_complete
+      from_state: POST_VERIFY
+      to_state: COMPLETE
+      trigger: post_verify_completed
     # OMN-19548: a phase failure below the circuit-breaker threshold stays in
     # the same phase for a retry (HandlerBuildLoop.advance emits from == to).
     - version: {major: 1, minor: 0, patch: 0}
@@ -409,6 +438,16 @@ state_machine:
       from_state: RELEASING
       to_state: RELEASING
       trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: deploying_to_deploying
+      from_state: DEPLOYING
+      to_state: DEPLOYING
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_verify_to_post_verify
+      from_state: POST_VERIFY
+      to_state: POST_VERIFY
+      trigger: phase_failure_retry
     # consecutive phase failures reached the circuit-breaker threshold
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: closing_out_to_failed
@@ -438,6 +477,16 @@ state_machine:
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: releasing_to_failed
       from_state: RELEASING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: deploying_to_failed
+      from_state: DEPLOYING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_verify_to_failed
+      from_state: POST_VERIFY
       to_state: FAILED
       trigger: error
 
