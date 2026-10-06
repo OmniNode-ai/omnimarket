@@ -84,11 +84,11 @@ def _derive(
         list(contract["dod_evidence"]),
         repo_candidates=repos,
         path_exists=lambda _repo, _path: exists,
-        declared_runner=lambda _repo: runner,
+        declared_runner=lambda _repo, _path: runner,
     )
 
 
-def _uv(_repo: str) -> str:
+def _uv(_repo: str, _path: str) -> str:
     return "uv run pytest"
 
 
@@ -594,7 +594,7 @@ def test_typescript_falsifier_runs_under_the_repos_declared_runner() -> None:
         list(contract["dod_evidence"]),
         repo_candidates=("omnidash",),
         path_exists=lambda _repo, _path: True,
-        declared_runner=lambda repo: "pnpm test" if repo == "omnidash" else None,
+        declared_runner=lambda repo, _path: "pnpm test" if repo == "omnidash" else None,
     )
     check = items[0]["checks"][0]
     assert check["check_type"] == "test_passes"
@@ -632,3 +632,22 @@ def test_js_mention_in_prose_never_hides_a_later_pytest_command() -> None:
     )
     assert parsed is not None
     assert parsed.selector == "tests/test_a.py -q"
+
+
+def test_runner_is_asked_for_the_falsifiers_first_path() -> None:
+    """The bare Python form depends on the path, so the path reaches the runner."""
+    seen: list[tuple[str, str]] = []
+
+    def _record(repo: str, path: str) -> str:
+        seen.append((repo, path))
+        return "uv run pytest"
+
+    contract = _contract({"AC1": "a -- falsifier: pytest tests/ci/test_a.py -q"})
+    derive_falsifier_items(
+        contract,
+        list(contract["dod_evidence"]),
+        repo_candidates=("omnidash",),
+        path_exists=lambda _repo, _path: True,
+        declared_runner=_record,
+    )
+    assert seen == [("omnidash", "tests/ci/test_a.py")]

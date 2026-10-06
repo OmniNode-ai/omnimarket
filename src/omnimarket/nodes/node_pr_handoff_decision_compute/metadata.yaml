@@ -1,0 +1,23 @@
+name: node_pr_handoff_decision_compute
+version: "0.1.0"
+description: "Pure ready, wait or refuse decider for one PR handoff, from the PR watcher's live observation"
+pack: pr_lifecycle
+node_role: compute
+display_name: "PR Handoff Decision"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_handoff_decision_compute: "omnimarket.nodes.node_pr_handoff_decision_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-handoff", "pr-landing"]

@@ -1,0 +1,338 @@
+{
+  "components": [
+    "node_pr_handoff_orchestrator"
+  ],
+  "core_sha": "omnibase-core==0.47.31 (omnimarket uv.lock)",
+  "error_edges": [
+    {
+      "from_state": "REQUESTED",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "requested_to_refused_on_rejected_invalid_request",
+      "trigger": "rejected_invalid_request"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_stale_head",
+      "trigger": "evaluated_stale_head"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_missing_ticket",
+      "trigger": "evaluated_missing_ticket"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_not_owned",
+      "trigger": "evaluated_not_owned"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_missing_lab_proof",
+      "trigger": "evaluated_missing_lab_proof"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_held",
+      "trigger": "evaluated_held"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_withheld",
+      "trigger": "evaluated_withheld"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_pr_not_open",
+      "trigger": "evaluated_pr_not_open"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_superseded",
+      "trigger": "superseded"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "TIMED_OUT",
+      "transition_name": "waiting_to_timed_out_on_completion_bound_expired",
+      "trigger": "completion_bound_expired"
+    },
+    {
+      "from_state": "APPENDING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "appending_to_refused_on_append_refused",
+      "trigger": "append_refused"
+    },
+    {
+      "from_state": "APPENDING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "TIMED_OUT",
+      "transition_name": "appending_to_timed_out_on_append_attempts_exhausted",
+      "trigger": "append_attempts_exhausted"
+    }
+  ],
+  "full_report_sha256": "17c9430ef999d0392bfc550976a26dba9f1527a71768326c9a2288ea903329e2",
+  "omnimarket_sha": "0eaf8c82adf194974c2c66e4910b4800b3872e4e (OMN-20636 worktree, contracts commit)",
+  "paths": [
+    {
+      "kind": "error",
+      "path_id": "error:accepted>completion_bound_expired",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "completion_bound_expired",
+          "TIMED_OUT"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_held",
+      "raw_path_count": 2,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_held",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_missing_lab_proof",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_missing_lab_proof",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_missing_ticket",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_missing_ticket",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_not_owned",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_not_owned",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_pr_not_open",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_pr_not_open",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_ready>append_attempts_exhausted",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_ready",
+          "APPENDING"
+        ],
+        [
+          "APPENDING",
+          "append_attempts_exhausted",
+          "TIMED_OUT"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_ready>append_refused",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_ready",
+          "APPENDING"
+        ],
+        [
+          "APPENDING",
+          "append_refused",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_stale_head",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_stale_head",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_withheld",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_withheld",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>superseded",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "superseded",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:rejected_invalid_request",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "rejected_invalid_request",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:accepted>evaluated_ready>append_accepted",
+      "raw_path_count": 2,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_ready",
+          "APPENDING"
+        ],
+        [
+          "APPENDING",
+          "append_accepted",
+          "HANDED_OFF"
+        ]
+      ]
+    }
+  ],
+  "projection": "owner-component state changes, deduplicated",
+  "raw_counts": {
+    "error": 13,
+    "golden": 2,
+    "open": 0,
+    "paths": 15
+  },
+  "schema_version": 1,
+  "sync_triggers": [],
+  "walker_command": "uv run python -m omnibase_core.validation.validator_contract_walker src --json-out walker_full.json (omnibase-core 0.47.31, run on the Mac 2026-10-05)",
+  "workflow_owner": "node_pr_handoff_orchestrator"
+}

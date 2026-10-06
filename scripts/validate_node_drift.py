@@ -265,6 +265,16 @@ def _topic_appears_in_source(topic: str, source_files: list[Path]) -> bool:
     return False
 
 
+def _declares_no_full_runtime(node_dir: Path) -> bool:
+    """True when metadata.yaml explicitly sets capabilities.full_runtime: false."""
+    metadata_path = node_dir / "metadata.yaml"
+    if not metadata_path.exists():
+        return False
+    metadata = yaml.safe_load(metadata_path.read_text()) or {}
+    capabilities = metadata.get("capabilities") if isinstance(metadata, dict) else None
+    return isinstance(capabilities, dict) and capabilities.get("full_runtime") is False
+
+
 def validate_node(
     node_dir: Path,
     entry_points: set[str],
@@ -287,6 +297,8 @@ def validate_node(
     # Check 1: contract.yaml exists
     contract_path = node_dir / "contract.yaml"
     if not contract_path.exists():
+        if _declares_no_full_runtime(node_dir):
+            return result  # migrations-only directory: no contract by declaration
         add("contract_exists", "contract.yaml is missing")
         return result  # skip remaining checks — no contract to parse
 
