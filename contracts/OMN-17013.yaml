@@ -14,10 +14,18 @@ requirements:
         statement: "AC1: a v2 terminal maps backend_ref to provider identity, preserves the accepted terminal attempt and actual gate outcome, and carries the producer pricing_manifest_version -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q in omnimarket"
       - id: "AC2"
         statement: "AC2: a sample receipt captured from a real Kafka deployed-lane delegation has a stable provider, a non-empty accepted terminal attempt with a passed gate, and a non-zero pricing_manifest_version; the typed consumer can replay it -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -q in omnimarket. This replays a recorded capture, not a fresh runtime probe."
+  - id: "req-receipt-identity-from-real-producer"
+    statement: "The receipt keeps the identity the real delegation producer publishes, including a pricing manifest version that changes while the request is in flight."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the real producer and the bus-path consumer join over an in-memory bus and the receipt carries the producer's backend_ref identity and pinned pricing_manifest_version -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -k test_producer_route_identity_and_pinned_manifest_reach_bus_receipt -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 v2 bus regression and AC2 replay of docs/evidence/OMN-17013-deployed-bus-receipt.json, captured on 2026-10-06 from Kafka run b7a6bedd-ac28-4d8f-9824-ef4dbe8d91ab. Hosted tests replay the capture without contacting the deployed runtime."
     command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q"
+  - kind: "tests"
+    description: "The producer-to-receipt join keeps backend identity and the pinned manifest version."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -k test_producer_route_identity_and_pinned_manifest_reach_bus_receipt -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -39,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn17013-ac3-producer-receipt-identity"
+    description: "AC3 real producer to bus receipt join with a manifest version change in flight."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -k test_producer_route_identity_and_pinned_manifest_reach_bus_receipt -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
