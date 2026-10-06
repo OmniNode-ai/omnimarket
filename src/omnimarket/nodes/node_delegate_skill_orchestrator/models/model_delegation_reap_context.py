@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
 

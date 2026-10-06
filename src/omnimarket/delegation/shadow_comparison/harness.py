@@ -44,7 +44,10 @@ from omnimarket.models.ranges import (
     ModelComparisonPair,
     ModelComparisonResult,
 )
-from omnimarket.ranges.compare import compare_paired_outcomes
+from omnimarket.ranges.compare import (
+    compare_paired_outcomes,
+    required_comparison_size,
+)
 from omnimarket.ranges.scores import sample_outcome_from_score
 
 #: A rung: answer one prompt. ``content=None`` means no answer was produced.
@@ -120,7 +123,28 @@ def run_shadow_comparison(
     method: ModelComparisonMethod,
     grader: ShadowGrader = grade_like_the_local_path,
 ) -> ModelComparisonResult:
-    """Answer every prompt on both rungs, grade both with ``grader``, compare."""
+    """Refuse an undersized sample before answering or grading any prompt.
+
+    Refused prompts have no answers and are reported as INCOMPLETE in both
+    arms. A sufficiently sized sample is answered on both rungs, graded with
+    ``grader``, and compared.
+    """
+    power_n = required_comparison_size(
+        margin=method.margin, confidence=method.confidence, power=method.power
+    )
+    if method.sample_size < power_n or len(prompts) < max(power_n, method.sample_size):
+        return compare_paired_outcomes(
+            comparison_id,
+            [
+                ModelComparisonPair(
+                    case_id=prompt.correlation_id,
+                    outcome_a=EnumRangeSampleOutcome.INCOMPLETE,
+                    outcome_b=EnumRangeSampleOutcome.INCOMPLETE,
+                )
+                for prompt in prompts
+            ],
+            method,
+        )
     pairs = [
         ModelComparisonPair(
             case_id=prompt.correlation_id,
