@@ -12,6 +12,8 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: every declared tenant relation reaches SQL without a bound authority, through the real adapter and topology -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q finds a relation whose operation is refused for missing authority"
+      - id: "AC2"
+        statement: "AC2: the delegation recovery handler and its tests import the delegation wire models from the canonical module omnimarket.models.delegation.wire -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py -q fails with ModuleNotFoundError"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The chain gate test passes at the head, and the new test is absent at the merge base."
@@ -29,3 +31,11 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn16831-ac2-delegation-imports-canonical"
+    description: "AC2 hosted probe. The delegation recovery and metering refresh tests import and pass at the head, and fail at the merge base with the head's tests laid over it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_metering_refresh_omn19977.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
