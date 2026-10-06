@@ -30,11 +30,11 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn20635-deploy-probe
-  description: Deploy probe. The dev branch contract of the evidence pipeline orchestrator declares terminal_events; the probe reads it from GitHub and exits nonzero on a tree without it.
+  description: Deploy probe. The PR branch contract of the evidence pipeline orchestrator declares terminal_events; the probe reads it from GitHub and exits nonzero on a tree without it.
   source: manual
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_evidence_pipeline_orchestrator/contract.yaml?ref=dev" --jq .content | base64 -d | grep -q 'terminal_events'
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_evidence_pipeline_orchestrator/contract.yaml?ref=fsm-1-9143-evidence-pipeline-terminal-events" --jq .content | base64 -d | grep -q 'terminal_events'
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
