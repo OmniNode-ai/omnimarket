@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19972"
+title: "serve a slug-named tenant read as its registry UUID"
+summary: "This PR delivers the product serving-path half of AC3 (a slug-named tenant read is served as its registry UUID); AC3 itself is discharged by the omn19972-lane lab readback cited in the PR body, not by these tests. AC1 and AC2 are omnibase_infra's and are not claimed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac3-serving-path-contribution"
+    statement: |-
+      This omnimarket change contributes the tenant-registry serving-path half of AC3. It does not claim to discharge AC3: the ticket's falsifier is the dedicated-lab readback, which lands separately.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: On a laptop, a boot then one delegation writes a row to the compose Postgres, and the stack's Runs exposure serves it -- falsifier: the lab-step readback
+evidence_requirements:
+  - kind: "tests"
+    description: "A slug-named tenant is resolved through tenant_registry_mirror and served under its registry UUID; unknown or drifted slugs and unreadable registry state fail closed with typed responses; UUID and unscoped paths remain unchanged; the SQLite and real-Postgres readers share the registry resolver. This test command fails at the merge base: both OMN-19972 test files are absent there, and the serving path compares the slug verbatim to UUID-stamped rows."
+    command: "uv run pytest tests/unit/projection/test_omn15797_serving_tenant_context.py tests/unit/projection/test_omn19972_serving_tenant_registry.py tests/integration/projection/test_omn19972_serving_tenant_registry_real_postgres.py -q -p no:cacheprovider -p no:warnings"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19972-product-serving-path"
+    description: "A slug-named tenant is resolved through tenant_registry_mirror and read using its registry UUID; unknown or drifted slugs return tenant_context_unresolved, unreadable or corrupt registry state returns tenant_registry_unreadable, and UUID-shaped tenants plus unscoped exposures retain their existing path. These tests prove the product serving-path contribution only; they do not bind or discharge AC3's dedicated-lab readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn15797_serving_tenant_context.py tests/unit/projection/test_omn19972_serving_tenant_registry.py tests/integration/projection/test_omn19972_serving_tenant_registry_real_postgres.py -q -p no:cacheprovider -p no:warnings"
+        cwd: "${OMNI_HOME}/omnimarket"
