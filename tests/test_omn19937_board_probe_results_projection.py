@@ -348,9 +348,17 @@ def test_sql_uses_the_declared_key_guard_and_latest_per_subject_order() -> None:
     )
 
 
+@pytest.fixture(scope="module")
+def exposure_config() -> ProjectionTableConfig:
+    # Contract discovery scans every node; build the map once per module.
+    return build_projection_topic_map()[TOPIC_EXPOSURE]
+
+
 @pytest.fixture
-def projection_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    cfg = build_projection_topic_map()[TOPIC_EXPOSURE]
+def projection_client(
+    monkeypatch: pytest.MonkeyPatch, exposure_config: ProjectionTableConfig
+) -> TestClient:
+    cfg = exposure_config
     source = TableRowSource()
     rows = [
         {
