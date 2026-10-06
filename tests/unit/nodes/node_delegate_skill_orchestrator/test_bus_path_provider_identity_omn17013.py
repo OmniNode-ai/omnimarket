@@ -32,6 +32,8 @@ instead of silently passing.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -438,3 +440,47 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
         assert response.quality_score == 0.95
     else:
         assert response.error_message == terminal.terminal_failure_reason
+
+
+@pytest.mark.unit
+def test_captured_deployed_bus_receipt_preserves_identity_attempt_and_manifest() -> (
+    None
+):
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+    from omnimarket.adapters.codex.runtime_client import _parse_terminal_result
+    from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+        ModelDelegateSkillResponse,
+    )
+
+    evidence_path = (
+        Path(__file__).resolve().parents[4]
+        / "docs/evidence/OMN-17013-deployed-bus-receipt.json"
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    capture = evidence["capture"]
+    assert (capture["bus"], capture["lane"], capture["locus"]) == (
+        "kafka",
+        "dev",
+        "deployed-lane",
+    )
+    assert capture["status"] == "success"
+    wire = json.dumps(evidence["terminal"]).encode()
+    # Validate the typed envelope before replay: the parser's legacy fallback
+    # must not make an incompatible captured receipt look like a passing proof.
+    envelope = ModelEventEnvelope[ModelDelegateSkillResponse].model_validate_json(wire)
+    terminal = _parse_terminal_result(wire)
+    assert terminal is not None
+    assert terminal.status == "completed"
+    assert str(terminal.correlation_id) == capture["correlation_id"]
+    assert terminal.payload is not None
+    receipt = ModelDelegateSkillResponse.model_validate(terminal.payload)
+    assert receipt == envelope.payload
+    assert receipt.provider == "local"
+    assert "://" not in receipt.provider
+    assert receipt.attempts_count == len(receipt.attempts) == 1
+    attempt = receipt.attempts[-1]
+    assert attempt.backend_id == "local-omnipc2-chat"
+    assert attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+    assert attempt.quality_gate_passed is receipt.quality_gate_passed is True
+    assert receipt.pricing_manifest_version == 1
