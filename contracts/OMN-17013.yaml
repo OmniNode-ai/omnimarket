@@ -55,3 +55,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -k test_producer_route_identity_and_pinned_manifest_reach_bus_receipt -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn17013-ac3-rerouted-receipt-identity"
+    description: "AC3 rerouted route: the rejected rung and the accepted rung both reach the bus receipt with their own gate outcome and the pinned manifest version."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -k rerouted -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
