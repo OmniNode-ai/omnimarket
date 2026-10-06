@@ -289,10 +289,13 @@ def test_the_composed_message_is_retryable_and_classifies_as_unavailable() -> No
         (502, "Upstream key service temporarily overloaded"),
         (503, "Upstream quota service temporarily unavailable"),
         (504, "Upstream authorization service timed out"),
+        (None, "Upstream key service temporarily overloaded"),
+        (None, "Upstream quota service temporarily unavailable"),
+        (None, "Upstream authorization service timed out"),
     ],
 )
-def test_server_error_codes_outrank_vendor_words_on_both_paths(
-    monkeypatch: pytest.MonkeyPatch, code: int, message: str
+def test_declared_provider_unavailability_outranks_vendor_words_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, code: int | None, message: str
 ) -> None:
     """AC2, AC4, AC7: an upstream outage is not a rejected customer key."""
     body = {
@@ -477,6 +480,8 @@ def test_the_empty_choices_message_remains_non_retryable() -> None:
         (502, "provider_unavailable", EnumDelegationFailureClass.MODEL_UNAVAILABLE),
         (429, "rate_limited", EnumDelegationFailureClass.RATE_LIMITED),
         (401, "auth", EnumDelegationFailureClass.PROVIDER_AUTH_FAILED),
+        (401, "provider_unavailable", EnumDelegationFailureClass.PROVIDER_AUTH_FAILED),
+        (429, "provider_unavailable", EnumDelegationFailureClass.RATE_LIMITED),
         (None, None, EnumDelegationFailureClass.MODEL_UNAVAILABLE),
     ],
 )
