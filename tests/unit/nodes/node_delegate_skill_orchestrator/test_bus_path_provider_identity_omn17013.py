@@ -285,3 +285,156 @@ async def test_bus_receipt_binds_provider_accepted_attempt_gate_and_manifest_ver
     # (3) a real manifest version from the pricing manifest, not the field's 0 default.
     assert response.pricing_manifest_version > 0
     assert response.pricing_manifest_version == get_manifest_version_int()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("outcome", ["completed", "failed_routed", "failed_unrouted"])
+async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
+    from datetime import UTC, datetime
+
+    from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+        ModelDelegationTerminalCompletedV2,
+        ModelDelegationTerminalFailedRoutedV2,
+        ModelDelegationTerminalFailedUnroutedV2,
+    )
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+        load_runtime_delegation_dispatch_config,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+        TOPIC_ID_DELEGATION_COMPLETED_V2,
+        TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+        TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
+    )
+    from omnimarket.pricing import get_manifest_version_int
+
+    correlation_id = uuid4()
+    # Distinct versions falsify a receipt reconstructed from the reader's manifest.
+    wire_version = get_manifest_version_int() + 1
+    common: dict[str, Any] = {
+        "correlation_id": correlation_id,
+        "task_type": "test",
+        "model_used": "qwen-coder",
+        "endpoint_url": _ENDPOINT_URL,
+        "content": "bus receipt proof",
+        "latency_ms": 12,
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "total_tokens": 5,
+        "fallback_to_claude": False,
+        "failure_reason": "",
+        "tokens_to_compliance": 0,
+        "compliance_attempts": 1,
+        "escalation_count": 1,
+        "escalation_history": _LADDER,
+        "routing_tiers_hash": "test-routing",
+        "escalation_config_hash": "test-escalation",
+        "attempts_count": 2,
+        "cumulative_attempt_cost": 0.0,
+        "cumulative_input_tokens": 3,
+        "cumulative_output_tokens": 2,
+        "final_attempt_cost": 0.0,
+        "context_pack_hash": "",
+        "cost_tier_name": "local",
+        "tenant_id": "test-tenant",
+        "terminal_outcome": "completed" if outcome == "completed" else "failed",
+    }
+    routed: dict[str, Any] = {
+        "routing_disposition": "routed",
+        "backend_ref": "local-heavy-reasoning",
+        "pricing_manifest_version": wire_version,
+        "quality_bar_evaluation": {
+            "quality_score": 0.95,
+            "required_quality_bar": 0.8,
+            "score_vs_required_bar": "at_or_above_bar",
+        },
+        "failed_acceptance_criteria": (),
+    }
+    config = load_runtime_delegation_dispatch_config().model_copy(
+        update={"wait_timeout_seconds": 1}
+    )
+    if outcome == "completed":
+        terminal = ModelDelegationTerminalCompletedV2(
+            **common, **routed, quality_passed=True
+        )
+        topic = TOPIC_ID_DELEGATION_COMPLETED_V2
+    elif outcome == "failed_routed":
+        common["escalation_history"] = _LADDER[:1]
+        routed["quality_bar_evaluation"] = {
+            "quality_score": 0.2,
+            "required_quality_bar": 0.8,
+            "score_vs_required_bar": "below_bar",
+        }
+        terminal = ModelDelegationTerminalFailedRoutedV2(
+            **common,
+            **routed,
+            quality_passed=False,
+            terminal_failure_reason="quality gate refused",
+            routed_failure_cause={"kind": "quality_gate_rejection"},
+        )
+        topic = TOPIC_ID_DELEGATION_FAILED_ROUTED_V2
+    else:
+        common["escalation_history"] = ()
+        terminal = ModelDelegationTerminalFailedUnroutedV2(
+            **common,
+            routing_disposition="unrouted",
+            unrouted_reason="no_eligible_backend",
+            terminal_failure_reason="no eligible backend",
+        )
+        topic = TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2
+
+    bus = EventBusInmemory(environment="test", group="receipt-v2")
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[type(terminal)](
+            payload=terminal,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=topic,
+            source_tool="receipt-v2-test",
+        )
+        await bus.publish(topic, None, envelope.model_dump_json().encode(), None)
+
+    try:
+        await bus.subscribe(
+            config.topics.command, group_id="receipt-v2-producer", on_message=on_command
+        )
+        handler = HandlerDelegateSkill(
+            dispatch_port=RuntimeDelegationDispatchPort(event_bus=bus, config=config)
+        )
+        response = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="Prove v2 bus receipt identity",
+                task_type="test",
+                source="claude-code",
+                correlation_id=correlation_id,
+                tenant_id="test-tenant",
+            )
+        )
+    finally:
+        await bus.close()
+
+    assert response.status == ("completed" if outcome == "completed" else "failed")
+    assert response.provider == (
+        "" if outcome == "failed_unrouted" else "local-heavy-reasoning"
+    )
+    assert response.pricing_manifest_version == (
+        0 if outcome == "failed_unrouted" else wire_version
+    )
+    assert response.quality_gate_passed is (outcome == "completed")
+    if outcome == "completed":
+        assert len(response.attempts) == 2
+        assert response.attempts[-1].backend_id == response.provider
+        assert (
+            response.attempts[-1].acceptance_decision
+            is EnumDelegationAcceptanceDecision.ACCEPT
+        )
+        assert response.attempts[-1].quality_gate_passed is True
+        assert response.quality_score == 0.95
+    else:
+        assert response.error_message == terminal.terminal_failure_reason

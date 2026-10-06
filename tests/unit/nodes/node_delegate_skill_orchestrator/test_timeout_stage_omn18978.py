@@ -108,7 +108,7 @@ async def test_handler_budget_names_the_bus_stage_and_keeps_it_after_cleanup(
     assert f"stage={stage}" in terminal.error_message
     assert "stage=terminal_cleanup" not in terminal.error_message
     assert terminal.terminal_failure_cause == "timeout"
-    assert bus.unsubscribed == (0 if stage == "subscribe" else 2)
+    assert bus.unsubscribed == (0 if stage == "subscribe" else 3)
     assert current_dispatch_progress.get() is None
 
 
