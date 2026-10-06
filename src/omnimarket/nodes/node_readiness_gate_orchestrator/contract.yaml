@@ -59,6 +59,10 @@ descriptor:
   timeout_ms: 600000
 
 terminal_event: onex.evt.omnimarket.readiness-gate-completed.v1
+# The two outcomes of one gate run (FSM terminal states COMPLETE and BLOCKED).
+terminal_events:
+  success: onex.evt.omnimarket.readiness-gate-completed.v1
+  failure: onex.evt.omnimarket.readiness-gate-blocked.v1
 
 event_bus:
   subscribe_topics:
