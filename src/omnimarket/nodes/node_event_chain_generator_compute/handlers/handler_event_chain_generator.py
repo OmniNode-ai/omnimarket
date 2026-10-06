@@ -151,7 +151,12 @@ class HandlerEventChainGenerator:
         generated = {c.path_id: c for c in request.generated.chains}
         missing = tuple(sorted(path_ids - committed.keys()))
         stale = tuple(sorted(committed.keys() - path_ids))
-        undriven = tuple(sorted(path_ids & request.generated.undriven.keys()))
+        undriven = tuple(
+            sorted(
+                (path_ids - generated.keys())
+                | (path_ids & request.generated.undriven.keys())
+            )
+        )
         mismatches: list[ModelChainMismatch] = []
         for path_id in sorted(path_ids & committed.keys()):
             fresh = generated.get(path_id)

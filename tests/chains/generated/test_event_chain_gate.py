@@ -133,6 +133,13 @@ def test_gate_passes_when_every_path_has_its_matching_chain() -> None:
     assert result.passed
 
 
+def test_gate_fails_when_a_committed_path_has_no_fresh_drive() -> None:
+    chains = (_chain("error:boom", "error"), _chain("golden:go>done"))
+    result = _gate(chains, ())
+    assert not result.passed
+    assert result.undriven_path_ids == ("error:boom", "golden:go>done")
+
+
 def test_gate_fails_on_a_new_path_with_no_chain() -> None:
     chains = (_chain("golden:go>done"),)
     result = _gate(chains, chains, {"error:boom": "no fixture for trigger 'boom'"})
