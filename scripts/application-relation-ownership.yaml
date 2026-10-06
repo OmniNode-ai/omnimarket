@@ -148,6 +148,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_board_probe_results/migrations/0000_create_board_probe_results.sql
       access: read_write
       role: board_probe_results_projection_table
+    # OMN-20578: one durable row per probed alert-channel liveness verdict.
+    - name: alert_channel_liveness_verdicts
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
+      access: write
+      role: alert_channel_liveness
     # OMN-19977: replaceable metering snapshots, one row per (tenant, window,
     # baseline model). Declared HERE because the OMN-15361 SQL gate resolves a
     # created application object against this manifest.
@@ -1115,6 +1122,14 @@ database_objects:
     writers: []
   # OMN-19937: the BIGSERIAL paging cursor owned by board_probe_results.
   - name: board_probe_results_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-20578: the BIGSERIAL paging cursor owned by alert_channel_liveness_verdicts.
+  - name: alert_channel_liveness_verdicts_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

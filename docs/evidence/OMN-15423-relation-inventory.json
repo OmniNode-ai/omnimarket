@@ -96,8 +96,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 32,
-    "table": 104,
+    "sequence": 33,
+    "table": 105,
     "view": 10
   },
   "relations": [
@@ -700,6 +700,53 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_alert_channel_liveness",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for alert_channel_liveness_verdicts",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [
+        "alert_channel_liveness_verdicts"
+      ],
+      "dependent_objects": [
+        "table:alert_channel_liveness_verdicts"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_alert_channel_liveness",
+      "name": "alert_channel_liveness_verdicts_projection_cursor_seq",
+      "owner_declaration": "node_projection_alert_channel_liveness",
+      "partitioning": [],
+      "producer": "node_projection_alert_channel_liveness",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_alert_channel_liveness",
+        "service:omnimarket_projection_migration_runner"
+      ]
     },
     {
       "accessor_nodes": [
@@ -2252,6 +2299,65 @@
       "target_schema": "public",
       "writers": [
         "node_projection_routing_decision"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_alert_channel_liveness",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:alert_channel_liveness_verdicts_projection_cursor_seq"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_alert_channel_liveness_cursor",
+        "idx_alert_channel_liveness_status_time"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (correlation_id)",
+        "UNIQUE INDEX idx_alert_channel_liveness_cursor"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_alert_channel_liveness",
+      "name": "alert_channel_liveness_verdicts",
+      "owner_declaration": "node_projection_alert_channel_liveness",
+      "partitioning": [],
+      "producer": "node_projection_alert_channel_liveness",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_alert_channel_liveness",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -6448,6 +6554,8 @@
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
+        "node_pr_handoff_decision_compute",
+        "node_pr_handoff_orchestrator",
         "node_pr_landing_github_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_fix_effect",
@@ -8837,8 +8945,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 95,
-    "source_declared_tables": 104
+    "source_created_tables": 96,
+    "source_declared_tables": 105
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8854,7 +8962,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 95 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 96 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

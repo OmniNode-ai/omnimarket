@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20555"
+title: "A throttled BYOK model on the bus path climbs to the next catalogue family"
+summary: "The bus inference effect retries a throttled BYOK model once with a model from the next catalogue family. It preserves the provider's 429 when no other family is listed and leaves house routes unchanged. AC1 through AC4 are bound to the bus BYOK throttle tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-bus-byok-throttle-climbs-catalogue"
+    statement: "A throttled BYOK model on the bus path can retry once in the next catalogue family. Each acceptance id is bound to the tests through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: after Gemma returns a 429, the BYOK bus route calls Nemotron Super, returns content without an error, reports Nemotron Super as model_used, fetches the OpenRouter models URL once, and excludes the API key from the result -- falsifier: uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: after Gemma returns a 429 and Nemotron Ultra returns an in-body 503, the BYOK bus route stops after those two calls, names both models in the error, and excludes the API key from the result -- falsifier: uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: when the catalogue lists only Gemma and Gemma MoE, the BYOK bus route calls only Gemma, fetches the catalogue once, preserves a 429 in the error, and excludes the API key from the result -- falsifier: uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q in omnimarket"
+      - id: "AC4"
+        statement: "AC4: a house route receiving Gemma's 429 calls only Gemma, makes no catalogue request, and preserves a 429 in the error -- falsifier: uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "The four bus BYOK throttle tests prove successful fallback to the next family, a one-shot retry limit, preservation of the 429 when only the throttled family is listed, and no catalogue lookup for house routes. The BYOK tests also assert that the result excludes the API key."
+    command: "uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20555-bus-byok-throttle-climbs-catalogue"
+    description: "AC1 through AC4 are proved by the bus BYOK throttle tests for successful family fallback, the one-shot retry limit, no available next family, and house route isolation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20555_bus_byok_throttle_climbs_catalogue.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]

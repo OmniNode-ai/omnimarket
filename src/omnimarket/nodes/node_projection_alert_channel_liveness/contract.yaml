@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_alert_channel_liveness
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_alert_channel_liveness.models.model_alert_channel_liveness_projection.ModelAlertChannelLivenessProjectionRequest
+description: >
+  Materializes one durable verdict per completed alert-channel probe.
+
+  The liveness checker publishes its result independently of Slack so a dead
+  alert channel cannot suppress the report that it is dead. Without a
+  recording subscriber that report remains a transient event nobody can
+  query. This reducer supplies that recording consumer without changing the
+  checker's contract, models or handlers.
+
+  ONE ROW PER PROBED EVENT. Delivery coordinates identify each measurement,
+  so redelivery converges while a later probe remains a separate verdict.
+  When coordinates are absent the pure fold derives its key from content.
+
+  THROTTLED TICKS ARE NOT VERDICTS. A probed=false result produces an explicit
+  skip and no database write. Only LIVE is healthy; DEAD, NOT_CONFIGURED and
+  PROBE_ERROR retain their distinct status and reason and are all unhealthy.
+
+handler:
+  module: omnimarket.nodes.node_projection_alert_channel_liveness.handlers.handler_projection_alert_channel_liveness
+  class: HandlerProjectionAlertChannelLiveness
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed, as in the prod-promotion-gate projection.
+    # A routed pure fold receives the raw payload but cannot prove a write.
+    # The runtime-facing entry calls that fold in process and reports the
+    # accepted row count, so committed offsets cannot masquerade as storage.
+    - operation: alert_channel_liveness_projection_writer
+      handler:
+        name: AlertChannelLivenessProjectionWriter
+        module: omnimarket.nodes.node_projection_alert_channel_liveness.handlers.handler_alert_channel_liveness_writer
+      handler_module: omnimarket.nodes.node_projection_alert_channel_liveness.handlers.handler_alert_channel_liveness_writer
+
+terminal_event: onex.evt.omnimarket.projection-alert-channel-liveness-applied.v1
+
+golden_path:
+  - "node_alert_channel_liveness_effect probes the configured Slack delivery channel on an existing runtime heartbeat"
+  - "The checker publishes its result on onex.evt.omnimarket.alert-channel-liveness-checked.v1 independently of that channel"
+  - "The typed pure fold skips probed=false ticks and derives health from the measured status for completed probes"
+  - "The writer upserts omninode_internal.alert_channel_liveness_verdicts by deterministic correlation_id, preserving event time when present"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-alert-channel-liveness-applied.v1 after a proven write"
+
+dod_evidence:
+  - test: tests/test_alert_channel_liveness_verdict_is_consumed.py::test_the_consumer_is_the_canonical_projection_node
+    description: "The checked topic has a canonical recording subscriber with a write relation and DLQ"
+  - test: tests/test_projection_alert_channel_liveness.py::test_fold_preserves_every_status_and_derives_health
+    description: "All four measured states retain their reason and only LIVE is healthy"
+  - test: tests/test_projection_alert_channel_liveness.py::test_throttled_tick_skips_and_writes_nothing
+    description: "A throttled tick is successfully consumed without fabricating a verdict row"
+  - test: tests/test_projection_alert_channel_liveness.py::test_writer_persists_the_measured_verdict
+    description: "The runtime-facing writer binds the probe facts and reports a proven write"
+  - test: tests/test_projection_alert_channel_liveness.py::test_redelivery_converges_and_distinct_offsets_remain_distinct
+    description: "The upsert key is stable on redelivery and distinct for a later probe"
+
+db_io:
+  # Required for the runtime to invoke the durable path. The domain result is
+  # complete in itself, so the fold needs no database read and access is write.
+  db_tables:
+    - name: alert_channel_liveness_verdicts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_alert_channel_liveness_verdicts.sql"
+      access: write
+      role: alert_channel_liveness
+  # One deterministic key per delivery. Replaying a completed probe reasserts
+  # that row rather than accumulating another copy of the same measurement.
+  dedupe_key:
+    - correlation_id
+  ordering_key: checked_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.alert-channel-liveness-checked.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-alert-channel-liveness-applied.v1
+  # Malformed probed results must be quarantined rather than silently lost.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-alert-channel-liveness-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-alert-channel-liveness-applied.v1
+
+# This node owns recording only. Dashboard serving and its page belong to the
+# separate exposure lane; no snapshot topic or reader is declared here.
+projection_api:
+  expose: false
+
+metadata:
+  transport_type: kafka

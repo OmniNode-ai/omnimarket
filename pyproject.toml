@@ -204,9 +204,6 @@ dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    # OMN-20575: floor raised to 0.38.66, the first omnibase_infra release
-    # that vendors node_projection_routing_feedback's migrations; the
-    # sibling-release gate refuses this node's migrations below it.
     "omnibase-infra>=0.38.66,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
@@ -461,6 +458,7 @@ node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_con
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
+node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
@@ -523,6 +521,15 @@ node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_decision_compute = "omnimarket.nodes.node_pr_landing_decision_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
 node_projection_pr_landing = "omnimarket.nodes.node_projection_pr_landing"
+# PR handoff over the bus (OMN-20636): the orchestrator and its ledger effect are wired; the decision
+# compute is called in process and declares no event_bus.
+node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
+node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
+node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
+# Lab job supervisor (OMN-20604): the reducer is called in process by the job orchestrator
+# and declares no handler_routing.
+node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
+node_lab_job_submit_effect = "omnimarket.nodes.node_lab_job_submit_effect"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
@@ -1004,9 +1011,6 @@ override-dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    # OMN-20575: floor raised to 0.38.66, the first omnibase_infra release
-    # that vendors node_projection_routing_feedback's migrations; the
-    # sibling-release gate refuses this node's migrations below it.
     "omnibase-infra>=0.38.66,<0.39.0",
     "omnibase-compat==0.5.7",
 ]

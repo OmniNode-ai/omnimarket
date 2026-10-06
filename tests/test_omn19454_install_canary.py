@@ -188,8 +188,10 @@ def test_stub_round_trip(stub_url: str, caplog: pytest.LogCaptureFixture) -> Non
     assert "request_count=2" in caplog.text
 
 
-def write_artifacts(cwd: Path, port: int = 12345) -> Path:
-    run = cwd / ".onex_state/runs/test-run"
+def write_artifacts(
+    cwd: Path, port: int = 12345, state_root: Path | None = None
+) -> Path:
+    run = (state_root or cwd / ".onex_state") / "runs/test-run"
     run.mkdir(parents=True)
     (cwd.parent / "stub-port").write_text(str(port))
     (run / "result.txt").write_text("canary-ok\n")
@@ -280,16 +282,25 @@ def test_main_stages(
             binary.parent.mkdir(parents=True)
             binary.touch()
         elif command[1] == "delegate":
-            assert command == [
+            assert command[:4] == [
                 "onex",
                 "delegate",
                 "--task-type",
                 "research",
-                canary.PROMPT,
             ]
+            assert command[-1] == canary.PROMPT
             assert timeout == 300
             assert cwd == work / "run"
-            write_artifacts(cwd, int((work / "stub-port").read_text()))
+            # The installed CLI defaults to HOME, never cwd. Model that
+            # behavior so a missing state-root flag cannot silently pass.
+            state_root = (
+                Path(command[command.index("--state-root") + 1])
+                if "--state-root" in command
+                else Path(env["HOME"]) / ".onex_state"
+            )
+            write_artifacts(
+                cwd, int((work / "stub-port").read_text()), state_root=state_root
+            )
         return "tenant_id: canary\n"
 
     monkeypatch.setattr(canary, "run_command", fake_command)

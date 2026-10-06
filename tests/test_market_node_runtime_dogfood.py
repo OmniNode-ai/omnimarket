@@ -79,7 +79,16 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
+    # OMN-20578: the directory carries only the migrations omnibase_infra
+    # vendors; its contract, handlers and entry point land with the wiring PR,
+    # which removes this line and the MIGRATION_ONLY_NODE_DIRS entry together.
+    "node_projection_routing_feedback",
 }
+
+# Node directories that hold migrations and no contract.yaml yet. Each entry
+# expires itself: a directory that gains a contract.yaml, or disappears, fails
+# the inventory until the entry is removed.
+MIGRATION_ONLY_NODE_DIRS = {"node_projection_routing_feedback"}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -142,9 +151,16 @@ def _inventory_violations(inventory: _Inventory) -> list[str]:
     for node, target in sorted(inventory.entry_points.items()):
         if target.split(":", 1)[0] != f"omnimarket.nodes.{node}":
             violations.append(f"{node}: entry point targets {target}")
+    for node in sorted(MIGRATION_ONLY_NODE_DIRS - dirs):
+        violations.append(f"{node}: listed as migration-only but not on disk")
     for node in sorted(dirs):
         name = inventory.contract_names.get(node)
-        if name is None:
+        if node in MIGRATION_ONLY_NODE_DIRS:
+            if name is not None:
+                violations.append(
+                    f"{node}: listed as migration-only but has a contract"
+                )
+        elif name is None:
             violations.append(f"{node}: node directory has no contract.yaml")
         elif name not in {node, node.removeprefix("node_")}:
             violations.append(f"{node}: contract.yaml names {name!r}")
@@ -188,6 +204,16 @@ def _with_wrong_contract_name(inv: _Inventory) -> _Inventory:
     )
 
 
+def _with_contract_on_migration_only_dir(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv,
+        contract_names={
+            **inv.contract_names,
+            "node_projection_routing_feedback": "projection_routing_feedback",
+        },
+    )
+
+
 def _with_wrong_entry_target(inv: _Inventory) -> _Inventory:
     return dataclasses.replace(
         inv,
@@ -212,6 +238,7 @@ def _without_expected_missing_dir(inv: _Inventory) -> _Inventory:
         _with_wrong_contract_name,
         _with_wrong_entry_target,
         _without_expected_missing_dir,
+        _with_contract_on_migration_only_dir,
     ],
 )
 def test_market_node_inventory_fails_on_a_missing_or_extra_node(
@@ -254,7 +281,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-20496's node_canonical_clone_refresh_effect is hosted by one
     # `clone-refresh serve` process per host, not by a runtime, so it is
     # experimental with no handler_routing and lands there too: 7 -> 8.
-    assert summary["skipped"] == 8
+    # OMN-20604's node_lab_job_reducer is called in process by the lab job
+    # orchestrator, like the landing reducer, so it is experimental with no
+    # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
+    # by the submit CLI and has no handler_routing either: 9 -> 10.
+    assert summary["skipped"] == 10
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

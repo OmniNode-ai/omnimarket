@@ -606,7 +606,7 @@ def test_only_an_exact_pnpm_pin_declares_a_runner(
     (repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     collector = evidence_collector.EvidenceCollector
-    assert collector._declared_test_runner("omnidash") == runner
+    assert collector._declared_test_runner("omnidash", "src/x.test.ts") == runner
 
 
 def test_audience_refusal_keeps_the_named_runnerless_failure(
@@ -632,3 +632,138 @@ def test_audience_refusal_keeps_the_named_runnerless_failure(
     assert named["dod-typo"].status is EnumEvidenceCheckStatus.FAILED
     assert named["ac-falsifier-ac1"].status is EnumEvidenceCheckStatus.FAILED
     assert "NO_DECLARED_TEST_RUNNER" in (named["ac-falsifier-ac1"].message or "")
+
+
+# OMN-20332: omnidash declares neither a uv project nor a pnpm pin. It is an
+# npm repository (package-lock.json, scripts.test) whose tests/ci are Python
+# files with no pyproject.toml beside them.
+
+_BARE_PYTEST = "uv run --no-project --with pytest --with pyyaml python -m pytest"
+
+
+def _repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]):
+    repo = tmp_path / "omnidash"
+    repo.mkdir()
+    for name, body in files.items():
+        (repo / name).write_text(body)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    return evidence_collector.EvidenceCollector._declared_test_runner
+
+
+_NPM = {
+    "package-lock.json": "{}",
+    "package.json": '{"scripts": {"test": "vitest"}}',
+}
+
+
+def test_npm_repo_with_a_test_script_declares_npm_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _repo(tmp_path, monkeypatch, _NPM)
+    assert runner("omnidash", "src/lib/x.test.ts") == "npm test -- --run"
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        {"package-lock.json": "{}", "package.json": '{"scripts": {}}'},
+        {"package-lock.json": "{}", "package.json": '{"scripts": {"test": " "}}'},
+        {"package-lock.json": "{}", "package.json": "not json"},
+        {"package.json": '{"scripts": {"test": "vitest"}}'},
+    ],
+)
+def test_npm_needs_the_lockfile_and_a_test_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]
+) -> None:
+    assert _repo(tmp_path, monkeypatch, files)("omnidash", "src/x.test.ts") is None
+
+
+def test_pnpm_pin_wins_over_a_stray_package_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _repo(
+        tmp_path,
+        monkeypatch,
+        {
+            "package-lock.json": "{}",
+            "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+            "package.json": (
+                '{"packageManager": "pnpm@10.12.1", "scripts": {"test": "vitest"}}'
+            ),
+        },
+    )
+    assert runner("omnidash", "src/x.test.ts") == "pnpm test"
+
+
+def test_python_file_in_a_repo_without_pyproject_uses_the_bare_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _repo(tmp_path, monkeypatch, _NPM)
+    assert runner("omnidash", "tests/ci/test_a.py") == _BARE_PYTEST
+    # The JS rule is unaffected by the bare form.
+    assert runner("omnidash", "src/x.test.ts") == "npm test -- --run"
+
+
+def test_bare_form_needs_no_package_json_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _repo(tmp_path, monkeypatch, {})("omnidash", "tests/ci/t.py") == _BARE_PYTEST
+
+
+def test_bare_form_is_not_used_when_the_repo_has_a_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _repo(tmp_path, monkeypatch, {"pyproject.toml": "[project]\n"})
+    assert runner("omnidash", "tests/test_a.py") is None
+
+
+def test_uv_project_still_runs_python_under_uv_run_pytest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _repo(
+        tmp_path, monkeypatch, {"pyproject.toml": "[project]\n", "uv.lock": ""}
+    )
+    assert runner("omnidash", "tests/test_a.py") == "uv run pytest"
+
+
+def test_npm_falsifier_executes_npm_ci_then_the_selected_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command = "npm test -- --run src/lib/sparkline.test.ts"
+
+    def _setup(omni_home: Path) -> None:
+        _omnidash(declared=False)(omni_home)
+        for name, body in _NPM.items():
+            (omni_home / "omnidash" / name).write_text(body)
+
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(falsifiers={"AC1": _TS_FALSIFIER}, pr_item_id=_DASH_PR_ITEM),
+        failing=frozenset({command}),
+        setup=_setup,
+    )
+    assert _by_id(state)["ac-falsifier-ac1"] is EnumEvidenceCheckStatus.FAILED
+
+
+def test_bare_python_falsifier_executes_the_declared_bare_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command = f"{_BARE_PYTEST} tests/ci/test_gate.py -q"
+
+    def _setup(omni_home: Path) -> None:
+        ci = omni_home / "omnidash" / "tests" / "ci"
+        ci.mkdir(parents=True)
+        (ci / "test_gate.py").write_text("")
+
+    state = _run(
+        tmp_path,
+        monkeypatch,
+        _contract(
+            falsifiers={"AC1": "pytest tests/ci/test_gate.py -q"},
+            pr_item_id=_DASH_PR_ITEM,
+        ),
+        failing=frozenset({command}),
+        setup=_setup,
+    )
+    assert _by_id(state)["ac-falsifier-ac1"] is EnumEvidenceCheckStatus.FAILED
