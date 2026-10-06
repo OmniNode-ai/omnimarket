@@ -602,7 +602,6 @@ class ProtocolProjectionRowSource(Protocol):
         Raises :class:`ProjectionReadError` when the mirror cannot be read or
         holds a value that is not a UUID -- never ``None`` for those.
         """
-        ...
 
     async def rows(
         self,

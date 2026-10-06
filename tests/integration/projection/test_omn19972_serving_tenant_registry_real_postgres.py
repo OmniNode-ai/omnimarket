@@ -47,6 +47,7 @@ async def _connect_or_skip() -> tuple[asyncpg.Connection, str]:
         return await asyncpg.connect(dsn), dsn
     except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for the real registry read: {exc}")
+        raise AssertionError("unreachable: pytest.skip always raises") from exc
 
 
 def _cfg(schema: str) -> ProjectionTableConfig:
