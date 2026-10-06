@@ -16,12 +16,12 @@ description: >
 input_model:
   name: ModelDelegateSkillRequest
   class: ModelDelegateSkillRequest
-  module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
+  module: omnimarket.models.delegation.wire.model_delegate_skill_request
   description: Consumer-facing delegation request with prompt, task_type, source, and metadata.
 
 output_model:
   name: ModelDelegateSkillResponse
-  module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response
+  module: omnimarket.models.delegation.wire.model_delegate_skill_response
   description: Typed delegation result with provider, model, response, metrics, and quality gate.
 
 # OMN-14485: declare the tenant seam on the RESPONSE/terminal side of the contract,
@@ -312,8 +312,9 @@ runtime_dispatch:
 delegation_runtime_dispatch:
   topics:
     command: onex.cmd.omnibase-infra.delegation-request.v1
-    completed: onex.evt.omnibase-infra.delegation-completed.v1
-    failed: onex.evt.omnibase-infra.delegation-failed.v1
+    completed: onex.evt.omnibase-infra.delegation-completed.v2
+    failed: onex.evt.omnibase-infra.delegation-failed-routed.v2
+    failed_unrouted: onex.evt.omnibase-infra.delegation-failed-unrouted.v2
   request_message_type: omnibase-infra.delegation-request
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
@@ -464,19 +465,24 @@ cross_repo_dependencies:
     required_topics:
       - onex.cmd.omnibase-infra.delegation-request.v1
     terminal_events:
-      - onex.evt.omnibase-infra.delegation-completed.v1
-      - onex.evt.omnibase-infra.delegation-failed.v1
+      - onex.evt.omnibase-infra.delegation-completed.v2
+      - onex.evt.omnibase-infra.delegation-failed-routed.v2
+      - onex.evt.omnibase-infra.delegation-failed-unrouted.v2
     required_models:
       - name: ModelDelegationRequest
         module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request
-      - name: ModelDelegationResult
-        module: omnimarket.nodes.node_delegation_orchestrator.models
+      - name: ModelDelegationTerminalCompletedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedRoutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
+      - name: ModelDelegationTerminalFailedUnroutedV2
+        module: omnibase_core.models.delegation.wire.model_delegation_terminal_v2
 
 handler:
   name: HandlerDelegateSkill
   module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
   class: HandlerDelegateSkill
-  input_model: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request.ModelDelegateSkillRequest
+  input_model: omnimarket.models.delegation.wire.model_delegate_skill_request.ModelDelegateSkillRequest
 
 handler_routing:
   routing_strategy: operation_match
@@ -488,7 +494,7 @@ handler_routing:
         module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
       event_model:
         name: ModelDelegateSkillRequest
-        module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
+        module: omnimarket.models.delegation.wire.model_delegate_skill_request
       event_type: omnimarket.delegate-skill
       description: Accept a delegate-skill command and dispatch to the delegation runtime.
     - operation: delegate-skill.reap_scheduled_run

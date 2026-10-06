@@ -35,6 +35,9 @@ from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
     EnumDelegationTerminalFailureCause,
 )
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
 )
@@ -43,9 +46,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     load_handler_execution_budget,

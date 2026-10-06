@@ -28,11 +28,11 @@ from omnibase_infra.runtime.service_delegation_dispatch_port import (
     _normalize_result_payload,
 )
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
