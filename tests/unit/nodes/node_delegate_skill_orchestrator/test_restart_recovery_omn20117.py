@@ -21,6 +21,13 @@ from omnibase_infra.cli.delegate_terminal_resolver import resolve_delegate_termi
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillCompleted,
+    ModelDelegateSkillFailed,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_delegation_reaper,
     handler_delegation_recovery,
@@ -34,13 +41,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegati
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_recovery import (
     HandlerDelegationRecovery,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
-    ModelDelegateSkillCompleted,
-    ModelDelegateSkillFailed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     ModelDelegationReaperConfig,
