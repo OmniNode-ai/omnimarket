@@ -84,6 +84,7 @@ from omnimarket.delegation.deliverable_extraction import (
 )
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_conformance import (
@@ -2940,9 +2941,16 @@ class LocalDelegationDispatchPort:
             requested_shape=resolve_requested_shape_for_prompt(prompt),
         )
         output_refusal: ModelDelegationOutputRefusal | None = None
-        # OMN-19434: the text the GATE judges. It is the deliverable, except in
-        # one case below, where the caller still receives nothing.
-        gate_content: str | None = None
+        # OMN-19434 / OMN-18278: the text the GATE judges. None means "judge
+        # the extracted deliverable". When the provider text opened with a
+        # reasoning trace, the gate judges the RAW text instead, so the
+        # no_leading_reasoning_trace floor sees the trace and refuses it; the
+        # caller still receives only the extracted deliverable (or nothing).
+        gate_content: str | None = (
+            raw_content
+            if has_leading_reasoning_trace(segment_reasoning_preamble(raw_content))
+            else None
+        )
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
             EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,

@@ -5,7 +5,7 @@
 """Contract-bound FSM tests for node_delegation_orchestrator [OMN-13474].
 
 W2 of the OMN-13471 delegation decomposition binds the handler's FSM transition
-guard to the node's ``contract.yaml`` ``fsm`` block via the typed,
+guard to the node's ``contract.yaml`` ``state_machine`` block via the typed,
 executor-bound ``ModelFSMSubcontract`` (the OMN-12835 typed contract-side
 workflow surface). The hardcoded ``_VALID_TRANSITIONS`` Python literal is gone;
 the runtime guard table is now a projection of the contract-derived typed FSM.
@@ -23,6 +23,7 @@ These tests prove:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,12 @@ class TestContractBoundFsm:
         """The module-level typed FSM reflects the contract verbatim."""
         block = _contract_fsm_block()
         assert isinstance(_FSM_SUBCONTRACT, ModelFSMSubcontract)
+        # Each load generates its own correlation ID; compare contract fields.
+        assert _FSM_SUBCONTRACT.model_dump(
+            exclude={"correlation_id"}
+        ) == ModelFSMSubcontract.model_validate(block).model_dump(
+            exclude={"correlation_id"}
+        )
         assert _FSM_SUBCONTRACT.initial_state == block["initial_state"]
         assert sorted(_FSM_SUBCONTRACT.terminal_states) == sorted(
             block["terminal_states"]
@@ -104,6 +111,43 @@ class TestContractBoundFsm:
             for to in targets
         }
         assert advance_edges == contract_edges
+
+    def test_advance_table_preserves_original_seventeen_edges(self) -> None:
+        """Pin the pre-conversion edges independently of the current contract."""
+        original_edges = {
+            ("RECEIVED", "ROUTED"),
+            ("RECEIVED", "FAILED"),
+            ("ROUTED", "ROUTED"),
+            ("ROUTED", "EXECUTING"),
+            ("ROUTED", "INFERENCE_COMPLETED"),
+            ("ROUTED", "ESCALATING"),
+            ("ROUTED", "FAILED"),
+            ("ROUTED", "COMPLETED"),
+            ("EXECUTING", "COMPLETED"),
+            ("EXECUTING", "FAILED"),
+            ("INFERENCE_COMPLETED", "GATE_EVALUATED"),
+            ("INFERENCE_COMPLETED", "FAILED"),
+            ("GATE_EVALUATED", "ESCALATING"),
+            ("GATE_EVALUATED", "COMPLETED"),
+            ("GATE_EVALUATED", "FAILED"),
+            ("GATE_EVALUATED", "ROUTED"),
+            ("ESCALATING", "ROUTED"),
+        }
+        assert {
+            (source.value, target.value) for source, target in _DECLARED_TRANSITIONS
+        } == original_edges
+        assert len(_FSM_SUBCONTRACT.transitions) == len(original_edges)
+
+    def test_contract_uses_typed_dialect_and_symbolic_triggers(self) -> None:
+        """A permissive model load alone cannot reject legacy keys or prose."""
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        assert "fsm" not in contract
+        block = contract["state_machine"]
+        assert "state_machine_version" in block
+        for transition in block["transitions"]:
+            assert "from" not in transition
+            assert "to" not in transition
+            assert re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", transition["trigger"])
 
     async def test_every_contract_edge_drivable_by_core_executor(self) -> None:
         """Each declared edge transitions to the same target via the core executor.

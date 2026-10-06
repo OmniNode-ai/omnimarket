@@ -120,19 +120,27 @@ $$;
 """
 
 
-def _row_exposure() -> ProjectionTableConfig:
+_TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"
+
+
+def _exposure_for(topic: str) -> ProjectionTableConfig:
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
-    scoped = [
+    matches = [
         exposure
         for exposure in load_projection_exposures_from_contract(
             contract, "projection_delegation", _CONTRACT_PATH
         )
-        if exposure.table == "delegation_events"
-        and exposure.bus_backed
-        and exposure.tenant_scoped
+        if exposure.table == "delegation_events" and exposure.topic == topic
     ]
-    assert len(scoped) == 1
-    return scoped[0]
+    assert len(matches) == 1
+    exposure = matches[0]
+    assert exposure.bus_backed
+    assert exposure.tenant_scoped
+    return exposure
+
+
+def _row_exposure() -> ProjectionTableConfig:
+    return _exposure_for("onex.snapshot.projection.delegation.decisions.v1")
 
 
 def _live_migration_files(*, exclude: str | None = None) -> list[Path]:
@@ -479,5 +487,20 @@ class TestTheRepublishedRowCarriesWhatTheReadbackReads:
                 deltas = [value for sent_topic, value in sent if sent_topic == topic]
                 assert deltas
                 assert json.loads(deltas[-1])["key"] == [correlation_id]
+
+        asyncio.run(_run())
+
+    def test_the_trace_topic_receives_the_same_stored_row(self) -> None:
+        async def _run() -> None:
+            async with _runner_on_schema() as (runner, _conn, _schema):
+                sent = _intercept_snapshot_sends(runner)
+                correlation_id = str(uuid4())
+                assert await _project(runner, correlation_id=correlation_id)
+                topic = _exposure_for(_TRACE_TOPIC).topic
+                deltas = [value for sent_topic, value in sent if sent_topic == topic]
+                assert deltas, f"nothing was republished onto {topic!r}"
+                message = json.loads(deltas[-1])
+                assert message["key"] == [correlation_id]
+                assert message["row"].get("tenant_id") is not None
 
         asyncio.run(_run())
