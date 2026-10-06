@@ -27,8 +27,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from omnimarket.inference.task_class_authority import (
+    EnumPromptShape,
     EnumQualityRuleEnforcement,
-    EnumTaskClassPromptShape,
     resolve_facts_first_prompt_policy,
     resolve_quality_rule,
     resolve_task_class_prompt_shape,
@@ -117,10 +117,7 @@ def state_prompt_for_task_class(*, prompt: str, task_class: str) -> str:
     A class that declares ``plain``, or nothing, and a class the contract does not
     know, get ``prompt`` byte-identical. The class list is the contract's alone.
     """
-    if (
-        resolve_task_class_prompt_shape(task_class)
-        is not EnumTaskClassPromptShape.FACTS_FIRST
-    ):
+    if resolve_task_class_prompt_shape(task_class) is not EnumPromptShape.FACTS_FIRST:
         return prompt
     policy = resolve_facts_first_prompt_policy()
     if policy is None:

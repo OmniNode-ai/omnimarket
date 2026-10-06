@@ -20,23 +20,3 @@ class ModelAuditEntry(BaseModel):
     agent_id: str | None = Field(default=None, description="Agent or skill ID.")
     description: str = Field(default="", description="Human-readable description.")
     recorded_at: str = Field(..., description="ISO-8601 timestamp.")
-
-
-class ModelCompactorCommand(BaseModel):
-    """Input command for the audit trail compactor."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    friction_dir: str = Field(
-        default=".onex_state/friction",
-        description="Path to friction event directory.",
-    )
-    dispatch_log_path: str = Field(
-        default=".onex_state/dispatch-log.ndjson",
-        description="Path to dispatch log NDJSON file.",
-    )
-    lookback_days: int = Field(
-        default=7,
-        description="Number of days to look back for the rollup.",
-    )
-    dry_run: bool = Field(default=False, description="Skip side effects when true.")

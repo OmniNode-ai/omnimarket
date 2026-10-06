@@ -16,10 +16,19 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     ModelCreateTicketRequest,
+    ModelTicketGuardDecision,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.create-ticket-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.create-ticket-completed.v1"
+
+
+class _AdmitGuard:
+    """The ticket-creation guard seam (OMN-20595), admitting every create."""
+
+    def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
+        del tool_input
+        return ModelTicketGuardDecision(admitted=True, guard_path="/test/guard.py")
 
 
 class _MockLinearTicketClient:
@@ -64,7 +73,9 @@ class TestCreateTicketGoldenChain:
 
     async def test_simple_ticket_created(self, event_bus: EventBusInmemory) -> None:
         """A simple ticket with title produces status=created with a real ticket_id."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         request = ModelCreateTicketRequest(title="Add rate limiting to API")
         result = handler.handle(request)
 
@@ -77,7 +88,9 @@ class TestCreateTicketGoldenChain:
 
     async def test_seam_signals_detected(self, event_bus: EventBusInmemory) -> None:
         """Kafka-related keywords trigger seam detection."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         request = ModelCreateTicketRequest(
             title="Add Kafka consumer for new topic",
             description="Implement a consumer that subscribes to the events topic.",
@@ -91,7 +104,9 @@ class TestCreateTicketGoldenChain:
 
     async def test_non_seam_ticket_is_stub(self, event_bus: EventBusInmemory) -> None:
         """Non-seam tickets get stub contract completeness."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         request = ModelCreateTicketRequest(
             title="Fix typo in README",
         )
@@ -104,7 +119,7 @@ class TestCreateTicketGoldenChain:
 
     async def test_invalid_parent_id_format(self, event_bus: EventBusInmemory) -> None:
         """Invalid parent ID format produces validation error (no Linear call)."""
-        handler = HandlerCreateTicket()
+        handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
         request = ModelCreateTicketRequest(
             title="Some feature",
             parent="INVALID-ID",
@@ -117,7 +132,7 @@ class TestCreateTicketGoldenChain:
 
     async def test_invalid_blocked_by_format(self, event_bus: EventBusInmemory) -> None:
         """Invalid blocked_by ID produces validation error (no Linear call)."""
-        handler = HandlerCreateTicket()
+        handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
         request = ModelCreateTicketRequest(
             title="Some feature",
             blocked_by=["OMN-1234", "BAD"],
@@ -129,7 +144,7 @@ class TestCreateTicketGoldenChain:
 
     async def test_dry_run_mode(self, event_bus: EventBusInmemory) -> None:
         """dry_run produces status=dry_run without errors and without a Linear call."""
-        handler = HandlerCreateTicket()
+        handler = HandlerCreateTicket(ticket_guard=_AdmitGuard())
         request = ModelCreateTicketRequest(
             title="New feature",
             dry_run=True,
@@ -143,8 +158,10 @@ class TestCreateTicketGoldenChain:
     async def test_description_body_includes_summary(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """Generated description body includes summary and DoD sections."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        """The description reaches Linear unchanged: no generated sections (OMN-20595)."""
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         request = ModelCreateTicketRequest(
             title="Add caching layer",
             repo="omnibase_infra",
@@ -152,14 +169,13 @@ class TestCreateTicketGoldenChain:
         )
         result = handler.handle(request)
 
-        assert "## Summary" in result.description_body
-        assert "Redis caching" in result.description_body
-        assert "## Definition of Done" in result.description_body
-        assert "omnibase_infra" in result.description_body
+        assert result.description_body == "Implement Redis caching for hot paths."
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler can be wired to event bus and process command events."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         results_captured: list[dict[str, object]] = []
 
         async def on_command(message: object) -> None:
@@ -197,7 +213,9 @@ class TestCreateTicketGoldenChain:
 
     async def test_multiple_seam_interfaces(self, event_bus: EventBusInmemory) -> None:
         """Multiple seam signals detected from different categories."""
-        handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+        handler = HandlerCreateTicket(
+            ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+        )
         request = ModelCreateTicketRequest(
             title="Add API endpoint for Kafka consumer status",
             description="REST endpoint to query consumer group health.",
@@ -211,7 +229,7 @@ class TestCreateTicketGoldenChain:
     async def test_valid_parent_id_accepted(self, event_bus: EventBusInmemory) -> None:
         """Valid OMN-XXXX parent ID passes validation and reaches the Linear call."""
         client = _MockLinearTicketClient()
-        handler = HandlerCreateTicket(linear_client=client)
+        handler = HandlerCreateTicket(ticket_guard=_AdmitGuard(), linear_client=client)
         request = ModelCreateTicketRequest(
             title="Sub-task",
             parent="OMN-5678",

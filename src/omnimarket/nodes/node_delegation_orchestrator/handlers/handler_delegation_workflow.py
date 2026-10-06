@@ -98,9 +98,11 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_instruction import (
@@ -143,6 +145,9 @@ from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
+)
+from omnimarket.inference.provider_response_error import (
+    provider_failure_class_from_error_message,
 )
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -733,6 +738,8 @@ def _stale_response_rejection(
 
 def _should_escalate_inference_error(error_message: str) -> bool:
     """Return whether an inference error should retry on a higher tier."""
+    if provider_failure_class_from_error_message(error_message) is not None:
+        return True
     normalized = error_message.lower()
     return not any(
         marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
@@ -762,6 +769,9 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     inference effect raised — never a blanket UNKNOWN — so the emitted
     ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
     """
+    provider_class = provider_failure_class_from_error_message(error_message)
+    if provider_class is not None:
+        return provider_class
     normalized = error_message.lower()
     # OMN-20157: a typed provider refusal about the account or the model leads
     # its message with the class value (``describe_provider_refusal``), and is
@@ -863,6 +873,7 @@ _CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
         TRUNCATION_CHECK_NAME,
         UNRESOLVED_PREAMBLE_CHECK_NAME,
         RESIDUAL_REASONING_TAG_CHECK_NAME,
+        LEADING_REASONING_TRACE_CHECK_NAME,
     }
 )
 
@@ -1093,6 +1104,11 @@ def _extract_effective_deliverable(
     workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
+    if has_leading_reasoning_trace(segment_reasoning_preamble(response.content)):
+        # OMN-18278: the gate judges the raw provider text, so the
+        # no_leading_reasoning_trace floor sees the trace and refuses it; the
+        # caller still receives only the extracted deliverable.
+        workflow.gate_content_override = response.content
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
     # OMN-19525: the routing decision carries the shape the prompt declared.
@@ -1833,8 +1849,9 @@ def _inference_failure_cause(
     exceeded call budget is ``timeout``, and a response the provider cut off at
     ``finish_reason=length`` is ``quality_gate_refused``: the output-budget rule
     refused an answer the provider did give, and the rung records the stop
-    reason and the truncated flag that tell it apart from a rule's veto. Any
-    other final failure states no cause rather than inventing one.
+    reason and the truncated flag that tell it apart from a rule's veto. An
+    empty body or choices is ``provider_error``. Any other final failure
+    states no cause rather than inventing one.
     """
     if ladder_is_gate_decided(
         [
@@ -1851,6 +1868,12 @@ def _inference_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if failure_class is EnumDelegationFailureClass.TIMEOUT:
         return EnumDelegationTerminalFailureCause.TIMEOUT
+    if workflow.escalation_history and any(
+        marker in reason.lower()
+        for reason in workflow.escalation_history[-1].failure_reasons
+        for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+    ):
+        return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
 
 
@@ -2991,6 +3014,16 @@ class HandlerDelegationWorkflow:
         The provider facts are recorded first so the attempt row this response
         produces carries them.
         """
+        # A provider may return no text without an error field. Classify the
+        # raw response before extraction: withholding a nonempty deliverable
+        # is a content rejection, but absent output has nothing to grade.
+        if not response.error_message and not response.content.strip():
+            response = response.model_copy(
+                update={
+                    "content": "",
+                    "error_message": "API returned empty message content",
+                }
+            )
         observation = self._observe_provider_call(response)
         events = self._handle_inference_response(response)
         if observation is None:

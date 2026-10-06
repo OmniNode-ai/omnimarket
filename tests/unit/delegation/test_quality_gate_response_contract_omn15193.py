@@ -225,9 +225,10 @@ def test_declared_contract_rejects_empty_response() -> None:
 
 
 @pytest.mark.unit
-def test_declared_contract_strips_thinking_traces_before_parsing() -> None:
-    """A thinking-capable model's <think> preamble must not break JSON parsing,
-    mirroring the legacy-path behavior (_strip_thinking_traces)."""
+def test_declared_contract_refuses_a_leading_thinking_trace() -> None:
+    """OMN-18278: a leading <think> block fails the deterministic floor even
+    when a schema-conforming answer follows it; the answer is still segmented
+    off, so the verdict names the trace rather than a JSON parse failure."""
     content = (
         "<think>considering the tactical options here</think>"
         + _GOOD_TACTICAL_RESPONSE_WITH_I_CANNOT_RATIONALE
@@ -237,7 +238,12 @@ def test_declared_contract_strips_thinking_traces_before_parsing() -> None:
         response_contract=_TACTICAL_SCHEMA,
     )
 
-    assert result.passed is True
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert [evaluation.rule for evaluation in result.rule_evaluations] == [
+        "no_leading_reasoning_trace"
+    ]
+    assert result.reasoning_preamble_rule == "leading_paired_block"
 
 
 @pytest.mark.unit

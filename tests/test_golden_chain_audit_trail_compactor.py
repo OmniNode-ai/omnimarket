@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from omnimarket.models.model_audit_trail_compactor_command import ModelCompactorCommand
 from omnimarket.nodes.node_audit_trail_compactor.handlers.handler_audit_trail_compactor import (
     AuditReader,
     HandlerAuditTrailCompactor,
@@ -21,7 +22,6 @@ from omnimarket.nodes.node_audit_trail_compactor.handlers.handler_audit_trail_co
 )
 from omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input import (
     ModelAuditEntry,
-    ModelCompactorCommand,
 )
 
 

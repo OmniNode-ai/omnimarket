@@ -1,0 +1,24 @@
+name: node_audit_trail_compact_schedule_compute
+version: "1.0.0"
+description: "Daily runtime-tick schedule that emits the audit trail compactor command"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_audit_trail_compact_schedule_compute: "omnimarket.nodes.node_audit_trail_compact_schedule_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "audit", "schedule", "compactor"]
+pack: "build"
+display_name: "Audit Trail Compact Schedule"
+node_role: "compute"
