@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20117"
+title: "the delegate-skill orchestrator recovers in-flight state across a restart"
+summary: "Persists the original request and process incarnation in the durable claim context. A late inner terminal is recovered under the original outer command identity when the correlation identifies exactly one command, and a prior-process abandoned claim expires failed with runtime_shutdown. Tests: tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-restart-recovery"
+    statement: |-
+      A delegate-skill command whose orchestrator restarts between intake and inner completion must end with exactly one terminal: the recovered inner result when it arrives, otherwise a failed terminal with a typed cause naming the restart.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a late inner completion after restart is recovered under the original command identity, an abandoned prior-process claim expires failed with runtime_shutdown, and a reused correlation is never recovered -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The restart-recovery tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-restart-recovery-ac1"
+    description: "The tests prove recovery of a late inner terminal, the runtime_shutdown expiry of a prior-process claim and the refusal to recover a reused correlation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_restart_recovery_omn20117.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

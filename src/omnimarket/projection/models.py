@@ -180,6 +180,7 @@ class ProjectionTableConfig(BaseModel):
 
     topic: str
     table: str
+    route_aliases: tuple[str, ...] = ()
     schema_name: str = "public"
     # OMN-20152: the PHYSICAL schema of ``table`` in the dashboard database,
     # which the table read path (``projection/table_reader.py``) reads.

@@ -53,6 +53,10 @@ class ModelDelegationEscalationAttempt(BaseModel):
         default=(),
         description="Failure reason strings emitted by the quality gate.",
     )
+    deterministic_failure_rules: tuple[str, ...] = Field(
+        default=(),
+        description="Failed blocking deterministic rules, retained across retries.",
+    )
     # OMN-13535: per-attempt served usage + measured metered cost. On a metered
     # tier that is ATTEMPTED-but-rejected (quality gate fails) and escalates to a
     # cheaper/free tier, the metered call still ran and incurred real tokens/cost.

@@ -6,11 +6,13 @@ import hashlib
 import inspect
 import json
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from fastapi.testclient import TestClient
 
 from omnimarket.nodes.node_projection_board_probe_results.contract_topics import (
     SUBSCRIBE_TOPICS,
@@ -34,7 +36,14 @@ from omnimarket.nodes.node_projection_board_probe_results.models import (
     ModelBoardProbeResultPayload,
     ModelBoardProbeResultRow,
 )
+from omnimarket.projection.api_server import app, get_row_source, get_topic_map
+from omnimarket.projection.discovery import (
+    build_projection_topic_map,
+    load_projection_exposures_from_contract,
+)
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner
+from omnimarket.projection.table_reader import ProjectionReadError, TableRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -336,4 +345,103 @@ def test_sql_uses_the_declared_key_guard_and_latest_per_subject_order() -> None:
     assert (
         "ORDER BY finished_at DESC, source_offset DESC, execution_id DESC LIMIT 1"
         in compact_latest
+    )
+
+
+@pytest.fixture(scope="module")
+def exposure_config() -> ProjectionTableConfig:
+    # Contract discovery scans every node; build the map once per module.
+    return build_projection_topic_map()[TOPIC_EXPOSURE]
+
+
+@pytest.fixture
+def projection_client(
+    monkeypatch: pytest.MonkeyPatch, exposure_config: ProjectionTableConfig
+) -> TestClient:
+    cfg = exposure_config
+    source = TableRowSource()
+    rows = [
+        {
+            **_event(execution_id=f"probe-run-{cursor}").model_dump(mode="json"),
+            "projection_cursor": cursor,
+        }
+        for cursor in (1, 2)
+    ]
+
+    async def read_rows(
+        config: ProjectionTableConfig, **kwargs: Any
+    ) -> list[dict[str, Any]]:
+        assert config.topic == TOPIC_EXPOSURE
+        assert config.relation_schema == "omninode_internal"
+        return rows
+
+    async def latest(config: ProjectionTableConfig, **kwargs: Any) -> datetime:
+        return datetime(2026, 9, 28, 15, tzinfo=UTC)
+
+    monkeypatch.setattr(source, "rows", read_rows)
+    monkeypatch.setattr(source, "latest_event_at", latest)
+    monkeypatch.setitem(
+        app.dependency_overrides, get_topic_map, lambda: {cfg.topic: cfg}
+    )
+    monkeypatch.setitem(app.dependency_overrides, get_row_source, lambda: source)
+    return TestClient(app)
+
+
+@pytest.mark.parametrize("route", ["board_probe_results", TOPIC_EXPOSURE])
+def test_ac4_projection_route_reads_execution_rows_and_preserves_cursor_paging(
+    projection_client: TestClient, route: str
+) -> None:
+    response = projection_client.get(f"/projection/{route}?limit=1")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["topic"] == TOPIC_EXPOSURE
+    assert body["backing"] == "table"
+    assert body["rows"][0]["execution_id"] == "probe-run-1"
+    assert body["next_cursor"] == "1"
+    next_page = projection_client.get(f"/projection/{route}?limit=1&since=1").json()
+    assert next_page["rows"][0]["execution_id"] == "probe-run-2"
+    assert next_page["next_cursor"] is None
+    assert (
+        projection_client.get(f"/projection/{route}?correlation_id=other").status_code
+        == 422
+    )
+
+
+def test_projection_alias_preserves_database_failure(
+    projection_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = app.dependency_overrides[get_row_source]()
+
+    async def unavailable(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        raise ProjectionReadError("projection_database_unavailable", "database down")
+
+    monkeypatch.setattr(source, "rows", unavailable)
+    response = projection_client.get("/projection/board_probe_results")
+    assert response.status_code == 503
+    assert response.json()["error"] == "projection_database_unavailable"
+
+
+def test_projection_alias_collision_refuses_instead_of_reading_another_exposure(
+    projection_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic_map = app.dependency_overrides[get_topic_map]()
+    cfg = topic_map[TOPIC_EXPOSURE]
+    other = cfg.model_copy(update={"topic": "another.exposure"})
+    topic_map[other.topic] = other
+    monkeypatch.setitem(app.dependency_overrides, get_topic_map, lambda: topic_map)
+    response = projection_client.get("/projection/board_probe_results")
+    assert response.status_code == 409
+    assert response.json()["error"] == "ambiguous_projection_alias"
+    assert projection_client.get(f"/projection/{TOPIC_EXPOSURE}").status_code == 200
+
+
+@pytest.mark.parametrize("aliases", ["board_probe_results", [None], [""], [" spaced "]])
+def test_malformed_projection_route_aliases_are_excluded(aliases: Any) -> None:
+    contract = yaml.safe_load(CONTRACT_PATH.read_text())
+    contract["projection_api"]["route_aliases"] = aliases
+    assert (
+        load_projection_exposures_from_contract(
+            contract, contract["name"], CONTRACT_PATH
+        )
+        == ()
     )
