@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Fail-closed tenant-isolation guard for projection writers (OMN-14898).
 
+Delegation terminals always require declared attribution (OMN-20651),
+independently of this module's opt-in guards for other projection writes.
+
 Ground truth (superseding OMN-14898's own Phase-2 assumption): the envelope-side
 tenant stamp is already canonical (``omnibase_infra.shared.tenant_stamp``,
 OMN-14208) and the DB-side RLS enforcement already landed (migration 0023,
@@ -62,7 +65,9 @@ class UnmappedTenantIdentityError(ValueError):
 class TenantRequiredError(ValueError):
     """Raised when a projection write is refused for missing ``tenant_id``.
 
-    OMN-14898: with ``ENFORCE_TENANT_ISOLATION=true``, a writer that resolves
+    Delegation terminals always refuse missing attribution (OMN-20651).
+    Other projection writes use OMN-14898: with
+    ``ENFORCE_TENANT_ISOLATION=true``, a writer that resolves
     no tenant identity refuses the write rather than falling through to the
     shared ``'omninode'``/``'default'`` column default. The caller must raise
     this BEFORE any ``db.upsert()`` call so a refused write produces zero rows
@@ -474,69 +479,30 @@ def resolve_serving_tenant(tenant_value: object, *, topic: str) -> str:
     )
 
 
-#: The column a terminal write may name on the INSERT arm only. See
-#: :func:`terminal_write_tenant`.
+#: Legacy insert-only tenant column set for compatibility callers. Terminal
+#: writes now require declared attribution and return no insert-only columns.
 TENANT_INSERT_ONLY_COLUMNS: Final[frozenset[str]] = frozenset({"tenant_id"})
 
 
 def terminal_write_tenant(
     resolved_tenant_uuid: str | None, *, table: str
 ) -> tuple[str, frozenset[str]]:
-    """The tenant a TERMINAL projection write names, and whether it may rewrite one.
+    """Require the terminal's declared, resolved tenant before any upsert.
 
-    Returns ``(value, insert_only_columns)``.
+    OMN-20651: a writer's configured tenant is not the submitting tenant.
+    Missing attribution therefore raises even when isolation enforcement is
+    disabled. Neither writer configuration, the house tenant nor a database
+    default may author attribution for an unattributed delegation terminal.
 
-    OMN-18565. Both delegation writers -- the sync kernel handler and the async
-    runner -- used to OMIT ``tenant_id`` entirely when they could not resolve
-    one, and let the relation's column DEFAULT supply the house tenant on
-    INSERT. Migration 0042 removes that DEFAULT, because a schema-authored
-    attribution is invisible to the writer that appears to have made it and
-    indistinguishable, to a reader, from a deliberate one. That is what let a
-    tenant-less quality-gate verdict CREATE a row which the real terminal's
-    conflict-update was then refused on by the ``tenant_isolation`` policy's
-    USING half under FORCE ROW LEVEL SECURITY.
-
-    The house-tenant ruling itself is unchanged (2026-08-02; OMN-16831 option D
-    already moved the STAMP into the writer for this same reason, and
-    :func:`house_tenant_write_stamp` carries its full rationale). The stored
-    byte is identical to what the DEFAULT would have supplied. What changes is
-    that a writer is the author of it on every path, so with the DEFAULT gone a
-    write that names no tenant is refused by NOT NULL rather than silently
-    attributed.
-
-    THE FALLBACK IS INSERT-ONLY, and the reason is narrower than it first
-    looks. Omitting the key did two things at once: it let the DEFAULT fill a
-    fresh row, AND it left an existing row's attribution untouched on the
-    DO UPDATE arm. Only the first is replaced here.
-
-    It is NOT a way around the policy, and it is not what stops a cross-tenant
-    update. Row-level security is not evaluated against the SET clause at all:
-    the ``USING`` half is evaluated against the PRE-EXISTING row, and the
-    session GUC is derived from the row's own ``tenant_id`` -- the house tenant
-    on this arm -- so a pre-existing row under any other tenant makes the
-    predicate false and PostgreSQL refuses the whole statement whether or not
-    the column appears in ``DO UPDATE SET``. That is measured rather than
-    asserted, by
-    ``tests/test_omn18565_ordering_independent_verdict_terminal_rls.py``
-    ``TestTheInsertOnlyTenantArmIsNotAPolicyBypass``, which drives an
-    unattributed terminal at a row belonging to a real tenant and asserts the
-    refusal and the untouched row.
-
-    What it does buy is a backing store with NO row-level security -- the
-    in-memory double, SQLite, a superuser lane. There is no policy there to
-    refuse anything, and the SET clause is the only thing standing between a
-    late unattributed terminal and a real attribution it would otherwise
-    overwrite. A RESOLVED tenant is named on both arms exactly as before: it is
-    the event's own attribution and the row's authority on it.
-
-    One implementation for both writers, because "two writers nobody compared"
-    is the defect class this surface keeps producing.
+    Both the sync handler and async runner use this boundary. A resolved
+    tenant remains authoritative on both INSERT and UPDATE.
     """
-    if resolved_tenant_uuid is not None:
-        return resolved_tenant_uuid, frozenset()
-    return (
-        str(house_tenant_write_stamp(table=table)["tenant_id"]),
-        TENANT_INSERT_ONLY_COLUMNS,
+    if isinstance(resolved_tenant_uuid, str) and resolved_tenant_uuid.strip():
+        return resolved_tenant_uuid.strip(), frozenset()
+    raise TenantRequiredError(
+        f"{table} write refused: no tenant_id declared and resolved for the "
+        "delegation terminal (OMN-20651) -- missing tenant attribution; "
+        "refusing writer-configured, house-tenant and database-default fallbacks."
     )
 
 

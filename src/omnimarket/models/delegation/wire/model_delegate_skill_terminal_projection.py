@@ -92,9 +92,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("session_id", "sessionId"),
     )
     # string-id-ok: tenant_id is a named tenant identifier, not a UUID
-    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the delegation FSM's
-    # ONEX_TENANT_ID-sourced tenant identity when present. None means the
-    # delegation_events row falls back to the 'omninode' column default.
+    # Carried from the delegation FSM's declared tenant identity. A missing
+    # value is refused by the terminal writer before SQL (OMN-20651).
     tenant_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("tenant_id", "tenantId"),
