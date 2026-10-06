@@ -196,10 +196,6 @@ node_projection_sandbox_decisions onex.snapshot.projection.sandbox.decisions.v1
 node_projection_session_outcome onex.evt.omnimarket.projection-session-outcome-applied.v1
 node_projection_traces onex.evt.omnimarket.traces-snapshot.v1
 node_projection_voice_sessions onex.evt.omnimarket.projection-voice-sessions-applied.v1
-node_readiness_gate_orchestrator COLLECTING
-node_readiness_gate_orchestrator COMPLETE
-node_readiness_gate_orchestrator REPORTING
-node_readiness_gate_orchestrator SCORING
 node_recall_compute confidence
 node_recall_compute onex.evt.omnimarket.recall-completed.v1
 node_recall_compute onex.evt.omnimarket.recall-result.v1
