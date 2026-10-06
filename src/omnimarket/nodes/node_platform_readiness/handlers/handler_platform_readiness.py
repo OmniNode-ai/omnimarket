@@ -22,9 +22,9 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
-    "onex.evt.savings.estimation-completed.v1",  # onex-topic-allow: contract-declared
-    "onex.evt.model-router.routing-decision.v1",  # onex-topic-allow: contract-declared
-    "onex.evt.baselines.computation-completed.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.omnibase-infra.savings-estimated.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.omnibase-infra.routing-decision.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.omnibase-infra.baselines-computed.v1",  # onex-topic-allow: contract-declared
     "onex.evt.omnimarket.build-loop-dod-checked.v1",  # onex-topic-allow: contract-declared
 ]
 

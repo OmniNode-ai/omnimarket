@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17013"
+title: "The delegation receipt path preserves v2 terminal provider identity and pricing manifest version"
+summary: "The receipt runtime port subscribes to the v2 completed, routed-failed and unrouted-failed terminals and preserves backend_ref and the producer pricing_manifest_version. AC1 is bound to the two test files that prove it. The deployed-bus receipt readback is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-receipt-preserves-v2-terminal-identity"
+    statement: "The receipt path consumes v2 delegation terminals and keeps the producer's provider identity and pricing manifest version. The criterion below is transcribed from the change; its id is the label the binding item claims through binds_ac. A deployed-bus receipt is not bound here: it needs a deployed runtime, which this repository's hosted check cannot reach."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a v2 terminal maps backend_ref to provider identity and preserves the producer pricing_manifest_version -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The tests pass at the head and the identity tests fail at the merge base, where the receipt port reads only v1 terminals."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17013-ac1-v2-terminal-identity-preserved"
+    description: "AC1 hosted probe. The tests pass at the head and the identity tests fail at the merge base, where the receipt port reads only v1 terminals."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

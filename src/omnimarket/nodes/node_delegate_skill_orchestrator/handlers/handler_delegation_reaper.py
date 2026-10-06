@@ -11,9 +11,12 @@ from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCa
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    DELEGATION_RUNTIME_INSTANCE_ID,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
     terminal_from_record,
@@ -72,6 +75,10 @@ class HandlerDelegationReaper:
         for claim in stalled:
             try:
                 ctx = claim.context
+                restarted = (
+                    ctx.runtime_instance_id is not None
+                    and ctx.runtime_instance_id != DELEGATION_RUNTIME_INSTANCE_ID
+                )
                 terminal = ModelDelegateSkillFailed(
                     status="failed",
                     correlation_id=ctx.correlation_id,
@@ -82,9 +89,18 @@ class HandlerDelegationReaper:
                     ticket_id=ctx.ticket_id,
                     caller_lane=ctx.caller_lane,
                     session_id=ctx.session_id,
-                    terminal_failure_cause=EnumDelegationTerminalFailureCause.NO_TERMINAL,
+                    terminal_failure_cause=(
+                        EnumDelegationTerminalFailureCause.RUNTIME_SHUTDOWN
+                        if restarted
+                        else EnumDelegationTerminalFailureCause.NO_TERMINAL
+                    ),
                     error_message=(
-                        f"Claimed at {claim.claimed_at.isoformat()}, no terminal by "
+                        (
+                            "The owning runtime restarted before terminal delivery. "
+                            if restarted
+                            else ""
+                        )
+                        + f"Claimed at {claim.claimed_at.isoformat()}, no terminal by "
                         f"{ctx.deadline_at.isoformat()}, closed by the delegation reaper; "
                         "the command may or may not have run, its late result is kept "
                         "as attempt evidence."

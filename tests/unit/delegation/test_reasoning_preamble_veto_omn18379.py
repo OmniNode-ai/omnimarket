@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-18379: a leaked reasoning preamble must not veto, and must not mislabel.
+"""OMN-18379: segment reasoning; OMN-18278 rejects it before phrase checks.
 
 Three defects, one delegation run. The run is real: `43d269f5-d2ed-44cc-9338-
 04fdd2034d9a`, `document` class, 2026-09-14, recorded verbatim under
@@ -230,7 +230,7 @@ def test_ac2_policy_is_declared_in_the_contract_not_in_python() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ac3_accurate_does_not_fire_on_a_hedge_that_is_only_in_the_preamble() -> None:
+def test_ac3_leading_trace_is_refused_before_a_preamble_hedge_is_scored() -> None:
     """The whole defect, end to end, through the real gate entry point."""
     raw = _fixture("43d269f5_leaked_preamble_unpaired_think.txt")
     assert "unverified" in raw.lower(), "fixture must still carry the hedging phrase"
@@ -241,13 +241,14 @@ def test_ac3_accurate_does_not_fire_on_a_hedge_that_is_only_in_the_preamble() ->
 
     result = delta(_gate_input(raw))
 
-    accurate = next(
-        evaluation
-        for evaluation in result.rule_evaluations
-        if evaluation.rule == "accurate"
-    )
-    assert accurate.passed, accurate.detail
-    assert result.passed
+    assert not result.passed
+    assert result.fail_category == "fail_deterministic"
+    assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
+    # Once clean, the answer still does not inherit the scratchpad's hedge.
+    clean = delta(_gate_input(segmentation.answer))
+    accurate = next(rule for rule in clean.rule_evaluations if rule.rule == "accurate")
+    assert accurate.passed
+    assert clean.passed
 
 
 def test_ac3_accurate_still_fires_when_the_answer_itself_hedges() -> None:
@@ -256,7 +257,7 @@ def test_ac3_accurate_still_fires_when_the_answer_itself_hedges() -> None:
         "Here's a thinking process:\n\n1. Draft it.\n\n</think>\n\n"
         "# Report\n\nThis summary may be inaccurate and should not be relied on.\n"
     )
-    result = delta(_gate_input(raw))
+    result = delta(_gate_input(segment_reasoning_preamble(raw).answer))
 
     accurate = next(
         evaluation

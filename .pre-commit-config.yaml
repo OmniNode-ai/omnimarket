@@ -298,6 +298,7 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - id: check-yaml
       - id: end-of-file-fixer
       # This verbatim captured prompt intentionally contains merge-marker text.
       - id: check-merge-conflict

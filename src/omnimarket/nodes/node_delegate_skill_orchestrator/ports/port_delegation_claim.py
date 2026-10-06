@@ -158,6 +158,18 @@ class ProtocolDelegationReaperPort(Protocol):
     ) -> ModelDelegationReapOutcome: ...
 
 
+class ProtocolDelegationRecoveryPort(Protocol):
+    """Join a late inner result to its durable outer command and terminal slot."""
+
+    def pending_claims(
+        self, *, correlation_id: UUID
+    ) -> list[ModelStalledDelegationClaim]: ...
+
+    def record_terminal(
+        self, *, delivery_id: UUID, terminal: dict[str, object]
+    ) -> ModelDelegationTerminalOutcome: ...
+
+
 class _ProtocolClaimDatabase(
     ProtocolProjectionDatabaseSync, ProtocolProjectionAttestedWrite, Protocol
 ):
@@ -363,11 +375,11 @@ class DelegationClaimPort:
             )
         return outcome
 
-    def stalled_claims(
-        self, *, now: datetime, limit: int
+    def _pending_claims(
+        self, filters: dict[str, object]
     ) -> list[ModelStalledDelegationClaim]:
         stalled: list[ModelStalledDelegationClaim] = []
-        for row in self._database().query(CLAIMS_TABLE, {"terminal_json": ""}):
+        for row in self._database().query(CLAIMS_TABLE, filters):
             key = str(row.get(_DELIVERY_COLUMN, ""))
             if key.startswith(
                 (REAP_CONTEXT_PREFIX, TERMINAL_SLOT_PREFIX, LATE_EVIDENCE_PREFIX)
@@ -392,15 +404,42 @@ class DelegationClaimPort:
                 )
                 if claimed_at.tzinfo is None or claimed_at.utcoffset() is None:
                     continue
-                if context.deadline_at <= now:
-                    stalled.append(
-                        ModelStalledDelegationClaim(delivery_id, claimed_at, context)
-                    )
+                stalled.append(
+                    ModelStalledDelegationClaim(delivery_id, claimed_at, context)
+                )
             except Exception:
                 # A legacy or unreadable context cannot establish a reap deadline.
                 continue
         stalled.sort(key=lambda claim: claim.context.deadline_at)
-        return stalled[: max(0, limit)]
+        return stalled
+
+    def pending_claims(
+        self, *, correlation_id: UUID
+    ) -> list[ModelStalledDelegationClaim]:
+        # Include finished commands when deciding ambiguity: a delayed duplicate
+        # inner result must not answer a new command reusing the correlation.
+        deliveries: list[UUID] = []
+        for row in self._database().query(
+            CLAIMS_TABLE, {"correlation_id": str(correlation_id)}
+        ):
+            try:
+                deliveries.append(UUID(str(row[_DELIVERY_COLUMN])))
+            except (KeyError, ValueError):
+                continue
+        if len(deliveries) != 1:
+            return []
+        return self._pending_claims(
+            {"terminal_json": "", _DELIVERY_COLUMN: str(deliveries[0])}
+        )
+
+    def stalled_claims(
+        self, *, now: datetime, limit: int
+    ) -> list[ModelStalledDelegationClaim]:
+        return [
+            claim
+            for claim in self._pending_claims({"terminal_json": ""})
+            if claim.context.deadline_at <= now
+        ][: max(0, limit)]
 
     def reap(
         self, *, delivery_id: UUID, terminal: dict[str, object]
@@ -513,6 +552,7 @@ __all__ = [
     "ModelStalledDelegationClaim",
     "ProtocolDelegationIdempotencyPort",
     "ProtocolDelegationReaperPort",
+    "ProtocolDelegationRecoveryPort",
     "claims_schema",
     "default_claim_db_path",
     "resolve_delegation_claim_store",

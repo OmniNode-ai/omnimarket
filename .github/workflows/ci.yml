@@ -488,6 +488,14 @@ jobs:
       # SYNC with pre-commit hook 'omni-home-no-silent-default'.
       - name: OMNI_HOME no-silent-default gate (OMN-16856)
         run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
+      # OMN-19980: savings has one definition, in node_metering_summary_compute.
+      # Fails on a string literal feeding a baseline_model column, on a savings
+      # view whose live definition carries one, on 'claude-opus-4.1' outside the
+      # five frozen history migrations, and on SQL multiplying tokens by a price.
+      # Runs here, not only in the smart-selected suite, because it reads SQL and
+      # YAML that no import graph connects to the test.
+      - name: Single savings definition guard (OMN-19980)
+        run: uv run pytest tests/test_single_savings_definition.py -q -p no:randomly
       # OMN-19547 (golden-chain validation layer plan r4, Phase -1): every
       # contract that declares state_machine_version must carry only keys the
       # typed FSM models declare, load through ModelFSMSubcontract and pass

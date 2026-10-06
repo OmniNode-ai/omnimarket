@@ -284,6 +284,49 @@ class TestHarness:
         assert len(seen) == 2 * len(prompts)
         assert result.verdict is EnumComparisonVerdict.NO_DIFFERENCE
 
+    @pytest.mark.parametrize(
+        "sample", ["empty", "undersized", "undersized-method", "declared-size"]
+    )
+    def test_ac3_refusal_precedes_rung_and_grader_calls(self, sample: str) -> None:
+        required = _method().sample_size
+        method = _method()
+        count = required - 1
+        if sample == "empty":
+            count = 0
+        elif sample == "undersized-method":
+            count = required
+            method = _method(n=required - 1)
+        elif sample == "declared-size":
+            count = required
+            method = _method(n=required + 1)
+
+        calls: list[str] = []
+
+        def rung(prompt: ModelShadowPrompt) -> ModelShadowRungAnswer:
+            calls.append("rung")
+            return ModelShadowRungAnswer(content="answer")
+
+        def grader(prompt: ModelShadowPrompt, content: str) -> tuple[float, float]:
+            calls.append("grader")
+            return (1.0, 0.8)
+
+        result = run_shadow_comparison(
+            "preflight",
+            self._prompts(count),
+            rung_a=rung,
+            rung_b=rung,
+            grader=grader,
+            method=method,
+        )
+        assert result.verdict is EnumComparisonVerdict.REFUSED
+        assert result.required_n == max(required, method.sample_size)
+        assert any(
+            f"required n={result.required_n}" in reason for reason in result.reasons
+        )
+        assert result.observed_n == count
+        assert result.incomplete_a == result.incomplete_b == count
+        assert calls == []
+
     def test_a_transport_failure_is_incomplete_never_graded(self) -> None:
         graded: list[str] = []
 

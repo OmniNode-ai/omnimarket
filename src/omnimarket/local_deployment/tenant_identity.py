@@ -43,6 +43,7 @@ evidence rows live in. No new store, no new file, no new directory.
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 import threading
 from datetime import UTC, datetime
@@ -272,6 +273,35 @@ def _ensure_tables_on(adapter: SqliteDatabaseAdapter) -> None:
         conn.close()
 
 
+def _read_rows_read_only(
+    db_path: Path, table: str, filters: dict[str, str]
+) -> list[dict[str, object]]:
+    """Rows of ``table`` matching ``filters``, read with no write to the store.
+
+    ``SqliteDatabaseAdapter`` applies additive schema DDL whenever it connects,
+    so reading through it changes an older store. This opens the file
+    ``mode=ro`` instead, the way the metering read does. A relation the store
+    does not have reads as zero rows, which is what the adapter's query gave.
+    """
+    uri = f"{db_path.resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)  # no-contract-check: read-only identity read
+    conn.row_factory = sqlite3.Row
+    try:
+        clause = " AND ".join(f"{column} = ?" for column in filters)
+        try:
+            cursor = conn.execute(
+                f"SELECT * FROM {table} WHERE {clause}",
+                tuple(filters.values()),
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc) or "no such column" in str(exc):
+                return []
+            raise
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def read_local_tenant_identity(
     *, db_path: Path | None = None
 ) -> ModelLocalTenantIdentity | None:
@@ -290,8 +320,8 @@ def read_local_tenant_identity(
     if not resolved.exists():
         return None
 
-    rows = _adapter(resolved).query(
-        LOCAL_DEPLOYMENT_IDENTITY_TABLE, {"key": LOCAL_TENANT_IDENTITY_KEY}
+    rows = _read_rows_read_only(
+        resolved, LOCAL_DEPLOYMENT_IDENTITY_TABLE, {"key": LOCAL_TENANT_IDENTITY_KEY}
     )
     if not rows:
         return None
@@ -319,8 +349,8 @@ def read_local_tenant_identity(
         # rather than refusing a run over a column nothing decides on.
         recorded_at = datetime.fromtimestamp(0, tz=UTC)
 
-    mirror = _adapter(resolved).query(
-        TENANT_REGISTRY_MIRROR_TABLE, {"tenant_uuid": str(tenant_uuid)}
+    mirror = _read_rows_read_only(
+        resolved, TENANT_REGISTRY_MIRROR_TABLE, {"tenant_uuid": str(tenant_uuid)}
     )
     tenant_slug = (
         str(mirror[0]["tenant_slug"]) if mirror else _default_slug(tenant_uuid)
