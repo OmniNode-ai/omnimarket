@@ -27,13 +27,19 @@ import datetime as dt
 import gzip
 import hashlib
 import json
-import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
+from omnibase_spi.protocols.services import ProtocolSecretStore
 
+from omnimarket.handlers.handler_prune_binding import (
+    PruneConfigurationError,
+    load_prune_binding,
+    prune_database_url,
+)
 from omnimarket.nodes.node_dead_letter_prune_effect.models import (
     EnumDeadLetterDayStatus,
     EnumDeadLetterPruneVerdict,
@@ -82,45 +88,6 @@ class _WindowFailedError(Exception):
     pass
 
 
-class _LazyLocalDirSink:
-    """A ``LocalDirArchiveSink`` whose directory is resolved on first use.
-
-    Runtime dispatch constructs ``HandlerDeadLetterPrune`` with no arguments
-    at wiring time, before any tick has fired, so the runtime effects kernel
-    can register the node's topic subscription. Reading ``cfg.local_dir_env``
-    eagerly at that point raises ``KeyError`` on any lane that has not bound
-    it yet, which under strict wiring mode (``ONEX_WIRING_STRICT_MODE=1`` on
-    the dev lane and dogfood) stops the whole runtime-effects process from
-    booting (OMN-17001 pre-merge lab proof FAIL, two independent hosts).
-    Deferring the read to first real use follows the same idiom as
-    ``omnimarket.topic_archive.live._LazySink``.
-    """
-
-    requires_encryption = False
-
-    def __init__(self, env_var: str) -> None:
-        self._env_var = env_var
-
-    def _sink(self) -> LocalDirArchiveSink:
-        return LocalDirArchiveSink(Path(os.environ[self._env_var]))
-
-    @property
-    def location(self) -> str:
-        return self._sink().location
-
-    def put(self, name: str, data: bytes) -> None:
-        self._sink().put(name, data)
-
-    def get(self, name: str) -> bytes:
-        return self._sink().get(name)
-
-    def exists(self, name: str) -> bool:
-        return self._sink().exists(name)
-
-    def list_names(self, prefix: str) -> list[str]:
-        return self._sink().list_names(prefix)
-
-
 class HandlerDeadLetterPrune:
     """Archive-then-prune through an injected store, sink and cipher."""
 
@@ -132,27 +99,18 @@ class HandlerDeadLetterPrune:
         cipher: ProtocolArchiveCipher | None = None,
         now: dt.datetime | None = None,
         config: ModelDeadLetterPruneConfig | None = None,
+        secret_store: ProtocolSecretStore | None = None,
         max_rows_per_object: int | None = None,
         delete_batch_size: int | None = None,
     ) -> None:
         cfg = config or contract_config()
         self._cfg = cfg
-        if store is None or sink is None or cipher is None:
-            # Runtime dispatch constructs the handler with no arguments. The
-            # default binding is the contract's: event_ledger through the DSN in
-            # dsn_env, and the local_dir sink. Both fail fast on a missing env
-            # var here rather than falling back to a guessed location.
-            if store is None:
-                from omnimarket.nodes.node_dead_letter_prune_effect.handlers.postgres_dead_letter_store import (
-                    PostgresDeadLetterStore,
-                )
-
-                store = PostgresDeadLetterStore(os.environ[cfg.dsn_env])
-            sink = sink or _LazyLocalDirSink(cfg.local_dir_env)
-            cipher = cipher or NoArchiveCipher()
-        self._store: ProtocolDeadLetterStore = store
-        self._sink: ProtocolArchiveSink = sink
-        self._cipher: ProtocolArchiveCipher = cipher
+        self._secret_store = secret_store
+        # Construction stays pure: the due effect boundary resolves bindings.
+        self._close_store: Callable[[], None] | None = None
+        self._bound_store = store
+        self._bound_sink = sink
+        self._cipher: ProtocolArchiveCipher = cipher or NoArchiveCipher()
         self._now = now
         self._max_rows = max_rows_per_object or cfg.max_rows_per_object
         self._batch = delete_batch_size or cfg.delete_batch_size
@@ -160,6 +118,48 @@ class HandlerDeadLetterPrune:
         # the same idiom node_github_pr_poller_effect uses for its per-repo
         # `_last_polled`. There is one table here, so one timestamp.
         self._last_scheduled_run: dt.datetime | None = None
+
+    @property
+    def _store(self) -> ProtocolDeadLetterStore:
+        if self._bound_store is None:
+            raise PruneConfigurationError("database binding has not been resolved")
+        return self._bound_store
+
+    @property
+    def _sink(self) -> ProtocolArchiveSink:
+        if self._bound_sink is None:
+            raise PruneConfigurationError("archive binding has not been resolved")
+        return self._bound_sink
+
+    def _resolve_boundary(self) -> None:
+        if self._bound_store is not None and self._bound_sink is not None:
+            return
+        binding = load_prune_binding(self._cfg.binding, "dead_letter")
+        sink: ProtocolArchiveSink
+        if self._bound_sink is None:
+            if binding.archive_dir is None:
+                raise PruneConfigurationError(
+                    "config.dead_letter_prune.binding.archive_dir is missing"
+                )
+            sink = LocalDirArchiveSink(binding.archive_dir)
+        else:
+            sink = self._bound_sink
+        if self._bound_store is None:
+            from omnimarket.nodes.node_dead_letter_prune_effect.handlers.postgres_dead_letter_store import (
+                PostgresDeadLetterStore,
+            )
+
+            store = PostgresDeadLetterStore(
+                prune_database_url(binding, "dead_letter", store=self._secret_store)
+            )
+            self._bound_store = store
+            self._close_store = store.close
+        self._bound_sink = sink
+
+    def close(self) -> None:
+        """Release a store this handler constructed; injected stores remain caller-owned."""
+        if self._close_store is not None:
+            self._close_store()
 
     # -- entry ---------------------------------------------------------------
 
@@ -174,7 +174,7 @@ class HandlerDeadLetterPrune:
                 return ModelDeadLetterPruneResult(
                     verdict=EnumDeadLetterPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED,
                     cutoff_day=now.date() - dt.timedelta(days=retention),
-                    sink_location=self._sink.location,
+                    sink_location=None,
                     detail=(
                         "schedule.run_interval_seconds "
                         f"({self._cfg.schedule.run_interval_seconds}s) has not "
@@ -187,6 +187,15 @@ class HandlerDeadLetterPrune:
         )
         retention = request.retention_days or self._cfg.retention_days
         cutoff = as_of.date() - dt.timedelta(days=retention)
+        try:
+            self._resolve_boundary()
+        except PruneConfigurationError as exc:
+            return ModelDeadLetterPruneResult(
+                verdict=EnumDeadLetterPruneVerdict.REFUSED,
+                cutoff_day=cutoff,
+                sink_location=None,
+                detail=str(exc),
+            )
         base: dict[str, Any] = {
             "cutoff_day": cutoff,
             "sink_location": self._sink.location,

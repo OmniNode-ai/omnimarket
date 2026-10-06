@@ -98,19 +98,23 @@ config:
     # UPDATE only): until a grant lands, a scheduled run archives and verifies,
     # then fails the delete and prunes nothing; the next run reuses the
     # verified objects.
-    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # Resolved at a due effect boundary from the contract or services.prune
+    # in the runtime overlay; missing values return a typed refusal.
+    binding:
+      archive_dir: null
+      database_url: null
+      database_secret_ref: null
     # About 245 bytes per row in Postgres and about 480 as JSON; 250k rows is
     # about 120 MB of plaintext per object before gzip.
     max_rows_per_object: 250000
     delete_batch_size: 10000
-    local_dir_env: ONEX_CONSUMER_FLOW_ARCHIVE_DIR
     schedule:
       run_interval_seconds: 86400
       dry_run: false
     sinks:
       default: local_dir
       local_dir:
-        location_env: ONEX_CONSUMER_FLOW_ARCHIVE_DIR
+        location_config: binding.archive_dir
         encryption: [none, age-x25519]
       s3:
         # Objects under <prefix><lane>/<table>/day=<utc day>/, a sibling of

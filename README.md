@@ -165,3 +165,34 @@ Test markers: `unit` (isolated), `integration` (multi-component), `slow` (>1s),
 
 - [Contributing](.github/CONTRIBUTING.md)
 - [License](LICENSE)
+
+## Retention Effect Bindings
+
+The consumer-flow and dead-letter prune effects resolve their archive and
+DB bindings at the effect boundary, after the scheduled interval gate.
+`config.<kind>_prune.binding` accepts an absolute `archive_dir` and either
+`database_url` or `database_secret_ref`. The shipped bindings are unconfigured;
+a missing key returns a typed `refused` result with zero pruning. Skipped ticks
+resolve neither binding and return `sink_location: null`.
+
+Runtime instances also read the normal typed `~/.omnibase/overlay.yaml`, or the
+file selected by the bootstrap pointer `OMNIMARKET_PRUNE_BINDING_OVERLAY`.
+The file must be owner-only (`chmod 600`); an explicitly selected missing or
+invalid file refuses. Configure its `services.prune` section, for example:
+
+```yaml
+services:
+  prune:
+    consumer_flow.archive_dir: /var/lib/onex/archive/consumer-flow
+    consumer_flow.database_secret_ref: database.consumer_flow.retention_url
+    dead_letter.archive_dir: /var/lib/onex/archive/dead-letter
+    dead_letter.database_secret_ref: database.dead_letter.retention_url
+```
+
+These keys override contract bindings. A database reference replaces a
+contract URL, and a URL replaces a contract reference. References resolve
+through an injected secret store, the configured lane mapping, or the existing
+local credential store; no ambient DB-value environment fallback is used.
+Manual CLI archive options remain explicit, and its DB uses the same boundary.
+Archive verification, encryption, source drift, retention bounds, and exact-key
+deletes continue to govern every pruning run.

@@ -102,13 +102,17 @@ config:
     # keep dead-letter rows 30 days, then archive and prune.
     retention_days: 30
     day_basis: "coalesce(event_timestamp, ledger_written_at) UTC"
-    # The owning principal of event_ledger; fail fast when unset.
-    dsn_env: OMNIBASE_INFRA_DB_URL
+    # The owning principal of event_ledger; refuse before effects when unset.
+    # Resolved at a due effect boundary from the contract or services.prune
+    # in the runtime overlay; missing values return a typed refusal.
+    binding:
+      archive_dir: null
+      database_url: null
+      database_secret_ref: null
     # Bounds one object in memory: the 2026-09-09 self-loop rows average about
     # 14.5 KB as base64 JSON, so 100k rows is about 1.5 GB before gzip.
     max_rows_per_object: 100000
     delete_batch_size: 5000
-    local_dir_env: ONEX_DEAD_LETTER_ARCHIVE_DIR
     # OMN-19657: the daily runtime-tick schedule. Rolled out dry-run first on
     # the .201 lab lane to prove the schedule fires and touches nothing, then
     # flipped to dry_run: false once that pass is proven (PR lab-proof section
@@ -119,7 +123,7 @@ config:
     sinks:
       default: local_dir
       local_dir:
-        location_env: ONEX_DEAD_LETTER_ARCHIVE_DIR
+        location_config: binding.archive_dir
         encryption: [none, age-x25519]
       s3:
         # Objects under <prefix><topic>/partition=<p>/day=<utc day>/, next to
