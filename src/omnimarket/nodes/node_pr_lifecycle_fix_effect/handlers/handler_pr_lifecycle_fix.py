@@ -500,7 +500,10 @@ class HandlerPrLifecycleFix:
         describe the action that would be taken.
         """
         run = await self._run(command)
-        if command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+        if (
+            command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+            and not command.dry_run
+        ):
             # OMN-18069: the command was consumed, so it gets an answer on the
             # product PR whatever happened -- including (especially) when the
             # handler caught an exception and would otherwise have logged one
@@ -554,15 +557,16 @@ class HandlerPrLifecycleFix:
                 command.pr_number,
                 exc,
             )
-        await self._report_autobind_outcome(
-            command=command,
-            outcome=self._classify_autobind_outcome(
-                errored=run.error is not None,
-                companion_verified=run.occ_companion_verified,
-            ),
-            reason=run.fix_action,
-            resolved=(token, head_sha),
-        )
+        if not command.dry_run:
+            await self._report_autobind_outcome(
+                command=command,
+                outcome=self._classify_autobind_outcome(
+                    errored=run.error is not None,
+                    companion_verified=run.occ_companion_verified,
+                ),
+                reason=run.fix_action,
+                resolved=(token, head_sha),
+            )
         if head_sha is None:
             logger.error(
                 "PR lifecycle fix: no head sha for %s#%s, so no typed companion "
@@ -602,7 +606,13 @@ class HandlerPrLifecycleFix:
         occ_companion_verified = False
         delegation_info = _NOT_DELEGATED
         try:
-            fix_action, delegation_info = await self._route(command)
+            # A dry_run command (the landing orchestrator's shadow mode) is
+            # routed through the no-op adapters: it describes the action and
+            # sends nothing, whatever adapters this handler was built with.
+            router = HandlerPrLifecycleFix() if command.dry_run else self
+            fix_action, delegation_info = await HandlerPrLifecycleFix._route(
+                router, command
+            )
             fix_applied = True
             # OMN-14173 fail-closed accounting: the autobind arm's success is
             # measured by the EFFECT (a pushed OCC companion + Evidence-Source
@@ -614,7 +624,12 @@ class HandlerPrLifecycleFix:
                 command.block_reason
                 == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
             ):
-                verification = await self._occ_verifier.verify_companion(
+                verifier = (
+                    _UnverifiedOccCompanionVerifier()
+                    if command.dry_run
+                    else self._occ_verifier
+                )
+                verification = await verifier.verify_companion(
                     command.repo, command.pr_number, command.ticket_id
                 )
                 occ_companion_verified = verification.verified

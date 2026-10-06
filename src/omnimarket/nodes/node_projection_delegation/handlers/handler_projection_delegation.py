@@ -474,14 +474,9 @@ class HandlerProjectionDelegation:
             and exposure.table == TABLE
             and tuple(exposure.key_columns) == (CONFLICT_KEY,)
         ]
-        if len(rows) > 1:
-            raise RuntimeError(
-                f"contract declares {len(rows)} bus_backed per-row exposures over "
-                f"{TABLE!r} ({[exposure.topic for exposure in rows]!r}); this "
-                "handler republishes the written row to exactly one, and serving "
-                "only the first would leave the others a confident empty page"
-            )
-        self._row_exposure: ProjectionTableConfig | None = rows[0] if rows else None
+        # Every per-row exposure is republished from the one returned row, so
+        # none is left a confident empty page.
+        self._row_exposures: tuple[ProjectionTableConfig, ...] = tuple(rows)
         # OMN-18159 Phase 1b(ii). The four singleton aggregates, each a SQL
         # view this node's own migration 0039 grouped on tenant_id. Matched on
         # the aggregate key rather than on the topic name, for the reason the
@@ -503,7 +498,7 @@ class HandlerProjectionDelegation:
             for exposure in exposures
             if exposure.bus_backed
             and exposure not in aggregates
-            and exposure is not (rows[0] if rows else None)
+            and exposure not in rows
         ]
         if unservable:
             raise RuntimeError(
@@ -578,14 +573,15 @@ class HandlerProjectionDelegation:
                 "writer. Implement ProtocolProjectionAttestedWrite on this "
                 "adapter (OMN-18159 AC5)."
             )
-        exposure = self._row_exposure
         written = db.upsert_returning(
             TABLE,
             CONFLICT_KEY,
             row,
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
-            returning=tuple(exposure.columns) if exposure is not None else (),
+            returning=tuple(
+                dict.fromkeys(c for e in self._row_exposures for c in e.columns)
+            ),
         )
         self._publish_row_snapshot(written)
         self._publish_aggregate_snapshots(db, written)
@@ -682,31 +678,35 @@ class HandlerProjectionDelegation:
         rather than the process-local counter an earlier revision of the
         snapshot seam removed.
         """
-        exposure = self._row_exposure
-        if exposure is None or not written:
+        if not self._row_exposures or not written:
             return False
-        row = dict(written[0])
-        tenant = (
-            row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
-        )
-        message = encode_snapshot_delta(
-            exposure,
-            op="upsert",
-            row=row,
-            source_event_id=str(row.get(CONFLICT_KEY) or ""),
-            # The exposure's own topic, because the source event's topic is
-            # not reachable from every one of the three write paths and an
-            # inconsistent value across them would partition the ordering
-            # comparison by which path happened to write the row.
-            source_topic=exposure.topic,
-            source_partition=0,
-            source_offset=_write_ordering_token(row.get("written_at")),
-            observed_at=datetime.now(tz=UTC).isoformat(),
-            tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
-        )
-        if message is None:
-            return False
-        return self._resolve_publisher().publish(message)
+        stored = dict(written[0])
+        published = False
+        for exposure in self._row_exposures:
+            # Each topic carries only its own declared columns, so the lean
+            # decisions list does not pick up the heavy detail columns.
+            row = {c: stored[c] for c in exposure.columns if c in stored}
+            tenant = (
+                row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
+            )
+            message = encode_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(row.get(CONFLICT_KEY) or ""),
+                # The exposure's own topic, because the source event's topic is
+                # not reachable from every one of the three write paths and an
+                # inconsistent value across them would partition the ordering
+                # comparison by which path happened to write the row.
+                source_topic=exposure.topic,
+                source_partition=0,
+                source_offset=_write_ordering_token(stored.get("written_at")),
+                observed_at=datetime.now(tz=UTC).isoformat(),
+                tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
+            )
+            if message is not None:
+                published = self._resolve_publisher().publish(message) or published
+        return published
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.

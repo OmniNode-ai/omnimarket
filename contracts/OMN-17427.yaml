@@ -55,6 +55,20 @@ requirements:
       - id: "AC11"
         statement: |-
           AC11: each sibling clone attempt in hostile-reviewer.yml is wrapped in a timeout of at least 120 seconds -- falsifier: uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q fails on a 20 second budget
+  - id: "req-fix-effect-dry-run"
+    statement: |-
+      A dry_run fix command reaches no adapter and posts no marker, so the landing orchestrator's shadow mode has no live side effect.
+    acceptance:
+      - id: "AC12"
+        statement: |-
+          AC12: a PR lifecycle fix command carrying dry_run reaches no injected adapter on any of the eight block reasons and calls no outcome reporter -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q fails at the merge base
+  - id: "req-heal-repo-evidence-family"
+    statement: |-
+      The scheduled companion merge heal re-runs the repo-evidence dod-verify job and the Repo Evidence Dependency pollers that waited on a companion which merged afterwards.
+    acceptance:
+      - id: "AC13"
+        statement: |-
+          AC13: occ_companion_merge_heal.py admits repo-evidence / dod-verify and Repo Evidence Dependency under the pre-merge control -- falsifier: uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q fails on the unfixed script
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -80,6 +94,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The hostile reviewer sibling clone attempt budget is at or above the measured fetch floor."
     command: "uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q"
+  - kind: "tests"
+    description: "A dry_run fix command reaches no adapter and posts no marker on any block reason."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q"
+  - kind: "tests"
+    description: "The companion merge heal re-runs the repo-evidence family."
+    command: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -149,3 +169,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_review_clone_timeout_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn17427-ac12-fix-effect-dry-run"
+    description: "A dry_run fix command reaches no adapter and posts no marker, for every block reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn17427-ac13-heal-repo-evidence"
+    description: "The companion merge heal re-runs the repo-evidence dod-verify job and Repo Evidence Dependency pollers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]

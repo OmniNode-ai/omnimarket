@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Job Submit Effect (OMN-20604)
+#
+# Publishes the lab job supervisor's submitted command. The topic is declared
+# under submit_dispatch.command_topic, with NO event_bus and NO handler_routing
+# block, so runtime auto-wiring never attaches this node (the same reason as
+# node_lab_work_unit_effect: a runtime must not race the intended consumer).
+# The consumer is node_lab_job_orchestrator (plan M3), which declares the
+# subscription. job_id is the bus key and the dedup key; the reducer drops a
+# duplicate submission.
+name: node_lab_job_submit_effect
+contract_name: node_lab_job_submit_effect
+node_name: node_lab_job_submit_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+description: >
+  Publishes one canonical lab job spec to the supervisor's submitted command
+  topic, keyed by job_id, and returns a publication receipt.
+input_model:
+  name: ModelLabJobSpec
+  module: omnimarket.models.lab_job
+output_model:
+  name: ModelLabJobSubmitReceipt
+  module: omnimarket.nodes.node_lab_job_submit_effect.models.model_lab_job_submit_receipt
+submit_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-job-submitted.v1"
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+seam:
+  handler:
+    module: omnimarket.nodes.node_lab_job_submit_effect.handlers.handler_lab_job_submit_effect
+    class: HandlerLabJobSubmitEffect
+metadata:
+  description: "Lab job submission effect node"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-10-05"
+  tags: [effect, lab-job, submit]
+  related_tickets: ["OMN-20604"]
