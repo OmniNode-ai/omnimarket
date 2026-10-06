@@ -28,7 +28,6 @@ node_adr_draft_generation_compute markdown
 node_adr_draft_generation_compute onex.evt.omnimarket.adr-draft-generation-completed.v1
 node_adr_draft_generation_compute run_id
 node_adr_draft_generation_compute status
-node_audit_trail_compactor onex.evt.omnimarket.audit-trail-compacted.v1
 node_authorize onex.evt.omnimarket.authorize-completed.v1
 node_authorize onex.evt.omnimarket.authorize-failed.v1
 node_budget_policy_compute action

@@ -703,6 +703,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_alert_channel_liveness",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -713,7 +714,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -742,6 +744,7 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_alert_channel_liveness",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -2300,6 +2303,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_alert_channel_liveness",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -2310,7 +2314,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_alert_channel_liveness/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -2351,6 +2356,7 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_alert_channel_liveness",
         "service:omnimarket_projection_migration_runner"
       ]
     },

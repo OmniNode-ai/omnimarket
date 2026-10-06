@@ -1,5 +1,3 @@
-# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
 name: projection_alert_channel_liveness
 version: "1.0.0"
 description: >
@@ -8,9 +6,7 @@ description: >
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true
-  # OMN-20578: this directory carries only the migrations omnibase_infra
-  # vendors; the node's contract and handlers land with its wiring PR.
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_secrets: true
   side_effect_class: write_db

@@ -44,6 +44,7 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 _OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY"
 _DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
+_TRACE = "onex.snapshot.projection.delegation.correlation-trace.v1"
 _TABLE = "delegation_events"
 # A slug the writer resolves without a tenant registry row, as the OMN-19968
 # parity fixtures do; the read uses the UUID the writer actually stored.
@@ -234,3 +235,49 @@ def test_concurrent_first_opens_of_one_store_all_succeed(tmp_path: Path) -> None
         db_path = tmp_path / f"delegation-{attempt}.sqlite"
         assert _open_together(db_path, workers=8) == []
         assert _columns(db_path) >= {"id", "correlation_id", "trace_id"}
+
+
+async def test_a_fresh_store_serves_correlation_trace_tenant_scoped_with_cost(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    delegation_exposures: dict[str, ProjectionTableConfig],
+) -> None:
+    """The per-correlation detail exposure is served, not refused as
+    ``not_yet_bus_backed``, carries ``cost_usd``, and is scoped to its tenant."""
+    correlation_id = "19976000-0000-4000-8000-000000000301"
+    db_path = tmp_path / "delegation.sqlite"
+    adapter = SqliteDatabaseAdapter(db_path)
+    HandlerProjectionDelegation(publisher=_NullPublisher()).handle(
+        {
+            **_event(correlation_id, 3),
+            "metrics": {"cost_usd": 0.37},
+            "_db": adapter,
+        }
+    )
+    (stored,) = _rows(db_path)
+    _bind(monkeypatch, tmp_path, db_path)
+    cfg = delegation_exposures[_TRACE]
+    assert cfg.bus_backed is True
+    assert cfg.tenant_scoped is True
+    handler = HandlerProjectionRead(topic_map={_TRACE: cfg})
+    try:
+        served = await handler.handle(
+            ModelProjectionReadRequest(
+                topic=_TRACE,
+                tenant_id=str(stored["tenant_id"]),
+                row_correlation_id=correlation_id,
+            )
+        )
+        other = await handler.handle(
+            ModelProjectionReadRequest(
+                topic=_TRACE,
+                tenant_id="00000000-0000-4000-8000-00000000dead",
+                row_correlation_id=correlation_id,
+            )
+        )
+    finally:
+        await handler.close()
+    assert served.ok is True, served
+    assert [row["correlation_id"] for row in served.rows] == [correlation_id]
+    assert served.rows[0]["cost_usd"] == pytest.approx(0.37)
+    assert not other.rows, other

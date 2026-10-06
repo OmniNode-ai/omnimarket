@@ -8,6 +8,12 @@ hands back their replies. Same request, same result.
 
 from __future__ import annotations
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
+    EnumAcceptanceOperation,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request import (
+    ModelAcceptanceJudgeRequest,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.check_reply import (
     check_reply,
 )
@@ -23,14 +29,8 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.render_r
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.score_run import (
     score_run,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
-    EnumAcceptanceOperation,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_run_status import (
     EnumAcceptanceRunStatus,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request import (
-    ModelAcceptanceJudgeRequest,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_result import (
     ModelAcceptanceJudgeResult,

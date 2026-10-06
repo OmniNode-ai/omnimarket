@@ -343,10 +343,10 @@ class DelegationClaimPort:
         try:
             outcome = self._slot(delivery_id, terminal)
         except RuntimeError:
-            # No verdict came back. The dispatch is already billed, so fail
-            # towards answering the caller with this terminal, the behaviour
-            # before the slot existed, rather than losing it.
-            return ModelDelegationTerminalOutcome(won=True, held=None)
+            # An unacknowledged write is not a slot win: another terminal may
+            # already be held. Keep this attempt as evidence without publishing;
+            # the reaper will heal a committed slot or close an empty one.
+            outcome = ModelDelegationTerminalOutcome(won=False, held=None)
         if outcome.won:
             self._copy_terminal(delivery_id, terminal)
         else:

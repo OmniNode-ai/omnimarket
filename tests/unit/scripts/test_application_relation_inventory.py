@@ -418,8 +418,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-20154 (provider_quota_state) = 92.
     # +1 for OMN-20276's migration-only backfill audit table, declared in
     # scripts/application-relation-ownership.yaml in the same PR = 94.
-    # +2 for OMN-20578: delegation_routing_feedback and
-    # alert_channel_liveness_verdicts, declared and created in the same PR = 96.
+    # +1 for OMN-20576's alert_channel_liveness_verdicts table = 95.
+    # +1 for OMN-20578's delegation_routing_feedback, declared and created in
+    # the same PR = 96.
     assert census["source_created_tables"] == 96
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
@@ -583,7 +584,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # Its usage query creates no relation. This census counts declarations.
     # +1 for OMN-20154 (provider_quota_state) = 101.
     # +1 for OMN-20276 (delegation_events_outcome_backfill_omn20276) = 103.
-    # +2 for OMN-20578 (delegation_routing_feedback, alert_channel_liveness_verdicts) = 105.
+    # +1 for OMN-20576's alert_channel_liveness_verdicts = 104.
+    # +1 for OMN-20578 (delegation_routing_feedback) = 105.
     assert census["source_declared_tables"] == 105
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each

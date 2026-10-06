@@ -347,7 +347,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # deployment, so undeclared it would take the standalone branch and be
     # dispatched by nobody. Its node's pure fold,
     # HandlerProjectionUsageByModelDay, does NOT declare the capability.
+    #
+    # AlertChannelLivenessProjectionWriter follows, on the same reviewed terms.
+    # It is the only writer of alert_channel_liveness_verdicts, dispatched once
+    # per consumed liveness result by runtime auto-wiring, with no dedicated
+    # writer deployment. Its pure fold, HandlerProjectionAlertChannelLiveness,
+    # does NOT declare the capability.
     assert declared == {
+        "AlertChannelLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",

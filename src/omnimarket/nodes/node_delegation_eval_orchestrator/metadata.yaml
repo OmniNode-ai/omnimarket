@@ -5,11 +5,13 @@ omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: false
   full_runtime: false
-  requires_network: false
+  requires_network: true
   requires_secrets: false
   side_effect_class: none
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka>=0.10.0"
 tags: [orchestrator, delegation, evaluation]
 pack: "pipeline"
 display_name: "Delegation Eval Orchestrator"

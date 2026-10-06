@@ -30,6 +30,8 @@ What it refuses to do, on purpose:
 * **It never carries the author's text into a command.** The command is rebuilt
   from allowlisted tokens, so a falsifier cannot smuggle a shell metacharacter
   into the runner.
+* **It never guesses a runner.** A repository that declares none is reported
+  per label and the collector fails it by name (OMN-20332).
 * **It never hides a missing test.** A selector whose path exists in no
   candidate clone is still minted, against the first candidate, so pytest exits
   non-zero and the item reads FAILED (the OMN-19533 class).
@@ -57,6 +59,7 @@ __all__ = [
     "parse_falsifier_command",
     "self_accepted_bindings",
     "self_accepting_actor",
+    "unique_derived_id",
 ]
 
 #: Prefix of every derived evidence id. The label is appended lowercased.
@@ -64,6 +67,10 @@ DERIVED_ITEM_ID_PREFIX: Final[str] = "ac-falsifier-"
 
 _FALSIFIER_MARKER = re.compile(r"(?is).*(?:\bfalsifier\s*:|\bfalsified by\b)")
 _PYTEST_HEAD = re.compile(r"(?:\buv run\s+)?\bpytest\b")
+_JS_TEST_HEAD = re.compile(
+    r"\b(?:pnpm\s+(?:test\b|(?:exec\s+)?vitest\s+run\b)"
+    r"|(?:npx\s+)?vitest\s+run\b|npm\s+test\b)"
+)
 _REPO_HINT = re.compile(r"\bin (omni[a-z_]+|onex_change_control)\b")
 _PATH_TOKEN = re.compile(r"^[A-Za-z0-9_./-]+(::[A-Za-z0-9_\[\]-]+)?$")
 _K_EXPR = re.compile(r"^[A-Za-z0-9_ ()]+$")
@@ -82,22 +89,45 @@ def _is_test_path(token: str) -> bool:
     bare = token.split("::", 1)[0]
     if bare.startswith("/") or ".." in bare.split("/"):
         return False
-    return "/" in bare or bare.endswith(".py")
+    return "/" in bare or bare.endswith(
+        (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+    )
 
 
 def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
-    """The runnable ``uv run pytest`` selector a falsifier names, or None.
+    """The test selector after the first pytest or JS test head, or None.
 
-    Reads the first ``pytest`` in the text and consumes tokens while they are a
-    test path, an allowlisted flag, or ``-k``/``-m`` with a plain expression.
+    Under pytest, consumes tokens while they are a test path, an allowlisted
+    flag, or ``-k``/``-m`` with a plain expression. Under a JS head, only test
+    paths are consumed; any flag or other token ends the selector (OMN-20332).
     The first token that is none of those ends the selector, which is how
     ``... -v selects no test`` and ``... -q in omnibase_internal`` parse to the
-    command without the prose after it. A selector with no test path is
+    selector without the prose after it. A selector with no test path is
     unrunnable: ``uv run pytest over the verifier tests`` names nothing.
     """
-    head = _PYTEST_HEAD.search(text)
-    if head is None:
-        return None
+    # OMN-20332: the earliest head that names a path wins, so a JS mention in
+    # prose ahead of a pytest command never hides the Python check.
+    heads = sorted(
+        (
+            (match, is_pytest)
+            for match, is_pytest in (
+                (_PYTEST_HEAD.search(text), True),
+                (_JS_TEST_HEAD.search(text), False),
+            )
+            if match is not None
+        ),
+        key=lambda pair: pair[0].start(),
+    )
+    for head, is_pytest in heads:
+        parsed = _selector_after(text, head, is_pytest=is_pytest)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _selector_after(
+    text: str, head: re.Match[str], *, is_pytest: bool
+) -> ModelAcFalsifierCommand | None:
     tokens = text[head.end() :].split()
     kept: list[str] = []
     paths: list[str] = []
@@ -105,9 +135,11 @@ def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
     while index < len(tokens):
         raw = tokens[index]
         token = _strip(raw)
-        if token in _SAFE_FLAGS:
+        if not is_pytest and token.startswith("-"):
+            break
+        if is_pytest and token in _SAFE_FLAGS:
             kept.append(token)
-        elif token in _EXPR_FLAGS and index + 1 < len(tokens):
+        elif is_pytest and token in _EXPR_FLAGS and index + 1 < len(tokens):
             value = tokens[index + 1]
             consumed = 1
             if value[:1] in "\"'" and not (len(value) > 1 and value[-1] == value[0]):
@@ -137,7 +169,7 @@ def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
         return None
     hint = _REPO_HINT.search(text[head.end() :])
     return ModelAcFalsifierCommand(
-        command="uv run pytest " + " ".join(kept),
+        selector=" ".join(kept),
         first_path=paths[0].split("::", 1)[0],
         repo_hint=hint.group(1) if hint else None,
     )
@@ -293,7 +325,7 @@ def _declared_item_ids(dod_items: Sequence[Any]) -> set[str]:
     }
 
 
-def _unique_derived_id(label: str, taken: set[str]) -> str:
+def unique_derived_id(label: str, taken: set[str]) -> str:
     """OMN-19267: a derived id no declared item carries.
 
     ``ac-falsifier-<label>`` unless the contract already declares that id, in
@@ -320,6 +352,7 @@ def derive_falsifier_items(
     *,
     repo_candidates: Sequence[str],
     path_exists: Callable[[str, str], bool],
+    declared_runner: Callable[[str], str | None],
 ) -> tuple[list[dict[str, Any]], ModelDodAcceptanceSummary]:
     """One executable evidence item per accepted, runnable criterion falsifier.
 
@@ -327,11 +360,14 @@ def derive_falsifier_items(
     PR-bound items name, in contract order. ``path_exists(repo, path)`` says
     whether a clone holds the selector's first path; the repo that holds it
     runs it, and when none does the first candidate runs it and fails visibly.
+    ``declared_runner(repo)`` supplies that repository's test runner prefix;
+    a repository that declares none is reported for the collector to fail.
     """
     accepted = _accepted_labels(dod_items)
     taken_ids = _declared_item_ids(dod_items)
     items: list[dict[str, Any]] = []
     unrunnable: list[str] = []
+    undeclared_runner: list[tuple[str, str]] = []
     declared = 0
     for label, statement in _declared_criteria(contract):
         if label not in accepted:
@@ -365,20 +401,26 @@ def derive_falsifier_items(
         else:
             unrunnable.append(label)
             continue
-        item_id = _unique_derived_id(label, taken_ids)
+        runner = declared_runner(repo)
+        if runner is None:
+            # OMN-20332: no declared runner means a named failure, never a guess.
+            undeclared_runner.append((label, repo))
+            continue
+        command = f"{runner} {parsed.selector}"
+        item_id = unique_derived_id(label, taken_ids)
         taken_ids.add(item_id)
         items.append(
             {
                 "id": item_id,
                 "description": (
                     f"{label} falsifier, run from the ticket's own accepted "
-                    f"criterion: {parsed.command}"
+                    f"criterion: {command}"
                 ),
                 "source": "generated",
                 "checks": [
                     {
                         "check_type": "test_passes",
-                        "check_value": parsed.command,
+                        "check_value": command,
                         "cwd": "${OMNI_HOME}/" + repo,
                     }
                 ],
@@ -389,6 +431,7 @@ def derive_falsifier_items(
         declared_falsifier_count=declared,
         runnable_count=len(items),
         unrunnable_labels=tuple(unrunnable),
+        undeclared_runner=tuple(undeclared_runner),
         derived_item_ids=tuple(str(item["id"]) for item in items),
         self_accepted_bindings=self_accepted_bindings(dod_items),
     )

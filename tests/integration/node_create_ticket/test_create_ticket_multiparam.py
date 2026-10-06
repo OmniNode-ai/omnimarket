@@ -26,7 +26,16 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+    ModelTicketGuardDecision,
 )
+
+
+class _AdmitGuard:
+    """The ticket-creation guard seam (OMN-20595), admitting every create."""
+
+    def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
+        del tool_input
+        return ModelTicketGuardDecision(admitted=True, guard_path="/test/guard.py")
 
 
 class _MockLinearTicketClient:
@@ -135,7 +144,9 @@ def test_create_ticket_multiparam(
 ) -> None:
     # Injected on every case; only the "created" cases actually invoke it —
     # dry_run and error cases short-circuit before the Linear call.
-    handler = HandlerCreateTicket(linear_client=_MockLinearTicketClient())
+    handler = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+    )
     result = handler.handle(ModelCreateTicketRequest(**payload))
 
     assert isinstance(result, ModelCreateTicketResult)
@@ -190,9 +201,9 @@ def test_minimal_skill_cli_payload_shape_validates() -> None:
     request = ModelCreateTicketRequest(**injected_payload)
     assert request.allow_arch_violation is False
 
-    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
-        request
-    )
+    result = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+    ).handle(request)
     assert result.status == "created"
     assert result.ticket_id == "OMN-90002"
     assert result.ticket_url == "https://linear.app/omninode/issue/OMN-90002"
@@ -207,17 +218,19 @@ def test_allow_arch_violation_field_is_accepted(allow: bool) -> None:
         title="Ship with an arch override", allow_arch_violation=allow
     )
     assert request.allow_arch_violation is allow
-    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
-        request
-    )
+    result = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+    ).handle(request)
     assert result.status == "created"
     assert result.ticket_id
 
 
 @pytest.mark.integration
-def test_created_ticket_emits_structured_description_body() -> None:
-    """A real (non-dry-run, valid) request must materialize a DoD checklist."""
-    result = HandlerCreateTicket(linear_client=_MockLinearTicketClient()).handle(
+def test_created_ticket_passes_the_description_through() -> None:
+    """The caller's description is the body filed, with nothing appended (OMN-20595)."""
+    result = HandlerCreateTicket(
+        ticket_guard=_AdmitGuard(), linear_client=_MockLinearTicketClient()
+    ).handle(
         ModelCreateTicketRequest(
             title="Ship the widget",
             description="implement the widget",
@@ -225,5 +238,4 @@ def test_created_ticket_emits_structured_description_body() -> None:
         )
     )
     assert result.status == "created"
-    assert "## Definition of Done" in result.description_body
-    assert "- [ ] Verified in `omnimarket`" in result.description_body
+    assert result.description_body == "implement the widget"

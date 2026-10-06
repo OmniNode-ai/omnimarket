@@ -98,9 +98,11 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_instruction import (
@@ -143,6 +145,9 @@ from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
+)
+from omnimarket.inference.provider_response_error import (
+    provider_failure_class_from_error_message,
 )
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -733,6 +738,8 @@ def _stale_response_rejection(
 
 def _should_escalate_inference_error(error_message: str) -> bool:
     """Return whether an inference error should retry on a higher tier."""
+    if provider_failure_class_from_error_message(error_message) is not None:
+        return True
     normalized = error_message.lower()
     return not any(
         marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
@@ -762,6 +769,9 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     inference effect raised — never a blanket UNKNOWN — so the emitted
     ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
     """
+    provider_class = provider_failure_class_from_error_message(error_message)
+    if provider_class is not None:
+        return provider_class
     normalized = error_message.lower()
     # OMN-20157: a typed provider refusal about the account or the model leads
     # its message with the class value (``describe_provider_refusal``), and is
@@ -863,6 +873,7 @@ _CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
         TRUNCATION_CHECK_NAME,
         UNRESOLVED_PREAMBLE_CHECK_NAME,
         RESIDUAL_REASONING_TAG_CHECK_NAME,
+        LEADING_REASONING_TRACE_CHECK_NAME,
     }
 )
 
@@ -1093,6 +1104,11 @@ def _extract_effective_deliverable(
     workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
+    if has_leading_reasoning_trace(segment_reasoning_preamble(response.content)):
+        # OMN-18278: the gate judges the raw provider text, so the
+        # no_leading_reasoning_trace floor sees the trace and refuses it; the
+        # caller still receives only the extracted deliverable.
+        workflow.gate_content_override = response.content
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
     # OMN-19525: the routing decision carries the shape the prompt declared.

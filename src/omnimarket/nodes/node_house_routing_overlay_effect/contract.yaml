@@ -18,6 +18,7 @@ name: node_house_routing_overlay_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
 
 description: >
   EFFECT: declares or retires a HOUSE inference rung as rows in
