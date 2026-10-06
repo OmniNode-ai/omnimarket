@@ -31,6 +31,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Final
 
@@ -91,17 +92,51 @@ def _resolved_refs(workflow_dir: Path) -> list[list[object]]:
     return rows
 
 
+def _ref_diff(
+    expected: list[list[object]], actual: list[list[object]]
+) -> tuple[list[list[object]], list[list[object]]]:
+    """Return (missing, extra) rows, comparing file, action and resolved commit.
+
+    The line number is carried in each row for the message but is not compared: a
+    step added above a ``uses:`` line moves it without changing what it runs, and a
+    line-keyed golden failed every pull request once ``ci.yml`` gained a step.
+    """
+
+    def key(row: list[object]) -> tuple[object, object, object]:
+        return (row[0], row[2], row[3])
+
+    expected_count = Counter(key(row) for row in expected)
+    actual_count = Counter(key(row) for row in actual)
+    missing_keys = expected_count - actual_count
+    extra_keys = actual_count - expected_count
+    missing = [row for row in expected if key(row) in missing_keys]
+    extra = [row for row in actual if key(row) in extra_keys]
+    return missing, extra
+
+
 @pytest.mark.unit
 def test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit() -> None:
     golden = json.loads(_GOLDEN.read_text(encoding="utf-8"))
     expected = golden["refs"]
     # Positive control: the golden is the full set, not a vacuous one.
     assert len(expected) >= 300, f"golden has only {len(expected)} uses lines"
-    actual = _resolved_refs(_WORKFLOWS)
-    missing = [row for row in expected if row not in actual]
-    extra = [row for row in actual if row not in expected]
+    missing, extra = _ref_diff(expected, _resolved_refs(_WORKFLOWS))
     assert not missing, f"golden refs no longer present: {missing[:10]}"
     assert not extra, f"refs not in the b181b79a6 golden: {extra[:10]}"
+
+
+@pytest.mark.unit
+def test_action_ref_diff_ignores_line_shift_and_catches_a_moved_pin() -> None:
+    """Positive controls for the comparison: a shifted line is no mismatch."""
+    golden = [["ci.yml", 10, "actions/checkout", "a" * 40]]
+    shifted = [["ci.yml", 18, "actions/checkout", "a" * 40]]
+    assert _ref_diff(golden, shifted) == ([], [])
+    moved = [["ci.yml", 10, "actions/checkout", "b" * 40]]
+    missing, extra = _ref_diff(golden, moved)
+    assert missing == golden
+    assert extra == moved
+    dropped: list[list[object]] = []
+    assert _ref_diff(golden, dropped) == (golden, [])
 
 
 @pytest.mark.unit

@@ -79,6 +79,12 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
+    ModelQualityGateIntent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+    ModelRoutingIntent,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -194,6 +200,61 @@ def _assert_no_response_shape(
 class TestNoProviderResponseIsNeverAQualityScore:
     """Provider-side failures carry an outcome and no score, through the handler."""
 
+    @pytest.mark.parametrize("content", ["", " ", "\n\t "])
+    def test_blank_response_without_an_error_is_an_unscored_failure(
+        self, content: str
+    ) -> None:
+        cid = uuid4()
+        handler = _routed_workflow(cid)
+        events = handler.handle_inference_response(
+            ModelInferenceResponseData(
+                correlation_id=cid,
+                content=content,
+                model_used="qwen3-coder-30b",
+                latency_ms=50,
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+            )
+        )
+
+        terminal = _only_terminal(events)
+        _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
+        assert handler.workflows[cid].state == EnumDelegationState.FAILED
+        assert terminal.terminal_failure_cause is (
+            EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+        )
+        assert terminal.content == ""
+        assert terminal.prompt_tokens == 100
+        assert terminal.completion_tokens == 50
+        assert terminal.total_tokens == 150
+        assert terminal.escalation_count == 0
+        assert terminal.attempts_count == 1
+        assert terminal.model_used == "qwen3-coder-30b"
+        assert not any(
+            isinstance(event, (ModelQualityGateIntent, ModelRoutingIntent))
+            for event in events
+        )
+
+    def test_nonempty_output_withheld_by_extraction_still_reaches_the_gate(
+        self,
+    ) -> None:
+        cid = uuid4()
+        handler = _routed_workflow(cid)
+        content = "I need to consider how to write these tests before answering."
+        events = handler.handle_inference_response(
+            ModelInferenceResponseData(
+                correlation_id=cid,
+                content=content,
+                model_used="qwen3-coder-30b",
+                latency_ms=50,
+            )
+        )
+
+        assert not any(isinstance(event, ModelDelegationResult) for event in events)
+        assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
+        assert any(isinstance(event, ModelQualityGateIntent) for event in events)
+
     def test_quota_is_provider_quota_with_the_quota_cause(self) -> None:
         terminal = _inference_failure_terminal("HTTP 429: rate limit exceeded")
 
@@ -222,6 +283,18 @@ class TestNoProviderResponseIsNeverAQualityScore:
         )
 
         _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
+        assert (
+            terminal.terminal_failure_cause
+            is EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+        )
+
+    def test_unclassified_inference_error_does_not_invent_a_provider_cause(
+        self,
+    ) -> None:
+        terminal = _inference_failure_terminal("unclassified adapter failure")
+
+        _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
+        assert terminal.terminal_failure_cause is None
 
 
 class TestGradedResponsesKeepTheirScoreAndGetAVerdict:

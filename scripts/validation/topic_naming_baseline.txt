@@ -2,20 +2,9 @@
 # All topics listed here were present in merged contracts before the producer-segment
 # allowlist check was introduced. Fix these violations in separate follow-up work.
 # Do NOT add new topics here — new violations are BLOCKED.
+# This file is shrink-only and holds exactly one consumed foreign topic.
 #
 # Format: one topic string per line. Lines starting with '#' are ignored.
-
-# TODO: build-loop producer should be omnimarket
-onex.evt.build-loop.dod-checked.v1
-
-# TODO: deploy producer should be omnibase-infra
-onex.evt.deploy.rebuild-completed.v1
-onex.cmd.deploy.rebuild-requested.v1
-
-# TODO: savings/model-router/baselines producers should be omnimarket
-onex.evt.savings.estimation-completed.v1
-onex.evt.model-router.routing-decision.v1
-onex.evt.baselines.computation-completed.v1
 
 # OMN-16930: onex.tenant.events is the control-plane tenant-lifecycle topic
 # OWNED BY onex-api (omninode_infra/docker/onex-api/topic_constants.py

@@ -13,11 +13,14 @@ shape they saw before.
 
 from __future__ import annotations
 
+import json
+import sys
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.nodes.node_dod_verify import __main__ as dod_main
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
 )
@@ -113,3 +116,91 @@ def test_an_unlinked_verdict_projects_a_null_delegation_run() -> None:
     )
     assert result.row is not None
     assert result.row.delegation_correlation_id is None
+
+
+@pytest.mark.parametrize("delegation", [_DELEGATION, None])
+def test_cli_carries_the_explicit_delegation_link_to_the_verdict(
+    delegation: UUID | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    verification = uuid4()
+    argv = [
+        "node_dod_verify",
+        "--ticket-id",
+        "OMN-19528",
+        "--execution-audience",
+        "hosted",
+        "--correlation-id",
+        str(verification),
+    ]
+    if delegation is not None:
+        argv += ["--delegation-correlation-id", str(delegation)]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.delenv("ONEX_EVIDENCE_ROOT", raising=False)
+
+    def run_verification(
+        self: HandlerDodVerify, command: ModelDodVerifyStartCommand
+    ) -> tuple[ModelDodVerifyState, object]:
+        assert command.correlation_id == verification
+        assert command.delegation_correlation_id == delegation
+        state = self.handle(
+            command,
+            evidence_results=[
+                ModelEvidenceCheckResult(
+                    evidence_id="dod-001",
+                    description="check dod-001",
+                    status=EnumEvidenceCheckStatus.VERIFIED,
+                )
+            ],
+        )
+        assert isinstance(state, ModelDodVerifyState)
+        event = self.make_completed_event(state)
+        assert event.delegation_correlation_id == delegation
+        return state, event
+
+    monkeypatch.setattr(HandlerDodVerify, "run_verification", run_verification)
+    dod_main.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["correlation_id"] == str(verification)
+    row = (
+        HandlerProjectionDodVerdict()
+        .handle(
+            ModelDodVerdictProjectionRequest(
+                event=ModelDodVerdictWire.model_validate(payload)
+            )
+        )
+        .row
+    )
+    assert row is not None
+    assert row.delegation_correlation_id == delegation
+    if delegation is None:
+        assert "delegation_correlation_id" not in payload
+
+
+def test_cli_rejects_a_malformed_delegation_link_before_verification(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "--ticket-id",
+            "OMN-19528",
+            "--execution-audience",
+            "hosted",
+            "--delegation-correlation-id",
+            "not-a-uuid",
+        ],
+    )
+
+    def unexpected_handler() -> HandlerDodVerify:
+        pytest.fail("malformed delegation link reached verification")
+
+    monkeypatch.setattr(dod_main, "HandlerDodVerify", unexpected_handler)
+    with pytest.raises(SystemExit) as exc:
+        dod_main.main()
+    assert exc.value.code == 2
+    assert "invalid UUID value" in capsys.readouterr().err

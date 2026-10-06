@@ -178,6 +178,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+import psycopg2
 import pytest
 from omnibase_core.models.contracts.subcontracts.model_event_bus_subcontract import (
     ModelEventBusSubcontract,
@@ -197,6 +198,9 @@ from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     PreparedWiring,
+    ProjectionDatabaseOperations,
+    ProjectionDatabaseTarget,
+    _build_projection_db_adapter,
     _prepare_handler_wiring,
     _resolve_projection_database_target,
 )
@@ -224,9 +228,8 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 # buys hermeticity without weakening what the gate proves.
 _UNREACHABLE_DSN = "postgresql://gate:gate@127.0.0.1:9/gate"
 
-# The substring the runtime's own refusal carries. Matched on the DLQ
-# envelope's ``failure_reason``, which is where the projection dispatch
-# callback records why it dropped the event.
+# The original refusal text, observed on either the DLQ or the callback's
+# offset-withholding exception. The latter wraps the typed failure cause.
 _TENANT_AUTHORITY_REFUSAL = "no cryptographically verified authority"
 
 
@@ -760,16 +763,19 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
     """
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
+    # Write failures now escape the callback instead of being DLQ'd. Checking
+    # only the DLQ would accept the original authority defect on that path.
     refusals = [
         reason
-        for reason in run.dlq_failure_reasons
+        for reason in (*run.dlq_failure_reasons, *run.not_materialized_failures)
         if _TENANT_AUTHORITY_REFUSAL in reason
+        or "ProjectionTenantContextError" in reason
     ]
     assert not refusals, (
         f"[{case.chain_id}] the projection write was refused before reaching "
-        f"the database: {refusals}. The event was routed to {case.dlq_topic} "
-        f"while the dispatch reported SUCCESS, so the caller keeps its 202 "
-        f"and no row is written. See OMN-16831."
+        f"the database: {refusals}. Neither a DLQ nor an offset-withholding "
+        f"failure may make tenant attribution depend on a bound authority "
+        f"(OMN-16831)."
     )
 
 
@@ -882,3 +888,79 @@ async def test_a_write_that_produces_no_row_fails_closed(
         f"downstream consumer a projection succeeded when it materialized "
         f"nothing."
     )
+
+
+def _tenant_relation_operations() -> list[object]:
+    """Enumerate the registry's tenant read/write seams from real topology.
+
+    Contracts now declare the physical ``public`` schema, so a literal search
+    for ``schema: tenant`` misses the affected relations. Resolve the domain
+    instead, including read-only declarations and both write entry points.
+    """
+    manifest = discover_contracts_from_paths(sorted(_SRC_ROOT.glob("*/contract.yaml")))
+    assert not manifest.errors, manifest.errors
+    topology = load_topology_profile("local")
+    cases: list[object] = []
+    for contract in manifest.contracts:
+        if contract.db_io is None or not contract.db_io.db_tables:
+            continue
+        target = _resolve_projection_database_target(contract.db_io.db_tables, topology)
+        for table_target in target.table_targets:
+            if table_target.domain.value != "TENANT":
+                continue
+            table = table_target.table
+            operations = []
+            if table.access in {"write", "read_write"}:
+                operations.extend(("upsert", "upsert_returning"))
+            if table.access in {"read", "read_write"}:
+                operations.append("query")
+            for operation in operations:
+                cases.append(
+                    pytest.param(
+                        target,
+                        table.name,
+                        operation,
+                        id=f"{contract.name}-{table.name}-{operation}",
+                    )
+                )
+    assert cases, "the tenant-domain registry gate must cover at least one relation"
+    return cases
+
+
+@pytest.mark.parametrize(
+    ("target", "table", "operation"), _tenant_relation_operations()
+)
+async def test_every_tenant_relation_reaches_sql_without_bound_authority(
+    target: ProjectionDatabaseTarget, table: str, operation: str
+) -> None:
+    """Attribution reaches connect; an authority is never a precondition.
+
+    This covers the common mechanism across the registry, not deployed schema
+    or grant health. No adapter or connection is injected: the real adapter
+    must reach the discard port and fail with the driver's connection error.
+    An authority refusal, undeclared access, or domain mismatch fails here.
+    """
+    adapter = cast(
+        "ProjectionDatabaseOperations",
+        _build_projection_db_adapter(
+            {binding.binding_ref: _UNREACHABLE_DSN for binding in target.bindings},
+            target,
+            None,
+            None,
+        ),
+    )
+    tenant_id = str(uuid4())
+    row: dict[str, object] = {"correlation_id": str(uuid4()), "tenant_id": tenant_id}
+    try:
+        if operation == "query":
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.query(table, {"tenant_id": tenant_id})
+        elif operation == "upsert_returning":
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.upsert_returning(table, "correlation_id", row)
+        else:
+            assert operation == "upsert"
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.upsert(table, "correlation_id", row)
+    finally:
+        adapter.close()
