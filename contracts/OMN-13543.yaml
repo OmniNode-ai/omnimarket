@@ -21,7 +21,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn13543-ac1-boundary-terminals-carry-banked-usage"
+  - id: "dod-omn13543-ac1-banked-usage-terminals"
     description: "AC1 hosted probe. The focused tests pass at the head and fail at the merge base, where boundary-failure terminals report zero usage."
     source: "manual"
     checks:
