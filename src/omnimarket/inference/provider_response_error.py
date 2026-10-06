@@ -109,6 +109,10 @@ class ModelProviderResponseError(BaseModel):
         by_status = failure_class_for_status(self.code)
         if by_status is not None:
             return by_status
+        # An upstream server failure remains retryable even when the vendor's
+        # sentence mentions its key, authorization or quota service (OMN-18265).
+        if self.code is not None and 500 <= self.code < 600:
+            return EnumDelegationFailureClass.MODEL_UNAVAILABLE
         if any(token in haystack for token in _RATE_LIMIT_TOKENS):
             return EnumDelegationFailureClass.RATE_LIMITED
         if any(token in haystack for token in _AUTH_TOKENS):
