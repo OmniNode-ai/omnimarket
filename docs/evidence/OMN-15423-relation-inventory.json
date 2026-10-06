@@ -7894,6 +7894,7 @@
       "readers": [
         "node_delegate_skill_orchestrator",
         "node_projection_delegation",
+        "node_projection_read_effect",
         "node_projection_savings",
         "service:omnimarket_projection_migration_runner"
       ],

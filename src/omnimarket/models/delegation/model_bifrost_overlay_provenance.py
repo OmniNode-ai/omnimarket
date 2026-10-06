@@ -184,6 +184,27 @@ class ModelBifrostOverlayProvenance(BaseModel):
         """Return every overlay write over a committed authoritative field."""
         return tuple(f for f in self.fields if f.shadows_authoritative_field)
 
+    def unbound_local_backends(self) -> tuple[ModelBifrostFieldProvenance, ...]:
+        """Return the ``endpoint_url`` record of every local rung with no model.
+
+        The same condition the routing reducer refuses at dispatch as
+        ``local_model_binding_missing``: a ``provider: local`` backend whose
+        merged ``endpoint_url`` is set and whose merged ``model_name`` is blank.
+        Each record is the endpoint's, so ``source_ref`` names the artifact that
+        bound the endpoint and left the model out.
+        """
+        unbound: list[ModelBifrostFieldProvenance] = []
+        for field in self.fields:
+            if field.field_name != "endpoint_url" or not (field.value or "").strip():
+                continue
+            provider = self.source_for(field.backend_id, "provider")
+            if provider is None or provider.value != "local":
+                continue
+            model = self.source_for(field.backend_id, "model_name")
+            if model is None or not (model.value or "").strip():
+                unbound.append(field)
+        return tuple(unbound)
+
     def source_for(
         self, backend_id: str, field_name: str
     ) -> ModelBifrostFieldProvenance | None:
