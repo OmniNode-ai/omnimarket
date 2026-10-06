@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-18278: strip one declared leading block and refuse residual traces."""
 
+import asyncio
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -22,14 +24,80 @@ from omnimarket.inference.task_class_authority import (
     ModelReasoningPreamblePolicy,
     resolve_reasoning_preamble_policy,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect import (
+    ModelLlmDelegationCallResult,
+)
+from omnimarket.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    "prefix", ["", "<think>weighing options\n", " \n<think>weighing options\n"]
+)
+@pytest.mark.parametrize("with_contract", [False, True])
+def test_local_extraction_cannot_hide_an_unclosed_leading_trace(
+    tmp_path: Path, prefix: str, with_contract: bool
+) -> None:
+    prose = (
+        "The quality gate checks the provider response before accepting a delegated "
+        "answer. A leading reasoning trace must remain visible to the deterministic "
+        "floor even when deliverable extraction finds a complete answer after it."
+    )
+    answer = json.dumps({"answer": prose}) if with_contract else prose
+    content = prefix + (answer if with_contract else "### ANSWER\n" + answer)
+    port = LocalDelegationDispatchPort(
+        effect_handler=lambda request: ModelLlmDelegationCallResult(
+            request_id=request.request_id, success=True, content=content
+        ),
+        evidence_db_path=tmp_path / "evidence.sqlite",
+        effect_process_boundary=False,
+    )
+    outcome = asyncio.run(
+        port._run_single_attempt(
+            backend=ModelResolvedDelegationBackend(
+                backend_id="local-heavy-reasoning",
+                model_id="Qwen3.8-27B",
+                endpoint_ref="https://local.example/v1/chat/completions",
+                tier="local",
+                max_tokens=4096,
+                timeout_ms=30000,
+            ),
+            prompt="Return the answer.",
+            task_type="document",
+            correlation_id=uuid4(),
+            max_tokens=1024,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+            response_contract={"type": "object", "required": ["answer"]}
+            if with_contract
+            else None,
+        )
+    )
+    assert outcome.gate_result is not None
+    if prefix:
+        assert not outcome.gate_result.passed
+        assert outcome.gate_result.quality_score == 0.0
+        assert outcome.gate_result.fallback_recommended
+        assert outcome.gate_result.fail_category == "fail_deterministic"
+        assert (
+            outcome.gate_result.rule_evaluations[0].rule == "no_residual_reasoning_tag"
+        )
+        assert outcome.result is not None
+        assert "<think>" not in (outcome.result.content or "")
+    else:
+        assert outcome.gate_result.passed
 
 
 @pytest.mark.parametrize(
