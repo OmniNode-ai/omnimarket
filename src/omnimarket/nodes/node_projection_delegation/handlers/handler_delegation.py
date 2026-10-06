@@ -381,8 +381,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # OMN-18140: the per-row delegation exposure, resolved at construction
         # so a contract that declares one without this runner being able to
         # serve it fails HERE rather than after deploy, with an empty page.
-        self._row_exposure: ProjectionTableConfig | None = self._resolve_row_exposure(
-            _path
+        self._row_exposures: tuple[ProjectionTableConfig, ...] = (
+            self._resolve_row_exposures(_path)
         )
         # OMN-17773: counts writes to the ONE table the singleton aggregates
         # read. project_event snapshots it around the branch dispatch and
@@ -440,7 +440,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if not exposure.bus_backed:
                 continue
             if self._is_row_exposure(exposure):
-                # Resolved separately by _resolve_row_exposure; it has its own
+                # Resolved separately by _resolve_row_exposures; it has its own
                 # publish site at the delegation_events upsert.
                 continue
             if tuple(exposure.key_columns) != SNAPSHOT_AGGREGATE_KEY:
@@ -482,53 +482,42 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             _DELEGATION_ROW_KEY,
         )
 
-    def _resolve_row_exposure(
+    def _resolve_row_exposures(
         self, contract_path: Path
-    ) -> ProjectionTableConfig | None:
-        """The one per-row ``delegation_events`` exposure, if the contract has one.
+    ) -> tuple[ProjectionTableConfig, ...]:
+        """Every bus_backed per-row ``delegation_events`` exposure.
 
-        OMN-18140. ``None`` when the contract declares none (or declares it
-        without ``bus_backed``), which keeps the publish call at the write site
-        unconditional and contract-driven: whether anything is published is the
-        contract's decision, never a branch in the write path.
+        OMN-18140. Empty when the contract declares none, which keeps the
+        publish call at the write site unconditional and contract-driven:
+        whether anything is published is the contract's decision, never a
+        branch in the write path.
 
-        More than one is refused. Two per-row exposures over the same table
-        would each need their own republish from the same returned row, and
-        picking "the first" would silently serve one and leave the other an
-        empty page -- the exact confident-empty failure the bus_backed rule
-        exists to prevent.
+        More than one is served: each is republished from the same returned
+        row, so none is left a confident empty page. Every one must declare a
+        ``tenant_column``, because an unscoped per-row exposure would serve one
+        tenant's delegations to another.
         """
         node_name = str(self._contract.get("name", "projection_delegation"))
         exposures = load_projection_exposures_from_contract(
             self._contract, node_name, contract_path
         )
-        rows = [
+        rows = tuple(
             exposure
             for exposure in exposures
             if exposure.bus_backed and self._is_row_exposure(exposure)
-        ]
-        if len(rows) > 1:
-            raise ValueError(
-                "contract declares "
-                f"{len(rows)} bus_backed per-row exposures over "
-                f"{self._table_delegation!r} "
-                f"({[exposure.topic for exposure in rows]!r}); this runner "
-                "republishes the written row to exactly one, and serving only "
-                "the first would leave the others a confident empty page"
-            )
-        if not rows:
-            return None
-        exposure = rows[0]
-        if exposure.tenant_column is None:
-            raise ValueError(
-                f"projection_api exposure {exposure.topic!r} is a bus_backed "
-                f"per-row exposure over {self._table_delegation!r} but declares "
-                "no tenant_column. Every row in this table belongs to a tenant, "
-                "so an unscoped per-row exposure would serve one tenant's "
-                "delegations to another -- the leak node_projection_savings "
-                "refused to ship for savings.v1 (OMN-15797)"
-            )
-        return exposure
+        )
+        for exposure in rows:
+            if exposure.tenant_column is None:
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is a bus_backed "
+                    f"per-row exposure over {self._table_delegation!r} but "
+                    "declares no tenant_column. Every row in this table belongs "
+                    "to a tenant, so an unscoped per-row exposure would serve "
+                    "one tenant's delegations to another -- the leak "
+                    "node_projection_savings refused to ship for savings.v1 "
+                    "(OMN-15797)"
+                )
+        return rows
 
     async def _write_delegation_row(
         self,
@@ -558,8 +547,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row=row,
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
-            returning=(
-                self._row_exposure.columns if self._row_exposure is not None else ()
+            returning=tuple(
+                dict.fromkeys(
+                    column
+                    for exposure in self._row_exposures
+                    for column in exposure.columns
+                )
             ),
         )
         await self._publish_row_snapshot(written, meta)
@@ -583,23 +576,28 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         write that was refused; either way there is no stored row to describe,
         and inventing one would be the confident-empty failure inverted.
         """
-        if self._row_exposure is None or not written:
+        if not self._row_exposures or not written:
             return
-        row = dict(written[0])
-        tenant = row.get(str(self._row_exposure.tenant_column))
-        await self.publish_snapshot_delta(
-            self._row_exposure,
-            op="upsert",
-            row=row,
-            source_event_id=str(row.get(_DELEGATION_ROW_KEY) or meta.fallback_id),
-            source_topic=meta.topic,
-            source_partition=meta.partition,
-            source_offset=meta.offset,
-            # The row's OWN tenant, read back from the database, not the
-            # tenant this process resolved on the way in: the header must
-            # describe the row that exists, and RLS may have decided otherwise.
-            tenant_id=str(tenant) if tenant is not None else HOUSE_TENANT_SLUG,
-        )
+        stored = dict(written[0])
+        for exposure in self._row_exposures:
+            # Each topic carries its own declared columns only, so the lean
+            # decisions list does not pick up the heavy detail columns.
+            row = {c: stored[c] for c in exposure.columns if c in stored}
+            tenant = row.get(str(exposure.tenant_column))
+            await self.publish_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(row.get(_DELEGATION_ROW_KEY) or meta.fallback_id),
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+                # The row's OWN tenant, read back from the database, not the
+                # tenant this process resolved on the way in: the header must
+                # describe the row that exists, and RLS may have decided
+                # otherwise.
+                tenant_id=str(tenant) if tenant is not None else HOUSE_TENANT_SLUG,
+            )
 
     async def _publish_aggregate_snapshots(
         self, meta: MessageMeta, *, tenant: str
