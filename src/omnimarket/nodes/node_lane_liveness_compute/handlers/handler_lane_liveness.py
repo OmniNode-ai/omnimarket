@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from omnimarket.nodes.node_lane_liveness_compute.models.model_lane_liveness import (
+from omnimarket.models.liveness import (
     EnumEvidenceBasis,
     EnumLaneVerdict,
     EnumRelayState,

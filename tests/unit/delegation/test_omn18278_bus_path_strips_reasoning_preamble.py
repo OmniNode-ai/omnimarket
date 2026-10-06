@@ -242,21 +242,21 @@ class TestBusPathSegmentsTheResponse:
         assert isinstance(gate_intent, ModelQualityGateIntent)
         return gate_intent
 
-    def test_gate_intent_carries_the_answer_not_the_scratchpad(
+    def test_gate_intent_preserves_the_trace_for_the_blocking_floor(
         self,
         workflow: HandlerDelegationWorkflow,
         request_dto: ModelDelegationRequest,
     ) -> None:
-        """The text the bus sends to the gate is the answer segment."""
+        """The gate sees the trace even when extraction found a complete answer."""
         gate_intent = self._drive_to_gate_intent(
             workflow, request_dto, _LEAKED_RESPONSE
         )
 
-        assert gate_intent.payload.llm_response_content == _ANSWER, (
-            "the bus gate intent must carry the answer segment; got "
-            f"{gate_intent.payload.llm_response_content[:120]!r}"
-        )
-        assert "thinking process" not in gate_intent.payload.llm_response_content
+        assert gate_intent.payload.llm_response_content == _LEAKED_RESPONSE
+        result = HandlerQualityGateIntent().handle(gate_intent)
+        assert not result.passed
+        assert result.fail_category == "fail_deterministic"
+        assert result.rule_evaluations[0].rule == "no_leading_reasoning_trace"
 
     def test_workflow_content_is_the_answer_so_the_terminal_is(
         self,
@@ -292,7 +292,9 @@ class TestBusPathSegmentsTheResponse:
             if isinstance(event, ModelDelegationResult)
         ]
 
-        assert terminals, "the chain must emit a terminal delegation result"
+        assert not gate_result.passed
+        assert gate_result.fallback_recommended
+        assert all(not terminal.quality_passed for terminal in terminals)
         for terminal in terminals:
             assert "thinking process" not in terminal.content, (
                 "a bus terminal must not hand the caller the model's scratchpad; "

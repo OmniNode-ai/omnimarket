@@ -30,6 +30,7 @@ from uuid import UUID
 import pytest
 
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
     output_refusal_for_segmentation,
@@ -67,7 +68,8 @@ _UNPAIRED_TRACE_ONLY = (
     "</think>\n"
 )
 
-#: The same two shapes with the answer present, which must still pass.
+#: The same two shapes with the answer present: segmentation still finds the
+#: answer, and the OMN-18278 floor still refuses the leading trace.
 _PAIRED_TRACE_THEN_ANSWER = (
     _PAIRED_TRACE_ONLY + "OK, the build is green and ready to ship."
 )
@@ -155,16 +157,21 @@ def test_a_genuinely_empty_response_still_reads_as_empty(content: str) -> None:
     [_PAIRED_TRACE_THEN_ANSWER, _UNPAIRED_TRACE_THEN_ANSWER],
     ids=["paired-trace-then-answer", "unpaired-trace-then-answer"],
 )
-def test_an_answer_behind_the_trace_is_not_refused(content: str) -> None:
-    """The narrowing: only a trace with NOTHING behind it is refused."""
+def test_an_answer_behind_the_trace_is_not_refused_as_unresolved(content: str) -> None:
+    """The narrowing: only a trace with NOTHING behind it is typed unresolved.
+
+    OMN-18278: the answer is still found, so there is no typed refusal and no
+    unresolved-preamble verdict, but the leading trace itself fails the
+    class-independent ``no_leading_reasoning_trace`` floor.
+    """
     segmentation = segment_reasoning_preamble(content)
     assert (
         segmentation.boundary_rule is not EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
     )
     assert output_refusal_for_segmentation(segmentation) is None
-    reasons, failed_rules = _gate(content)
-    assert not reasons, reasons
-    assert not failed_rules
+    _reasons, failed_rules = _gate(content)
+    assert UNRESOLVED_PREAMBLE_CHECK_NAME not in failed_rules
+    assert failed_rules == {LEADING_REASONING_TRACE_CHECK_NAME}
 
 
 def test_prose_that_mentions_a_trace_tag_is_not_refused() -> None:

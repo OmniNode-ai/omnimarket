@@ -513,6 +513,56 @@ async def test_call_http_model_applies_adr_qwen_protocol_options() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "task_type",
+    [
+        "document",
+        "documentation",
+        "summarization",
+        "research",
+        "review",
+        "code_review",
+        "planning",
+        "escalation",
+    ],
+)
+async def test_call_http_model_prose_classes_suppress_thinking_at_provider_boundary(
+    task_type: str,
+) -> None:
+    """OMN-18967: task selection must reach the POST without prompt-wording hints."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "local-qwen": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "Qwen3.8-27B",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    deliverable = "The projection now preserves delivery context."
+    user_prompt = "Describe the projection change."
+    mock_cm, mock_client = _make_mock_httpx_cm(deliverable)
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="local-qwen",
+            system_prompt="You are a helpful assistant.",
+            user_prompt=user_prompt,
+            timeout_seconds=5.0,
+            protocol_selection=ModelInferenceProtocolSelection(
+                profile_id="local-qwen-prose-no-think",
+                task_type=task_type,
+            ),
+        )
+
+    mock_client.post.assert_awaited_once()
+    payload = mock_client.post.call_args.kwargs["json"]
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["messages"][1]["content"] == f"/no_think\n{user_prompt}"
+    assert result == deliverable
+
+
 async def test_call_http_model_unknown_selected_protocol_fails_closed() -> None:
     config = ModelInferenceBridgeConfig(
         model_configs={
