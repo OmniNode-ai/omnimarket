@@ -62,6 +62,28 @@ def test_contract_resolves_canonical_wire_models_without_shims() -> None:
             )
 
 
+@pytest.mark.unit
+def test_no_module_imports_the_removed_node_local_wire_shims() -> None:
+    """A merge racing the shim removal must not reintroduce the old import path."""
+
+    repo_root = _NODE_DIR.parents[3]
+    removed_paths = tuple(
+        f"omnimarket.nodes.node_delegate_skill_orchestrator.models.{module_name}"
+        for module_name in (
+            "model_delegate_skill_request",
+            "model_delegate_skill_response",
+        )
+    )
+    offenders = sorted(
+        str(path.relative_to(repo_root))
+        for root in ("src", "tests")
+        for path in (repo_root / root).rglob("*.py")
+        if path.resolve() != Path(__file__).resolve()
+        and any(removed in path.read_text() for removed in removed_paths)
+    )
+    assert offenders == []
+
+
 def _load_contract() -> dict[str, Any]:
     return yaml.safe_load(_CONTRACT_PATH.read_text())
 
