@@ -9,7 +9,10 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.delegation.reasoning_preamble import RESIDUAL_REASONING_TAG_CHECK_NAME
+from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
+    RESIDUAL_REASONING_TAG_CHECK_NAME,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -26,8 +29,8 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize(
     ("terminator", "answer", "passed"),
     [
-        ("</think>", "The answer.", True),
-        (None, "The answer.", True),
+        ("</think>", "The answer.", False),
+        (None, "The answer.", False),
         ("</think>", "Part one.</think> more reasoning. Final.", False),
         ("</think>", "Final answer with <think> inside", False),
         ("</think>", "Part one. <think>more reasoning</think> Final.", False),
@@ -102,7 +105,8 @@ async def test_adapter_receipt_prevents_second_segmentation_in_local_dispatch(
     assert outcome.gate_result is not None
     assert outcome.gate_result.passed == passed
     if not passed:
-        assert (
-            outcome.gate_result.rule_evaluations[0].rule
-            == RESIDUAL_REASONING_TAG_CHECK_NAME
+        assert outcome.gate_result.rule_evaluations[0].rule == (
+            LEADING_REASONING_TRACE_CHECK_NAME
+            if answer == "The answer."
+            else RESIDUAL_REASONING_TAG_CHECK_NAME
         )

@@ -289,10 +289,10 @@ class TestContractDeclaresTheAggregates:
         ``node_projection_savings/contract.yaml`` refused to ship for
         ``savings.v1``.
 
-        OMN-18140 converts only the decisions surface because it declares
-        ``tenant_column: tenant_id`` and the runner has a write-site publish
-        path for that row. The other per-row surfaces still need their own
-        scoping and publish decisions.
+        OMN-18140 converts the decisions surface and the correlation-trace
+        detail surface because each declares ``tenant_column: tenant_id`` and
+        the runner republishes the stored row onto both. The other per-row
+        surfaces still need their own scoping and publish decisions.
         """
         contract_path = (
             Path(__file__).resolve().parents[2]
@@ -307,9 +307,14 @@ class TestContractDeclaresTheAggregates:
         assert decisions.get("tenant_column") == "tenant_id"
         assert "tenant_id" in decisions["columns"]
 
+        trace = by_topic["onex.snapshot.projection.delegation.correlation-trace.v1"]
+        assert trace.get("bus_backed") is True
+        assert trace.get("key_columns") == ["correlation_id"]
+        assert trace.get("tenant_column") == "tenant_id"
+        assert "tenant_id" in trace["columns"]
+
         for topic in (
             "delegation",
-            "onex.snapshot.projection.delegation.correlation-trace.v1",
             "onex.evt.omnimarket.projection-delegation-events.v1",
         ):
             assert by_topic[topic].get("bus_backed", False) is False, (
@@ -444,11 +449,9 @@ class TestFlagCannotOutrunTheWriter:
     ) -> None:
         """OMN-15864's ordering rule, enforced in this runner's constructor.
 
-        Flipping ``bus_backed`` on a per-row exposure this runner has no
-        publish site for would convert an honest refusal into a confident
-        empty page. The runner republishes exactly the exposures keyed on the
-        grain column; any other bus-backed exposure must fail construction
-        rather than serve nothing.
+        Flipping ``bus_backed`` on a per-row exposure that declares no
+        ``tenant_column`` must fail construction: an unscoped per-row
+        exposure would serve one tenant's delegations to another.
         """
         source = (
             Path(__file__).resolve().parents[2]
@@ -457,14 +460,11 @@ class TestFlagCannotOutrunTheWriter:
         with open(source) as handle:
             contract = yaml.safe_load(handle)
         for exposure in contract["projection_api"]["exposures"]:
-            if (
-                exposure["topic"]
-                == "onex.snapshot.projection.delegation.correlation-trace.v1"
-            ):
+            if exposure["topic"] == "delegation":
                 exposure["bus_backed"] = True
                 exposure["key_columns"] = ["correlation_id"]
         forged = tmp_path / "contract.yaml"
         forged.write_text(yaml.safe_dump(contract))
 
-        with pytest.raises(ValueError, match="exactly one"):
+        with pytest.raises(ValueError, match="tenant_column"):
             DelegationProjectionRunner(contract_path=forged)
