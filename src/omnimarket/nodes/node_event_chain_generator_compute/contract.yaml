@@ -17,6 +17,20 @@ description: >
   chain whose drive no longer matches. The node performs no I/O; the driver
   is supplied by the caller.
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.event-chain-generator.v1
+
+terminal_event: onex.evt.omnimarket.event-chain-generator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.event-chain-generator.v1
+  publish_topics:
+    - onex.evt.omnimarket.event-chain-generator-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.event-chain-generator-completed.v1
+
 handler:
   module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
   class: HandlerEventChainGenerator

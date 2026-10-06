@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator import (
     HandlerEventChainGenerator,
@@ -169,4 +170,19 @@ def test_gate_fails_when_a_drive_no_longer_matches_its_chain() -> None:
     assert not result.passed
     assert [(m.path_id, m.field) for m in result.mismatches] == [
         ("golden:go>done", "expected_event_types")
+    ]
+
+
+def test_generator_contract_declares_its_command_and_terminal_topics() -> None:
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3]
+            / "src/omnimarket/nodes/node_event_chain_generator_compute/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    terminal = "onex.evt.omnimarket.event-chain-generator-completed.v1"
+    assert contract["terminal_event"] == terminal
+    assert contract["event_bus"]["publish_topics"] == [terminal]
+    assert contract["event_bus"]["subscribe_topics"] == [
+        "onex.cmd.omnimarket.event-chain-generator.v1"
     ]

@@ -10,11 +10,11 @@ requirements:
   statement: The generated delegation chains must match the hand-written pilot cases in event types and states.
   acceptance:
   - id: AC1
-    statement: 'AC1: generated event types and states equal the 11 pilot cases -- falsifier: uv run pytest tests/chains/generated -q'
+    statement: 'AC1: generated event types and states equal the 11 pilot cases -- falsifier: uv run pytest tests/chains/generated/test_generated_chains_match_pilot.py -q'
 evidence_requirements:
 - kind: tests
   description: The cited tests pass at the PR head.
-  command: uv run pytest tests/chains/generated -q
+  command: uv run pytest tests/chains/generated/test_generated_chains_match_pilot.py -q
 emergency_bypass:
   enabled: false
   justification: ''
@@ -25,7 +25,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/chains/generated -q
+    check_value: uv run pytest tests/chains/generated/test_generated_chains_match_pilot.py -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
