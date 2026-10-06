@@ -56,6 +56,7 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.inference.provider_response_error import (
     ModelProviderResponseError,
     provider_error_from_body,
@@ -63,6 +64,9 @@ from omnimarket.inference.provider_response_error import (
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    _is_retryable_transport_failure,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -86,6 +90,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_llm_delegation_call as local_effect,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    transport as local_transport,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
@@ -271,6 +281,80 @@ def test_the_composed_message_is_retryable_and_classifies_as_unavailable() -> No
     assert _inference_error_failure_class(text) is (
         EnumDelegationFailureClass.MODEL_UNAVAILABLE
     )
+
+
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        (502, "Upstream key service temporarily overloaded"),
+        (503, "Upstream quota service temporarily unavailable"),
+        (504, "Upstream authorization service timed out"),
+    ],
+)
+def test_server_error_codes_outrank_vendor_words_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, code: int, message: str
+) -> None:
+    """AC2, AC4, AC7: an upstream outage is not a rejected customer key."""
+    body = {
+        "error": {
+            "message": message,
+            "code": code,
+            "metadata": {"error_type": "provider_unavailable"},
+        }
+    }
+    bus_transport = _bind_transport(monkeypatch, body)
+    cid = uuid4()
+    response = HandlerInferenceIntent().handle(_intent(correlation_id=cid))
+
+    local_calls: list[str] = []
+
+    def post(**kwargs: Any) -> local_transport.ModelTransportResponse:
+        local_calls.append(kwargs["endpoint_url"])
+        return local_transport.ModelTransportResponse(
+            status_code=200, json_body=body, latency_ms=1
+        )
+
+    monkeypatch.setattr(local_transport, "post_chat_completion", post)
+    monkeypatch.setattr(local_effect, "_is_endpoint_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        local_effect, "_get_served_model_ids", lambda _url: {FREE_MODEL}
+    )
+    result = local_effect.HandlerLlmDelegationCall().handle(
+        ModelLlmDelegationCallRequest(
+            request_id=str(uuid4()),
+            correlation_id=str(cid),
+            causation_id=str(uuid4()),
+            model_id=FREE_MODEL,
+            endpoint_ref=OPENROUTER_URL,
+            prompt="p",
+            prompt_hash="0" * 64,
+            timeout_seconds=5,
+            secret_ref=None,
+            api_key_env=None,
+        )
+    )
+
+    assert bus_transport.requests == local_calls == [OPENROUTER_URL]
+    assert not result.success
+    assert message in response.error_message
+    assert message in result.error_message
+    assert result.failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    assert (
+        _inference_error_failure_class(response.error_message) is result.failure_class
+    )
+    assert _is_retryable_transport_failure(result.failure_class)
+    assert _should_escalate_inference_error(response.error_message)
+
+    handler = HandlerDelegationWorkflow()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_customer_route(cid))
+    events = list(handler.handle_inference_response(response))
+    assert any(isinstance(e, ModelRoutingIntent) for e in events)
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert not any(
+        isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
+    )
+    assert handler.workflows[cid].escalation_count == 0
 
 
 @pytest.mark.parametrize(
