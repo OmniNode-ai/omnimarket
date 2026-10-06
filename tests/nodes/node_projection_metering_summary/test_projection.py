@@ -25,6 +25,7 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
     MeteringSummaryProjectionWriter,
     store_rows,
 )
+from omnimarket.pricing import resolve_baseline_model
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.sqlite_metering_summary import (
     read_summary_row,
@@ -170,35 +171,29 @@ def test_refresh_baseline_changes_every_window_and_replaces(
 
 
 def test_cli_json_is_stored_content_and_keys(tmp_path: Path) -> None:
+    """OMN-19977: the CLI prints the stored row (its columns, with summary_json
+    spread) and reads it as stored: a second read is byte-identical."""
     path = tmp_path / "db.sqlite"
     seed(path)
     tenant = mint_tenant(path)
+    baseline_model = resolve_baseline_model(overlay={}, store={}).model
+    refresh_metering_summary(path, tenant, baseline_model, NOW)
     result = CliRunner().invoke(metering_command, ["--db", str(path), "--json"])
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    row = read_summary_row(path, tenant, "all", "", payload["baseline_model"])
+    payload = json.loads(result.stdout)
+    row = read_summary_row(path, tenant, "all", "", baseline_model)
     assert row is not None
     expected = json.loads(row.summary_json)
     expected.update(
         {
-            key: getattr(row, key)
-            for key in (
-                "tenant_id",
-                "window_kind",
-                "window_start",
-                "baseline_model",
-                "as_of",
-                "pricing_manifest_version",
-            )
+            key: value
+            for key, value in row.model_dump(mode="json").items()
+            if key != "summary_json"
         }
     )
     assert payload == expected
     again = CliRunner().invoke(metering_command, ["--db", str(path), "--json"])
-    assert {
-        k: v
-        for k, v in json.loads(again.output).items()
-        if k not in {"as_of", "window"}
-    } == {k: v for k, v in payload.items() if k not in {"as_of", "window"}}
+    assert again.stdout == result.stdout
 
 
 def test_dispatch_capability_only_on_writer() -> None:
@@ -241,41 +236,46 @@ def test_day_boundaries_use_utc_and_exclude_as_of() -> None:
     assert rows[1].window_end == "2026-09-28T00:00:00+00:00"
 
 
-def test_cli_manifest_change_refreshes_all_days(
+def test_cli_manifest_change_is_reported_stale_not_refreshed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """OMN-19977: a manifest change is the refresh command's job (ruling D-A);
+    the CLI names the stale row and leaves every stored row as it was."""
     path = tmp_path / "db.sqlite"
     seed(path)
-    mint_tenant(path)
+    tenant = mint_tenant(path)
     current = baseline()
     monkeypatch.setattr(
         "omnimarket.projection.sqlite_metering_summary.resolve_baseline",
         lambda _model: current,
     )
+    refresh_metering_summary(path, tenant, "model-a", NOW)
     args = ["--db", str(path), "--baseline", "model-a", "--json"]
     runner = CliRunner()
     assert runner.invoke(metering_command, args).exit_code == 0
     current = baseline(version="new-manifest")
     result = runner.invoke(metering_command, args)
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
+    state = json.loads(result.stdout)
+    assert state["state"] == "METERING_SUMMARY_STALE"
+    assert state["current_pricing_manifest_version"] == "new-manifest"
     stored = SqliteDatabaseAdapter(path).query("metering_summary")
     assert len(stored) == 3
-    assert all(row["pricing_manifest_version"] == "new-manifest" for row in stored)
-    assert (
-        json.loads(result.output)["baseline"]["pricing_manifest_version"]
-        == "new-manifest"
-    )
+    assert all(row["pricing_manifest_version"] == "1" for row in stored)
 
 
 def test_cli_explicit_day_reads_its_stored_row(tmp_path: Path) -> None:
     path = tmp_path / "db.sqlite"
     seed(path)
     tenant = mint_tenant(path)
+    refresh_metering_summary(
+        path, tenant, resolve_baseline_model(overlay={}, store={}).model, NOW
+    )
     result = CliRunner().invoke(
         metering_command, ["--db", str(path), "--day", "2026-09-27", "--json"]
     )
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    payload = json.loads(result.stdout)
     assert payload["window_kind"] == "day"
     assert payload["window_start"] == "2026-09-27"
     assert payload["runs_total"] == 1

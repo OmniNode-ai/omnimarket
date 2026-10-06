@@ -29,7 +29,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
-from omnimarket.nodes.node_work_ledger_append_effect.models import (
+from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
