@@ -2904,7 +2904,8 @@ class LocalDelegationDispatchPort:
         except TimeoutError:
             failure_message = (
                 f"delegation call did not return within "
-                f"{dispatch_deadline_seconds:.0f}s (endpoint {backend.endpoint_ref} "
+                f"{dispatch_deadline_seconds:.0f}s at stage=inference "
+                f"(endpoint {backend.endpoint_ref} "
                 f"unreachable or unresponsive)"
             )
             logger.warning(
