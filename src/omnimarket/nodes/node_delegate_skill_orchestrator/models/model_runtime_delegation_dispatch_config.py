@@ -15,10 +15,13 @@ class ModelRuntimeDelegationDispatchTopics(BaseModel):
     command: str
     completed: str
     failed: str
+    failed_unrouted: str | None = None
 
     @field_validator("*")
     @classmethod
-    def validate_topic(cls, value: str) -> str:
+    def validate_topic(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.strip()
         if not normalized:
             raise ValueError("topic must be a non-empty string")

@@ -77,8 +77,12 @@ def test_contract_declares_delegation_runtime_dispatch_config() -> None:
     config = load_runtime_delegation_dispatch_config(_CONTRACT_PATH)
 
     assert config.topics.command == "onex.cmd.omnibase-infra.delegation-request.v1"
-    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v1"
-    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed.v1"
+    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v2"
+    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed-routed.v2"
+    assert (
+        config.topics.failed_unrouted
+        == "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
+    )
     assert config.request_message_type == "omnibase-infra.delegation-request"
     assert config.source_tool == "delegate-skill-runtime-port"
     assert config.consumer_group_prefix == "delegate-skill-runtime-port"
@@ -167,8 +171,14 @@ def test_contract_declares_cross_repo_dependencies() -> None:
     assert dep["node"] == "node_delegation_orchestrator"
     assert dep["contract_name"] == "node_delegation_orchestrator"
     assert "onex.cmd.omnibase-infra.delegation-request.v1" in dep["required_topics"]
-    assert "onex.evt.omnibase-infra.delegation-completed.v1" in dep["terminal_events"]
-    assert "onex.evt.omnibase-infra.delegation-failed.v1" in dep["terminal_events"]
+    assert "onex.evt.omnibase-infra.delegation-completed.v2" in dep["terminal_events"]
+    assert (
+        "onex.evt.omnibase-infra.delegation-failed-routed.v2" in dep["terminal_events"]
+    )
+    assert (
+        "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
+        in dep["terminal_events"]
+    )
     model_names = {m["name"] for m in dep["required_models"]}
     assert "ModelDelegationRequest" in model_names
 
