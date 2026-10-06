@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19343"
+title: "Refuse shadow comparisons with insufficient sample size"
+summary: "Refuses shadow comparisons with insufficient sample size before calling either rung or the grader, reporting the required sample size and counting supplied prompts as incomplete in both arms. Tests: tests/test_omn19343_shadow_comparison.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-refuse-insufficient-shadow-sample"
+    statement: |-
+      A shadow comparison with insufficient sample size must be refused before any rung or grader call and report the required sample size.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an empty sample, a sample below the power-analysed size, a method declaring less than the power-analysed size, or a sample below the declared size returns REFUSED before any rung or grader call, reports required_n as the maximum of the power-analysed and declared sizes and names it in the refusal reasons, reports observed_n as the supplied prompt count, and counts those prompts as incomplete in both arms -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py -q -p no:cacheprovider
+evidence_requirements:
+  - kind: "tests"
+    description: "The shadow-comparison tests assert refusal for insufficient samples before any rung or grader call, with the required size and supplied prompt counts reported."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-insufficient-shadow-sample-ac1"
+    description: "The tests assert REFUSED for empty and undersized samples, undersized methods and samples below the declared size, no rung or grader calls, required and observed sizes, and incomplete counts in both arms."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
