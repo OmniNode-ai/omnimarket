@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19362"
+title: "OMN-19362: Cap serialized diagnostic bytes in delegated test loop orchestrator"
+summary: "Caps the delegated test loop's returned diagnostic text by serialized bytes after writing the loop receipt, and refuses metadata that cannot fit the compact byte budget. Tests cover oversized ASCII, Unicode and escaped diagnostics, retained receipt fields, matching child run IDs, status replay, and receipt persistence before oversized test-path rejection."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-cap-serialized-diagnostics"
+    statement: |-
+      The delegated test loop must return the tested oversized diagnostic results below 4096 serialized bytes, retain the original exception type and top frame in the receipt, preserve matching child run IDs and failed-status replay, and write the receipt before refusing oversized test-path metadata.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: oversized ASCII, Unicode and escaped diagnostics yield a failed result below 4096 bytes using both result_json_bytes and UTF-8 model_dump_json, with three attempts and delegate calls; the receipt retains the original exception type and top frame, its delegate and run receipt IDs match the returned result, and it replays to the same failed status; an oversized test path raises ValueError for metadata exceeding the compact byte budget after the receipt records the full test path and delegate run-1 -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider
+evidence_requirements:
+  - kind: "tests"
+    description: "Fake-port orchestrator tests assert both serialized byte bounds for oversized diagnostic examples, retained exception type and top frame, matching child run IDs, failed-status replay, and receipt persistence before oversized test-path rejection."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-serialized-diagnostics-ac1"
+    description: "The changed orchestrator test file checks compact serialized diagnostics, retained receipt fields and child IDs, status replay, and receipt persistence before oversized metadata rejection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
