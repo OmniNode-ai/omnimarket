@@ -378,6 +378,8 @@ async def test_contract_routes_tick_and_declares_reaper_cause_and_configuration(
     assert {s["operation"] for s in raw["input_subscriptions"]} == {
         "delegate-skill.orchestrate",
         "delegate-skill.reap_scheduled_run",
+        "delegate-skill.recover_completed",
+        "delegate-skill.recover_failed",
     }
     config = load_delegation_reaper_config()
     assert config.grace_seconds == raw["delegation_reaper"]["grace_seconds"] == 60
