@@ -18,6 +18,8 @@ Failure modes:
   ``llm_call_metrics`` write down with it;
 * an escalated run books every attempt's spend to the final model, so the
   per-model split is wrong although the run's total is right;
+* an escalated run's usage tokens disagree with ``onex metering``, which
+  counts only the deciding attempt's tokens (AC1, one definition);
 * an attempt whose cost was not measured is booked as measured because a later
   attempt's was;
 * a call that never reached a provider (no tokens, no cost) is counted as an
@@ -52,6 +54,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
+from omnimarket.projection.sqlite_metering_reader import read_metering_records
 from omnimarket.routing import delegation_backend_resolution
 from tests.unit.nodes.node_delegate_skill_orchestrator.test_local_dispatch_escalation_omn13849 import (
     _dispatch as _ladder_dispatch,
@@ -286,6 +289,24 @@ def _rollups_by_model(db_path: Path) -> dict[str, sqlite3.Row]:
     }
 
 
+def _usage_tokens(db_path: Path) -> tuple[int, int]:
+    (row,) = _rows(
+        db_path,
+        "SELECT SUM(input_tokens) AS i, SUM(output_tokens) AS o "
+        "FROM usage_by_model_day",
+    )
+    return int(row["i"]), int(row["o"])
+
+
+def _metering_tokens(db_path: Path) -> tuple[int, int]:
+    """Token totals as ``onex metering --json`` reads them (AC1)."""
+    records = read_metering_records(db_path=db_path)
+    return (
+        sum(r.tokens_in or 0 for r in records),
+        sum(r.tokens_out or 0 for r in records),
+    )
+
+
 def _delegation_cost(db_path: Path) -> float:
     (row,) = _rows(db_path, "SELECT cost_usd FROM delegation_events")
     return float(row["cost_usd"])
@@ -311,7 +332,8 @@ def test_an_escalated_run_books_each_attempt_to_its_own_model(
         (c["model_id"], c["input_tokens"], c["output_tokens"], c["usage_source"])
         for c in calls
     ] == [
-        ("Qwen3.6-35B-A3B", 11, 22, "measured"),
+        # Tokens follow metering's definition: only the deciding attempt's.
+        ("Qwen3.6-35B-A3B", 0, 0, "measured"),
         ("glm-5.2", 33, 44, "measured"),
     ]
     assert [float(c["cost_usd"]) for c in calls] == pytest.approx([0.001, 0.010])
@@ -331,6 +353,8 @@ def test_an_escalated_run_books_each_attempt_to_its_own_model(
     run_cost = result["cost_usd"]
     assert isinstance(run_cost, float)
     assert total == pytest.approx(run_cost)
+    # AC1 holds for an escalated run: the window's usage tokens are metering's.
+    assert _usage_tokens(db_path) == _metering_tokens(db_path) == (33, 44)
 
 
 def test_a_failed_run_on_the_full_ladder_books_three_models_and_its_total(
@@ -349,6 +373,7 @@ def test_a_failed_run_on_the_full_ladder_books_three_models_and_its_total(
     assert sum(float(r["cost_usd"]) for r in rollups.values()) == pytest.approx(
         _delegation_cost(db_path)
     )
+    assert _usage_tokens(db_path) == _metering_tokens(db_path) == (55, 66)
 
 
 def test_an_unmeasured_attempt_is_never_booked_as_measured(
@@ -373,6 +398,7 @@ def test_an_unmeasured_attempt_is_never_booked_as_measured(
     assert sum(float(r["cost_usd"]) for r in rollups.values()) == pytest.approx(
         _delegation_cost(db_path)
     )
+    assert _usage_tokens(db_path) == _metering_tokens(db_path) == (33, 44)
 
 
 def test_a_call_that_reached_no_provider_is_not_a_usage_call(

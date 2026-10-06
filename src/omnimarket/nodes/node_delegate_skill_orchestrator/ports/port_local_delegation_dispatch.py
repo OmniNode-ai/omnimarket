@@ -3445,21 +3445,34 @@ class LocalDelegationDispatchPort:
         """Fold each call into the usage-by-model-day tables (OMN-20006).
 
         One call per attempt that reached a provider, on the model that served
-        it, with its own tokens, cost and usage source: an escalated run's
-        spend is split per model, and an attempt whose cost was not measured is
-        never booked as measured because a later one was. A call that carried
-        no usage at all (refused before a provider answered) is not a usage
-        call; its banked cost is zero, so the per-model sum still equals the
-        run's cost. A single call keeps the run's correlation id as its key;
-        several take ``<correlation id>:<n>`` in attempt order.
+        it, with its own cost and usage source: an escalated run's spend is
+        split per model, and an attempt whose cost was not measured is never
+        booked as measured because a later one was. A call that carried no
+        usage at all (refused before a provider answered) is not a usage call;
+        its banked cost is zero, so the per-model sum still equals the run's
+        cost. A single call keeps the run's correlation id as its key; several
+        take ``<correlation id>:<n>`` in attempt order.
+
+        Tokens follow the one definition ``onex metering`` reads: the deciding
+        attempt's (the last one banked, whose tokens the delegation row
+        records). Every earlier attempt's call carries 0 tokens, so the window's
+        usage tokens equal metering's token totals (AC1). The columns are NOT
+        NULL, so 0 here means "not counted under that definition", not a
+        measured zero. Counting escalated-from attempts' tokens belongs in the
+        metering summary, so the CLI and the page move together.
 
         Dated by the terminal's own emitted_at, so its UTC day is the
         delegation row's. Each call has its own guard: a failed usage write
         must neither break the response nor take the call-metrics row, or
         another attempt's usage, down with it.
         """
-        calls = [usage for usage in attempt_usage if usage.carries_usage]
-        for ordinal, usage in enumerate(calls, start=1):
+        deciding = len(attempt_usage) - 1
+        calls = [
+            (index == deciding, usage)
+            for index, usage in enumerate(attempt_usage)
+            if usage.carries_usage
+        ]
+        for ordinal, (is_deciding, usage) in enumerate(calls, start=1):
             call_id = (
                 str(correlation_id)
                 if len(calls) == 1
@@ -3470,8 +3483,8 @@ class LocalDelegationDispatchPort:
                     call_id=call_id,
                     model_name=usage.model_id,
                     tenant_id=tenant_id,
-                    prompt_tokens=usage.tokens_in,
-                    completion_tokens=usage.tokens_out,
+                    prompt_tokens=usage.tokens_in if is_deciding else 0,
+                    completion_tokens=usage.tokens_out if is_deciding else 0,
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
                     timestamp=emitted_at,
