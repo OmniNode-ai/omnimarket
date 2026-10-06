@@ -3904,6 +3904,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_routing_feedback",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -3914,7 +3915,8 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_routing_feedback/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -3943,10 +3945,12 @@
       "partitioning": [],
       "producer": "node_projection_routing_feedback",
       "readers": [
+        "node_projection_routing_feedback",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
       "writers": [
+        "node_projection_routing_feedback",
         "service:omnimarket_projection_migration_runner"
       ]
     },
