@@ -429,6 +429,16 @@ async def read_projection_page(
 ) -> ProjectionPage:
     """The page of one contract-declared exposure, or the named refusal."""
     if topic not in topic_map:
+        matches = [
+            cfg.topic for cfg in topic_map.values() if topic in cfg.route_aliases
+        ]
+        if len(matches) > 1:
+            return ProjectionPage(
+                409, {"error": "ambiguous_projection_alias", "alias": topic}
+            )
+        if matches:
+            topic = matches[0]
+    if topic not in topic_map:
         return ProjectionPage(
             404,
             {
