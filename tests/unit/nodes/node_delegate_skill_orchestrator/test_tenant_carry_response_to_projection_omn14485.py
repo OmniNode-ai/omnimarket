@@ -39,14 +39,14 @@ import pytest
 
 from omnimarket.config.settings import Settings
 from omnimarket.local_deployment import tenant_identity
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_delegate_skill as handler_module,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,

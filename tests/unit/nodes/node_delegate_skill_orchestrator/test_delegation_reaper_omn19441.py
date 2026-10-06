@@ -18,15 +18,15 @@ from omnibase_infra.cli.model_delegate_terminal import ModelDelegateTerminal
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-    HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    HandlerDelegateSkill,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     CLAIMS_TABLE,

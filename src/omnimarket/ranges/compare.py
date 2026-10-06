@@ -230,7 +230,9 @@ def compare_paired_outcomes(
             f"{method.confidence}, power {method.power}"
         )
     if observed_n == 0:
-        reasons.append("no pairs: an empty comparison is refused, never passed")
+        reasons.append(
+            f"no pairs: an empty comparison is refused, never passed; required n={required_n}"
+        )
     elif observed_n < required_n:
         reasons.append(
             f"n={observed_n} prompts is below the power-analysed size: "
