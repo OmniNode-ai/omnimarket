@@ -132,6 +132,10 @@ def _input(content: str) -> ModelQualityGateInput:
         ("Part one.</think> more reasoning. Final.", "</think>"),
         ("Final answer with <think> inside", "<think>"),
         ("Part one. <think>more reasoning</think> Final.", "<think>"),
+        ("Part one.</thinking> more reasoning. Final.", "</thinking>"),
+        ("Final answer with <thinking> inside", "<thinking>"),
+        ("Part one.</reasoning> more reasoning. Final.", "</reasoning>"),
+        ("Final answer with <reasoning> inside", "<reasoning>"),
     ],
 )
 @pytest.mark.parametrize("adapter_stripped", [False, True])
@@ -144,7 +148,9 @@ def test_residual_tag_refuses_and_climbs(
         if adapter_stripped
         else (raw, 0)
     )
-    result = delta(_input(content), reasoning_stripped_chars=count)
+    result = delta(
+        _input(content), reasoning_stripped_chars=count, judge_adequacy_score=1.0
+    )
     assert not result.passed
     assert result.fail_category == "fail_deterministic"
     assert result.quality_score == 0.0
@@ -171,11 +177,17 @@ def test_a_leading_paired_block_is_segmented_off_and_the_gate_refuses() -> None:
     assert result.reasoning_preamble_rule == "leading_paired_block"
 
 
-def test_a_paired_block_after_the_answer_starts_is_left_for_the_floor() -> None:
-    content = "The answer is 42. <think>second thoughts</think> Or 41."
+@pytest.mark.parametrize("tag", ["think", "thinking", "reasoning"])
+@pytest.mark.parametrize("closed", [False, True])
+def test_a_trace_after_the_answer_starts_is_left_for_the_floor(
+    tag: str, closed: bool
+) -> None:
+    content = f"The answer is 42. <{tag}>second thoughts"
+    if closed:
+        content += f"</{tag}> Or 41."
     segmentation = segment_reasoning_preamble(content)
     assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
-    result = delta(_input(content))
+    result = delta(_input(content), judge_adequacy_score=1.0)
     assert not result.passed
     assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
 
@@ -232,7 +244,9 @@ def test_clean_answer_passes_but_a_stripped_trace_still_fails(
 def test_policy_exposes_residual_tags_and_defaults_to_none_declared() -> None:
     policy = resolve_reasoning_preamble_policy()
     assert policy is not None
-    assert policy.residual_trace_tags == ("<think>", "</think>")
+    for closing in policy.closing_trace_tags:
+        assert closing in policy.residual_trace_tags
+        assert f"<{closing[2:]}" in policy.residual_trace_tags
     without_tags = ModelReasoningPreamblePolicy.model_validate(
         policy.model_dump(exclude={"residual_trace_tags"})
     )
