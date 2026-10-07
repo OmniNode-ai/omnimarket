@@ -517,7 +517,14 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "No Faked Boundary Gate",
     # OMN-20173: enforce the standalone endpoint validator before merge.
     "No Coding Plan Endpoint",
+    # OMN-20073 S6: branch protection no longer requires these two, but they
+    # test omnimarket's own OCC companion emitter and its schema compatibility
+    # against a pinned onex_change_control checkout. Neither reads a PR's
+    # companion, so CI Summary keeps enforcing them until the emitter itself is
+    # retired (plan S7 to S9).
+    "OCC Emitter Golden Gate",
     "Omni Standards Gate",
+    "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
     "Precommit Fail-Loud Gate",
     "Projection Exposure Drift Gate",
@@ -589,7 +596,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "state-coverage-gate",
     "subscriber-dispatcher-resolution",
     "validate",
-    "verify / verify",
     # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
     # OMN-14631 workspace content-parity gate, calling an omnibase_infra
     # composite ACTION pinned by commit. It proves this repository's built

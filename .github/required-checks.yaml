@@ -387,16 +387,6 @@ gates:
     skip_semantics: never
     rationale: "Live required status check on omnimarket main branch protection (verified 2026-07-20 via gh api required_status_checks)."
 
-  - name: "verify / verify"
-    mode: REQUIRED
-    branch: main
-    producer_kind: cross_repo
-    caller_workflow: call-receipt-gate.yml
-    caller_job: verify
-    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@main"
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket main branch protection (verified 2026-07-20 via gh api required_status_checks)."
-
   - name: "node-drift-gate"
     mode: REQUIRED
     branch: main

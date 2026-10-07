@@ -1111,9 +1111,7 @@ def _matches_target(
 def test_every_pr_triggered_job_is_classified() -> None:
     """The completeness anchor: every job reachable from `pull_request` (to
     dev) across every workflow file must resolve to STRICT, SKIPPABLE,
-    EXTERNAL, or EXEMPT, except the two retained OCC workflows whose contexts
-    S6 deliberately retires. Assert that exact census without extending the
-    exemption registry. A new, unclassified workflow job fails this test."""
+    EXTERNAL, or EXEMPT. A new, unclassified workflow job fails this test."""
 
     external = set(EXPECTED_EXTERNAL_CONTEXTS)
     ci_yml_targets = (
@@ -1141,20 +1139,11 @@ def test_every_pr_triggered_job_is_classified() -> None:
                 "EXPECTED_EXTERNAL_CONTEXTS and not in EXEMPT_CONTEXTS"
             )
 
-    # OMN-20073: these workflows remain in the repository, but their contexts
-    # must be absent from CI Summary. Pin the exact uncovered census instead
-    # of adding exemptions or accepting an arbitrary unclassified job.
-    assert len(unclassified) == 2, unclassified
-    assert (
-        "occ-emitter-golden-gate.yml::occ-emitter-golden "
-        "(name='OCC Emitter Golden Gate') — not in "
-        "EXPECTED_EXTERNAL_CONTEXTS and not in EXEMPT_CONTEXTS"
-    ) in unclassified
-    assert (
-        "onex-schema-compat.yml::schema-compat "
-        "(name='ONEX Change Control Schema Compatibility') — not in "
-        "EXPECTED_EXTERNAL_CONTEXTS and not in EXEMPT_CONTEXTS"
-    ) in unclassified
+    assert not unclassified, (
+        "unclassified PR-triggered job(s) found — every job reachable from "
+        "pull_request must be STRICT, SKIPPABLE, EXTERNAL, or EXEMPT with a "
+        "reason:\n  " + "\n  ".join(unclassified)
+    )
 
 
 def test_exempt_reasons_are_nonempty() -> None:

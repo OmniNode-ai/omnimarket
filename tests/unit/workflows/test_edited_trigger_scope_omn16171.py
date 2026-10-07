@@ -78,7 +78,6 @@ MUST_NOT_LIST_EDITED: tuple[str, ...] = (
 # `edited` here is the dangerous direction -- it is silent.
 MUST_LIST_EDITED: tuple[str, ...] = (
     "pr-title-check.yml",
-    "call-receipt-gate.yml",
     "call-reject-skip.yml",
     "main-target-guard.yml",
     "non-dev-base-guard.yml",

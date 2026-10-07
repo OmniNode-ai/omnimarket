@@ -24,7 +24,7 @@ requirements:
     statement: "Remove omnimarket's OCC callers and OCC merge requirements."
     acceptance:
       - id: "AC6"
-        statement: "omnimarket deletes its OCC callers (call-occ-preflight.yml, call-occ-autobind.yml, occ-autobind-mint-verify.yml, occ-companion-merge-heal.yml, occ-receipt-runner.yml, the OCC Companion Merged Gate job), and CI Summary and the required-checks manifest expect no OCC context, so a pull request merges gated by repo-evidence / dod-verify with no OCC companion -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
+        statement: "omnimarket deletes the callers that mint, heal, wait on or verify a PR's OCC companion (call-occ-preflight.yml, call-occ-autobind.yml, occ-autobind-mint-verify.yml, occ-companion-merge-heal.yml, occ-receipt-runner.yml, call-receipt-gate.yml, the OCC Companion Merged Gate job); CI Summary expects no companion context (occ-preflight / eligibility, verify / verify) and keeps the two emitter tests; the required-checks manifest names none of the four OCC contexts branch protection dropped; so a pull request merges gated by repo-evidence / dod-verify with no OCC companion -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -42,7 +42,7 @@ evidence_requirements:
     description: "The repo-evidence caller turns the OCC difference step off after the cut-over."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
   - kind: "tests"
-    description: "The OCC callers are deleted and CI Summary and the manifest expect no OCC context."
+    description: "The OCC companion callers are deleted and CI Summary and the manifest expect no companion context."
     command: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
 emergency_bypass:
   enabled: false
