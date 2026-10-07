@@ -524,7 +524,7 @@ repos:
         name: Projection exposures declare a checked key grain (OMN-18908)
         language: system
         entry: uv run python -m omnimarket.validators.key_grain_declared
-        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/key_grain_declared\.py)$
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/projection/(discovery|models)\.py|src/omnimarket/validators/key_grain_declared\.py|tests/validators/test_key_grain_declared_omn18908\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

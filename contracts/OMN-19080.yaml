@@ -1,0 +1,63 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-19080
+title: Key-grain validation uses the runtime exposure set
+summary: The existing grain gate measures served exposures through the projection loader and refuses dropped
+  declarations; its floor is derived from 71 served exposures with a ten-exposure removal margin.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-key-grain-loader-parity
+  statement: The key-grain gate and the runtime loader govern the same exposure set, and declarations
+    excluded at load fail the gate.
+  acceptance:
+  - id: AC1
+    statement: 'AC1 — the gate and contract discovery agree on the exposure set, not merely the count.
+      -- falsifier: a test asserts the gate''s enumerated set equals the loader''s set as sets, and it
+      fails on today''s tree naming `node_projection_open_obligations`.'
+  - id: AC2
+    statement: 'AC2 — a declared exposure the loader drops is a gate refusal. -- falsifier: a test adding
+      a contract whose exposure the loader excludes asserts a non-zero exit naming that exposure, with
+      a positive control asserting the reconciled tree passes.'
+  - id: AC3
+    statement: 'AC3 — the vacuity floor is restated against the number the gate now measures, with its
+      margin derived rather than asserted. -- falsifier: a test asserts the floor is below the live enumerated
+      count and that the constant''s comment names the count it was derived from.'
+evidence_requirements:
+- kind: tests
+  description: Loader set equality, rejected and reconciled controls, and a derived vacuity floor.
+  command: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-loader-ac1
+  description: 'AC1: focused loader-parity acceptance checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q -k "test_loader_parity_uses_the_live_exposure_set"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-loader-ac2
+  description: 'AC2: focused loader-parity acceptance checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q -k "test_loader_dropped_exposure_is_refused_and_named
+      or test_loader_reconciled_live_contract_fixture_passes"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-loader-ac3
+  description: 'AC3: focused loader-parity acceptance checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q -k "test_loader_floor_is_derived_from_the_served_count"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
