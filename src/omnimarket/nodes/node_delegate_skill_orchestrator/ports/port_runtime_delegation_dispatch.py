@@ -35,7 +35,11 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _CONFIG_KEY = "delegation_runtime_dispatch"
-_V2_TERMINAL_ADAPTER = TypeAdapter(
+_V2_TERMINAL_ADAPTER: TypeAdapter[
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+] = TypeAdapter(
     ModelDelegationTerminalCompletedV2
     | ModelDelegationTerminalFailedRoutedV2
     | ModelDelegationTerminalFailedUnroutedV2
