@@ -83,6 +83,13 @@ requirements:
       - id: "AC15"
         statement: |-
           AC15: node_linear_triage refuses an unscoped sweep, keeps the sprint project filter on every page, and resolves declared secrets with no ambient fallback -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q fails at the merge base
+  - id: "req-summary-report-grounding"
+    statement: |-
+      A summary is grounded against the complete report section it cites, and the generated authority label no longer collides with the secret redactor.
+    acceptance:
+      - id: "AC16"
+        statement: |-
+          AC16: a faithful BLOCKED summary whose host blockers sit on later lines of a contract-declared report section is grounded, a neighbouring report does not ground it, and the readable diagnostic survives the redactor -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -120,6 +127,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The linear triage node is scoped to the declared sprint and resolves its declared secrets."
     command: "uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q"
+  - kind: "tests"
+    description: "A summary is grounded within its complete report section and the diagnostic label survives the redactor."
+    command: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -221,3 +231,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC15"]
+  - id: "dod-omn17427-ac16-summary-report-grounding"
+    description: "A summary is grounded within its complete report section and the diagnostic label survives the redactor."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
