@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20613"
+title: "The budget-state write is one transaction that increments in the database and counts each event once"
+summary: "The async budget-state writer inserts the event identity into delegation_budget_applied_events and increments delegation_budget_state in one transaction. AC1 to AC4 are bound to the real-Postgres test file. AC5 and AC6 are not bound here: AC5 needs the omnibase_infra migration copy and AC6 reads the dev lane Postgres, which this repository's hosted check cannot reach."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-budget-state-write-is-atomic"
+    statement: "The budget-state write is atomic and idempotent per event identity. AC5 and AC6 are not bound here."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: concurrent writers on one tenant, tier and period row lose no drawdown -- falsifier: uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q -k concurrent"
+      - id: "AC2"
+        statement: "AC2: an A-B-A replay counts A once -- falsifier: uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q -k a_b_a"
+      - id: "AC3"
+        statement: "AC3: a failed transaction leaves both the applied-events row and the budget row unchanged -- falsifier: uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q -k failed_transaction"
+      - id: "AC4"
+        statement: "AC4: out-of-order timestamps keep last_event_at at the greater of stored and incoming -- falsifier: uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q -k out_of_order"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4 hosted probe against a real Postgres."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20613-ac1-ac4-budget-state-atomic"
+    description: "AC1 to AC4 hosted probe against a real Postgres."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20613_budget_state_atomic_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
