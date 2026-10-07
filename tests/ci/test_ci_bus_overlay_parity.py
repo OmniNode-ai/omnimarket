@@ -625,7 +625,7 @@ class TestParityWorkflowIsWired:
         assert checkouts, "no checkout of OmniNode-ai/omnibase_infra"
 
         with_block = checkouts[0]["with"]
-        assert with_block["ref"] == "v0.38.66", (
+        assert with_block["ref"] == "v0.38.67", (
             "the gate must read the omnibase_infra release this repo pins in "
             "uv.lock, never omnibase_infra's live branch"
         )
