@@ -1,0 +1,46 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19787"
+title: "Serve the newest acceptance-eval run on the first page of its exposure"
+summary: "The acceptance-eval projection exposure selects its top rows by observed_at DESC over the whole row set when no since cursor is given, so the dashboard's first page carries the latest run for every class. A focused test proves the first page and that since still walks the cursor."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-acceptance-eval-latest-first"
+    statement: |-
+      The acceptance-eval exposure must serve the newest run first and keep the since cursor walk.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the latest acceptance-eval run has every class on the first page of its exposure -- falsifier: uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k latest_run_every_class
+      - id: "AC2"
+        statement: |-
+          AC2: a read with since still walks the cursor and is not reordered by the latest-first selection -- falsifier: uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks
+evidence_requirements:
+  - kind: "tests"
+    description: "The first page of the exposure carries the newest run for every class."
+    command: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k latest_run_every_class"
+  - kind: "tests"
+    description: "A since read still walks the cursor."
+    command: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-latest-first-ac1"
+    description: "The focused test proves the newest run has every class on the first page."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k latest_run_every_class"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-latest-first-ac2"
+    description: "The focused test proves a since read still walks the cursor."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
