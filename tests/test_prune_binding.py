@@ -12,16 +12,81 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr, ValidationError
 
-from omnimarket.handlers import handler_prune_binding as binding_module
-from omnimarket.handlers.handler_prune_binding import (
+from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_prune_binding_effect.handlers import (
+    handler_prune_binding as binding_module,
+)
+from omnimarket.nodes.node_prune_binding_effect.handlers.handler_prune_binding import (
+    HandlerPruneBinding,
     PruneConfigurationError,
     load_prune_binding,
     prune_database_url,
 )
-from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.models.model_prune_binding import ModelPruneBinding
+from omnimarket.nodes.node_prune_binding_effect.models import (
+    ModelPruneBinding,
+    ModelPruneBindingRequest,
+    PruneKind,
+)
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize("kind", ["consumer_flow", "dead_letter"])
+def test_handler_returns_same_overlay_binding_as_loader(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: PruneKind
+) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "overlay_version": "1.0.0",
+                "environment": "test",
+                "scope": "env",
+                "services": {
+                    "prune": {
+                        f"{kind}.archive_dir": str(tmp_path / "archive"),
+                        f"{kind}.database_secret_ref": "db.retention.url",
+                    }
+                },
+            }
+        )
+    )
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    declared = ModelPruneBinding(archive_dir=tmp_path)
+    result = HandlerPruneBinding().handle(
+        ModelPruneBindingRequest(binding=declared, kind=kind)
+    )
+    assert result.binding == load_prune_binding(declared, kind)
+    assert result.binding.archive_dir == tmp_path / "archive"
+    assert result.database_url is None
+
+
+def test_handler_optionally_resolves_and_redacts_database_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", raising=False)
+    monkeypatch.setattr(binding_module.Path, "home", lambda: tmp_path)
+    store = AsyncMock(spec=ProtocolSecretStore)
+    store.get_secret.return_value = "postgresql://secret:must-not-leak@fixture/db"
+    binding = ModelPruneBinding(database_secret_ref="db.retention.url")
+    handler = HandlerPruneBinding(store=store)
+    result = handler.handle(
+        ModelPruneBindingRequest(binding=binding, kind="dead_letter")
+    )
+    assert result.database_url is None
+    store.get_secret.assert_not_awaited()
+    result = handler.handle(
+        ModelPruneBindingRequest(
+            binding=binding, kind="dead_letter", resolve_database_url=True
+        )
+    )
+    assert result.database_url is not None
+    assert result.database_url.get_secret_value() == store.get_secret.return_value
+    assert result.binding == binding
+    assert "must-not-leak" not in repr(result)
+    assert "must-not-leak" not in result.model_dump_json()
+    store.get_secret.assert_awaited_once_with("db.retention.url")
 
 
 def test_database_secret_ref_uses_injected_store() -> None:

@@ -285,6 +285,7 @@ node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_e
 node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampler_effect"
 node_dead_letter_prune_effect = "omnimarket.nodes.node_dead_letter_prune_effect"
 node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_effect"
+node_prune_binding_effect = "omnimarket.nodes.node_prune_binding_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"

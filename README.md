@@ -169,7 +169,9 @@ Test markers: `unit` (isolated), `integration` (multi-component), `slow` (>1s),
 ## Retention Effect Bindings
 
 The consumer-flow and dead-letter prune effects resolve their archive and
-DB bindings at the effect boundary, after the scheduled interval gate.
+DB bindings at the effect boundary, after the scheduled interval gate. Shared
+overlay and secret-store resolution lives in `node_prune_binding_effect`, a
+library-style effect invoked in process without topics or subscriptions.
 `config.<kind>_prune.binding` accepts an absolute `archive_dir` and either
 `database_url` or `database_secret_ref`. The shipped bindings are unconfigured;
 a missing key returns a typed `refused` result with zero pruning. Skipped ticks

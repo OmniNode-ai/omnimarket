@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
+
+PruneKind = Literal["consumer_flow", "dead_letter"]
 
 
 class ModelPruneBinding(BaseModel):
@@ -51,3 +54,22 @@ class ModelPruneBinding(BaseModel):
         if self.database_url is not None and self.database_secret_ref is not None:
             raise ValueError("declare only one database_url or database_secret_ref")
         return self
+
+
+class ModelPruneBindingRequest(BaseModel):
+    """Resolve a declared binding, optionally including its database credential."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    binding: ModelPruneBinding
+    kind: PruneKind
+    resolve_database_url: bool = False
+
+
+class ModelPruneBindingResult(BaseModel):
+    """The overlay-resolved binding and, when requested, a redacted credential."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    binding: ModelPruneBinding
+    database_url: SecretStr | None = None

@@ -40,11 +40,6 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from omnibase_spi.protocols.services import ProtocolSecretStore
 
-from omnimarket.handlers.handler_prune_binding import (
-    PruneConfigurationError,
-    load_prune_binding,
-    prune_database_url,
-)
 from omnimarket.nodes.node_consumer_flow_prune_effect.models import (
     EnumConsumerFlowDayStatus,
     EnumConsumerFlowPruneVerdict,
@@ -59,6 +54,12 @@ from omnimarket.nodes.node_consumer_flow_prune_effect.models import (
 from omnimarket.nodes.node_consumer_flow_prune_effect.protocols import (
     ProtocolConsumerFlowStore,
 )
+from omnimarket.nodes.node_prune_binding_effect.handlers.handler_prune_binding import (
+    HandlerPruneBinding,
+    PruneConfigurationError,
+    prune_database_url,
+)
+from omnimarket.nodes.node_prune_binding_effect.models import ModelPruneBindingRequest
 from omnimarket.topic_archive.codec import gzip_deterministic, sha256_hex
 from omnimarket.topic_archive.live import LocalDirArchiveSink, NoArchiveCipher
 from omnimarket.topic_archive.models import EnumArchiveEncryption
@@ -142,7 +143,15 @@ class HandlerConsumerFlowPrune:
     def _resolve_boundary(self) -> None:
         if self._bound_store is not None and self._bound_sink is not None:
             return
-        binding = load_prune_binding(self._cfg.binding, "consumer_flow")
+        binding = (
+            HandlerPruneBinding(store=self._secret_store)
+            .handle(
+                ModelPruneBindingRequest(
+                    binding=self._cfg.binding, kind="consumer_flow"
+                )
+            )
+            .binding
+        )
         sink: ProtocolArchiveSink
         if self._bound_sink is None:
             if binding.archive_dir is None:

@@ -98,8 +98,9 @@ config:
     # UPDATE only): until a grant lands, a scheduled run archives and verifies,
     # then fails the delete and prunes nothing; the next run reuses the
     # verified objects.
-    # Resolved at a due effect boundary from the contract or services.prune
-    # in the runtime overlay; missing values return a typed refusal.
+    # Resolved by node_prune_binding_effect at a due effect boundary from
+    # the contract or services.prune in the runtime overlay; missing values
+    # return a typed refusal.
     binding:
       archive_dir: null
       database_url: null

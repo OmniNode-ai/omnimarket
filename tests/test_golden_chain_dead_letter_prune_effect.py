@@ -596,8 +596,8 @@ def test_unconfigured_database_refuses_without_legacy_env_fallback(
 def test_refused_configuration_is_only_resolved_once_per_interval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.nodes.node_dead_letter_prune_effect.handlers import (
-        handler_dead_letter_prune as module,
+    from omnimarket.nodes.node_prune_binding_effect.handlers import (
+        handler_prune_binding as module,
     )
 
     seen: list[str] = []

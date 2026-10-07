@@ -8,7 +8,7 @@
         [--aws-profile P]
 
 The database binding comes from the node contract or the runtime overlay,
-resolved at the effect boundary. Missing configuration returns a typed refusal.
+resolved by node_prune_binding_effect at the effect boundary. Missing configuration returns a typed refusal.
 No credential is passed on the command line.
 
 Sink: a local owner-only directory, or S3 with a per-object KMS data key
