@@ -185,7 +185,9 @@ class TestMergedPrAloneDoesNotClose:
             github_client=_github_with_merged_implementing_pr(),
             dod_verdict_probe=probe,
         )
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 0
         client.save_issue.assert_not_called()
@@ -207,7 +209,9 @@ class TestMergedPrAloneDoesNotClose:
             github_client=_github_with_merged_implementing_pr(),
             dod_verdict_probe=_Probe(_BOUND),
         )
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1
         client.save_issue.assert_called_once_with(issue_id="uuid-1", state="Done")
@@ -221,7 +225,9 @@ class TestMergedPrAloneDoesNotClose:
             github_client=_github_with_merged_implementing_pr(),
             dod_verdict_probe=_Probe(None, "Timeout running dod_verify for OMN-820368"),
         )
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 0
         client.save_issue.assert_not_called()
@@ -241,7 +247,9 @@ class TestMergedPrAloneDoesNotClose:
             github_client=_github_with_merged_implementing_pr(),
             dod_verdict_probe=probe,
         )
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 0
         client.save_issue.assert_not_called()
@@ -256,7 +264,9 @@ class TestMergedPrAloneDoesNotClose:
                 _verdict(binds={"t1": ["AC1"], "t2": ["AC2"]}, status="failed")
             ),
         )
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 0
         client.save_issue.assert_not_called()

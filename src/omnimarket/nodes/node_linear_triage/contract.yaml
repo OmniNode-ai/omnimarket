@@ -6,10 +6,12 @@ runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Scan all non-completed Linear tickets, verify status against actual GitHub PR state,
+  Scan non-completed tickets in the declared sprint project by default, verify status against actual GitHub PR state,
   flag close-candidates for human review (flag_only=true by default), and detect
   stale and completed epics. Auto-close is gated behind flag_only=false which must
   only be set after precision has been validated above an acceptable threshold.
+  Every Done write additionally requires a PASS dod_verify verdict that binds
+  all acceptance criteria. A merged PR alone never authorizes Done.
 
 handler_routing:
   routing_strategy: operation_match
@@ -31,6 +33,21 @@ descriptor:
   timeout_ms: 600000
 
 inputs:
+  scope:
+    type: str
+    description: "sprint (default) requires a project; backlog explicitly scans the whole team"
+    required: false
+    default: "sprint"
+  project_id:
+    type: str
+    description: "Linear sprint project UUID; overrides declared active_sprint_project_id config"
+    required: false
+    default: ""
+  secret_resolver_config_path:
+    type: str
+    description: "Explicit secret resolver mapping file; otherwise the configured lane store is authoritative"
+    required: false
+    default: ""
   threshold_days:
     type: int
     description: "Tickets updated within this many days are 'recent' and get PR-verified (default 14)"
@@ -85,7 +102,17 @@ outputs:
     type: list[str]
     description: "Close-candidates suppressed by flag_only=true. Each entry is '<ticket_id>: <evidence>'. Attach to human-review artifact."
 
+config:
+  active_sprint_project_id:
+    type: str
+    env_var: LINEAR_ACTIVE_SPRINT_PROJECT_ID
+    description: "Current sprint project UUID. No guessed or historical default."
+    required: false
+
 secrets:
+  LINEAR_API_KEY:
+    description: "Linear API key, resolved through the same declared store as GitHub."
+    required: true
   # OMN-12856: GitHub token is contract-declared so the handler reads the ref
   # name from here — not a bare source literal. Value is resolved at the effect
   # boundary via the canonical secret-store resolver.

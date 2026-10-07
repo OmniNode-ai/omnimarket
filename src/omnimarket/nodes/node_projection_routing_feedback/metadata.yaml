@@ -6,9 +6,7 @@ description: "Platform cumulative routing feedback by model and task type."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true
-  # OMN-20578: this directory carries only the migrations omnibase_infra
-  # vendors; the node's contract and handlers land with its wiring PR.
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_secrets: true
   side_effect_class: write_db

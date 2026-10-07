@@ -44,6 +44,10 @@ from omnimarket.projection.runner import (
     MessageMeta,
     ModelProjectionRuntimeBinding,
 )
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 
 def _validation_error() -> ValidationError:
@@ -375,6 +379,7 @@ class TestDelegationRunnerSafetyNet:
                 'column "cost_savings_usd" does not exist'
             )
         )
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
         runner._consumer = _CommitRecordingConsumer()
 
@@ -383,6 +388,7 @@ class TestDelegationRunnerSafetyNet:
             topic,
             5,
             {
+                "tenant_id": PROJECTION_TENANT_SLUG,
                 "correlation_id": "corr-schema",
                 "task_type": "code-review",
                 "delegated_to": "agent-alpha",
@@ -414,6 +420,7 @@ class TestDelegationRunnerSafetyNet:
                 "datetime.datetime instance, got 'str')"
             )
         )
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
         runner._consumer = _CommitRecordingConsumer()
 
@@ -422,6 +429,7 @@ class TestDelegationRunnerSafetyNet:
             topic,
             6,
             {
+                "tenant_id": PROJECTION_TENANT_SLUG,
                 "correlation_id": "corr-poison-dataerror",
                 "task_type": "code-review",
                 "delegated_to": "agent-alpha",

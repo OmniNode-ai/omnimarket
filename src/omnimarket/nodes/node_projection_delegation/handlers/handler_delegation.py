@@ -1744,34 +1744,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
-        # OMN-14898: refuse the write before it is built out further when
-        # isolation enforcement is on and no tenant was resolved. No-op while
-        # ENFORCE_TENANT_ISOLATION is False (OMN-14058 interim default).
+        # Resolve only the event's declared tenant against the registry.
+        # terminal_write_tenant refuses missing attribution regardless of
+        # enforcement or the writer's configured tenant (OMN-20651).
         require_tenant_id(event.tenant_id, table=self._table_delegation)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source event carried one -- omitting the key lets the column
-        # DEFAULT apply on INSERT and leaves an already-known tenant
-        # untouched on UPDATE (targeted-column upsert semantics).
-        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) --
-        # resolve the verified SLUG event.tenant_id to its canonical UUID
-        # before it reaches the row. This is the LIVE production write path
-        # (the async Kafka runner); the sync CLI path in
-        # HandlerProjectionDelegation.project() carries the identical fix.
-        # OMN-16804: that resolution now reads tenant_registry_mirror -- the
-        # relation node_projection_tenant_registry materializes from
-        # onex.tenant.events -- instead of a three-entry dict compiled into
-        # this source tree. Every provisioned tenant resolves, not just the
-        # three that happened to be hardcoded when the column was converted.
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             event.tenant_id, event_timestamp=safe_parse_date(event.timestamp)
         )
-        # OMN-18565: NAMED UNCONDITIONALLY. Migration 0042 removes the column
-        # DEFAULT this used to fall through to, so a write that names no tenant
-        # is now refused by NOT NULL rather than silently house-attributed by
-        # the schema. The house stamp is held INSERT-ONLY so a terminal that
-        # resolved nothing still cannot rewrite an attribution an earlier,
-        # better-informed write recorded. One implementation, shared with the
-        # sync kernel twin, so the two writers cannot drift on this again.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=self._table_delegation
         )
@@ -2017,16 +1996,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
-        # OMN-14898: same fail-closed guard as _project_typed_event_async.
+        # Same declared-tenant boundary as the canonical terminal path.
         require_tenant_id(row_model.tenant_id, table=self._table_delegation)
-        # OMN-15683: same UUID resolution as _project_typed_event_async above.
-        # OMN-16804: registry-resolved, so the terminal row is keyed by the
-        # same canonical UUID the gateway verified -- never omitted to let a
-        # column DEFAULT stand in for an identity nobody recorded.
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             row_model.tenant_id, event_timestamp=row_model.timestamp
         )
-        # OMN-18565: NAMED UNCONDITIONALLY, same reason as the typed-event path.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=self._table_delegation
         )

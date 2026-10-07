@@ -37,6 +37,10 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _RATE_LIMITED = (
     ModelDelegateSkillAttemptRecord(
@@ -169,8 +173,10 @@ def test_timeout_terminal_round_trips_through_delegation_projection() -> None:
     """The delegation_events consumer decodes and copies the new core member."""
     correlation_id = "0b6f1d2e-9a57-4c1e-8f0e-3e1f9c0a4d12"
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     result = HandlerProjectionDelegation().handle(
         {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "_db": db,
             "_event_type": "delegate-skill-failed",
             "status": "timeout",

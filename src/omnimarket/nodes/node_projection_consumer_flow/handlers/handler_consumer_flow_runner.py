@@ -262,11 +262,17 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         """
         await self.db.connect()
         try:
-            written = await self._project_window(topic, data, meta)
+            written, refused = await self._project_window_with_refusals(
+                topic, data, meta
+            )
         finally:
             await self._stop_producer()
             await self.db.close()
-        return {"rows_upserted": len(written), "flow_rows": written}
+        return {
+            "rows_upserted": len(written),
+            "flow_rows": written,
+            "rows_refused_by_ordering_guard": refused,
+        }
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -283,6 +289,13 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
     async def _project_window(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> list[dict[str, Any]]:
+        """Project a standalone window, retaining the accepted-row interface."""
+        accepted, _ = await self._project_window_with_refusals(topic, data, meta)
+        return accepted
+
+    async def _project_window_with_refusals(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> tuple[list[dict[str, Any]], int]:
         """Resolve the facts the derivation cannot see, then persist its output.
 
         The verdict logic is NOT duplicated here: this reads the database,
@@ -290,16 +303,18 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         A second copy of the derivation is how a SQL writer and an in-memory
         writer drift into disagreeing about what STALLED means.
 
-        Returns the rows the database actually accepted, in wire-safe form. An
-        empty list means nothing was written — which is a real answer, not a
-        failure, and is reported as such rather than as a truthy ack.
+        Returns accepted rows in wire-safe form and the number of observed
+        upserts refused by the SQL ordering predicate. Only an empty RETURNING
+        from that upsert counts: missing windows and gap inserts that find an
+        occupied slot are not ordering refusals. Counts belong to this call,
+        never to writer state shared across messages.
         """
         raw_window = data.get("flow_window")
         if raw_window is None:
             # No window on this heartbeat: the priming tick, or another node in
             # the process carries the window. Absence is not zero traffic, so
             # nothing is written.
-            return []
+            return [], 0
         window = ModelNodeFlowWindowWire.model_validate(raw_window)
 
         for produce in window.produce_deltas:
@@ -350,10 +365,13 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             gap_written.extend(gap_rows or [])
 
         observed: list[dict[str, Any]] = []
+        refused = 0
         for row in result.flow_rows:
             written = await self._upsert_flow_row(row)
             if written is not None:
                 observed.append(written)
+            else:
+                refused += 1
 
         # AC6. The snapshot is keyed on (consumer_group, topic) alone, and both
         # rows of a pair carry THIS message's coordinates, so publishing a gap
@@ -377,7 +395,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         for written_row in observed:
             await self._publish_snapshot_if_available(written_row, meta, data)
             accepted.append(_wire_row(written_row))
-        return accepted
+        return accepted, refused
 
     async def _upsert_flow_row(
         self, row: ModelConsumerFlowRow

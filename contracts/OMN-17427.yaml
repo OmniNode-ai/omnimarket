@@ -69,6 +69,20 @@ requirements:
       - id: "AC13"
         statement: |-
           AC13: occ_companion_merge_heal.py admits repo-evidence / dod-verify and Repo Evidence Dependency under the pre-merge control -- falsifier: uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q fails on the unfixed script
+  - id: "req-unbound-local-model-probe"
+    statement: |-
+      The routing explain CLI reports every provider-local backend that the contract and overlay merge leaves with an endpoint but no model name, the binding the routing reducer refuses at dispatch.
+    acceptance:
+      - id: "AC14"
+        statement: |-
+          AC14: python -m omnimarket.cli.cli_explain_routing --fail-on-unbound-local exits 1 and names each local backend with endpoint_url set and blank model_name, and the probe flags exactly the backends _load_bifrost_endpoints refuses -- falsifier: uv run pytest tests/unit/delegation/test_unbound_local_model_probe_omn17427.py -q fails at the merge base
+  - id: "req-linear-triage-sprint-scope"
+    statement: |-
+      The linear triage node sweeps only the declared sprint by default, preserves the sprint project filter on every page, and resolves its Linear credentials from the explicitly mapped secret store refs without falling back to ambient configuration.
+    acceptance:
+      - id: "AC15"
+        statement: |-
+          AC15: node_linear_triage refuses an unscoped sweep, keeps the sprint project filter on every page, and resolves declared secrets with no ambient fallback -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -100,6 +114,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The companion merge heal re-runs the repo-evidence family."
     command: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
+  - kind: "tests"
+    description: "The routing explain CLI flags a local backend bound to an endpoint but no model."
+    command: "uv run pytest tests/unit/delegation/test_unbound_local_model_probe_omn17427.py -q"
+  - kind: "tests"
+    description: "The linear triage node is scoped to the declared sprint and resolves its declared secrets."
+    command: "uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -185,3 +205,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
+  - id: "dod-omn17427-ac14-unbound-local-model-probe"
+    description: "The routing explain CLI flags a local backend bound to an endpoint but no model and exits 1 with --fail-on-unbound-local."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_unbound_local_model_probe_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]
+  - id: "dod-omn17427-ac15-linear-triage-sprint-scope"
+    description: "The linear triage node is scoped to the declared sprint and resolves its declared secrets with no ambient fallback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_linear_triage/test_omn_17427_sprint_and_secrets.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]

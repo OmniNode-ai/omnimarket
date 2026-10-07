@@ -50,6 +50,14 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.routing-feedback-updated.v1"
 
+# The runtime publishes the handler's typed return on the terminal event.
+terminal_event: "onex.evt.omnimarket.routing-feedback-updated.v1"
+
+published_events:
+  - event_type: "RoutingFeedbackUpdatedEvent"
+    topic: "onex.evt.omnimarket.routing-feedback-updated.v1"
+    description: "Cumulative per-model routing feedback after a terminal outcome."
+
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -168,9 +176,3 @@ state_machine:
       from_state: updated
       to_state: updated
       trigger: routing_feedback_updated
-
-# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
-# No node contract subscribes to these; they leave the ONEX node graph here.
-externally_consumed_topics:
-  # referenced outside the node graph at omnimarket/src/omnimarket/events/topics.py
-  - onex.evt.omnimarket.routing-feedback-updated.v1

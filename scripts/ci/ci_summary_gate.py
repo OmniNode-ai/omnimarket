@@ -350,6 +350,7 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
     "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
     "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+    "Generated Event Chains (walker paths)",  # if: docs_only != 'true'
     # OMN-19684: merge-test-durations combines every full-suite shard's
     # recorded durations into the one cache entry the next run's balancer
     # reads. Its own `if:` is
