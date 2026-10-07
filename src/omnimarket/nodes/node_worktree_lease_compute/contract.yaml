@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: worktree_lease_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: A lane asking to start in a worktree is refused when another lane's
+  live ledger claim holds it; the refusal names the holder and the release path.
+input_model: omnimarket.nodes.node_worktree_lease_compute.models.model_worktree_lease.ModelWorktreeLeaseRequest
+output_model: omnimarket.nodes.node_worktree_lease_compute.models.model_worktree_lease.ModelWorktreeLeaseDecision
+handler:
+  module: omnimarket.nodes.node_worktree_lease_compute.handlers.handler_worktree_lease
+  class: HandlerWorktreeLeaseCompute
+  input_model: omnimarket.nodes.node_worktree_lease_compute.models.model_worktree_lease.ModelWorktreeLeaseRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerWorktreeLeaseCompute
+      module: omnimarket.nodes.node_worktree_lease_compute.handlers.handler_worktree_lease
+    event_model:
+      name: ModelWorktreeLeaseRequest
+      module: omnimarket.nodes.node_worktree_lease_compute.models.model_worktree_lease
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.worktree-lease-evaluated.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.worktree-lease-evaluate.v1
+  publish_topics:
+  - onex.evt.omnimarket.worktree-lease-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.worktree-lease-evaluate.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.worktree-lease-evaluated.v1
+metadata:
+  transport_type: kafka
+inputs:
+  requester_lane:
+    type: str
+    required: true
+    description: The lane asking to start work in the worktree.
+  worktree_path:
+    type: str
+    required: true
+    description: The worktree the lane wants to use.
+  root:
+    type: str
+    required: true
+    description: Directory whose children are ticket directories of worktrees.
+  ledger_text:
+    type: str
+    required: true
+    description: The rolling work ledger text the claims are read from.
+  now:
+    type: datetime
+    required: true
+    description: Timezone-aware read time; claims go stale against it.
+  stale_after_hours:
+    type: float
+    required: false
+    description: Hours of silence after which a claim no longer holds (default 12).
+outputs:
+  decision:
+    type: object
+    description: granted or refused, with the holder and release path on a refusal.

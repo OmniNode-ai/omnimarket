@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_worktree_lease_compute
+version: 1.0.0
+description: Refuses a second lane starting in a worktree a live ledger claim holds,
+  naming the holder and the release path.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Worktree Lease Compute
+entry_points:
+  onex.nodes:
+    node_worktree_lease_compute: omnimarket.nodes.node_worktree_lease_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- worktree
+- lease
