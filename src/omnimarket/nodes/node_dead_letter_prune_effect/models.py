@@ -17,6 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_prune_binding import ModelPruneBinding
 from omnimarket.topic_archive.models import EnumArchiveEncryption
 
 
@@ -204,7 +205,7 @@ class ModelDeadLetterPruneResult(BaseModel):
 
     verdict: EnumDeadLetterPruneVerdict
     cutoff_day: dt.date = Field(description="Rows on this UTC day and later are kept.")
-    sink_location: str
+    sink_location: str | None = None
     days: list[ModelDeadLetterDayResult] = Field(default_factory=list)
     detail: str = ""
 
@@ -255,10 +256,9 @@ class ModelDeadLetterPruneConfig(BaseModel):
     table: Literal["event_ledger"]
     topic_like: str
     retention_days: int = Field(ge=1)
-    dsn_env: str
+    binding: ModelPruneBinding = Field(default_factory=ModelPruneBinding)
     max_rows_per_object: int = Field(ge=1)
     delete_batch_size: int = Field(ge=1)
-    local_dir_env: str
     schedule: ModelDeadLetterPruneScheduleConfig = Field(
         default_factory=lambda: ModelDeadLetterPruneScheduleConfig(
             run_interval_seconds=86400

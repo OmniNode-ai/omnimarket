@@ -68,17 +68,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
-from omnimarket.models.delegation.wire.model_response_source_attempt import (
-    ModelResponseSourceAttempt,
-)
-from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
-from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
-    current_dispatch_progress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
@@ -87,10 +80,18 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
+from omnimarket.models.delegation.wire.model_response_source_attempt import (
+    ModelResponseSourceAttempt,
+)
+from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    current_dispatch_progress,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    DELEGATION_RUNTIME_INSTANCE_ID,
     ModelDelegationReapContext,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
@@ -891,7 +892,7 @@ def _response_from_result(
     tenant_id: str | None,
     queue_wait_ms: int | None,
     execution_duration_ms: int,
-    budget_evidence: ModelDelegationBudgetEvidence,
+    budget_evidence: ModelDelegationBudgetEvidence | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -998,6 +999,7 @@ def _response_from_result(
         )
     else:
         cost_savings_usd = 0.0
+    manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -1039,7 +1041,11 @@ def _response_from_result(
         model_cloud_baseline=baseline.model,
         baseline_source=baseline.selection_case,
         baseline_state=baseline.state,
-        pricing_manifest_version=baseline.pricing_manifest_version,
+        pricing_manifest_version=(
+            baseline.pricing_manifest_version
+            if manifest_version is None
+            else manifest_version
+        ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,
@@ -1515,10 +1521,10 @@ def _request_reap_context(
         caller_lane=_request_caller_lane(request),
         session_id=_request_session_id(request),
         provenance=request.provenance,
+        runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
+        request=request,
+        # Grace is the whole recovery window after execution. Adding the
+        # caller's delivery margin again delays recovery beyond budget + grace.
         deadline_at=datetime.now(UTC)
-        + timedelta(
-            seconds=execution_seconds
-            + budget.terminal_delivery_margin_seconds
-            + config.grace_seconds
-        ),
+        + timedelta(seconds=execution_seconds + config.grace_seconds),
     )

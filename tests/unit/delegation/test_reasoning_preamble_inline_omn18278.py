@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-18278: strip one declared leading block and refuse residual traces."""
 
+import asyncio
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -22,14 +24,80 @@ from omnimarket.inference.task_class_authority import (
     ModelReasoningPreamblePolicy,
     resolve_reasoning_preamble_policy,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect import (
+    ModelLlmDelegationCallResult,
+)
+from omnimarket.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    "prefix", ["", "<think>weighing options\n", " \n<think>weighing options\n"]
+)
+@pytest.mark.parametrize("with_contract", [False, True])
+def test_local_extraction_cannot_hide_an_unclosed_leading_trace(
+    tmp_path: Path, prefix: str, with_contract: bool
+) -> None:
+    prose = (
+        "The quality gate checks the provider response before accepting a delegated "
+        "answer. A leading reasoning trace must remain visible to the deterministic "
+        "floor even when deliverable extraction finds a complete answer after it."
+    )
+    answer = json.dumps({"answer": prose}) if with_contract else prose
+    content = prefix + (answer if with_contract else "### ANSWER\n" + answer)
+    port = LocalDelegationDispatchPort(
+        effect_handler=lambda request: ModelLlmDelegationCallResult(
+            request_id=request.request_id, success=True, content=content
+        ),
+        evidence_db_path=tmp_path / "evidence.sqlite",
+        effect_process_boundary=False,
+    )
+    outcome = asyncio.run(
+        port._run_single_attempt(
+            backend=ModelResolvedDelegationBackend(
+                backend_id="local-heavy-reasoning",
+                model_id="Qwen3.8-27B",
+                endpoint_ref="https://local.example/v1/chat/completions",
+                tier="local",
+                max_tokens=4096,
+                timeout_ms=30000,
+            ),
+            prompt="Return the answer.",
+            task_type="document",
+            correlation_id=uuid4(),
+            max_tokens=1024,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+            response_contract={"type": "object", "required": ["answer"]}
+            if with_contract
+            else None,
+        )
+    )
+    assert outcome.gate_result is not None
+    if prefix:
+        assert not outcome.gate_result.passed
+        assert outcome.gate_result.quality_score == 0.0
+        assert outcome.gate_result.fallback_recommended
+        assert outcome.gate_result.fail_category == "fail_deterministic"
+        assert (
+            outcome.gate_result.rule_evaluations[0].rule == "no_residual_reasoning_tag"
+        )
+        assert outcome.result is not None
+        assert "<think>" not in (outcome.result.content or "")
+    else:
+        assert outcome.gate_result.passed
 
 
 @pytest.mark.parametrize(
@@ -64,6 +132,10 @@ def _input(content: str) -> ModelQualityGateInput:
         ("Part one.</think> more reasoning. Final.", "</think>"),
         ("Final answer with <think> inside", "<think>"),
         ("Part one. <think>more reasoning</think> Final.", "<think>"),
+        ("Part one.</thinking> more reasoning. Final.", "</thinking>"),
+        ("Final answer with <thinking> inside", "<thinking>"),
+        ("Part one.</reasoning> more reasoning. Final.", "</reasoning>"),
+        ("Final answer with <reasoning> inside", "<reasoning>"),
     ],
 )
 @pytest.mark.parametrize("adapter_stripped", [False, True])
@@ -76,7 +148,9 @@ def test_residual_tag_refuses_and_climbs(
         if adapter_stripped
         else (raw, 0)
     )
-    result = delta(_input(content), reasoning_stripped_chars=count)
+    result = delta(
+        _input(content), reasoning_stripped_chars=count, judge_adequacy_score=1.0
+    )
     assert not result.passed
     assert result.fail_category == "fail_deterministic"
     assert result.quality_score == 0.0
@@ -103,11 +177,17 @@ def test_a_leading_paired_block_is_segmented_off_and_the_gate_refuses() -> None:
     assert result.reasoning_preamble_rule == "leading_paired_block"
 
 
-def test_a_paired_block_after_the_answer_starts_is_left_for_the_floor() -> None:
-    content = "The answer is 42. <think>second thoughts</think> Or 41."
+@pytest.mark.parametrize("tag", ["think", "thinking", "reasoning"])
+@pytest.mark.parametrize("closed", [False, True])
+def test_a_trace_after_the_answer_starts_is_left_for_the_floor(
+    tag: str, closed: bool
+) -> None:
+    content = f"The answer is 42. <{tag}>second thoughts"
+    if closed:
+        content += f"</{tag}> Or 41."
     segmentation = segment_reasoning_preamble(content)
     assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
-    result = delta(_input(content))
+    result = delta(_input(content), judge_adequacy_score=1.0)
     assert not result.passed
     assert result.rule_evaluations[0].rule == RESIDUAL_REASONING_TAG_CHECK_NAME
 
@@ -164,7 +244,9 @@ def test_clean_answer_passes_but_a_stripped_trace_still_fails(
 def test_policy_exposes_residual_tags_and_defaults_to_none_declared() -> None:
     policy = resolve_reasoning_preamble_policy()
     assert policy is not None
-    assert policy.residual_trace_tags == ("<think>", "</think>")
+    for closing in policy.closing_trace_tags:
+        assert closing in policy.residual_trace_tags
+        assert f"<{closing[2:]}" in policy.residual_trace_tags
     without_tags = ModelReasoningPreamblePolicy.model_validate(
         policy.model_dump(exclude={"residual_trace_tags"})
     )

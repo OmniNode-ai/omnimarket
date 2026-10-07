@@ -97,6 +97,7 @@ class _FakeLinearClient:
         self,
         *,
         team: str,
+        project_id: str | None = None,
         state_not_in: list[str] | None = None,
         limit: int = 250,
         after: str | None = None,
@@ -258,7 +259,7 @@ async def test_would_mark_done_superseded_flag_only() -> None:
     linear, gh = _superseded_setup()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     # flag_only=True is the default — the outer safety gate.
-    result = await handler.handle(ModelLinearTriageStartCommand())
+    result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
     assert result.marked_done_superseded == 0
     assert linear.saved == []
@@ -277,7 +278,7 @@ async def test_mark_done_superseded_when_not_flag_only() -> None:
     linear, gh = _superseded_setup()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done_superseded == 1
@@ -300,7 +301,7 @@ async def test_mutation_failure_on_superseded_close_flags_stale() -> None:
     )
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done_superseded == 0
@@ -333,7 +334,7 @@ def _epic_all_children_done_setup() -> tuple[_FakeLinearClient, _FakeGitHubClien
 async def test_would_mark_done_epic_flag_only() -> None:
     linear, gh = _epic_all_children_done_setup()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
-    result = await handler.handle(ModelLinearTriageStartCommand())
+    result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
     assert result.epics_closed == 0
     assert linear.saved == []
@@ -350,7 +351,7 @@ async def test_mark_done_epic_when_not_flag_only() -> None:
     linear, gh = _epic_all_children_done_setup()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.epics_closed == 1
@@ -371,7 +372,7 @@ async def test_epic_with_open_child_is_not_closed() -> None:
     gh = _FakeGitHubClient()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.epics_closed == 0
@@ -396,7 +397,7 @@ async def test_mutation_failure_on_epic_close_flags_stale() -> None:
     gh = _FakeGitHubClient()
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.epics_closed == 0
@@ -442,7 +443,7 @@ async def test_open_children_guard_suppresses_mark_done() -> None:
     gh = _direct_merged_setup("OMN-9800")
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done == 0
@@ -474,7 +475,7 @@ async def test_reopened_after_merge_guard_suppresses_mark_done() -> None:
     gh = _direct_merged_setup("OMN-9900")
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done == 0
@@ -494,7 +495,7 @@ async def test_mutation_failure_on_mark_done_flags_stale() -> None:
     gh = _direct_merged_setup("OMN-9950")
     handler = HandlerLinearTriage(client=linear, github_client=gh)
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done == 0

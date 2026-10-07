@@ -22,7 +22,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_acceptance_judge_request_compute.handlers.handler_delegation_acceptance_judge_request
   class: HandlerDelegationAcceptanceJudgeRequest
-  input_model: omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillCompleted
+  input_model: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection.ModelDelegateSkillTerminalProjection
   output_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
 
 descriptor:

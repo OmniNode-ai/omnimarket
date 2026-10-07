@@ -11,9 +11,13 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper import (
     HandlerDelegationReaper,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_recovery import (
+    HandlerDelegationRecovery,
+)
 
 __all__ = [
     "HandlerDelegateSkill",
     "HandlerDelegationReaper",
+    "HandlerDelegationRecovery",
     "ProtocolDelegationDispatchPort",
 ]

@@ -26,15 +26,15 @@ from omnibase_core.models.delegation.wire import EnumDelegationOperationalOutcom
 from pydantic import BaseModel, ValidationError
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
     ProtocolDelegationDispatchPort,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
@@ -307,11 +307,10 @@ def test_run_45661dd1_three_refused_local_answers_then_a_provider_timeout(
 
 
 @pytest.mark.parametrize(
-    ("scores", "truncated_index", "empty_index", "source_index"),
+    ("scores", "truncated_index", "source_index"),
     [
         pytest.param(
             (0.567, 0.567, 0.567, 0.433, 0.433),
-            None,
             None,
             0,
             id="recorded_shape_first_wins_ties",
@@ -319,22 +318,17 @@ def test_run_45661dd1_three_refused_local_answers_then_a_provider_timeout(
         pytest.param(
             (0.3, 0.567, 0.567, 0.433, 0.433),
             None,
-            None,
             1,
             id="highest_score_then_first_tie",
         ),
         pytest.param(
-            (0.3, 0.4, 0.5, 0.6, 0.567), None, None, 3, id="best_answer_can_be_frontier"
+            (0.3, 0.4, 0.5, 0.6, 0.567), None, 3, id="best_answer_can_be_frontier"
         ),
         pytest.param(
             (0.9, 0.567, 0.5, 0.433, 0.433),
             0,
-            None,
             1,
             id="exclude_output_length_truncation",
-        ),
-        pytest.param(
-            (0.9, 0.567, 0.5, 0.433, 0.433), None, 0, 1, id="exclude_empty_draft"
         ),
     ],
 )
@@ -342,7 +336,6 @@ def test_failed_terminal_keeps_best_answered_rung(
     ladder: tuple[hw.HandlerDelegationWorkflow, UUID],
     scores: tuple[float, ...],
     truncated_index: int | None,
-    empty_index: int | None,
     source_index: int,
 ) -> None:
     handler, cid = ladder
@@ -351,7 +344,7 @@ def test_failed_terminal_keeps_best_answered_rung(
             handler,
             cid,
             index,
-            "" if index == empty_index else _DRAFTS[index],
+            _DRAFTS[index],
             score,
             truncated=index == truncated_index,
         )

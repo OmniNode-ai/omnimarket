@@ -525,7 +525,13 @@ reasoning_preamble:
   # segmentation is refused at the deterministic floor, because whatever
   # surrounds a stray tag is reasoning the model did not finish separating
   # from the deliverable.
-  residual_trace_tags: ["<think>", "</think>"]
+  residual_trace_tags:
+    - "<think>"
+    - "</think>"
+    - "<thinking>"
+    - "</thinking>"
+    - "<reasoning>"
+    - "</reasoning>"
   rationale: >-
     Declared here, beside the quality rules that read the segmented answer, so
     the phrase list a response is judged against is a contract a customer can
@@ -1403,6 +1409,7 @@ task_classes:
         - names_resolve
         - final_artifact_only
         - uses_pytest_mark_unit
+        - pytest_tests_present
       heuristic:
         - no_refusal
         - covers_edge_cases

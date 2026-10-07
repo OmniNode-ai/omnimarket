@@ -851,36 +851,14 @@ class HandlerProjectionDelegation:
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
-        # OMN-14898: refuse the write before it is ever built out further when
-        # isolation enforcement is on and no tenant was resolved (raises
-        # TenantRequiredError -- no row, no fall-through to the column
-        # default). No-op while ENFORCE_TENANT_ISOLATION is False, so the
-        # OMN-14058 interim fallback below is unchanged by default.
+        # Resolve only the event's declared tenant against the registry.
+        # Missing attribution is refused by terminal_write_tenant regardless
+        # of enforcement or the writer's configured tenant (OMN-20651).
         require_tenant_id(event.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source event carried one — omitting the key (rather than writing
-        # None) lets the delegation_events column DEFAULT apply on INSERT and
-        # leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) —
-        # event.tenant_id is the verified SLUG (stamp_verified_tenant_slug);
-        # resolve it to the canonical UUID before it reaches the row/column.
-        # Stamping the raw slug here would either fail the INSERT (unmapped
-        # value) or, worse, silently key the row under a representation the
-        # gateway's UUID-keyed reader can never join against again.
-        # OMN-16804: resolved against tenant_registry_mirror -- the relation
-        # node_projection_tenant_registry materializes from onex.tenant.events
-        # -- rather than a three-entry dict compiled into this source tree, so
-        # every provisioned tenant resolves rather than only the three that
-        # were hardcoded when the column was converted.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             event.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
-        # column DEFAULT this used to fall through to is removed by 0042, and
-        # the insert-only arm it returns when nothing resolved is not a policy
-        # bypass: row-level security evaluates USING against the pre-existing
-        # row, not the SET clause.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1092,20 +1070,12 @@ class HandlerProjectionDelegation:
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
-        # OMN-14898: same fail-closed guard as project() -- no-op unless
-        # ENFORCE_TENANT_ISOLATION is set.
+        # Same declared-tenant boundary as the canonical terminal path.
         require_tenant_id(row_model.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
-        # present — omitting the key lets the column DEFAULT apply on INSERT
-        # and leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: same UUID resolution as project() above — see that
-        # call site's comment for why the raw slug must never reach the row.
-        # OMN-16804: see the registry-resolution note on project() above.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             row_model.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY, same reason as project() above.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1990,7 +1960,13 @@ def _preserve_existing_evidence(
     correlation_id = row.get(CONFLICT_KEY)
     if not correlation_id:
         return
-    existing_rows = db.query(TABLE, {CONFLICT_KEY: correlation_id})
+    # Read under the declared row tenant, matching the async writer. Using
+    # the writer's configured tenant here can blind the merge or fail its UUID
+    # policy cast even though the terminal carries a valid tenant (OMN-20651).
+    filters = {CONFLICT_KEY: correlation_id}
+    if row.get("tenant_id"):
+        filters["tenant_id"] = row["tenant_id"]
+    existing_rows = db.query(TABLE, filters)
     if not existing_rows:
         apply_terminal_precedence({}, row)
         return

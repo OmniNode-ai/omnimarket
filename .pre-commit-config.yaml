@@ -298,6 +298,7 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - id: check-yaml
       - id: end-of-file-fixer
       # This verbatim captured prompt intentionally contains merge-marker text.
       - id: check-merge-conflict
@@ -1335,6 +1336,19 @@ repos:
 
   - repo: local
     hooks:
+      # Golden-chain validation layer, generation step (epic OMN-19546). Runs
+      # the contract walker over src, re-drives every generated chain of an
+      # enrolled workflow and fails on a path with no chain, a chain with no
+      # path, or a chain whose drive changed. SYNC with ci.yml
+      # event-chain-generation. Regenerate: CHAIN_GEN_WRITE=1 on this suite.
+      - id: check-generated-event-chains
+        name: Generated event chains hold for every walker path (OMN-19546)
+        language: system
+        entry: uv run pytest tests/chains/generated -q -m unit -p no:cacheprovider
+        files: (contract\.yaml$|^src/omnimarket/nodes/node_(delegation_[a-z_]+|event_chain_generator_compute)/|^tests/chains/(generated|delegation)/)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-13346: DurableEvidenceGate must not pass CONTRACT_CITES_MERGE_COMMIT
       # vacuously when schema-valid contracts carry zero receipt-bound commits.
       # SYNC with ci.yml pytest suite.
