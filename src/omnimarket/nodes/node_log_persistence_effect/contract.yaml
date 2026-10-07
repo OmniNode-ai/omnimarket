@@ -22,16 +22,19 @@ handler_routing:
       handler:
         name: NodeLogPersistenceEffect
         module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+      event_model: omnibase_core.models.logging.model_structured_log_entry.ModelStructuredLogEntry
     - topic: onex.evt.omnimarket.delegate-skill-completed.v1
       operation: log_persistence
       handler:
         name: NodeLogPersistenceEffect
         module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+      event_model: omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillCompleted
     - topic: onex.evt.omnimarket.delegate-skill-failed.v1
       operation: log_persistence
       handler:
         name: NodeLogPersistenceEffect
         module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+      event_model: omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillFailed
 
 db_io:
   db_tables:
