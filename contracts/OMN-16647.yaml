@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-16647"
+title: "omnimarket hosts the hardcoded-model-config reusable workflow (slice 1 of the workflow rehome epic)"
+summary: "omnimarket gains a byte-identical copy (one third-party action pinned to a sha) of omniclaude's hardcoded-model-config reusable workflow so callers can re-pin to omnimarket after a release, with the job id and name unchanged so no caller context changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-hardcoded-model-config-reusable-host"
+    statement: "omnimarket hosts the hardcoded-model-config reusable workflow with its caller-facing interface and guard behavior unchanged. The criteria below are labeled AC1 and AC2 so the binding item can claim them through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the omnimarket workflow keeps the caller-facing interface: workflow_call only, one required input core_ref with no default, one job with id and name hardcoded-model-config, no continue-on-error or if, every uses pinned to a 40-hex sha -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
+      - id: "AC2"
+        statement: "AC2: the guard runs the omnibase_core hardcoded_model_config module at the caller's core_ref over the whole tree with the committed baseline, adds --base only on pull_request, and rejects a non-40-hex core_ref before checkout -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn16647-ac1-ac2-hardcoded-model-config-reusable-host"
+    description: "AC1 and AC2 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
