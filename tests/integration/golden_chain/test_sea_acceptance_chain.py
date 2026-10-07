@@ -54,6 +54,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+)
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
@@ -378,11 +381,23 @@ class TestSeaAcceptanceGoldenChain:
             assert inference_response.total_tokens == 737
 
             db = InmemoryDatabaseAdapter()
+            # OMN-20651: the delegation terminal needs a registry-resolved tenant.
+            db.upsert(
+                TENANT_REGISTRY_MIRROR_TABLE,
+                "tenant_slug",
+                {
+                    "tenant_slug": "sea-acceptance-tenant",
+                    "tenant_uuid": "00000000-0000-4000-8000-000000000651",
+                    "status": "active",
+                    "source_event_id": "c0000000-0000-0000-0000-0000000006f2",
+                },
+            )
             projection_result = HandlerProjectionDelegation().handle(
                 {
                     "_db": db,
                     "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
                     "correlation_id": str(correlation_id),
+                    "tenant_id": "00000000-0000-4000-8000-000000000651",
                     "task_type": delegation_request.task_type,
                     "model_used": inference_response.model_used,
                     "content": inference_response.content,

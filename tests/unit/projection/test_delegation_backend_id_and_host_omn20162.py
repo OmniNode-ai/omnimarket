@@ -28,6 +28,10 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _NODE = (
     Path(__file__).resolve().parents[3]
@@ -54,6 +58,7 @@ def _attempt(
 
 def _skill_terminal(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     return {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "status": "completed",
         "correlation_id": str(uuid4()),
         "task_type": "test",
@@ -78,6 +83,7 @@ def _skill_terminal(attempts: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _canonical_terminal(**extra: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_event_type": "delegation-completed",
         "correlation_id": str(uuid4()),
         "task_type": "test",
@@ -90,6 +96,7 @@ def _canonical_terminal(**extra: Any) -> dict[str, Any]:
 
 
 def _project(payload: dict[str, Any], db: Any) -> dict[str, Any]:
+    seed_tenant_registry(db)
     HandlerProjectionDelegation().handle({**payload, "_db": db})
     (row,) = db.query(TABLE, {"correlation_id": payload["correlation_id"]})
     return dict(row)

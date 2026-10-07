@@ -40,6 +40,10 @@ from omnimarket.projection.envelope import (
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.sqlite_metering_reader import read_metering_records
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -54,6 +58,7 @@ def _terminal(
 ) -> ModelDelegateSkillTerminalProjection:
     return ModelDelegateSkillTerminalProjection.from_payload(
         {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "status": "completed",
             "correlation_id": correlation_id,
             "task_type": "document",
@@ -78,6 +83,7 @@ def _terminal(
 def test_sync_writer_labels_a_fixture_row_and_defaults_to_real() -> None:
     handler = HandlerProjectionDelegation(publisher=_NullPublisher())
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     fixture, real = str(uuid4()), str(uuid4())
     handler.project_delegate_skill_terminal(
         _terminal(fixture, 0.5), db, data_source=DATA_SOURCE_FIXTURE
@@ -129,10 +135,11 @@ def test_envelope_keys_are_still_stripped_before_the_wire_model() -> None:
 
 def test_seeding_twice_leaves_the_same_rows_all_labelled_fixture() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     seed = HandlerDevSeed()
-    first = seed.seed_local(db, tenant_id=None)
+    first = seed.seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
     after_first = db.query("delegation_events")
-    second = seed.seed_local(db, tenant_id=None)
+    second = seed.seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
     after_second = db.query("delegation_events")
 
     assert first.rows_projected == len(after_first) > 0
@@ -146,7 +153,8 @@ def test_seeding_twice_leaves_the_same_rows_all_labelled_fixture() -> None:
 
 def test_fixture_set_carries_both_outcomes_so_runs_page_shows_each() -> None:
     db = InmemoryDatabaseAdapter()
-    HandlerDevSeed().seed_local(db, tenant_id=None)
+    seed_tenant_registry(db)
+    HandlerDevSeed().seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
     rows = db.query("delegation_events")
     assert {r["terminal_ok"] for r in rows} == {True, False}
 
@@ -156,7 +164,9 @@ def test_fixture_set_carries_both_outcomes_so_runs_page_shows_each() -> None:
 
 def _sqlite_store(tmp_path: Path) -> tuple[SqliteDatabaseAdapter, Path]:
     path = tmp_path / "delegation.sqlite"
-    return SqliteDatabaseAdapter(path), path
+    db = SqliteDatabaseAdapter(path)
+    seed_tenant_registry(db)
+    return db, path
 
 
 def test_metering_excludes_fixture_rows_unless_asked(tmp_path: Path) -> None:
@@ -164,7 +174,7 @@ def test_metering_excludes_fixture_rows_unless_asked(tmp_path: Path) -> None:
     handler = HandlerProjectionDelegation(publisher=_NullPublisher())
     real = str(uuid4())
     handler.project_delegate_skill_terminal(_terminal(real, 0.25), db)
-    seeded = HandlerDevSeed().seed_local(db, tenant_id=None)
+    seeded = HandlerDevSeed().seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
 
     measured = read_metering_records(db_path=path)
     assert [r.correlation_id for r in measured] == [real]
