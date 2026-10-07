@@ -124,8 +124,32 @@ async def test_publishes_database_row_only_after_transaction_commit(
         3,
         Decimal("0.001"),
         datetime(2026, 9, 29, 3, 30, tzinfo=UTC),
+        # OMN-20006: a payload that never says how its cost was obtained is stored
+        # as unknown, so the recount keeps it out of measured_cost_usd.
+        "unknown",
     )
     writer.publish_snapshot_delta.assert_awaited_once()
+
+
+async def test_the_usage_source_is_bound_on_insert(writer_boundary) -> None:
+    writer, _, conn = writer_boundary
+    conn.fetch.return_value = []
+    payload = _payload()
+    payload["usage_source"] = "API"
+    await writer.project_event(writer.topics[0], payload, _meta(writer))
+    assert conn.fetch.await_args_list[0].args[-1] == "measured"
+
+
+def test_the_recount_sums_only_measured_cost_and_counts_the_rest() -> None:
+    from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
+        _RECOUNT_AGGREGATE,
+    )
+
+    sql = " ".join(_RECOUNT_AGGREGATE.split())
+    assert "SUM(cost_usd) FILTER (WHERE usage_source = 'measured')" in sql
+    assert "COUNT(*) FILTER (WHERE usage_source <> 'measured')" in sql
+    assert "measured_cost_usd = EXCLUDED.measured_cost_usd" in sql
+    assert "unmeasured_call_count = EXCLUDED.unmeasured_call_count" in sql
 
 
 async def test_duplicate_skips_recount_and_snapshot(writer_boundary) -> None:

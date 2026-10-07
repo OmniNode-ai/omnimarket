@@ -124,6 +124,8 @@ def _labels(path: Path) -> list[str]:
 
 
 def _step_rows(path: Path) -> list[tuple[str, str]]:
+    """The vocabulary step's record, the only step these tests are about; the
+    store records its other one-time steps (OMN-20006's) in the same table."""
     with closing(sqlite3.connect(path)) as conn:
         exists = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -133,7 +135,10 @@ def _step_rows(path: Path) -> list[tuple[str, str]]:
             return []
         return [
             (str(r[0]), str(r[1]))
-            for r in conn.execute(f"SELECT step, applied_at FROM {STEPS_TABLE}")
+            for r in conn.execute(
+                f"SELECT step, applied_at FROM {STEPS_TABLE} WHERE step = ?",
+                (VOCAB_STEP,),
+            )
         ]
 
 

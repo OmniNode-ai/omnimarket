@@ -16,6 +16,13 @@ requirements:
   - id: AC1
     statement: Test-generation outputs must include runnable pytest tests and @pytest.mark.unit
       when the task contract requires it.
+- id: req-pytest-attribute-resolves
+  statement: A test artifact that reads a pytest attribute the installed pytest does
+    not define must be refused by the quality gate.
+  acceptance:
+  - id: AC2
+    statement: A test artifact that reads a pytest attribute the installed pytest does
+      not define must be refused by the quality gate.
 evidence_requirements:
 - kind: tests
   description: Pure AST check accepts module-level test_ functions or test_ methods
@@ -38,3 +45,14 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
+- id: dod-pytest-attribute-resolves
+  description: Refuse a test artifact that reads a missing pytest attribute such as
+    pytest.mark_unit; pytest.mark.<anything> is unaffected.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_pytest_attribute_resolves_omn12717.py
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

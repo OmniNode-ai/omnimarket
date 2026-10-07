@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+
 
 class ModelUsageCallDelta(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -17,6 +19,7 @@ class ModelUsageCallDelta(BaseModel):
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     cost_usd: Decimal = Field(ge=0)
+    usage_source: EnumUsageSource
     occurred_at: AwareDatetime
 
 
