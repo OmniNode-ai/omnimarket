@@ -400,7 +400,7 @@ class TestGradedResponsesKeepTheirScoreAndGetAVerdict:
                 correlation_id=cid,
                 passed=False,
                 fail_category="fail_deterministic",
-                quality_score=0.0,
+                quality_score=1.0,
                 failure_reasons=("WEAK_OUTPUT: no deliverable behind the preamble",),
                 rule_evaluations=(
                     ModelQualityRuleEvaluation(
@@ -417,7 +417,7 @@ class TestGradedResponsesKeepTheirScoreAndGetAVerdict:
         assert isinstance(terminal, ModelDelegationFailed)
         assert terminal.operational_outcome is _OUTCOME.QUALITY_REJECTED
         assert terminal.content_verdict is _VERDICT.UNUSABLE
-        assert terminal.quality_score == pytest.approx(0.0)
+        assert terminal.quality_score == pytest.approx(1.0)
 
 
 class TestGateOutcomePair:
