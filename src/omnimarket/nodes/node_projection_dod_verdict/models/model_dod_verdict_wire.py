@@ -36,6 +36,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -88,6 +89,19 @@ class ModelDodVerdictWire(BaseModel):
         None
     )
     contract_revision: UUID | None = Field(default=None)
+    # OMN-20696: contract provenance carried by the verdict.
+    contract_source: EnumDodContractSource | None = Field(
+        default=None, description="Source of the evaluated contract."
+    )
+    contract_repository: str | None = Field(
+        default=None, description="GitHub owner/name of the evaluated contract."
+    )
+    contract_commit_sha: str | None = Field(
+        default=None, description="Full git object id of the evaluated contract."
+    )
+    contract_repo_path: str | None = Field(
+        default=None, description="POSIX contract path relative to the git top-level."
+    )
 
     started_at: datetime = Field(..., description="When the run started.")
     completed_at: datetime = Field(

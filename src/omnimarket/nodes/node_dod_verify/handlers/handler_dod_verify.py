@@ -24,6 +24,9 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
+    ModelDodContractSubject,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -116,6 +119,7 @@ class HandlerDodVerify:
         occ_governance_ref: str | None = None
         occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         occ_resolved_sha: str | None = None
+        contract_subject: ModelDodContractSubject | None = None
         # OMN-17022: the first PR/repo lookup failure of this run, as a typed
         # cause. None on the caller-supplied ``evidence_results`` path, which
         # never performed a lookup at all.
@@ -175,6 +179,7 @@ class HandlerDodVerify:
             # dozen suites replace with a stub; a stub that never derived
             # anything reads as "not measured", never as "no checks".
             acceptance_summary = getattr(collector, "acceptance_summary", None)
+            contract_subject = getattr(collector, "contract_subject", None)
             # OMN-17022: read the same way — typed provenance the collector
             # already holds, never a message string parsed back out.
             lookup_failure_cause = collector.lookup_failure_cause
@@ -637,6 +642,18 @@ class HandlerDodVerify:
             parent_goal_id=command.parent_goal_id,
             level=command.level,
             contract_revision=command.contract_revision,
+            contract_source=(
+                contract_subject.source if contract_subject is not None else None
+            ),
+            contract_repository=(
+                contract_subject.repository if contract_subject is not None else None
+            ),
+            contract_commit_sha=(
+                contract_subject.commit_sha if contract_subject is not None else None
+            ),
+            contract_repo_path=(
+                contract_subject.repo_path if contract_subject is not None else None
+            ),
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             checks=checks,
@@ -711,6 +728,10 @@ class HandlerDodVerify:
             parent_goal_id=state.parent_goal_id,
             level=state.level,
             contract_revision=state.contract_revision,
+            contract_source=state.contract_source,
+            contract_repository=state.contract_repository,
+            contract_commit_sha=state.contract_commit_sha,
+            contract_repo_path=state.contract_repo_path,
             started_at=state.started_at,
             completed_at=state.completed_at,
             checks=state.checks,

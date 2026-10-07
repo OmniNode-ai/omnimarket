@@ -171,6 +171,18 @@ outputs:
   contract_revision:
     type: uuid
     description: "Immutable goal-contract revision evaluated by this attempt."
+  contract_source:
+    type: str
+    description: "Source of the evaluated contract."
+  contract_repository:
+    type: str
+    description: "GitHub owner/name of the evaluated contract."
+  contract_commit_sha:
+    type: str
+    description: "Full git object id of the evaluated contract."
+  contract_repo_path:
+    type: str
+    description: "POSIX contract path relative to the git top-level."
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 
