@@ -37,6 +37,7 @@ import httpx
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
     ModelDelegationContractEvidence,
+    ModelDelegationRawResponse,
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
@@ -1147,6 +1148,14 @@ class HandlerInferenceIntent:
             )
 
         content_raw = choice.get("message", {}).get("content")
+        if response_contract_evidence is not None and isinstance(content_raw, str):
+            response_contract_evidence = response_contract_evidence.model_copy(
+                update={
+                    "raw_response": ModelDelegationRawResponse.from_provider_content(
+                        content_raw, source_field="choices[0].message.content"
+                    )
+                }
+            )
         content = content_raw.strip() if isinstance(content_raw, str) else ""
         if not content:
             raise InferenceUsageError(
