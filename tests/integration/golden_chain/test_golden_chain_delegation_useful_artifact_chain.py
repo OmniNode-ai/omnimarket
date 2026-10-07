@@ -82,6 +82,7 @@ below still fail closed, and they are what make a green replay here probative.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -89,6 +90,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import ModelInferenceResponseData
 from omnibase_core.runtime.golden_chain import (
     EnumGoldenChainFailureClass,
     GoldenChainReplayError,
@@ -285,3 +287,55 @@ def test_tier_name_as_model_fails_route_not_resolved() -> None:
             credential_source=None,
         )
     assert exc.value.failure_class is EnumGoldenChainFailureClass.ROUTE_NOT_RESOLVED
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("task_type", ["test", "code_generation"])
+def test_live_final_artifacts_pass_routing_and_quality_gate_di(task_type: str) -> None:
+    """Replay real final artifacts through routing and the quality gate.
+
+    These are the deployed delegation terminals, not HTTP response recordings.
+    The DI boundary supplies their final content to the workflow. Prefixing the
+    currently declared extraction marker adapts that already extracted content
+    to the inference-response input; it does not claim a recorded HTTP request.
+    Both artifacts were compiled and their pytest tests executed at capture.
+    """
+    artifacts = json.loads(
+        (_FIXTURE_DIR / "omn12717_live_final_artifacts.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    artifact = next(item for item in artifacts if item["task_type"] == task_type)
+    # The deployed terminal omitted the provider stop signal; do not invent one.
+    assert artifact["finish_reason"] == "absent"
+    assert "@pytest.mark.unit" in artifact["content"]
+    assert "def test_" in artifact["content"]
+    assert "def normalize_" in artifact["content"]
+
+    workflow = HandlerDelegationWorkflow(workflows={})
+    request = ModelDelegationRequest(
+        prompt=artifact["prompt"],
+        task_type=task_type,
+        correlation_id=uuid4(),
+        max_tokens=4096,
+        emitted_at=datetime.now(UTC),
+    )
+    routing_intents = workflow.handle_delegation_request(request)
+    decision = HandlerRoutingIntent().handle(routing_intents[0])
+    assert decision.task_type == task_type
+    inference_intents = workflow.handle_routing_decision(decision)
+    assert len(inference_intents) == 1
+    intent = inference_intents[0]
+    assert isinstance(intent, ModelInferenceIntent)
+
+    response = ModelInferenceResponseData(
+        correlation_id=request.correlation_id,
+        content="### ANSWER\n" + artifact["content"],
+        model_used=intent.model,
+    )
+    gate_intents = workflow.handle_inference_response(response)
+    assert len(gate_intents) == 1
+    assert isinstance(gate_intents[0], ModelQualityGateIntent)
+    result = HandlerQualityGateIntent().handle(gate_intents[0])
+    assert result.passed, result.failure_reasons
+    assert result.failure_reasons == ()

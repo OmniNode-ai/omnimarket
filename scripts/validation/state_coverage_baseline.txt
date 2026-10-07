@@ -79,11 +79,6 @@ node_epic_team_orchestrator onex.evt.omnimarket.epic-team-dod-gate-result.v1
 node_epic_team_orchestrator onex.evt.omnimarket.epic-team-wave-completed.v1
 node_evidence_dashboard_effect onex.evt.omnimarket.evidence-dashboard-normalized.v1
 node_evidence_dashboard_reducer reduced
-node_evidence_pipeline_orchestrator COLLECTING
-node_evidence_pipeline_orchestrator COMPLETE
-node_evidence_pipeline_orchestrator EXTRACTING
-node_evidence_pipeline_orchestrator GENERATING_PR
-node_evidence_pipeline_orchestrator MATCHING
 node_fixer_dispatcher onex.evt.omnimarket.fixer-dispatch-completed.v1
 node_full_triage_orchestrator onex.evt.omnimarket.triage-completed.v1
 node_github_diff_effect onex.evt.omnimarket.github-diff-resolve-failed.v1
