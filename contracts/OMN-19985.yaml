@@ -22,14 +22,14 @@ requirements:
           AC3 (data half): the tenant-credentials exposure serves the key ref with its provider, fingerprint prefix and set time, names the Credentials page as its consumer, and a set then delete leaves the row revoked with its fingerprint and set time kept -- falsifier: uv run pytest tests/test_omn19985_credential_fingerprint_set_at.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q
       - id: "AC4"
         statement: |-
-          AC4: node_projection_tenant_credentials gives equal normalized rows through the real SQLite adapter and the real Postgres adapter for the same recorded credential event fixtures; bound here are the six OMN-19985 scenarios (fingerprint and set time stored, an event without them, revoke keeps them, revoke before register, duplicate delivery, delete-then-set), because the six older ones already pass at the merge base -- falsifier: uv run pytest tests/test_omn19968_writer_store_parity.py -q -k "tenant_credentials and (local_ or an_event_without)" -p no:randomly
+          AC4: node_projection_tenant_credentials gives equal normalized rows through the real SQLite adapter and the real Postgres adapter for the same recorded credential event fixtures; bound here are the six OMN-19985 scenarios (fingerprint and set time stored, an event without them, revoke keeps them, revoke before register, duplicate delivery, delete-then-set), together with the real-Postgres write-path tests that store and keep the fingerprint and set time, because a parity check alone passes at the merge base (both stores lack the columns there, so their rows still match) -- falsifier: uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k "(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt" -p no:randomly
 evidence_requirements:
   - kind: "tests"
     description: "The node and golden-chain tests pass at the head and fail at the merge base, where node_local_secret_store_effect does not exist."
     command: "uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q"
   - kind: "tests"
-    description: "The six OMN-19985 tenant-credentials parity scenarios give equal rows on SQLite and real Postgres; they do not exist at the merge base, so the check fails there."
-    command: "uv run pytest tests/test_omn19968_writer_store_parity.py -q -k \"tenant_credentials and (local_ or an_event_without)\" -p no:randomly"
+    description: "The six OMN-19985 tenant-credentials parity scenarios give equal rows on SQLite and real Postgres, and the real-Postgres write path stores and keeps fingerprint and set_at; at the merge base the write-path tests fail."
+    command: "uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k \"(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt\" -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -60,10 +60,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn19985-ac4-sqlite-postgres-parity"
-    description: "The six OMN-19985 tenant-credentials scenarios give equal normalized rows on the real SQLite adapter and the real Postgres runner; the six older ones pass at the merge base and are left to the existing parity contract."
+    description: "The six OMN-19985 tenant-credentials scenarios give equal normalized rows on the real SQLite adapter and the real Postgres runner, and the real Postgres writer stores and keeps fingerprint and set_at. Parity alone passes at the merge base (both stores lack the columns), so the write-path tests are what make the control fail: 3 failed there, 15 passed at the head."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn19968_writer_store_parity.py -q -k \"tenant_credentials and (local_ or an_event_without)\" -p no:randomly"
+        check_value: "uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k \"(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt\" -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
