@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18676"
+title: "The local dispatch path resolves the bound overlay through the routing reducer's seam"
+summary: "The routing reducer and the local dispatch path resolve the bifrost contract and overlay through one binding resolver. Neither path silently falls back to the packaged default or the home-directory overlay when a binding is present, and a bound overlay is named in the config_provenance log line."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-overlay-binding-single-seam"
+    statement: "Both callers resolve the contract and overlay from the same environment binding."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the local dispatch path resolves the env-bound overlay -- falsifier: uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the reducer and the local dispatch path resolve the same overlay under one binding, through one shared resolver -- falsifier: uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -q in omnimarket"
+  - id: "req-no-silent-fallback"
+    statement: "A present binding is never ignored without a log line."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: with the contract and overlay bound, local dispatch logs the config_provenance line naming BIFROST_OVERLAY_PATH, and a bound overlay that does not exist is not replaced by the home overlay -- falsifier: uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -k 'provenance_line or does_not_exist' -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "Overlay binding single-seam tests, AC1 to AC3."
+    command: "uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18676-ac1-ac2-single-seam-parity"
+    description: "AC1 and AC2: the local dispatch path and the reducer resolve the same bound overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn18676-ac3-provenance-and-bound-absent-overlay"
+    description: "AC3: the provenance line is logged for a bound overlay, and a bound but missing overlay is not replaced by the home overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn18676_overlay_binding_single_seam.py -k 'provenance_line or does_not_exist' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
