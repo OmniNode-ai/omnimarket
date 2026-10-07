@@ -17,6 +17,10 @@ the metadata events the local runtime folds into ``tenant_inference_credentials`
 * a delete of a provider key returns ``credential-revoked`` for the live route ref;
 * any other secret is stored or deleted with no event: it is not a provider key.
 
+Every event is stamped with this install's tenant identity, resolved the way the
+local delegate path resolves it, because tenant-credentials.v1 is tenant-scoped
+and the Credentials page reads it as that tenant.
+
 No event, result, refusal or log line carries the value.
 """
 
@@ -28,11 +32,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from omnimarket.inference.local_byok_credential_adapter import (
-    LOCAL_INSTALL_TENANT_ID,
     LocalByokCredentialStore,
     register_local_byok_credential,
     resolve_local_byok_credential_ref,
     revoke_local_byok_credential,
+)
+from omnimarket.local_deployment.tenant_identity import (
+    resolve_or_mint_local_deployment_tenant_id,
 )
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
@@ -115,12 +121,11 @@ class HandlerLocalSecretStore:
             model=request.model,
             db_path=store.db_path,
         )
+        tenant_id = resolve_or_mint_local_deployment_tenant_id(None)
         events: list[ModelCredentialRevokedEvent | ModelCredentialRegisteredEvent] = []
         if replaced is not None and replaced != route_ref:
             events.append(
-                ModelCredentialRevokedEvent(
-                    tenant_id=LOCAL_INSTALL_TENANT_ID, api_key_ref=replaced
-                )
+                ModelCredentialRevokedEvent(tenant_id=tenant_id, api_key_ref=replaced)
             )
         metadata = {
             key: item
@@ -129,7 +134,7 @@ class HandlerLocalSecretStore:
         }
         events.append(
             ModelCredentialRegisteredEvent(
-                tenant_id=LOCAL_INSTALL_TENANT_ID,
+                tenant_id=tenant_id,
                 provider=provider,
                 name=ref,
                 api_key_ref=route_ref,
@@ -166,7 +171,8 @@ class HandlerLocalSecretStore:
         events = (
             (
                 ModelCredentialRevokedEvent(
-                    tenant_id=LOCAL_INSTALL_TENANT_ID, api_key_ref=live
+                    tenant_id=resolve_or_mint_local_deployment_tenant_id(None),
+                    api_key_ref=live,
                 ),
             )
             if live is not None

@@ -10,7 +10,9 @@ store as before and returns the metadata events the local runtime folds into
 Each test names the failure it exists to catch:
 
 * H1  the registered event's bytes carry the value, or its fingerprint is not
-      ``sha256(value)[:8]``, or it is not keyed by the freshly minted route ref;
+      ``sha256(value)[:8]``, or it is not keyed by the freshly minted route ref,
+      or it is not stamped with this install's tenant identity (the tenant the
+      Credentials page reads with; any other tenant leaves the page empty);
 * H2  a re-set replaces the route key but leaves the replaced ref live, so the
       page shows two live keys for one provider;
 * H3  delete returns no revoke, or one for a ref other than the live one;
@@ -38,8 +40,8 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
-from omnimarket.inference.local_byok_credential_adapter import (
-    LOCAL_INSTALL_TENANT_ID,
+from omnimarket.local_deployment.tenant_identity import (
+    resolve_or_mint_local_deployment_tenant_id,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -106,8 +108,13 @@ def _fold(
             apply_credential_revoked(payload, db)
 
 
+def _install_tenant() -> str:
+    """The tenant this install's local rows are recorded under, as the delegate path resolves it."""
+    return resolve_or_mint_local_deployment_tenant_id(None)
+
+
 def _rows(db: SqliteDatabaseAdapter) -> list[dict[str, object]]:
-    rows = db.query(CREDENTIALS_TABLE, {"tenant_id": LOCAL_INSTALL_TENANT_ID})
+    rows = db.query(CREDENTIALS_TABLE, {"tenant_id": _install_tenant()})
     return sorted(rows, key=lambda row: str(row["api_key_ref"]))
 
 
@@ -123,7 +130,7 @@ def test_h1_registered_event_carries_metadata_and_never_the_value(
     assert event.fingerprint == hashlib.sha256(_PLANTED.encode()).hexdigest()[:8]
     assert _ROUTE_REF.fullmatch(event.api_key_ref)
     assert event.api_key_ref == result.route_ref
-    assert event.tenant_id == LOCAL_INSTALL_TENANT_ID
+    assert event.tenant_id == _install_tenant()
     assert event.provider == "openrouter"
     assert event.name == _REF
     assert event.set_at == _SET_AT
@@ -149,7 +156,7 @@ def test_h3_delete_returns_the_mirror_revoke_of_the_live_ref(store_path: Path) -
     [revoked] = deleted.events
     assert isinstance(revoked, ModelCredentialRevokedEvent)
     assert revoked.api_key_ref == registered.route_ref
-    assert revoked.tenant_id == LOCAL_INSTALL_TENANT_ID
+    assert revoked.tenant_id == _install_tenant()
     assert deleted.route_withdrawn is True
 
 

@@ -27,8 +27,8 @@ import yaml
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import secret_group
-from omnimarket.inference.local_byok_credential_adapter import (
-    LOCAL_INSTALL_TENANT_ID,
+from omnimarket.local_deployment.tenant_identity import (
+    resolve_or_mint_local_deployment_tenant_id,
 )
 from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
     SqliteTableRowSource,
@@ -75,7 +75,8 @@ def _served(db_path: Path) -> list[dict[str, Any]]:
         SqliteTableRowSource(db_path).rows(
             cfg,
             order_spec=pagination_order_spec(cfg, cfg.order_by_spec),
-            tenant_id=LOCAL_INSTALL_TENANT_ID,
+            # The tenant the local dashboard reads with: this install's identity.
+            tenant_id=resolve_or_mint_local_deployment_tenant_id(None),
         )
     )
 
