@@ -23,7 +23,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn16647-ac1-ac2-hardcoded-model-config-reusable-host"
+  - id: "dod-omn16647-ac1-ac2-hmc-reusable-host"
     description: "AC1 and AC2 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
     source: "manual"
     checks:
