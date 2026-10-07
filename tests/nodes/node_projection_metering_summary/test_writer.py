@@ -3,6 +3,7 @@
 """Exercise the runtime writer seam and its parameterized SQL replacement."""
 
 import asyncio
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,17 @@ class SqlRecordingAdapter:
         )
         table = ddl[ddl.index("CREATE TABLE") : ddl.index(");") + 2]
         self.connection.execute(table)
+        # Every later column migration, so the table is the migrations' table.
+        # SQLite has no ADD COLUMN IF NOT EXISTS; the columns are new here.
+        for later in sorted((NODE / "migrations").glob("*.sql")):
+            for name, kind in re.findall(
+                r"ADD COLUMN IF NOT EXISTS (\w+)\s+(\w+)", later.read_text()
+            ):
+                if later.name.startswith("0000_"):
+                    continue
+                self.connection.execute(
+                    f"ALTER TABLE metering_summary ADD COLUMN {name} {kind}"
+                )
         self.connection.execute(
             "CREATE UNIQUE INDEX metering_summary_key ON metering_summary (tenant_id, window_kind, window_start, baseline_model)"
         )

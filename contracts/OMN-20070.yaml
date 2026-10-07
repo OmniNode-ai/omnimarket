@@ -17,6 +17,9 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: every acceptance criterion of every contracts/OMN-*.yaml in omnimarket is bound by binds_ac to a test_passes item whose selector names a test file that exists, and the caller workflow that reads those contracts is wired -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds
+      - id: "AC3"
+        statement: |-
+          AC3: node_dod_verify refuses a contract that declares an acceptance criterion no dod_evidence item binds through binds_ac, reading NO_ACCEPTANCE_CHECKS and naming the unbound criterion, so a repository adopting the repo-evidence gate needs no contract-binds test of its own, and the S5 difference step classifies that refusal as incomplete_criterion_coverage -- falsifier: uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The caller workflow has the required base-branch trigger, immutable pin, inputs and read-only permissions."
@@ -24,6 +27,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Every repo-owned contract criterion binds to test evidence in an existing test file and the caller workflow exists."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds"
+  - kind: "tests"
+    description: "The verifier refuses a contract with an unbound acceptance criterion and the difference step names it incomplete criterion coverage."
+    command: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +51,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k contract_binds"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-repo-evidence-ac3"
+    description: "The verifier's own tests prove a contract with an unbound acceptance criterion reads NO_ACCEPTANCE_CHECKS naming it, and the S5 difference step classifies that refusal as incomplete criterion coverage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

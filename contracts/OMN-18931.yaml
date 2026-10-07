@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18931"
+title: "Delegation availability is reported separately from content correctness"
+summary: "The single-attempt cohort report keeps availability outcomes separate from content correctness. HTTP 429 and 503 terminals count toward availability and are excluded from quality scoring, and a terminal must carry the same nonempty route tier as its cohort observation."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-availability-separate-from-correctness"
+    statement: "The cohort report counts availability totals and failures separately from correctness totals. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the delegation availability report counts 429 and 503 terminals as availability failures with no content score, counts successful content separately, and refuses a terminal whose route tier differs from or is missing against its observation -- falsifier: the golden-chain test file does not exist at the merge base, so the command fails there"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The availability report golden chain passes at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18931-ac1-availability-report"
+    description: "AC1 hosted probe. The availability report golden chain passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
