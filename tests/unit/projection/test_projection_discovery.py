@@ -404,6 +404,12 @@ class TestBuildProjectionTopicMap:
             # tenant. It is the exposure's declared `tenant_column`, so the
             # serving path refuses this topic without a resolved tenant.
             "tenant_id",
+            # OMN-20008: appended by migration 094. Runs whose stored
+            # token_provenance is estimated or unknown are left out of every
+            # measured monetary total, and these two counts are served beside
+            # it so the dashboard can say how many runs were excluded.
+            "estimated_run_count",
+            "unknown_run_count",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
