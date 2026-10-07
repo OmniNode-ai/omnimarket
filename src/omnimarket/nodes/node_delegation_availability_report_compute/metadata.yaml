@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_availability_report_compute
+version: "1.0.0"
+description: Fixed-cohort delegation availability and correctness reporting
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_delegation_availability_report_compute: omnimarket.nodes.node_delegation_availability_report_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - omnibase-core>=0.47.31
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, delegation, availability, reporting]
+node_role: compute
+pack: routing
+display_name: Delegation Availability Report
