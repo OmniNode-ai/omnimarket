@@ -1,0 +1,28 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20226"
+title: "Overview shows compression and cache hit rate from measured exposures and a typed not-measured state until they exist"
+summary: "The producer half of OMN-20226. Migration 0003 adds compression_ratio, cache_hit_rate and runs_cache_answered to metering_summary, nullable with no default; the fold writes null for all three because no metering record carries a raw or compressed input-token count or a semantic-cache answer, and metering-summary.v1 serves the three columns. This contract declares no acceptance criteria and binds none: AC3 and AC4 (the formulas) have no producer yet and await a ruling on the ticket, and a contract that declares criteria it cannot bind is demoted rather than verified. On Lakshman's decision of 2026-10-07 nothing is bound until AC3 and AC4 are ruled on; the OCC companion records the same. The Overview cards are omnidash's half."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-null-until-measured"
+    statement: |-
+      metering-summary.v1 serves compression_ratio, cache_hit_rate and runs_cache_answered on every row, null until a producer measures them, never 0 or a default.
+evidence_requirements:
+  - kind: "tests"
+    description: "Measured runs still serve null for all three fields; no column default; every window carries them; an all-unmeasured row serves null; a replayed fold is byte-identical; the SQLite store keeps and serves null keys; the exposure declares the three columns; the migration adds nullable columns with no default. At dev e565ba5ba0 all 7 fail; writing compression_ratio as \"0\" fails 5 of 7."
+    command: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20226_compression_and_cache_hit.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20226-null-until-measured"
+    description: "The metering-summary fold and the SQLite store serve compression_ratio, cache_hit_rate and runs_cache_answered as null on every row and window, migration 0003 adds them nullable with no default, and metering-summary.v1 declares them. Binds no criterion (see summary)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20226_compression_and_cache_hit.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
