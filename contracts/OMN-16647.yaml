@@ -1,33 +1,59 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-16647"
-title: "omnimarket hosts the hardcoded-model-config reusable workflow (slice 1 of the workflow rehome epic)"
-summary: "omnimarket gains a byte-identical copy (one third-party action pinned to a sha) of omniclaude's hardcoded-model-config reusable workflow so callers can re-pin to omnimarket after a release, with the job id and name unchanged so no caller context changes."
+title: "Host the hardcoded-model-config and route-runner reusable workflows in omnimarket"
+summary: "omnimarket hosts byte-identical copies of omniclaude reusable workflows so callers can re-pin to omnimarket: slice 1 hardcoded-model-config (one third-party action pinned to a sha, job id and name unchanged), slice 2 route-runner (omnibase_infra checkout pinned to a sha)."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-hardcoded-model-config-reusable-host"
-    statement: "omnimarket hosts the hardcoded-model-config reusable workflow with its caller-facing interface and guard behavior unchanged. The criteria below are labeled AC1 and AC2 so the binding item can claim them through binds_ac."
+  - id: "req-route-runner-reusable-hosted"
+    statement: "The hosted reusable keeps its inputs, outputs, optional secrets, job id and job name, pins every action and the omnibase_infra checkout to a full sha, and reads nothing from omniclaude."
     acceptance:
       - id: "AC1"
-        statement: "AC1: the omnimarket workflow keeps the caller-facing interface: workflow_call only, one required input core_ref with no default, one job with id and name hardcoded-model-config, no continue-on-error or if, every uses pinned to a 40-hex sha -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
+        statement: "The hosted reusable workflow interface and pins are enforced -- falsifier: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q"
       - id: "AC2"
-        statement: "AC2: the guard runs the omnibase_core hardcoded_model_config module at the caller's core_ref over the whole tree with the committed baseline, adds --base only on pull_request, and rejects a non-40-hex core_ref before checkout -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
+        statement: "A workflow_call-only reusable must pin omnibase_infra by a full 40-hex sha while workflows this repo runs keep the uv.lock tag equality -- falsifier: uv run pytest tests/ci/test_sibling_pins_omn20001.py -q"
+  - id: "req-hardcoded-model-config-reusable-host"
+    statement: "omnimarket hosts the hardcoded-model-config reusable workflow with its caller-facing interface and guard behavior unchanged. The criteria below are labeled AC3 and AC4 so the binding item can claim them through binds_ac."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the omnimarket workflow keeps the caller-facing interface: workflow_call only, one required input core_ref with no default, one job with id and name hardcoded-model-config, no continue-on-error or if, every uses pinned to a 40-hex sha -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
+      - id: "AC4"
+        statement: "AC4: the guard runs the omnibase_core hardcoded_model_config module at the caller's core_ref over the whole tree with the committed baseline, adds --base only on pull_request, and rejects a non-40-hex core_ref before checkout -- falsifier: uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q in omnimarket fails at the merge base because the workflow file does not exist"
 evidence_requirements:
   - kind: "tests"
-    description: "AC1 and AC2 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
+    description: "Route-runner reusable interface, pin and sibling-pin tests."
+    command: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py tests/ci/test_sibling_pins_omn20001.py -q"
+  - kind: "tests"
+    description: "AC3 and AC4 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
     command: "env -u PYTHONPATH uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-route-runner-reusable-interface"
+    description: "The hosted reusable keeps its interface and full-sha pins."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-hosted-reusable-infra-sha-pin"
+    description: "Hosted reusables pin omnibase_infra by full sha; repo-run workflows keep the lock tag."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
   - id: "dod-omn16647-ac1-ac2-hmc-reusable-host"
-    description: "AC1 and AC2 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
+    description: "AC3 and AC4 hosted probe. The reusable host regression verifies the caller-facing interface and guard behavior at the head."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_hardcoded_model_config_reusable_host.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1", "AC2"]
+    binds_ac: ["AC3", "AC4"]
