@@ -229,6 +229,9 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     counterfactual_usd TEXT,
     savings_usd TEXT,
     savings_per_measured_run_usd TEXT,
+    compression_ratio TEXT,
+    cache_hit_rate TEXT,
+    runs_cache_answered INTEGER,
     summary_json TEXT NOT NULL
 )
 """
