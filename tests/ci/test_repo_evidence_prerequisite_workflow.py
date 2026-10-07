@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Exercise repo evidence admission while the OCC queue cutover is pending."""
+"""Exercise repo evidence admission without OCC contexts; queue evidence support remains pending."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ def test_repo_evidence_summary_verdict(
     assert code == gate.EXIT_PENDING, report
 
 
-def test_repo_evidence_summary_queue_keeps_existing_occ_enforcement() -> None:
+def test_repo_evidence_summary_queue_expects_no_occ_contexts() -> None:
     assert CONTEXT in gate.EXPECTED_EXTERNAL_CONTEXTS
     assert CONTEXT in gate.expected_external_contexts("pull_request")
     assert CONTEXT in gate.expected_external_contexts(None)
@@ -153,8 +153,11 @@ def test_repo_evidence_summary_queue_keeps_existing_occ_enforcement() -> None:
     queue = gate.expected_external_contexts("merge_group")
     assert CONTEXT not in queue
     assert set(queue) == set(gate.EXPECTED_EXTERNAL_CONTEXTS) - {CONTEXT}
-    assert "occ-preflight / eligibility" in queue
-    assert "verify / verify" in queue
-    assert "call-reject-skip-token / occ-preflight / eligibility" in queue
-    assert "OCC Companion Merged Gate (OMN-15214)" in gate.STRICT_GATE_JOBS
+    assert "occ-preflight / eligibility" not in queue
+    assert "OCC Emitter Golden Gate" in queue
+    assert "ONEX Change Control Schema Compatibility" in queue
+    assert "verify / verify" not in queue
+    assert "call-reject-skip-token / occ-preflight / eligibility" not in queue
+    assert "call-reject-skip-token / scan / reject-skip-gate-token" in queue
+    assert "OCC Companion Merged Gate (OMN-15214)" not in gate.STRICT_GATE_JOBS
     assert "Repo Evidence Dependency" in gate.STRICT_GATE_JOBS

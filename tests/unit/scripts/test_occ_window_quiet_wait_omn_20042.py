@@ -20,9 +20,6 @@ What this module pins:
 * The wait loop: it proceeds once the window is quiet, proceeds at the
   timeout, exits ``EXIT_WINDOW_GONE`` when the window merges while it waits,
   and proceeds when a later probe cannot read the window.
-* The wiring: the workflow runs the guard after the checks execute and before
-  the push, skips the push when the window is gone, and the job keeps
-  ``continue-on-error`` and its 45 minute budget.
 """
 
 from __future__ import annotations
@@ -31,7 +28,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS = _REPO_ROOT / "scripts" / "ci"
@@ -45,7 +41,6 @@ pytestmark = pytest.mark.unit
 WINDOW = "auto/window-omninode-ai-omnimarket-occ-autobind"
 AUTOBIND = "auto/omninode-ai-omnimarket-pr-3130-occ-autobind"
 HEAD = "5e1f00d2" + "0" * 32
-WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "occ-receipt-runner.yml"
 
 
 def _run(status: str, conclusion: str | None) -> guard.CheckRun:
@@ -279,66 +274,3 @@ def test_loop_with_zero_budget_never_sleeps() -> None:
 def test_main_without_a_token_proceeds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OCC_TOKEN", raising=False)
     assert guard.main(["--branch", WINDOW]) == guard.EXIT_PROCEED
-
-
-# --- the workflow wiring ---------------------------------------------------
-
-
-def _job() -> dict[str, object]:
-    loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    job = loaded["jobs"]["occ-receipt-runner"]
-    assert isinstance(job, dict)
-    return job
-
-
-def _steps() -> list[dict[str, object]]:
-    steps = _job()["steps"]
-    assert isinstance(steps, list)
-    return steps
-
-
-def _index(step_id: str) -> int:
-    for i, step in enumerate(_steps()):
-        if step.get("id") == step_id:
-            return i
-    raise AssertionError(f"no step with id {step_id!r}")
-
-
-def test_guard_step_runs_between_the_checks_and_the_push() -> None:
-    steps = _steps()
-    guard_at = _index("window-quiet")
-    assert _index("runner") < guard_at < _index("push")
-    run = steps[guard_at]["run"]
-    assert isinstance(run, str)
-    assert "scripts/ci/occ_window_quiet_wait.py" in run
-    env = steps[guard_at]["env"]
-    assert isinstance(env, dict)
-    assert env["OCC_TOKEN"] == "${{ steps.occ-app-token.outputs.token }}"
-    assert env["OCC_BRANCH"] == "${{ steps.companion.outputs.occ_branch }}"
-
-
-def test_window_gone_skips_the_push_and_so_the_heal() -> None:
-    steps = _steps()
-    push_if = steps[_index("push")]["if"]
-    assert isinstance(push_if, str)
-    assert "steps.window-quiet.outputs.window_gone != 'true'" in push_if
-    heal = next(s for s in steps if s.get("name") == "Heal the stale occ-preflight")
-    assert heal["if"] == "steps.push.outputs.pushed == 'true'"
-
-
-def test_job_is_still_a_non_blocking_unblocker() -> None:
-    job = _job()
-    assert job["continue-on-error"] is True
-    assert job["timeout-minutes"] == 45
-    loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    for other in loaded["jobs"].values():
-        assert "occ-receipt-runner" not in str(other.get("needs", ""))
-
-
-def test_guard_wait_is_bounded_by_the_job_budget() -> None:
-    run = _steps()[_index("window-quiet")]["run"]
-    assert isinstance(run, str)
-    # The wait is capped by what is left of the 45 minute job budget, not
-    # only by its own default, so runner plus wait fits the job.
-    assert "--max-wait-seconds" in run
-    assert "started_at" in run

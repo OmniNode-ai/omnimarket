@@ -5301,6 +5301,16 @@ class HandlerDelegationWorkflow:
         }:
             return []
 
+        # OMN-18928: lifecycle completion is not evidence of returned content.
+        # Decide before advancing the FSM so a missing artifact closes FAILED
+        # once, rather than manufacturing a perfect score from the status text.
+        missing_final_artifact = (
+            next_state is EnumDelegationState.COMPLETED
+            and lifecycle_event.artifact is None
+        )
+        if missing_final_artifact:
+            next_state = EnumDelegationState.FAILED
+
         if workflow.state != next_state:
             self._advance(workflow, next_state)
 
@@ -5315,6 +5325,11 @@ class HandlerDelegationWorkflow:
         )
         content = self._render_lifecycle_content(lifecycle_event)
         failure_reason = lifecycle_event.error or ""
+        if missing_final_artifact:
+            content = ""
+            failure_reason = (
+                failure_reason or "remote agent completed without a final artifact"
+            )
 
         completed = next_state is EnumDelegationState.COMPLETED
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
@@ -5333,11 +5348,13 @@ class HandlerDelegationWorkflow:
             quality_passed=completed,
             # OMN-18928 (K1): a remote agent that did not complete returned no
             # final content, so it carries no score and a not-applicable
-            # verdict. A completion keeps the lifecycle's own acceptance, which
-            # is what this path has always reported.
+            # verdict. Only an artifact-bearing completion keeps the
+            # lifecycle's own acceptance.
             quality_score=1.0 if completed else None,
-            operational_outcome=_a2a_operational_outcome(
-                lifecycle_event.lifecycle_type
+            operational_outcome=(
+                EnumDelegationOperationalOutcome.INFERENCE_FAILED
+                if missing_final_artifact
+                else _a2a_operational_outcome(lifecycle_event.lifecycle_type)
             ),
             content_verdict=(
                 EnumDelegationContentVerdict.USABLE
@@ -5355,7 +5372,12 @@ class HandlerDelegationWorkflow:
             cost_tier_name=workflow.current_tier_name or "",
             premium_counterfactual=None,
             escalation_count=0,
-            escalation_history=(),
+            # Historical grades remain evidence about answered attempts,
+            # independent of this lifecycle's unscored final response.
+            escalation_history=tuple(
+                attempt.model_dump(mode="json")
+                for attempt in workflow.escalation_history
+            ),
             terminal_failure_reason=None,
             routing_tiers_hash=None,
             escalation_config_hash=None,

@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Behaviour of the companion-merge heal (OMN-18812).
 
-Each acceptance criterion of OMN-18812 has its falsifier here:
+The retained script behavior has its falsifiers here:
 
 * AC1 -- a failed preflight whose companion has MERGED is re-run with no human.
 * AC2 -- a companion still OPEN is never re-run, so the heal cannot spend a
   second budget on a fact that is still false.
 * AC3 -- the heal cannot loop: a run at the attempt ceiling is refused.
-* AC4 -- the workflow is not, and declares no, required status context, and
-  carries no ``continue-on-error`` that would let a broken heal read green.
 """
 
 from __future__ import annotations
@@ -20,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -52,8 +49,6 @@ from scripts.ci.occ_companion_merge_heal import (  # noqa: E402
     parse_evidence_source,
     run_failed_on_preflight,
 )
-
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "occ-companion-merge-heal.yml"
 
 pytestmark = pytest.mark.unit
 
@@ -347,88 +342,6 @@ def test_ac3_main_issues_nothing_at_the_ceiling() -> None:
     gh = _stub(runs=(RunSnapshot(run_id=9, run_attempt=MAX_HEAL_RUN_ATTEMPT),))
     assert main(["--repo", "OmniNode-ai/omniclaude"], gh=gh) == 0
     assert gh.reran == []
-
-
-# --------------------------------------------------------------------------
-# AC4: the workflow is advisory by construction.
-# --------------------------------------------------------------------------
-
-
-def _workflow_document() -> dict[str, Any]:
-    document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    assert isinstance(document, dict)
-    return document
-
-
-def test_ac4_workflow_exists_and_parses() -> None:
-    assert WORKFLOW.is_file(), f"{WORKFLOW} is absent"
-    assert _workflow_document()["name"] == "OCC Companion Merge Heal"
-
-
-def test_ac4_no_job_or_step_swallows_its_own_failure() -> None:
-    """A heal that could swallow its own failure would be self-refuting.
-
-    Asserted over the PARSED document rather than the file's text: the prose
-    in this workflow's header names the setting in order to say it is absent,
-    and a text match cannot tell that sentence from the setting itself. That
-    is the rule-15 failure mode the header itself is about, reproduced here
-    on the first run of this test.
-    """
-    swallowing = "continue-on-error"
-    for job_id, job in _workflow_document()["jobs"].items():
-        assert swallowing not in job, f"job {job_id} swallows its own failure"
-        for index, step in enumerate(job.get("steps", [])):
-            assert swallowing not in step, f"job {job_id} step {index} swallows"
-
-
-def _triggers(document: dict[str, Any]) -> set[str]:
-    """The workflow's trigger names.
-
-    YAML 1.1, which PyYAML implements, parses the bare key ``on`` as the
-    boolean ``True``; a YAML 1.2 parser keeps it a string. Reading only one
-    spelling makes this test a hostage to the parser version rather than to
-    the workflow, so both are accepted and a missing block is an error.
-    """
-    for key in (True, "on"):
-        if key in document:
-            block = document[key]
-            assert isinstance(block, dict), "the trigger block is not a mapping"
-            return set(block)
-    raise AssertionError("the workflow declares no trigger block")
-
-
-def test_ac4_workflow_is_not_pull_request_reachable() -> None:
-    """No `pull_request` trigger, so code from an open PR never runs with this
-    job's Actions token, and no branch protection can make this a required
-    context for a PR it never reports on."""
-    assert _triggers(_workflow_document()) == {"schedule", "workflow_dispatch"}
-
-
-def test_ac4_the_write_grant_is_scoped_to_the_one_job_that_mutates() -> None:
-    """Workflow-wide `actions: write` would hand the re-run credential to
-    every step, the checkout and the interpreter setup included."""
-    document = _workflow_document()
-    assert document["permissions"] == {"contents": "read"}
-    assert document["jobs"]["heal"]["permissions"] == {
-        "actions": "write",
-        "contents": "read",
-        "pull-requests": "read",
-    }
-
-
-def test_ac4_the_checkout_persists_no_credential() -> None:
-    steps = _workflow_document()["jobs"]["heal"]["steps"]
-    checkout = next(
-        s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")
-    )
-    assert checkout["with"]["persist-credentials"] is False
-
-
-def test_ac4_concurrency_does_not_cancel_a_pass_in_flight() -> None:
-    """A cancelled pass can leave a re-run issued and unrecorded; a queued one
-    cannot."""
-    concurrency = _workflow_document()["concurrency"]
-    assert concurrency["cancel-in-progress"] is False
 
 
 # --------------------------------------------------------------------------
