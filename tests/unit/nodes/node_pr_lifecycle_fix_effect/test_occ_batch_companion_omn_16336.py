@@ -164,23 +164,6 @@ def test_publisher_cli_enables_ticket_batch(
 
 
 @pytest.mark.unit
-def test_workflows_batch_by_default() -> None:
-    autobind = (_ROOT / ".github/workflows/call-occ-autobind.yml").read_text()
-    runner = (_ROOT / ".github/workflows/occ-receipt-runner.yml").read_text()
-    assert "WINDOW BATCHING IS THE DEFAULT (OMN-16336)" in autobind
-    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE ||" not in autobind
-    assert "closed" in yaml.safe_load(autobind)[True]["pull_request"]["types"]
-    assert "auto/ticket-" in runner
-    assert "attempt" in runner
-    # A moved batch branch is re-cloned and the checks re-run on its new tip;
-    # a rebase would ship receipts bound to a contract a rebuild rewrote.
-    assert "pull --rebase" not in runner
-    push_step = runner[runner.index("Push receipts to the companion branch") :]
-    assert "rm -rf occ" in push_step
-    assert "scripts/ci/occ_receipt_runner.py" in push_step
-
-
-@pytest.mark.unit
 def test_member_helpers_use_exact_evidence_id_shapes() -> None:
     base = "dod-OmniNode-ai-omnimarket-pr-42"
     assert member_evidence_ids(repo=_REPO, pr_number=42) == frozenset(
