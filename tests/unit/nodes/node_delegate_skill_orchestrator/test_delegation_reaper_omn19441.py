@@ -18,15 +18,15 @@ from omnibase_infra.cli.model_delegate_terminal import ModelDelegateTerminal
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-    HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    HandlerDelegateSkill,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     CLAIMS_TABLE,
@@ -64,7 +64,7 @@ def _setup(correlation_id=None, database=None):
         caller_lane="test",
         session_id=str(uuid4()),
         provenance=None,
-        deadline_at=datetime.now(UTC) + timedelta(seconds=240 + 60 + 60),
+        deadline_at=datetime.now(UTC) + timedelta(seconds=240 + 60),
     )
     assert port.claim(
         delivery_id=delivery_id,
@@ -188,6 +188,79 @@ async def test_a_real_terminal_arriving_after_the_reaper_is_kept_as_attempt_evid
     assert evidence["data"]["status"] == "completed"
 
 
+@pytest.mark.parametrize("slot_state", ["reaped", "committed", "not_written"])
+async def test_missing_slot_verdict_keeps_attempt_evidence_without_publishing(
+    monkeypatch, slot_state
+):
+    db, port, reaper, delivery_id, ctx = _setup()
+    published = []
+    upsert = db.upsert_returning
+
+    def missing_verdict(table, key, row, **kwargs):
+        if row["delivery_id"] == f"slot:{delivery_id}":
+            if slot_state != "not_written":
+                upsert(table, key, row, **kwargs)
+            return []
+        return upsert(table, key, row, **kwargs)
+
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    class Dispatch:
+        async def dispatch(self, **kwargs):
+            started.set()
+            await finish.wait()
+            return {
+                "status": "completed",
+                "content": "attempt with an unacknowledged slot write",
+                "quality_gate_passed": True,
+            }
+
+    handler = HandlerDelegateSkill(dispatch_port=Dispatch(), idempotency_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="test",
+        task_type="test",
+        source="claude-code",
+        correlation_id=ctx.correlation_id,
+    )
+    delivery = ModelEventEnvelope[object](
+        envelope_id=delivery_id,
+        payload={},
+        correlation_id=ctx.correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="omnimarket.delegate-skill",
+        source_tool="reaper-test",
+    )
+    with bind_dispatch_envelope(delivery):
+        task = asyncio.create_task(handler.handle(request))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    if slot_state == "reaped":
+        output = await reaper.handle(_tick(ctx.deadline_at))
+        published.extend(output.events)
+    monkeypatch.setattr(db, "upsert_returning", missing_verdict)
+    finish.set()
+    assert await task is None
+
+    (late,) = _late_rows(db, delivery_id)
+    evidence = json.loads(late["terminal_json"])
+    assert evidence["cls"] == "ModelDelegateSkillCompleted"
+    assert evidence["data"]["response"] == "attempt with an unacknowledged slot write"
+    assert _row(db, str(delivery_id))["terminal_json"] == (
+        json.dumps(_record(published[0])) if published else ""
+    )
+    monkeypatch.setattr(db, "upsert_returning", upsert)
+    output = await reaper.handle(_tick(ctx.deadline_at + timedelta(seconds=1)))
+    if output is not None:
+        published.extend(output.events)
+    assert len(published) == 1
+    terminal = published[0]
+    if slot_state == "committed":
+        assert isinstance(terminal, ModelDelegateSkillCompleted)
+    else:
+        assert terminal.terminal_failure_cause.value == "no_terminal"
+    assert await reaper.handle(_tick(ctx.deadline_at + timedelta(seconds=2))) is None
+
+
 @pytest.mark.parametrize("status", ["completed", "failed", "timeout"])
 async def test_the_reaper_never_reaps_a_command_that_already_holds_a_terminal_including_a_handler_timeout_terminal(
     status,
@@ -305,6 +378,8 @@ async def test_contract_routes_tick_and_declares_reaper_cause_and_configuration(
     assert {s["operation"] for s in raw["input_subscriptions"]} == {
         "delegate-skill.orchestrate",
         "delegate-skill.reap_scheduled_run",
+        "delegate-skill.recover_completed",
+        "delegate-skill.recover_failed",
     }
     config = load_delegation_reaper_config()
     assert config.grace_seconds == raw["delegation_reaper"]["grace_seconds"] == 60
@@ -334,6 +409,7 @@ async def test_no_terminal_round_trip_projection_and_pinned_delegate_cli():
     assert row["terminal_failure_cause"] == "no_terminal"
     assert row["operational_outcome"] == "timeout"
     success = ModelDelegateSkillCompleted(
+        tenant_id=ctx.tenant_id,
         correlation_id=ctx.correlation_id,
         task_type=ctx.task_type,
         model_name="evidenced-model",
@@ -360,8 +436,82 @@ async def test_no_terminal_round_trip_projection_and_pinned_delegate_cli():
     assert row["terminal_failure_cause"] is None
 
 
+async def test_stalled_handler_is_reaped_at_execution_budget_plus_grace(monkeypatch):
+    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+        handler_delegate_skill,
+    )
+    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegation_reaper import (
+        HandlerDelegationReaper,
+    )
+    from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
+        ModelDelegationReaperConfig,
+    )
+
+    pickup = datetime.now(UTC)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return pickup.astimezone(tz)
+
+    monkeypatch.setattr(handler_delegate_skill, "datetime", FixedDatetime)
+    db = InmemoryDatabaseAdapter()
+    port = DelegationClaimPort(database=db)
+    reaper = HandlerDelegationReaper(
+        port=port,
+        config=ModelDelegationReaperConfig(
+            grace_seconds=60, max_reaps_per_tick=25, scan_interval_seconds=1
+        ),
+    )
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    class Dispatch:
+        async def dispatch(self, **kwargs):
+            started.set()
+            await finish.wait()
+            return {
+                "status": "completed",
+                "content": "late result",
+                "quality_gate_passed": True,
+            }
+
+    handler = HandlerDelegateSkill(dispatch_port=Dispatch(), idempotency_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="test",
+        task_type="test",
+        source="claude-code",
+        requested_timeout_seconds=240,
+    )
+    delivery_id = uuid4()
+    delivery = ModelEventEnvelope[object](
+        envelope_id=delivery_id,
+        payload={},
+        correlation_id=request.correlation_id,
+        envelope_timestamp=pickup,
+        event_type="omnimarket.delegate-skill",
+        source_tool="reaper-test",
+    )
+    with bind_dispatch_envelope(delivery):
+        task = asyncio.create_task(handler.handle(request))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert await reaper.handle(_tick(pickup + timedelta(seconds=299))) is None
+        output = await reaper.handle(_tick(pickup + timedelta(seconds=300)))
+        assert output is not None
+        assert len(output.events) == 1
+        assert output.events[0].command_id == delivery_id
+        assert output.events[0].terminal_failure_cause.value == "no_terminal"
+    finally:
+        finish.set()
+        result = await task
+    assert result is None
+    assert len(_late_rows(db, delivery_id)) == 1
+    assert await reaper.handle(_tick(pickup + timedelta(seconds=301))) is None
+
+
 @pytest.mark.parametrize("requested", [None, 1, 240, 241])
-def test_handler_context_uses_resolved_budget_margin_and_contract_grace(requested):
+def test_handler_context_uses_resolved_budget_and_contract_grace(requested):
     from omnimarket.inference.task_class_authority import (
         resolve_task_class_execution_budget,
     )
@@ -385,7 +535,7 @@ def test_handler_context_uses_resolved_budget_margin_and_contract_grace(requeste
         requested or budget.task_class_timeout_ceiling_seconds,
         budget.task_class_timeout_ceiling_seconds,
     )
-    delta = timedelta(seconds=execution + budget.terminal_delivery_margin_seconds + 60)
+    delta = timedelta(seconds=execution + 60)
     assert before + delta <= context.deadline_at <= after + delta
     assert context.tenant_id == request.tenant_id
 

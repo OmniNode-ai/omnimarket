@@ -154,7 +154,7 @@
 # when adding one, not a reason to fork the byte-identical picker.
 #
 # The private placement overlay this table's `@private` columns hydrate from,
-# relative to $OMNI_HOME. Read by prepush_dispatch.sh's prepush_overlay_rel.
+# relative to the owning config root. Read by prepush_dispatch.sh's prepush_overlay_rel.
 # It is declared HERE rather than hardcoded in the picker because the picker
 # is a vendored, repo-neutral copy; and because it is declared here it
 # inherits this file's protections -- read from HEAD, refused on working-tree

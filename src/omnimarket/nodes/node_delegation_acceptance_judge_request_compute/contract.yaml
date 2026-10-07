@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_acceptance_judge_request_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Definition-B producer of the delegation acceptance judge command. One completed
+  delegation terminal in, one render request of node_delegation_acceptance_judge_compute
+  out, so delegated output reaches the blind judge. The rubric text is read once at
+  composition from the packaged v1 file; handle reads no file and calls no model.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_acceptance_judge_request
+      handler:
+        name: HandlerDelegationAcceptanceJudgeRequest
+        module: omnimarket.nodes.node_delegation_acceptance_judge_request_compute.handlers.handler_delegation_acceptance_judge_request
+
+handler:
+  module: omnimarket.nodes.node_delegation_acceptance_judge_request_compute.handlers.handler_delegation_acceptance_judge_request
+  class: HandlerDelegationAcceptanceJudgeRequest
+  input_model: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection.ModelDelegateSkillTerminalProjection
+  output_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request.ModelAcceptanceJudgeRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  correlation_id:
+    type: str
+    required: true
+    description: The delegation's correlation id; becomes the opaque judge item id and the seed.
+  task_type:
+    type: str
+    required: true
+    description: The routing label the delegation ran under.
+  prompt_text:
+    type: str
+    required: false
+    description: The delegated task text.
+  response:
+    type: str
+    required: false
+    description: The delegated output.
+  model_name:
+    type: str
+    required: false
+    description: The serving model; carried for the score cells, never shown to a judge.
+
+outputs:
+  operation:
+    type: str
+  rubric_yaml:
+    type: str
+  seed:
+    type: str
+  items:
+    type: tuple
+
+terminal_event: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
+
+published_events:
+  - event_type: AcceptanceJudgeRequest
+    topic: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
+    description: One render request of the blind acceptance judge for one completed delegation.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.delegate-skill-completed.v1

@@ -471,14 +471,9 @@ class HandlerProjectionDelegation:
             and exposure.table == TABLE
             and tuple(exposure.key_columns) == (CONFLICT_KEY,)
         ]
-        if len(rows) > 1:
-            raise RuntimeError(
-                f"contract declares {len(rows)} bus_backed per-row exposures over "
-                f"{TABLE!r} ({[exposure.topic for exposure in rows]!r}); this "
-                "handler republishes the written row to exactly one, and serving "
-                "only the first would leave the others a confident empty page"
-            )
-        self._row_exposure: ProjectionTableConfig | None = rows[0] if rows else None
+        # Every per-row exposure is republished from the one returned row, so
+        # none is left a confident empty page.
+        self._row_exposures: tuple[ProjectionTableConfig, ...] = tuple(rows)
         # OMN-18159 Phase 1b(ii). The four singleton aggregates, each a SQL
         # view this node's own migration 0039 grouped on tenant_id. Matched on
         # the aggregate key rather than on the topic name, for the reason the
@@ -500,7 +495,7 @@ class HandlerProjectionDelegation:
             for exposure in exposures
             if exposure.bus_backed
             and exposure not in aggregates
-            and exposure is not (rows[0] if rows else None)
+            and exposure not in rows
         ]
         if unservable:
             raise RuntimeError(
@@ -575,14 +570,15 @@ class HandlerProjectionDelegation:
                 "writer. Implement ProtocolProjectionAttestedWrite on this "
                 "adapter (OMN-18159 AC5)."
             )
-        exposure = self._row_exposure
         written = db.upsert_returning(
             TABLE,
             CONFLICT_KEY,
             row,
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
-            returning=tuple(exposure.columns) if exposure is not None else (),
+            returning=tuple(
+                dict.fromkeys(c for e in self._row_exposures for c in e.columns)
+            ),
         )
         self._publish_row_snapshot(written)
         self._publish_aggregate_snapshots(db, written)
@@ -679,31 +675,35 @@ class HandlerProjectionDelegation:
         rather than the process-local counter an earlier revision of the
         snapshot seam removed.
         """
-        exposure = self._row_exposure
-        if exposure is None or not written:
+        if not self._row_exposures or not written:
             return False
-        row = dict(written[0])
-        tenant = (
-            row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
-        )
-        message = encode_snapshot_delta(
-            exposure,
-            op="upsert",
-            row=row,
-            source_event_id=str(row.get(CONFLICT_KEY) or ""),
-            # The exposure's own topic, because the source event's topic is
-            # not reachable from every one of the three write paths and an
-            # inconsistent value across them would partition the ordering
-            # comparison by which path happened to write the row.
-            source_topic=exposure.topic,
-            source_partition=0,
-            source_offset=_write_ordering_token(row.get("written_at")),
-            observed_at=datetime.now(tz=UTC).isoformat(),
-            tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
-        )
-        if message is None:
-            return False
-        return self._resolve_publisher().publish(message)
+        stored = dict(written[0])
+        published = False
+        for exposure in self._row_exposures:
+            # Each topic carries only its own declared columns, so the lean
+            # decisions list does not pick up the heavy detail columns.
+            row = {c: stored[c] for c in exposure.columns if c in stored}
+            tenant = (
+                row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
+            )
+            message = encode_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(row.get(CONFLICT_KEY) or ""),
+                # The exposure's own topic, because the source event's topic is
+                # not reachable from every one of the three write paths and an
+                # inconsistent value across them would partition the ordering
+                # comparison by which path happened to write the row.
+                source_topic=exposure.topic,
+                source_partition=0,
+                source_offset=_write_ordering_token(stored.get("written_at")),
+                observed_at=datetime.now(tz=UTC).isoformat(),
+                tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
+            )
+            if message is not None:
+                published = self._resolve_publisher().publish(message) or published
+        return published
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
@@ -848,36 +848,14 @@ class HandlerProjectionDelegation:
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
-        # OMN-14898: refuse the write before it is ever built out further when
-        # isolation enforcement is on and no tenant was resolved (raises
-        # TenantRequiredError -- no row, no fall-through to the column
-        # default). No-op while ENFORCE_TENANT_ISOLATION is False, so the
-        # OMN-14058 interim fallback below is unchanged by default.
+        # Resolve only the event's declared tenant against the registry.
+        # Missing attribution is refused by terminal_write_tenant regardless
+        # of enforcement or the writer's configured tenant (OMN-20651).
         require_tenant_id(event.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source event carried one — omitting the key (rather than writing
-        # None) lets the delegation_events column DEFAULT apply on INSERT and
-        # leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) —
-        # event.tenant_id is the verified SLUG (stamp_verified_tenant_slug);
-        # resolve it to the canonical UUID before it reaches the row/column.
-        # Stamping the raw slug here would either fail the INSERT (unmapped
-        # value) or, worse, silently key the row under a representation the
-        # gateway's UUID-keyed reader can never join against again.
-        # OMN-16804: resolved against tenant_registry_mirror -- the relation
-        # node_projection_tenant_registry materializes from onex.tenant.events
-        # -- rather than a three-entry dict compiled into this source tree, so
-        # every provisioned tenant resolves rather than only the three that
-        # were hardcoded when the column was converted.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             event.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
-        # column DEFAULT this used to fall through to is removed by 0042, and
-        # the insert-only arm it returns when nothing resolved is not a policy
-        # bypass: row-level security evaluates USING against the pre-existing
-        # row, not the SET clause.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1077,20 +1055,12 @@ class HandlerProjectionDelegation:
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
-        # OMN-14898: same fail-closed guard as project() -- no-op unless
-        # ENFORCE_TENANT_ISOLATION is set.
+        # Same declared-tenant boundary as the canonical terminal path.
         require_tenant_id(row_model.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
-        # present — omitting the key lets the column DEFAULT apply on INSERT
-        # and leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: same UUID resolution as project() above — see that
-        # call site's comment for why the raw slug must never reach the row.
-        # OMN-16804: see the registry-resolution note on project() above.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             row_model.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY, same reason as project() above.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1975,7 +1945,13 @@ def _preserve_existing_evidence(
     correlation_id = row.get(CONFLICT_KEY)
     if not correlation_id:
         return
-    existing_rows = db.query(TABLE, {CONFLICT_KEY: correlation_id})
+    # Read under the declared row tenant, matching the async writer. Using
+    # the writer's configured tenant here can blind the merge or fail its UUID
+    # policy cast even though the terminal carries a valid tenant (OMN-20651).
+    filters = {CONFLICT_KEY: correlation_id}
+    if row.get("tenant_id"):
+        filters["tenant_id"] = row["tenant_id"]
+    existing_rows = db.query(TABLE, filters)
     if not existing_rows:
         apply_terminal_precedence({}, row)
         return

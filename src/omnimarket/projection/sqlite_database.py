@@ -22,8 +22,9 @@ newer projection version.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -34,6 +35,8 @@ from omnibase_core.models.projection.model_upsert_plan import (
     SQL_EXPRESSION_SENTINEL_PREFIX,
     build_upsert_plan,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
@@ -188,7 +191,8 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
     occurred_at TEXT NOT NULL,
-    ingested_at TEXT NOT NULL
+    ingested_at TEXT NOT NULL,
+    usage_source TEXT NOT NULL DEFAULT 'unknown'
 )
 """
 
@@ -200,11 +204,64 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day (
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
+    measured_cost_usd REAL,
+    unmeasured_call_count INTEGER NOT NULL DEFAULT 0,
     call_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
+    projection_cursor INTEGER,
     PRIMARY KEY (tenant_id, usage_day, model_id)
 )
 """
+
+# OMN-20006: columns the usage-by-model-day exposure serves that a store written
+# before them lacks. The read node refuses an exposure whose declared column the
+# table lacks (projection_column_missing), so they are added by a one-time store
+# step on connect, with the same defaults as migration 0002: an old call reads
+# 'unknown', an old aggregate NULL measured cost and 0 unmeasured calls until its
+# key is recounted.
+_USAGE_BY_MODEL_DAY_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("usage_by_model_day_calls", "usage_source", "TEXT NOT NULL DEFAULT 'unknown'"),
+    ("usage_by_model_day", "measured_cost_usd", "REAL"),
+    ("usage_by_model_day", "unmeasured_call_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("usage_by_model_day", "projection_cursor", "INTEGER"),
+)
+
+# The exposure's cursor. On Postgres it is a BIGSERIAL that every recount
+# re-stamps from its sequence, so a row read again after a recount sorts after
+# the rows read before it. SQLite gets the same from a one-row sequence table
+# and two triggers: each insert and each recount (which always sets updated_at)
+# takes the next value. SQLite does not fire triggers recursively by default, so
+# the trigger's own UPDATE does not re-enter. A row stored before the cursor
+# existed has none until its key is next recounted; no local path wrote usage
+# rows before this change, so a local store has none in practice.
+_USAGE_BY_MODEL_DAY_CURSOR_SEQ_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day_projection_cursor_seq (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_value INTEGER NOT NULL
+)
+"""
+_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED = (
+    "INSERT OR IGNORE INTO usage_by_model_day_projection_cursor_seq "
+    "(id, last_value) VALUES (1, 0)"
+)
+_USAGE_BY_MODEL_DAY_CURSOR_STAMP = """
+    UPDATE usage_by_model_day_projection_cursor_seq SET last_value = last_value + 1;
+    UPDATE usage_by_model_day
+    SET projection_cursor = (
+        SELECT last_value FROM usage_by_model_day_projection_cursor_seq
+    )
+    WHERE rowid = NEW.rowid;
+"""
+_USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS = (
+    "CREATE TRIGGER IF NOT EXISTS usage_by_model_day_cursor_on_insert "
+    "AFTER INSERT ON usage_by_model_day BEGIN"
+    + _USAGE_BY_MODEL_DAY_CURSOR_STAMP
+    + "END",
+    "CREATE TRIGGER IF NOT EXISTS usage_by_model_day_cursor_on_recount "
+    "AFTER UPDATE OF updated_at ON usage_by_model_day BEGIN"
+    + _USAGE_BY_MODEL_DAY_CURSOR_STAMP
+    + "END",
+)
 
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
@@ -225,6 +282,7 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     spend_usd TEXT,
     counterfactual_usd TEXT,
     savings_usd TEXT,
+    savings_per_measured_run_usd TEXT,
     summary_json TEXT NOT NULL
 )
 """
@@ -299,6 +357,21 @@ _LLM_CALL_METRICS_INPUT_HASH_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
     ON llm_call_metrics (input_hash)
 """
+
+# One-time data steps on a local store, the SQLite counterpart of a forward
+# migration: each runs once, committed together with its row here. The table is
+# created by the first step that writes, never on a plain connect, so a
+# read-only store that predates it can still be opened.
+_STORE_STEPS_TABLE = "omnimarket_sqlite_store_steps"
+_STORE_STEPS_DDL = f"""
+CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
+    step       TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+)
+"""
+_USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
+# The SQLite counterpart of usage_by_model_day migration 0002.
+_USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -375,6 +448,7 @@ class SqliteDatabaseAdapter:
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
+        self._apply_store_steps(conn, self._db_path)
         return conn
 
     @staticmethod
@@ -425,16 +499,113 @@ class SqliteDatabaseAdapter:
             conn.execute(
                 f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
             )
-        elif "usage_source" in columns:
-            # OMN-19968: rows written before the shared vocabulary move onto it
-            # (EnumUsageSource; omnibase_infra migration 077). Idempotent: it
-            # touches only rows still holding a retired label.
+
+    @staticmethod
+    def _store_step_recorded(conn: sqlite3.Connection, step: str) -> bool:
+        if (
             conn.execute(
-                "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
-                "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
-                "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
-                "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (_STORE_STEPS_TABLE,),
+            ).fetchone()
+            is None
+        ):
+            return False
+        return (
+            conn.execute(
+                f"SELECT 1 FROM {_STORE_STEPS_TABLE} WHERE step = ?", (step,)
+            ).fetchone()
+            is not None
+        )
+
+    @classmethod
+    def _apply_store_steps(cls, conn: sqlite3.Connection, db_path: Path) -> None:
+        """Run each one-time store step this store has not recorded, in order.
+
+        Every connection goes through here, reads included, and a step's write
+        takes the write lock even when it changes nothing. So each step runs in
+        its own write transaction that commits it together with its row in the
+        store-steps table, and a store that has recorded every step opens with
+        reads only. The decision reads the step record, never table rows: this
+        module is shared by nodes that do not own those tables.
+
+        A store this process cannot write is read as it is, with one warning
+        naming every step it still lacks. Anything else, a busy store included,
+        is a real failure and raises.
+        """
+        pending: list[tuple[str, Callable[[sqlite3.Connection], None], str]] = []
+        if not cls._store_step_recorded(
+            conn, _USAGE_SOURCE_VOCABULARY_STEP
+        ) and "usage_source" in cls._existing_columns(conn, "llm_call_metrics"):
+            pending.append(
+                (
+                    _USAGE_SOURCE_VOCABULARY_STEP,
+                    cls._relabel_usage_source,
+                    "moved llm_call_metrics.usage_source onto the shared vocabulary",
+                )
             )
+        if not cls._store_step_recorded(conn, _USAGE_BY_MODEL_DAY_STEP):
+            pending.append(
+                (
+                    _USAGE_BY_MODEL_DAY_STEP,
+                    cls._add_usage_by_model_day_columns,
+                    "added the usage-by-model-day columns and cursor triggers",
+                )
+            )
+        for index, (step, apply, _) in enumerate(pending):
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute(_STORE_STEPS_DDL)
+                apply(conn)
+                conn.execute(
+                    f"INSERT OR IGNORE INTO {_STORE_STEPS_TABLE} (step, applied_at) "
+                    "VALUES (?, ?)",
+                    (step, datetime.now(UTC).isoformat()),
+                )
+                conn.commit()
+            except sqlite3.OperationalError as exc:
+                conn.rollback()
+                if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
+                    raise
+                logger.warning(
+                    "%s is read-only and has not %s; reading it as it is",
+                    db_path,
+                    ", nor ".join(lacking for _, _, lacking in pending[index:]),
+                )
+                return
+            except BaseException:
+                conn.rollback()
+                raise
+
+    @staticmethod
+    def _relabel_usage_source(conn: sqlite3.Connection) -> None:
+        """OMN-19968: move rows written before the shared vocabulary onto it.
+
+        The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
+        migration 077), run once per store as a store step.
+        """
+        conn.execute(
+            "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+            "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+            "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+            "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+        )
+
+    @classmethod
+    def _add_usage_by_model_day_columns(cls, conn: sqlite3.Connection) -> None:
+        """OMN-20006: give a store written before them the usage-by-model-day
+        columns and the two cursor triggers, run once per store as a store step.
+
+        The columns are read again here, under the step's write lock, so two
+        first opens of one store that race never add a column twice; a fresh
+        store's tables already have them and only gain the triggers.
+        """
+        for table, column, declaration in _USAGE_BY_MODEL_DAY_ADDED_COLUMNS:
+            if column not in cls._existing_columns(conn, table):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+        conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_DDL)
+        conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
+        for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
+            conn.execute(trigger)
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -444,11 +615,26 @@ class SqliteDatabaseAdapter:
     def _ensure_columns(
         self, conn: sqlite3.Connection, table: str, row: dict[str, object]
     ) -> None:
-        existing = self._existing_columns(conn, table)
-        for column in row:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
-        conn.commit()
+        # OMN-19976: several writers, threads or processes, can reach a fresh
+        # store together, and each one's first write adds columns. Reading the
+        # columns with no lock and then altering let two writers both see one
+        # missing; the second ALTER failed with "duplicate column name" and
+        # that writer's row was lost. So the columns are read again under the
+        # write lock and only those still missing are added, in one
+        # transaction that rolls back whole. A row whose columns all exist,
+        # which is every steady-state write, returns before taking the lock.
+        if set(row) <= self._existing_columns(conn, table):
+            return
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._existing_columns(conn, table)
+            for column in row:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @staticmethod
     def _encode(column: str, value: object) -> object:

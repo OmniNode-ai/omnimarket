@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18265"
+title: "provider error carried in a 200 body classifies identically on the bus and the local port"
+summary: "The composed in-body provider error carries the parser's failure_class on the text-only bus wire, and the bus orchestrator reads that class instead of re-deriving it from vendor prose."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-provider-error-verdict-shared"
+    statement: "The bus orchestrator and the bus-less local port reach the same failure class for one in-body provider error."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: provider facts outrank incidental words in the vendor's message, so the bus and the local port classify one provider error identically -- falsifier: uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q"
+      - id: "AC5"
+        statement: "AC5: an in-body provider error on a platform route escalates to the next eligible tier with one MODEL_UNAVAILABLE escalation event, escalation_count one and customer retry count zero -- falsifier: uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -k test_a_provider_error_on_a_platform_route_still_escalates -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the in-body provider error tests, including the bus and local port parity cases."
+    command: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18265-provider-error-parity"
+    description: "The in-body provider error tests pass, including the parity cases between the bus classifier and the local port."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn18265-provider-5xx-precedence"
+    description: "Numeric 5xx provider codes and an explicit provider_unavailable classify as MODEL_UNAVAILABLE before vendor keyword heuristics, on both the bus and the local port."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -k test_declared_provider_unavailability_outranks_vendor_words_on_both_paths -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn18265-platform-route-escalation"
+    description: "A 200-body provider error on a platform route escalates to the next eligible tier once, with customer retry count zero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -k test_a_provider_error_on_a_platform_route_still_escalates -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

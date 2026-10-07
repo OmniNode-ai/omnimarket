@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19547"
+title: "The delegation FSM loads as a typed state_machine with symbolic triggers and keeps its original 17 runtime edges"
+summary: "The typed delegation FSM migration is already on dev; this change adds regression coverage to tests/unit/delegation/test_delegation_fsm_contract_bound_omn13474.py. An independent 17-edge fixture pins the original (from, to) edges, the handler FSM is compared with a direct ModelFSMSubcontract load of the contract, and the contract is asserted to use the typed dialect with symbolic triggers (no legacy fsm/from/to keys, no prose triggers). The walkable state machine suite covers the typed load, reachability and the unknown-key fixture."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-fsm-typed-and-edges-preserved"
+    statement: |-
+      The delegation contract declares a typed state_machine that ModelFSMSubcontract loads directly with no unknown keys and symbolic triggers, the handler advance table is the same 17 (from, to) edges as before the typed migration, the machine has no unreachable states or dead transitions with FAILED declared in error_states, and a misspelled transition key fails the walkable state machine test.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the delegation contract declares state_machine: (no fsm: key) and ModelFSMSubcontract.model_validate accepts it with no unknown keys -- falsifier: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the handler advance table keyed by (from, to) is the same 17 edges as before the change and the delegation unit suite passes -- falsifier: uv run pytest tests/unit/delegation -q
+      - id: "AC3"
+        statement: |-
+          AC3: analyze_fsm reports no unreachable states and no dead transitions for the delegation machine, and FAILED is declared in error_states -- falsifier: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -k delegation
+      - id: "AC4"
+        statement: |-
+          AC4: a contract fixture with a misspelled transition key fails the test, red first -- falsifier: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -k unknown_key
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegation FSM regression tests pin the original 17 edges, the direct-load equivalence and the typed dialect with symbolic triggers; the walkable state machine suite covers the typed load, reachability and the unknown-key fixture."
+    command: "uv run pytest tests/unit/delegation/test_delegation_fsm_contract_bound_omn13474.py tests/unit/contracts/test_walkable_state_machines.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19547-ac1-ac4-delegation-fsm-typed-edges"
+    description: "The handler FSM equals a direct ModelFSMSubcontract load of the delegation contract (correlation_id excluded), its advance table equals an independent fixture of the original 17 (from, to) edges, the contract uses state_machine with symbolic triggers and no legacy fsm/from/to keys, and the walkable state machine suite accepts the delegation machine with no unreachable states or dead transitions and rejects a misspelled transition key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_fsm_contract_bound_omn13474.py tests/unit/contracts/test_walkable_state_machines.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]

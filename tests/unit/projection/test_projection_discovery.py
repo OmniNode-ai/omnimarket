@@ -404,6 +404,12 @@ class TestBuildProjectionTopicMap:
             # tenant. It is the exposure's declared `tenant_column`, so the
             # serving path refuses this topic without a resolved tenant.
             "tenant_id",
+            # OMN-20008: appended by migration 094. Runs whose stored
+            # token_provenance is estimated or unknown are left out of every
+            # measured monetary total, and these two counts are served beside
+            # it so the dashboard can say how many runs were excluded.
+            "estimated_run_count",
+            "unknown_run_count",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
@@ -993,8 +999,11 @@ class TestOmn15800ExposureParity:
         # 68 as of OMN-19978: +1 for bus-backed usage totals per model/UTC day.
         # 69 as of OMN-19793: +1 for the bus-backed delegation acceptance-eval
         # results (false-pass and false-refusal rates per class, stratum, arm).
+        # 70 as of OMN-20007: +1 for the bus-backed, tenant-scoped metering
+        # summary (fixed UTC day rows plus one all-time row per baseline).
         topic_map = real_topic_map
-        assert len(topic_map) == 69
+        assert len(topic_map) == 70
+        assert "onex.snapshot.projection.metering-summary.v1" in topic_map
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY

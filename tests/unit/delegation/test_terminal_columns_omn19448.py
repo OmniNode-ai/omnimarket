@@ -32,6 +32,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[3]
@@ -48,6 +52,7 @@ def _terminal(
     route: str | None = "local-qwen",
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_event_type": event_type,
         "correlation_id": str(uuid4()),
         "task_type": "test",
@@ -99,6 +104,7 @@ def test_no_column_is_minted_for_a_field_the_terminal_does_not_carry() -> None:
 @pytest.mark.parametrize("event_type", ["delegation-failed", "delegation-completed"])
 def test_inmemory_row_carries_trace_model_and_backend(event_type: str) -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload = _terminal(event_type=event_type)
     correlation_id = payload["correlation_id"]
     HandlerProjectionDelegation().handle({**payload, "_db": db})
@@ -115,6 +121,7 @@ def test_inmemory_row_carries_trace_model_and_backend(event_type: str) -> None:
 @pytest.mark.unit
 def test_sqlite_local_store_row_carries_the_same_columns(tmp_path: Path) -> None:
     db = SqliteDatabaseAdapter(tmp_path / "local.db")
+    seed_tenant_registry(db)
     payload = _terminal()
     correlation_id = payload["correlation_id"]
     HandlerProjectionDelegation().handle({**payload, "_db": db})
@@ -130,6 +137,7 @@ def test_sqlite_local_store_row_carries_the_same_columns(tmp_path: Path) -> None
 @pytest.mark.unit
 def test_a_terminal_without_trace_or_route_leaves_them_null() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload = _terminal(trace_id=None, route=None)
     HandlerProjectionDelegation().handle({**payload, "_db": db})
     (row,) = db.query(TABLE, {"correlation_id": payload["correlation_id"]})
@@ -141,6 +149,7 @@ def test_a_terminal_without_trace_or_route_leaves_them_null() -> None:
 @pytest.mark.unit
 def test_a_later_terminal_without_trace_does_not_erase_the_recorded_one() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     first = _terminal()
     HandlerProjectionDelegation().handle({**first, "_db": db})
     later = _terminal(trace_id=None, route=None)

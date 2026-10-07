@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.298"
+version = "0.4.303"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -204,7 +204,7 @@ dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.65,<0.39.0",
+    "omnibase-infra>=0.38.67,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -266,6 +266,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
+node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
@@ -278,11 +279,14 @@ node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
+node_hook_chain_probe_trigger_effect = "omnimarket.nodes.node_hook_chain_probe_trigger_effect"
+node_hook_chain_probe_verdict_effect = "omnimarket.nodes.node_hook_chain_probe_verdict_effect"
 node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
 node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
 node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampler_effect"
 node_dead_letter_prune_effect = "omnimarket.nodes.node_dead_letter_prune_effect"
 node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_effect"
+node_prune_binding_effect = "omnimarket.nodes.node_prune_binding_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -306,6 +310,7 @@ node_contract_digest_compute = "omnimarket.nodes.node_contract_digest_compute"
 node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
 node_codegen_outcome_reducer = "omnimarket.nodes.node_codegen_outcome_reducer"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
+node_event_chain_generator_compute = "omnimarket.nodes.node_event_chain_generator_compute"
 node_seam_graph_compute = "omnimarket.nodes.node_seam_graph_compute"
 node_seam_match_compute = "omnimarket.nodes.node_seam_match_compute"
 node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
@@ -314,8 +319,11 @@ node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_comput
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
+node_delegation_acceptance_judge_request_compute = "omnimarket.nodes.node_delegation_acceptance_judge_request_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
+node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
+node_contract_projection_check_effect = "omnimarket.nodes.node_contract_projection_check_effect"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_hook_followup_compute = "omnimarket.nodes.node_delegation_hook_followup_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
@@ -440,6 +448,7 @@ node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
 node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_delegation_eval = "omnimarket.nodes.node_projection_delegation_eval"
 node_projection_delegation_disposition = "omnimarket.nodes.node_projection_delegation_disposition"
+node_projection_routing_feedback = "omnimarket.nodes.node_projection_routing_feedback"
 node_projection_provider_quota = "omnimarket.nodes.node_projection_provider_quota"
 node_delegation_eval_orchestrator = "omnimarket.nodes.node_delegation_eval_orchestrator"
 node_delegation_eval_run_orchestrator = "omnimarket.nodes.node_delegation_eval_run_orchestrator"
@@ -452,6 +461,7 @@ node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_con
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
+node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
@@ -514,6 +524,15 @@ node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_decision_compute = "omnimarket.nodes.node_pr_landing_decision_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
 node_projection_pr_landing = "omnimarket.nodes.node_projection_pr_landing"
+# PR handoff over the bus (OMN-20636): the orchestrator and its ledger effect are wired; the decision
+# compute is called in process and declares no event_bus.
+node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
+node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
+node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
+# Lab job supervisor (OMN-20604): the reducer is called in process by the job orchestrator
+# and declares no handler_routing.
+node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
+node_lab_job_submit_effect = "omnimarket.nodes.node_lab_job_submit_effect"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
@@ -623,6 +642,7 @@ node_pattern_b_broker = "omnimarket.nodes.node_pattern_b_broker"
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"
+node_audit_trail_compact_schedule_compute = "omnimarket.nodes.node_audit_trail_compact_schedule_compute"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_full_triage_orchestrator = "omnimarket.nodes.node_full_triage_orchestrator"
 node_local_supervisor = "omnimarket.nodes.node_local_supervisor"
@@ -994,7 +1014,7 @@ override-dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.65,<0.39.0",
+    "omnibase-infra>=0.38.67,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

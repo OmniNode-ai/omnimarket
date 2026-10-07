@@ -1088,7 +1088,7 @@ def _verify_jobs(conclusion: str, completed_at: str | None) -> dict[str, Any]:
 
 
 def test_the_receipt_gate_job_name_is_exact_and_case_insensitive() -> None:
-    assert RECEIPT_GATE_JOB_NAMES == ("verify / verify",)
+    assert "verify / verify" in RECEIPT_GATE_JOB_NAMES
     assert is_receipt_gate_job_name("verify / verify") is True
     assert is_receipt_gate_job_name("Verify / Verify") is True
 
@@ -1249,4 +1249,94 @@ def test_ghcli_run_failed_on_preflight_admits_a_pre_merge_receipt_gate_failure(
             companion_merged_at=_MERGED_AT,
         )
         is True
+    )
+
+
+# --------------------------------------------------------------------------
+# OMN-17427: the repo-evidence family is companion-bound too.
+#
+# The OMN-20072 pilot added `repo-evidence / dod-verify`, which waits a bounded
+# 1500 s for `occ-preflight / eligibility` on the same head, and renamed every
+# in-run poller to `Repo Evidence Dependency`, which waits on dod-verify. Neither
+# name matched the preflight markers or the verify job, so the heal never saw
+# them. omnimarket#3417 exactly: dod-verify failed 09:58:37Z and the CI run's
+# Repo Evidence Dependency 09:58:43Z, both on the expired wait; companion
+# OCC#12886 merged 10:34:23Z; the preflight was re-run and passed 10:48:55Z;
+# every later pass logged `no_failed_preflight` and the PR stayed red.
+# --------------------------------------------------------------------------
+
+_REPO_EVIDENCE_MERGED_AT = "2026-10-05T10:34:23Z"
+
+
+@pytest.mark.parametrize(
+    "name", ["repo-evidence / dod-verify", "Repo Evidence Dependency"]
+)
+def test_the_repo_evidence_family_is_companion_bound(name: str) -> None:
+    assert is_receipt_gate_job_name(name) is True
+    assert is_receipt_gate_job_name(name.upper()) is True
+
+
+@pytest.mark.parametrize(
+    ("name", "completed_at"),
+    [
+        ("repo-evidence / dod-verify", "2026-10-05T09:58:37Z"),
+        ("Repo Evidence Dependency", "2026-10-05T09:58:43Z"),
+    ],
+)
+def test_a_repo_evidence_failure_before_the_merge_is_in_scope(
+    name: str, completed_at: str
+) -> None:
+    payload = {
+        "jobs": [{"name": name, "conclusion": "failure", "completed_at": completed_at}]
+    }
+    assert (
+        run_failed_on_preflight(
+            payload,
+            markers=PREFLIGHT_JOB_MARKERS,
+            companion_merged_at=_REPO_EVIDENCE_MERGED_AT,
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["repo-evidence / dod-verify", "Repo Evidence Dependency"]
+)
+def test_a_repo_evidence_failure_after_the_merge_is_a_real_red(name: str) -> None:
+    """omnimarket#3420's shape: OCC#12917 merged 13:52:11Z and dod-verify failed
+    14:09:39Z on the product repo's own missing contract. A re-run would
+    reproduce that verdict."""
+    payload = {
+        "jobs": [
+            {
+                "name": name,
+                "conclusion": "failure",
+                "completed_at": "2026-10-05T14:09:39Z",
+            }
+        ]
+    }
+    assert (
+        run_failed_on_preflight(
+            payload,
+            markers=PREFLIGHT_JOB_MARKERS,
+            companion_merged_at="2026-10-05T13:52:11Z",
+        )
+        is False
+    )
+
+
+def test_a_head_whose_only_companion_bound_red_is_repo_evidence_is_read() -> None:
+    """omnimarket#3417 after its preflight was healed: eligibility passed, so the
+    count must still open the companion read from the repo-evidence reds."""
+    payload = {
+        "check_runs": [
+            {"name": "occ-preflight / eligibility", "conclusion": "success"},
+            {"name": "repo-evidence / dod-verify", "conclusion": "failure"},
+            {"name": "Repo Evidence Dependency", "conclusion": "failure"},
+            {"name": "Coverage Sweep Gate", "conclusion": "failure"},
+        ]
+    }
+    assert (
+        failed_preflight_check_count_in_payload(payload, markers=PREFLIGHT_JOB_MARKERS)
+        == 2
     )

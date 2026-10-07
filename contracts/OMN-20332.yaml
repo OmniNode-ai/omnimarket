@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20332"
+title: "Run derived DoD falsifiers under the repo's declared runner"
+summary: "Derived DoD falsifiers use the repository's declared test runner. Tests cover TypeScript selector parsing, pnpm command derivation, Python selectors under uv, and verdict failures when no runner is declared. AC1 and AC2 are bound to this PR's tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-derived-falsifiers-use-declared-runner"
+    statement: "Derive falsifier commands from test selectors and the repository's declared runner, and report runner declaration failures in the DoD verdict. Each acceptance id is bound to the tests that assert its behavior."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: TypeScript selectors produce test_passes checks under the declared pnpm test runner and repository cwd, omit pytest flags and shell commands, and Python selectors retain their pytest options under uv. A missing runner produces no derived command and names the criterion and repository -- falsifier: uv run pytest tests/test_occ_falsifier_checks.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the DoD verifier executes the declared pnpm falsifier and reflects its passing or failing result. Only an exact pnpm version pin declares a runner. A missing runner fails the verdict with a named falsifier, including when another item causes an audience refusal -- falsifier: uv run pytest tests/test_dod_verify_acceptance_basis.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: a repository with package-lock.json and scripts.test, and no pnpm lockfile, declares npm test -- --run in a staged tree built by npm ci, and a .py falsifier path in a repository with no pyproject.toml declares the bare uv run --no-project pytest form; a pnpm pin or a uv project still wins -- falsifier: uv run pytest tests/test_dod_verify_acceptance_basis.py tests/unit/nodes/node_dod_verify/test_omn_20332_npm_and_bare_runners.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 tests assert TypeScript selector parsing, pnpm runner and cwd derivation, retained Python pytest options, and the criterion and repository reported for an undeclared runner."
+    command: "uv run pytest tests/test_occ_falsifier_checks.py -q"
+  - kind: "tests"
+    description: "AC2 tests assert passing and failing pnpm falsifier results, exact pnpm pin detection, and a named runnerless failure preserved through audience refusal."
+    command: "uv run pytest tests/test_dod_verify_acceptance_basis.py -q"
+  - kind: "tests"
+    description: "AC3 tests assert the npm runner, the bare Python runner, their precedence against pnpm and uv, and that each is the command the verifier executes."
+    command: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/unit/nodes/node_dod_verify/test_omn_20332_npm_and_bare_runners.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20332-ac1-declared-runner-derivation"
+    description: "AC1 tests assert TypeScript selector parsing, pnpm runner and cwd derivation, retained Python pytest options, and the criterion and repository reported for an undeclared runner."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_occ_falsifier_checks.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20332-ac2-declared-runner-verdict"
+    description: "AC2 tests assert passing and failing pnpm falsifier results, exact pnpm pin detection, and a named runnerless failure preserved through audience refusal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_acceptance_basis.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20332-ac3-npm-and-bare-runners"
+    description: "AC3 tests assert the npm runner, the bare Python runner, their precedence against pnpm and uv, and that each is the command the verifier executes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/unit/nodes/node_dod_verify/test_omn_20332_npm_and_bare_runners.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

@@ -16,7 +16,8 @@ What differs from the Postgres reader, and why:
   main database, so the relation is the bare table name and the exposure's
   ``relation_schema`` is ignored.
 * There is no row-level security to agree with, so the tenant is enforced by
-  the WHERE clause alone.
+  the WHERE clause alone. A slug is resolved to its registry UUID first, from
+  the store's own ``tenant_registry_mirror`` (OMN-19972).
 * A ``since`` walk compares the cursor column with the bound text directly.
   The local writers store timestamps as ISO strings, which order as text.
 * The file is opened read-only per read, and a missing file is a named refusal:
@@ -30,10 +31,12 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
     RETAINED_WINDOW_FACTOR,
+    TENANT_REGISTRY_UNREADABLE,
     ProjectionReadError,
     TablePageView,
     WindowQuery,
@@ -43,6 +46,11 @@ from omnimarket.projection.table_reader import (
     recency_column,
     select_list,
     serialise_row,
+)
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+    TenantRegistryResolutionError,
+    sync_registry_tenant_uuid,
 )
 
 
@@ -179,6 +187,33 @@ def _require_relation(
         )
 
 
+class _ReadOnlyRegistryQuery:
+    """The one ``query`` the sync registry lookup issues, on a read-only connection.
+
+    :func:`sync_registry_tenant_uuid` is the writer's own lookup; it reads
+    through ``db.query(table, {column: value})`` and treats ``[]`` as "no row".
+    ``SqliteDatabaseAdapter`` answers ``[]`` for a table the store never created,
+    so this does the same, and every other driver error propagates.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def query(self, table: str, predicate: dict[str, str]) -> list[dict[str, Any]]:
+        ((column, value),) = predicate.items()
+        try:
+            rows = self._conn.execute(
+                f"SELECT tenant_uuid FROM {quote_identifier(table)} "
+                f"WHERE {quote_identifier(column)} = ?",
+                (value,),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return []
+            raise
+        return [dict(row) for row in rows]
+
+
 class SqliteTableRowSource:
     """Read projection exposures from the local SQLite store.
 
@@ -228,6 +263,35 @@ class SqliteTableRowSource:
         finally:
             conn.close()
         return [serialise_row(cfg, dict(record)) for record in records]
+
+    def _registry_lookup(self, tenant_slug: str) -> UUID | None:
+        conn = self._connect()
+        try:
+            return sync_registry_tenant_uuid(_ReadOnlyRegistryQuery(conn), tenant_slug)
+        except TenantRegistryResolutionError as exc:
+            raise ProjectionReadError(
+                TENANT_REGISTRY_UNREADABLE,
+                f"{TENANT_REGISTRY_MIRROR_TABLE} holds a value for the requested "
+                "tenant that is not a UUID",
+            ) from exc
+        except sqlite3.Error as exc:
+            raise ProjectionReadError(
+                TENANT_REGISTRY_UNREADABLE,
+                f"reading {TENANT_REGISTRY_MIRROR_TABLE} from the local store failed",
+            ) from exc
+        finally:
+            conn.close()
+
+    async def registry_tenant_uuid(
+        self, cfg: ProjectionTableConfig, tenant_slug: str
+    ) -> UUID | None:
+        """The registry UUID for ``tenant_slug`` in this store's own mirror (OMN-19972).
+
+        ``onex local init`` records the install's identity in the store's
+        ``tenant_registry_mirror``, and the local writers resolve a slug
+        against it, so a slug is read back through the same relation.
+        """
+        return await asyncio.to_thread(self._registry_lookup, tenant_slug)
 
     async def rows(
         self,

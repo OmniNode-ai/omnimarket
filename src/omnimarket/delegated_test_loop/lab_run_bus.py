@@ -144,6 +144,22 @@ def _envelope_bytes(envelope: ModelEventEnvelope[dict[str, object]]) -> bytes:
     return json.dumps(envelope.model_dump(mode="json")).encode("utf-8")
 
 
+def envelope_bytes_for(
+    topic: str, payload: dict[str, object], correlation_id: uuid.UUID
+) -> bytes:
+    """Wrap ``payload`` in an event envelope typed for ``topic``, as bus bytes.
+
+    Keeps the envelope type at the bus boundary so node handlers stay
+    typed-payload cores."""
+    return _envelope_bytes(
+        ModelEventEnvelope[dict[str, object]](
+            payload=payload,
+            correlation_id=correlation_id,
+            event_type=event_type_for(topic),
+        )
+    )
+
+
 async def _subscribe(
     bus: ProtocolLabRunBus,
     topic: str,

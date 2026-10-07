@@ -8,7 +8,7 @@ interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-delegation-reaper"
-    statement: "The delegate-skill orchestrator reaps a claimed command that holds no terminal at its first claim plus the execution timeout plus the terminal delivery margin plus 60 seconds, publishes one failed terminal with cause no_terminal, and never publishes a second terminal for the same command."
+    statement: "The delegate-skill orchestrator reaps a claimed command that holds no terminal at its first claim plus the execution timeout plus 60 seconds, publishes one failed terminal with cause no_terminal, and never publishes a second terminal for the same command."
     acceptance:
       - id: "AC1"
         statement: "AC1: a claimed command with no terminal at its budget plus 60 seconds gets exactly one no_terminal terminal -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k a_claimed_command_with_no_terminal"
@@ -20,10 +20,20 @@ requirements:
         statement: "AC4: the reaper keys on the command, so commands sharing a correlation each hold a terminal of their own, and a replay keeps the delivery id and the first deadline -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'shared_correlation or replay_keeps_delivery_id'"
       - id: "AC5"
         statement: "AC5: the contract routes the runtime tick and declares the reaper cause and configuration, and a no_terminal terminal round-trips through the projection and the pinned delegate CLI decode -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'contract_routes_tick or no_terminal_round_trip'"
+      - id: "AC7"
+        statement: "AC7: a stalled handler is reaped at its execution budget plus 60 seconds, with no terminal at 299 seconds, one no_terminal terminal at 300 seconds, a late real result kept as attempt evidence, and no second terminal at 301 seconds -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k stalled_handler_is_reaped_at_execution_budget_plus_grace"
+  - id: "req-terminal-slot-verdict-before-publishing"
+    statement: "The handler requires a terminal slot verdict before publishing and keeps an unacknowledged attempt as evidence for the reaper."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: when a slot write returns no verdict, the handler publishes nothing and keeps the attempt as evidence for reaped, committed and not_written slots. The reaper preserves the existing no_terminal terminal, recovers a committed completion or closes an empty slot with no_terminal, with exactly one terminal published across ticks -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py::test_missing_slot_verdict_keeps_attempt_evidence_without_publishing -q"
 evidence_requirements:
   - kind: "tests"
     description: "The reaper tests, including the three falsifiers named in the ticket, pass against the reaper handler and the claim port."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q"
+  - kind: "tests"
+    description: "AC6 covers a slot write with no verdict in reaped, committed and not_written states. The handler retains attempt evidence without publishing, and the reaper recovers exactly one terminal."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py::test_missing_slot_verdict_keeps_attempt_evidence_without_publishing -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -69,3 +79,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k 'contract_routes_tick or no_terminal_round_trip'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19441-ac6-terminal-slot-verdict"
+    description: "A missing slot verdict keeps attempt evidence without handler publication, and the reaper recovers exactly one terminal for reaped, committed and not_written slots."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k test_missing_slot_verdict_keeps_attempt_evidence_without_publishing"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19441-ac7-reaper-deadline-margin"
+    description: "A stalled handler is reaped at its execution budget plus 60 seconds, exactly once, and a late real result is kept as attempt evidence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py -q -k stalled_handler_is_reaped_at_execution_budget_plus_grace"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]

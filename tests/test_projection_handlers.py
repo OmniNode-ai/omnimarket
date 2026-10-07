@@ -14,6 +14,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 _DELEGATE_SKILL_TEST_MODEL = "test-model-local"
 
@@ -220,9 +224,11 @@ class TestDelegationHandler:
         )
 
         runner = DelegationProjectionRunner()
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
 
         data = {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "correlation_id": "corr-del-1",
             "task_type": "code_review",
             "delegated_to": "claude-haiku-4-5",
@@ -247,9 +253,11 @@ class TestDelegationHandler:
         )
 
         runner = DelegationProjectionRunner()
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
 
         data = {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "correlation_id": "corr-pricing-proof",
             "task_type": "test",
             "delegated_to": "Qwen3-Coder-30B-A3B",
@@ -298,6 +306,7 @@ class TestDelegationHandler:
         )
 
         runner = DelegationProjectionRunner()
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
 
         useful_response = (
@@ -307,6 +316,7 @@ class TestDelegationHandler:
             "    assert True\n"
         )
         data = {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "correlation_id": "c65f5188-4250-4b42-8a45-b9e355b207ee",
             "task_type": "test_generation",
             "model_used": "Qwen3.6-27B-MTP-IQ4_XS.gguf",
@@ -480,9 +490,11 @@ class TestDelegationHandler:
         )
 
         runner = DelegationProjectionRunner()
+        mock_tenant_registry(mock_db)
         runner._db = mock_db
 
         data = {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "status": "completed",
             "correlation_id": "4ae8556b-af7c-4e85-a7f5-9388d60cebb5",
             "session_id": "19ee51d6-d275-4642-8cb5-19cdce2af447",

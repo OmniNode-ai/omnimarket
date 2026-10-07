@@ -22,6 +22,10 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
     SavingsProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 DELEGATION_DLQ_TOPIC = "onex.dlq.omnimarket.projection-delegation-malformed.v1"
 SAVINGS_DLQ_TOPIC = "onex.dlq.omnimarket.projection-savings-malformed.v1"
@@ -39,9 +43,8 @@ def _capture() -> tuple[list[tuple[str, bytes]], Any]:
 def _mock_db() -> Any:
     mock_db = MagicMock(spec=AsyncpgAdapter)
     mock_db.execute = AsyncMock(return_value=None)
-    # OMN-19438: tenant_registry_mirror holds no row in this double, so the
-    # house tenant resolves through the closed legacy UUID.
-    mock_db.fetchval = AsyncMock(return_value=None)
+    # Well-formed terminals declare a tenant present in this mirror double.
+    mock_tenant_registry(mock_db)
     return mock_db
 
 
@@ -115,6 +118,7 @@ class TestDelegationMalformedDLQ:
 
         topic = runner._topic_delegated
         data: dict[str, Any] = {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "correlation_id": "corr-good",
             "task_type": "code-review",
             "delegated_to": "agent-alpha",

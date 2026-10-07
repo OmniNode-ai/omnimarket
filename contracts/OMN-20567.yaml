@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20567"
+title: "the three projection contract checks run as canonical compute nodes"
+summary: "Replaces the three projection contract check scripts (contract access, DLQ path, cursor declared) with node_contract_projection_check_compute and its effect boundary node. Hooks and CI invoke the node, and the node's verdicts match the original scripts' over the committed corpus and the real tree. Tests: tests/ci/test_projection_contract_check_node.py and tests/ci/test_projection_contract_check_parity.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-projection-check-nodes"
+    statement: |-
+      The projection contract checks must run as canonical nodes whose verdicts equal the verdicts of the scripts they replace, on the committed corpus and on the real tree.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the compute node has the canonical pure compute shape, both nodes declare their command and terminal topics, and the handler returns the canonical report -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_projection_contract_check_node.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the node's verdicts match the committed golden over every corpus case and pass on the real tree for each rule -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_projection_contract_check_parity.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The projection contract check node and parity tests pass at the head and cannot run at the merge base, where the nodes do not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_projection_contract_check_node.py tests/ci/test_projection_contract_check_parity.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-projection-check-ac1"
+    description: "The node tests prove the canonical compute shape, the declared topics and the canonical report."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_projection_contract_check_node.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-projection-check-ac2"
+    description: "The parity tests prove the node matches the golden verdicts over the corpus and passes on the real tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_projection_contract_check_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

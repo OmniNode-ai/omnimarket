@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-import sys
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -50,6 +49,9 @@ import yaml
 from omnibase_core.enums.enum_database_schema_domain import EnumDatabaseSchemaDomain
 from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
     ModelDbTableDeclaration,
+)
+from omnibase_core.models.validation.model_validation_finding import (
+    ModelValidationFinding,
 )
 from omnibase_infra.runtime.auto_wiring import handler_wiring
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
@@ -60,6 +62,15 @@ from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _make_projection_dispatch_callback,
 )
 
+from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
+    HandlerProjectionContractCheck,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_contract_projection_gather import (
+    HandlerContractProjectionGather,
+)
+from omnimarket.nodes.node_contract_projection_check_effect.models import (
+    ModelContractProjectionGatherRequest,
+)
 from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture import (
     TABLE,
     HandlerHookEventCapture,
@@ -78,13 +89,19 @@ _PATCH_BUILD_ADAPTER = (
     "omnibase_infra.runtime.auto_wiring.handler_wiring._build_projection_db_adapter"
 )
 
-# The gate module is the single detection implementation, shared by the CI gate,
-# the pre-commit hook and these tests, so the three can never disagree.
-sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
-from check_projection_contract_access import (  # noqa: E402
-    Violation,
-    scan,
-)
+
+# The canonical node is the single detection implementation, shared by the CI gate,
+# the pre-commit hook and these tests, so the three can never disagree. OMN-20567
+# replaced scripts/ci/check_projection_contract_access.py with
+# node_contract_projection_check_compute (rule ``access``); ``scan`` below drives
+# that node over a repo root exactly as the hook does.
+def scan(repo_root: pathlib.Path) -> list[ModelValidationFinding]:
+    check_input = HandlerContractProjectionGather().handle(
+        ModelContractProjectionGatherRequest(root=str(repo_root), rule="access")
+    )
+    report = HandlerProjectionContractCheck().handle(check_input)
+    assert not [f for f in report.findings if f.severity == "ERROR"], report.findings
+    return [f for f in report.findings if f.rule_id == "projection-contract-access"]
 
 
 # --------------------------------------------------------------------------
@@ -394,7 +411,7 @@ def test_no_projection_contract_declares_less_than_its_handler_uses() -> None:
     assert not violations, (
         f"{len(violations)} projection table declaration(s) narrower than "
         "handler usage — every event on these paths is quarantined:\n"
-        + "\n".join(f"  - {v.render()}" for v in violations)
+        + "\n".join(f"  - {v.message}" for v in violations)
     )
 
 
@@ -446,11 +463,11 @@ def test_gate_detects_a_synthetic_violation(tmp_path: pathlib.Path) -> None:
     violations = scan(tmp_path)
 
     assert len(violations) == 1, f"gate missed the planted defect: {violations}"
-    found: Violation = violations[0]
-    assert found.table == "synthetic_rows"
-    assert found.declared == "write"
-    assert found.operation == "read"
-    assert "read_write" in found.render()
+    found = violations[0]
+    assert found.evidence["table"] == "synthetic_rows"
+    assert found.evidence["declared"] == "write"
+    assert found.evidence["operation"] == "read"
+    assert "read_write" in found.message
 
 
 def test_gate_ignores_reads_that_only_exist_in_tests(tmp_path: pathlib.Path) -> None:
@@ -524,7 +541,7 @@ def test_gate_resolves_table_constants_per_file(tmp_path: pathlib.Path) -> None:
 
     violations = scan(tmp_path)
 
-    assert [v.table for v in violations] == ["alpha_rows"], (
+    assert [v.evidence["table"] for v in violations] == ["alpha_rows"], (
         "per-file constant resolution failed: a node-wide TABLE map masks the "
         f"alpha_rows read, got {violations}"
     )

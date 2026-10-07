@@ -562,7 +562,7 @@ class _CodexDispatchBusAdapter:
         route: ModelDispatchBusRoute,
         command: ModelDispatchBusCommand,
     ) -> None:
-        from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+        from omnimarket.models.delegation.wire.model_delegate_skill_request import (
             ModelDelegateSkillRequest,
         )
 
@@ -1464,7 +1464,7 @@ def _handler_event_type(contract: dict[str, Any]) -> str | None:
 
 def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | None:
     try:
-        from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+        from omnimarket.models.delegation.wire.model_delegate_skill_response import (
             ModelDelegateSkillResponse,
         )
 

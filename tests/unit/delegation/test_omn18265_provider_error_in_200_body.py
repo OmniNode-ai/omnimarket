@@ -56,12 +56,17 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.inference.provider_response_error import (
     ModelProviderResponseError,
     provider_error_from_body,
+    provider_failure_class_from_error_message,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    _is_retryable_transport_failure,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -82,9 +87,16 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TENANT_OVERLAY_TIER_NAME,
+    next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_llm_delegation_call as local_effect,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    transport as local_transport,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
@@ -272,6 +284,192 @@ def test_the_composed_message_is_retryable_and_classifies_as_unavailable() -> No
     )
 
 
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        (502, "Upstream key service temporarily overloaded"),
+        (503, "Upstream quota service temporarily unavailable"),
+        (504, "Upstream authorization service timed out"),
+        (None, "Upstream key service temporarily overloaded"),
+        (None, "Upstream quota service temporarily unavailable"),
+        (None, "Upstream authorization service timed out"),
+    ],
+)
+def test_declared_provider_unavailability_outranks_vendor_words_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, code: int | None, message: str
+) -> None:
+    """AC2, AC4, AC7: an upstream outage is not a rejected customer key."""
+    body = {
+        "error": {
+            "message": message,
+            "code": code,
+            "metadata": {"error_type": "provider_unavailable"},
+        }
+    }
+    bus_transport = _bind_transport(monkeypatch, body)
+    cid = uuid4()
+    response = HandlerInferenceIntent().handle(_intent(correlation_id=cid))
+
+    local_calls: list[str] = []
+
+    def post(**kwargs: Any) -> local_transport.ModelTransportResponse:
+        local_calls.append(kwargs["endpoint_url"])
+        return local_transport.ModelTransportResponse(
+            status_code=200, json_body=body, latency_ms=1
+        )
+
+    monkeypatch.setattr(local_transport, "post_chat_completion", post)
+    monkeypatch.setattr(local_effect, "_is_endpoint_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        local_effect, "_get_served_model_ids", lambda _url: {FREE_MODEL}
+    )
+    result = local_effect.HandlerLlmDelegationCall().handle(
+        ModelLlmDelegationCallRequest(
+            request_id=str(uuid4()),
+            correlation_id=str(cid),
+            causation_id=str(uuid4()),
+            model_id=FREE_MODEL,
+            endpoint_ref=OPENROUTER_URL,
+            prompt="p",
+            prompt_hash="0" * 64,
+            timeout_seconds=5,
+            secret_ref=None,
+            api_key_env=None,
+        )
+    )
+
+    assert bus_transport.requests == local_calls == [OPENROUTER_URL]
+    assert not result.success
+    assert message in response.error_message
+    assert message in result.error_message
+    assert result.failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    assert (
+        _inference_error_failure_class(response.error_message) is result.failure_class
+    )
+    assert _is_retryable_transport_failure(result.failure_class)
+    assert _should_escalate_inference_error(response.error_message)
+
+    handler = HandlerDelegationWorkflow()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_customer_route(cid))
+    events = list(handler.handle_inference_response(response))
+    assert any(isinstance(e, ModelRoutingIntent) for e in events)
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert not any(
+        isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
+    )
+    assert handler.workflows[cid].escalation_count == 0
+
+
+@pytest.mark.parametrize(
+    ("code", "error_type", "message", "expected"),
+    [
+        (
+            502,
+            "provider_unavailable",
+            "upstream boom",
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+        ),
+        (
+            502,
+            "provider_unavailable",
+            "Upstream returned empty choices array",
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+        ),
+        (
+            429,
+            "rate_limited",
+            "upstream timeout",
+            EnumDelegationFailureClass.RATE_LIMITED,
+        ),
+        (
+            403,
+            "permission_denied",
+            "quota access denied",
+            EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+        ),
+        (None, None, "upstream boom", EnumDelegationFailureClass.MODEL_UNAVAILABLE),
+    ],
+)
+def test_the_bus_uses_the_same_provider_verdict_as_the_local_port(
+    monkeypatch: pytest.MonkeyPatch,
+    code: int | None,
+    error_type: str | None,
+    message: str,
+    expected: EnumDelegationFailureClass,
+) -> None:
+    """AC7: provider facts outrank incidental words in the vendor's message."""
+    body: dict[str, Any] = {
+        "error": {
+            "message": message,
+            "code": code,
+            "metadata": {"error_type": error_type},
+        }
+    }
+    _bind_transport(monkeypatch, body)
+    response = HandlerInferenceIntent().handle(_intent())
+    parsed = provider_error_from_body(body)
+    assert parsed is not None
+    assert parsed.failure_class is expected
+    assert message in response.error_message
+    assert _inference_error_failure_class(response.error_message) is expected
+    assert _should_escalate_inference_error(response.error_message) is True
+
+
+def test_provider_words_that_name_empty_choices_do_not_terminalise_the_customer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC4: a declared transient error is distinct from an empty completion."""
+    body = {
+        "error": {
+            "message": "Upstream returned empty choices array",
+            "code": 502,
+            "metadata": {"error_type": "provider_unavailable"},
+        }
+    }
+    _bind_transport(monkeypatch, body)
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(_request(cid))
+    handler.handle_routing_decision(_customer_route(cid))
+
+    response = HandlerInferenceIntent().handle(_intent(correlation_id=cid))
+    events = list(handler.handle_inference_response(response))
+
+    assert any(isinstance(e, ModelRoutingIntent) for e in events)
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert not any(
+        isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
+    )
+    assert handler.workflows[cid].escalation_count == 0
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "API returned empty choices array",
+        "request timeout (failure_class=model_unavailable)",
+        "Provider returned an error in a 200 response: upstream boom",
+        "Provider returned an error in a 200 response: boom (failure_class=invalid)",
+    ],
+)
+def test_only_boundary_composed_verdicts_override_text_classification(
+    message: str,
+) -> None:
+    assert provider_failure_class_from_error_message(message) is None
+
+
+def test_the_boundary_verdict_outranks_a_class_marker_in_vendor_prose() -> None:
+    parsed = ModelProviderResponseError(
+        message="upstream boom (failure_class=timeout)",
+        code=502,
+        error_type="provider_unavailable",
+    )
+    assert provider_failure_class_from_error_message(parsed.as_error_message()) is (
+        EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    )
+
+
 def test_the_empty_choices_message_remains_non_retryable() -> None:
     """The control for the assertion above: the marker set still bites."""
     assert _should_escalate_inference_error("API returned empty choices array") is False
@@ -283,6 +481,8 @@ def test_the_empty_choices_message_remains_non_retryable() -> None:
         (502, "provider_unavailable", EnumDelegationFailureClass.MODEL_UNAVAILABLE),
         (429, "rate_limited", EnumDelegationFailureClass.RATE_LIMITED),
         (401, "auth", EnumDelegationFailureClass.PROVIDER_AUTH_FAILED),
+        (401, "provider_unavailable", EnumDelegationFailureClass.PROVIDER_AUTH_FAILED),
+        (429, "provider_unavailable", EnumDelegationFailureClass.RATE_LIMITED),
         (None, None, EnumDelegationFailureClass.MODEL_UNAVAILABLE),
     ],
 )
@@ -390,6 +590,76 @@ def test_the_customer_route_is_retried_rather_than_terminalised() -> None:
         isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
     ), "a same-route retry is not a tier escalation and emits no escalation proof"
     assert handler.workflows[cid].escalation_count == 0
+    assert routing[0].payload == handler.workflows[cid].request
+    assert routing[0].min_tier_name is None
+    assert not routing[0].excluded_backend_refs
+
+    retried = list(handler.handle_routing_decision(_customer_route(cid)))
+    inference = [e for e in retried if isinstance(e, ModelInferenceIntent)]
+    assert len(inference) == 1
+    assert inference[0].correlation_id == cid
+    assert inference[0].tenant_id == routing[0].payload.tenant_id
+    assert inference[0].api_key_ref == LIVE_TENANT_REF
+    assert inference[0].model == FREE_MODEL
+    assert inference[0].base_url == OPENROUTER_URL
+    assert handler.workflows[cid].escalation_count == 0
+
+
+def test_a_provider_error_on_a_platform_route_still_escalates(
+    monkeypatch: pytest.MonkeyPatch, frontier_unconfigured_bifrost: None
+) -> None:
+    """AC5: the same 200-body outage follows the platform's declared ladder."""
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    request = ModelDelegationRequest(
+        prompt="Write a test.",
+        task_type="test",
+        correlation_id=cid,
+        emitted_at=datetime.now(UTC),
+    )
+    route = ModelRoutingDecision(
+        correlation_id=cid,
+        task_type="test",
+        selected_model="qwen-coder",
+        selected_backend_id=uuid5(NAMESPACE_DNS, "omninode.ai/backends/local-coder"),
+        selected_backend_ref="local-coder",
+        endpoint_url="http://local.test:8000/v1/chat/completions",
+        cost_tier="low",
+        tier_name="local",
+        max_context_tokens=65536,
+        max_tokens=64,
+        system_prompt="s",
+        rationale="platform route",
+    )
+    next_tier = next_eligible_tier("local", frozenset(), task_type="test")
+    assert next_tier is not None
+    handler.handle_delegation_request(request)
+    handler.handle_routing_decision(route)
+    _bind_transport(monkeypatch, LIVE_PROVIDER_ERROR_BODY)
+    response = HandlerInferenceIntent().handle(
+        _intent(
+            correlation_id=cid,
+            base_url=route.endpoint_url,
+            model=route.selected_model,
+            tenant_id=None,
+            api_key_ref=None,
+        )
+    )
+
+    events = list(handler.handle_inference_response(response))
+
+    routing = [e for e in events if isinstance(e, ModelRoutingIntent)]
+    assert len(routing) == 1
+    assert routing[0].min_tier_name == next_tier
+    assert routing[0].payload == request
+    escalations = [
+        e for e in events if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
+    ]
+    assert len(escalations) == 1
+    assert escalations[0].failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    assert not any(isinstance(e, ModelDelegationResult) for e in events)
+    assert handler.workflows[cid].escalation_count == 1
+    assert handler.workflows[cid].customer_route_retry_count == 0
 
 
 def test_the_retry_budget_is_bounded_and_then_the_workflow_terminalises() -> None:

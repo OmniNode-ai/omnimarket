@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18852"
+title: "inference rung deadline test times the window the deadline covers"
+summary: "Test-only change to tests/unit/delegation/test_omn18852_inference_deadline_bound.py: the silence-after-chunk test starts its clock when the provider receives the POST instead of before handle(), so the lazy httpcore import and served-model probe on a cold process are no longer counted against a deadline that starts after them. The 1.5 s bound and every other assertion are unchanged, and no product code changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-provider-call-cannot-outlive-its-deadline"
+    statement: |-
+      A provider call that sends a chunk and then falls silent must not extend the total inference deadline its intent carried, and the test that proves it must time only the window the deadline covers.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a provider call cannot outlive the deadline its intent carried, including when the provider sends one chunk and then goes silent -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The inference deadline bound tests pass at the head. The diff is test-only, so there is no earlier product behaviour for a merge-base control to fail on."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-inference-deadline-bound-ac2"
+    description: "The deadline bound tests pass, including the silence-after-chunk test timed from the provider's POST."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

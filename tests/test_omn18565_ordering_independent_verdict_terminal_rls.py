@@ -69,6 +69,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     ModelProjectionTaskDelegatedEvent,
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
+from omnimarket.projection.tenant_isolation import TenantRequiredError
 
 psycopg2 = pytest.importorskip("psycopg2")
 
@@ -781,29 +782,8 @@ class TestTheHouseTenantColumnDefaultIsRemoved:
 
 
 @pytest.mark.integration
-class TestTheInsertOnlyTenantArmIsNotAPolicyBypass:
-    """The insert-only fallback does NOT let an unattributed terminal reach
-    another tenant's row.
-
-    Raised as a blocking finding by the adversarial reviewer on this PR:
-    ``terminal_write_tenant`` holds ``tenant_id`` out of the ``DO UPDATE SET``
-    clause when it resolved no tenant, so the concern is that the UPDATE arm
-    then proceeds against a row belonging to somebody else. It does not, and
-    the reason is that row-level security is not evaluated against the SET
-    clause at all: the ``USING`` half is evaluated against the PRE-EXISTING
-    row, and the session GUC is derived from the row's own ``tenant_id`` -- the
-    house tenant on this arm -- so a pre-existing row under any other tenant
-    makes the predicate false and PostgreSQL refuses the whole statement.
-
-    Stated as a measurement rather than an argument, because the claim is a
-    property of a real policy and only a real policy can settle it.
-
-    What the insert-only arm is actually for, narrowly: a backing store with no
-    row-level security -- the in-memory double, SQLite, a superuser lane -- has
-    no policy to refuse the write, and there the SET clause is the only thing
-    standing between a late unattributed terminal and a real attribution it
-    would otherwise overwrite.
-    """
+class TestAnUnattributedTerminalCannotRewriteAttribution:
+    """OMN-20651: refuse before SQL, preserving an existing attributed row."""
 
     def test_an_unattributed_terminal_cannot_reach_another_tenants_row(
         self, lane: _Lane
@@ -819,7 +799,7 @@ class TestTheInsertOnlyTenantArmIsNotAPolicyBypass:
             model_name="clobbered",
             tokens_output=0,
         )
-        with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+        with pytest.raises(TenantRequiredError, match="no tenant_id"):
             _handler().project(unattributed, lane.adapter)
 
         # The stored row is untouched: same tenant, same terminal facts.

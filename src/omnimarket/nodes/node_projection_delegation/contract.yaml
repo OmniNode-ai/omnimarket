@@ -158,6 +158,14 @@ db_io:
       # The declaration must cover what the handler actually does.
       access: read_write
       role: budget_state
+    # OMN-20613: identity of each event applied to delegation_budget_state, so a
+    # replay is recognised by the event and not only by the last one applied.
+    - name: delegation_budget_applied_events
+      database_ref: application
+      schema: public
+      migration: "0056_delegation_budget_applied_events.sql"
+      access: write
+      role: budget_applied_events
     # OMN-16804: the slug -> canonical-UUID lookup this handler performs before
     # every delegation write. READ ONLY -- node_projection_tenant_registry owns
     # the relation and is the only writer; this node asks it a question and
@@ -512,9 +520,20 @@ projection_api:
         - response_text
         - timestamp
         - created_at
+        # The tenant identity, declared as `tenant_column` below. This surface
+        # serves prompt_text/response_text, so it is tenant-scoped; the model
+        # refuses a scoped exposure that does not return its scoping column.
+        - tenant_id
       order_by: created_at ASC
       freshness_column: created_at
       limit: 100
+      # The writer republishes the stored row onto this exposure as well as
+      # onto decisions.v1 (a per-row publish for every bus_backed exposure over
+      # delegation_events), keyed on the table's own conflict key.
+      bus_backed: true
+      key_columns:
+        - correlation_id
+      tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.summary.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       key_grain: "mutable"
       table: projection_delegation_summary

@@ -7,32 +7,32 @@ from __future__ import annotations
 import json
 from importlib.resources import files
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
+    EnumAcceptanceFailureClass,
+)
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
+    EnumAcceptanceOperation,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_cell_event import (
+    ModelAcceptanceCellEvent,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
+    ModelAcceptanceItem,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request import (
+    ModelAcceptanceJudgeRequest,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
+    ModelAcceptanceVerdict,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.handler_delegation_acceptance_judge import (
     HandlerDelegationAcceptanceJudge,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.parse_rubric import (
     parse_rubric,
 )
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_failure_class import (
-    EnumAcceptanceFailureClass,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
-    EnumAcceptanceOperation,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_cell_event import (
-    ModelAcceptanceCellEvent,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_item import (
-    ModelAcceptanceItem,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_request import (
-    ModelAcceptanceJudgeRequest,
-)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_judge_result import (
     ModelAcceptanceJudgeResult,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
-    ModelAcceptanceVerdict,
 )
 
 RUBRIC_YAML = (

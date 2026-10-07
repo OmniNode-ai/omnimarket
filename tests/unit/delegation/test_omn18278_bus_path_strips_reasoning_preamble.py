@@ -242,21 +242,28 @@ class TestBusPathSegmentsTheResponse:
         assert isinstance(gate_intent, ModelQualityGateIntent)
         return gate_intent
 
-    def test_gate_intent_carries_the_answer_not_the_scratchpad(
+    @pytest.mark.parametrize(
+        "trace",
+        [_SCRATCHPAD, "<think>weighing options\n", " \n<think>weighing options\n"],
+    )
+    def test_gate_intent_preserves_the_trace_for_the_blocking_floor(
         self,
         workflow: HandlerDelegationWorkflow,
         request_dto: ModelDelegationRequest,
+        trace: str,
     ) -> None:
-        """The text the bus sends to the gate is the answer segment."""
-        gate_intent = self._drive_to_gate_intent(
-            workflow, request_dto, _LEAKED_RESPONSE
-        )
+        """The gate sees the trace even when extraction found a complete answer."""
+        content = trace + "### ANSWER\n" + _ANSWER
+        gate_intent = self._drive_to_gate_intent(workflow, request_dto, content)
 
-        assert gate_intent.payload.llm_response_content == _ANSWER, (
-            "the bus gate intent must carry the answer segment; got "
-            f"{gate_intent.payload.llm_response_content[:120]!r}"
-        )
-        assert "thinking process" not in gate_intent.payload.llm_response_content
+        assert gate_intent.payload.llm_response_content == content
+        result = HandlerQualityGateIntent().handle(gate_intent)
+        assert not result.passed
+        assert result.fail_category == "fail_deterministic"
+        assert result.rule_evaluations[0].rule in {
+            "no_leading_reasoning_trace",
+            "no_residual_reasoning_tag",
+        }
 
     def test_workflow_content_is_the_answer_so_the_terminal_is(
         self,
@@ -292,7 +299,9 @@ class TestBusPathSegmentsTheResponse:
             if isinstance(event, ModelDelegationResult)
         ]
 
-        assert terminals, "the chain must emit a terminal delegation result"
+        assert not gate_result.passed
+        assert gate_result.fallback_recommended
+        assert all(not terminal.quality_passed for terminal in terminals)
         for terminal in terminals:
             assert "thinking process" not in terminal.content, (
                 "a bus terminal must not hand the caller the model's scratchpad; "

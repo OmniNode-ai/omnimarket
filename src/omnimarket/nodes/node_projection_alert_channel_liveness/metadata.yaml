@@ -1,0 +1,37 @@
+name: projection_alert_channel_liveness
+version: "1.0.0"
+description: >
+  Materializes one durable row per completed alert-channel probe, retaining
+  the measured status, derived health, reason, Slack error and event time.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - alert-channel-liveness
+  - reducer
+ownership:
+  alert_channel_liveness_verdicts:
+    ddl_owner: omnimarket.nodes.node_projection_alert_channel_liveness
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_alert_channel_liveness_verdicts.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      node_alert_channel_liveness_effect owns probing and publishes its result,
+      but owns no read model. This omnimarket projection owns the durable
+      verdict relation, like the prod-promotion-gate projection. Infrastructure
+      supplies the application database and executes the node-owned migration
+      lineage without defining a competing relation.
+pack: "data"
+display_name: "Projection: Alert Channel Liveness"
+node_role: "effect"

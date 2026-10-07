@@ -362,6 +362,10 @@ claim_grounding:
   # clauses. A clause with no identifier of its own inherits the one before it,
   # so "the lane (OMN-19174), is deprioritized" is still about OMN-19174.
   subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
+  # Lane read-outs use explicit report headers. Blockers may be on a later
+  # line than the ticket or PR; neighboring reports must remain separate.
+  source_section_start_patterns:
+    - '^[ \t]*===[ \t]+\S.*$'
   excluded_answer_spans:
     - '```.*?(?:```|\Z)'
   # OMN-20492. The first word of a conventional commit subject is an imperative

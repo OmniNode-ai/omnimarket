@@ -7,8 +7,9 @@ The page is produced by
 standalone projection API's ``GET /projection/{topic}`` route calls, so this
 node and that route cannot answer the same request differently. What this
 handler adds is where its inputs come from: the exposures from the node
-contracts' ``projection_api`` blocks, the database from the runtime binding,
-and the tenant from the command envelope or the request.
+contracts' ``projection_api`` blocks, the database from the projection read
+binding (the read overlay's, else the runtime's), and the tenant from the
+command envelope or the request.
 """
 
 from __future__ import annotations
@@ -73,7 +74,7 @@ class HandlerProjectionRead:
 
     ``topic_map`` and ``row_source`` are for tests; the runtime constructs the
     handler with neither, and both are resolved on first use: the exposures
-    from the installed node contracts, the row source from the runtime binding.
+    from the installed node contracts, the row source from the read binding.
     """
 
     def __init__(

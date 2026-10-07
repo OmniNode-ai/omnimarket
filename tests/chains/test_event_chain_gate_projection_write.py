@@ -173,11 +173,12 @@ already refuses (``Integration Silent-Skip Guard``, OMN-14172).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+import psycopg2
 import pytest
 from omnibase_core.models.contracts.subcontracts.model_event_bus_subcontract import (
     ModelEventBusSubcontract,
@@ -197,6 +198,9 @@ from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     PreparedWiring,
+    ProjectionDatabaseOperations,
+    ProjectionDatabaseTarget,
+    _build_projection_db_adapter,
     _prepare_handler_wiring,
     _resolve_projection_database_target,
 )
@@ -207,6 +211,13 @@ from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.service_dispatch_result_applier import DispatchResultApplier
 from omnibase_infra.topology import load_topology_profile
 from omnibase_spi.protocols.runtime import ProtocolDispatchEngine
+
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    PROJECTION_TENANT_UUID,
+    seed_tenant_registry,
+)
 
 # Same placement rationale as tests/chains/test_event_chain_gate.py: in this
 # repo `integration` means a REAL Kafka bus, and this gate is broker-free. It
@@ -224,9 +235,8 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 # buys hermeticity without weakening what the gate proves.
 _UNREACHABLE_DSN = "postgresql://gate:gate@127.0.0.1:9/gate"
 
-# The substring the runtime's own refusal carries. Matched on the DLQ
-# envelope's ``failure_reason``, which is where the projection dispatch
-# callback records why it dropped the event.
+# The original refusal text, observed on either the DLQ or the callback's
+# offset-withholding exception. The latter wraps the typed failure cause.
 _TENANT_AUTHORITY_REFUSAL = "no cryptographically verified authority"
 
 
@@ -422,8 +432,15 @@ async def _run_projection_chain(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    *,
+    db_adapter: object | None = None,
 ) -> ProjectionChainRun:
     """Drive one projection chain end to end from the REAL contract on disk.
+
+    ``db_adapter`` replaces ONLY the DSN-resolving adapter the dispatch callback
+    builds per message, so a row-level outcome (a refused attribution, a landed
+    row) is observable without a Postgres server. Everything upstream of that
+    adapter, the contract, topology, wiring, dispatch and handler, stays real.
 
     Both handlers the contract declares are prepared and registered, in
     declaration order, exactly as the kernel's own contract-wiring loop does.
@@ -450,6 +467,12 @@ async def _run_projection_chain(
     )
 
     _bind_unreachable_dsns(case, contract, monkeypatch)
+    if db_adapter is not None:
+        monkeypatch.setattr(
+            "omnibase_infra.runtime.auto_wiring.handler_wiring"
+            "._build_projection_db_adapter",
+            lambda *_args, **_kwargs: db_adapter,
+        )
 
     bus = EventBusInmemory(environment="chain-gate", group="chain-gate")
     await bus.start()
@@ -760,16 +783,19 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
     """
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
+    # Write failures now escape the callback instead of being DLQ'd. Checking
+    # only the DLQ would accept the original authority defect on that path.
     refusals = [
         reason
-        for reason in run.dlq_failure_reasons
+        for reason in (*run.dlq_failure_reasons, *run.not_materialized_failures)
         if _TENANT_AUTHORITY_REFUSAL in reason
+        or "ProjectionTenantContextError" in reason
     ]
     assert not refusals, (
         f"[{case.chain_id}] the projection write was refused before reaching "
-        f"the database: {refusals}. The event was routed to {case.dlq_topic} "
-        f"while the dispatch reported SUCCESS, so the caller keeps its 202 "
-        f"and no row is written. See OMN-16831."
+        f"the database: {refusals}. Neither a DLQ nor an offset-withholding "
+        f"failure may make tenant attribution depend on a bound authority "
+        f"(OMN-16831)."
     )
 
 
@@ -882,3 +908,159 @@ async def test_a_write_that_produces_no_row_fails_closed(
         f"downstream consumer a projection succeeded when it materialized "
         f"nothing."
     )
+
+
+def _tenant_relation_operations() -> list[object]:
+    """Enumerate the registry's tenant read/write seams from real topology.
+
+    Contracts now declare the physical ``public`` schema, so a literal search
+    for ``schema: tenant`` misses the affected relations. Resolve the domain
+    instead, including read-only declarations and both write entry points.
+    """
+    manifest = discover_contracts_from_paths(sorted(_SRC_ROOT.glob("*/contract.yaml")))
+    assert not manifest.errors, manifest.errors
+    topology = load_topology_profile("local")
+    cases: list[object] = []
+    for contract in manifest.contracts:
+        if contract.db_io is None or not contract.db_io.db_tables:
+            continue
+        target = _resolve_projection_database_target(contract.db_io.db_tables, topology)
+        for table_target in target.table_targets:
+            if table_target.domain.value != "TENANT":
+                continue
+            table = table_target.table
+            operations = []
+            if table.access in {"write", "read_write"}:
+                operations.extend(("upsert", "upsert_returning"))
+            if table.access in {"read", "read_write"}:
+                operations.append("query")
+            for operation in operations:
+                cases.append(
+                    pytest.param(
+                        target,
+                        table.name,
+                        operation,
+                        id=f"{contract.name}-{table.name}-{operation}",
+                    )
+                )
+    assert cases, "the tenant-domain registry gate must cover at least one relation"
+    return cases
+
+
+@pytest.mark.parametrize(
+    ("target", "table", "operation"), _tenant_relation_operations()
+)
+async def test_every_tenant_relation_reaches_sql_without_bound_authority(
+    target: ProjectionDatabaseTarget, table: str, operation: str
+) -> None:
+    """Attribution reaches connect; an authority is never a precondition.
+
+    This covers the common mechanism across the registry, not deployed schema
+    or grant health. No adapter or connection is injected: the real adapter
+    must reach the discard port and fail with the driver's connection error.
+    An authority refusal, undeclared access, or domain mismatch fails here.
+    """
+    adapter = cast(
+        "ProjectionDatabaseOperations",
+        _build_projection_db_adapter(
+            {binding.binding_ref: _UNREACHABLE_DSN for binding in target.bindings},
+            target,
+            None,
+            None,
+        ),
+    )
+    tenant_id = str(uuid4())
+    row: dict[str, object] = {"correlation_id": str(uuid4()), "tenant_id": tenant_id}
+    try:
+        if operation == "query":
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.query(table, {"tenant_id": tenant_id})
+        elif operation == "upsert_returning":
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.upsert_returning(table, "correlation_id", row)
+        else:
+            assert operation == "upsert"
+            with pytest.raises(psycopg2.OperationalError):
+                adapter.upsert(table, "correlation_id", row)
+    finally:
+        adapter.close()
+
+
+def _delegation_row_adapter(tmp_path: Path) -> SqliteDatabaseAdapter:
+    """A real SQLite store seeded with the tenant registry the writer resolves against."""
+    adapter = SqliteDatabaseAdapter(tmp_path / "delegation.sqlite")
+    seed_tenant_registry(adapter)
+    return adapter
+
+
+async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    """A refused attribution is a failed dispatch, never one ERROR line and an ack (OMN-16831 AC4).
+
+    OMN-16831 hid for four weeks because the tenant refusal was logged once and
+    the callback returned. The fail-closed row above proves that for a CONNECTION
+    failure; it cannot tell a tenant refusal from one, and the classifier that
+    separates them (a content failure DLQs and acks, anything else withholds the
+    offset) is a different branch. This row drives the real terminal, with the
+    tenant the producer recorded removed, into a store that DOES answer, so the
+    only refusal available is the writer's own ``TenantRequiredError``
+    (OMN-20651), and asserts the four observable halves together:
+
+    1. the callback raised ``ProjectionNotMaterializedError`` wrapping that
+       typed refusal, so the offset is withheld;
+    2. nothing landed on the contract's DLQ topic (DLQ-and-advance is the ack);
+    3. no ``projection-delegation-applied`` terminal was published;
+    4. the store holds zero rows for the correlation, and the paired positive
+       control, the same terminal carrying a registered tenant, lands exactly
+       one, so a zero cannot be a store that refuses everything.
+    """
+    unattributed = {
+        key: value
+        for key, value in DELEGATION_PROJECTION_CASE.wire_payload.items()
+        if key != "tenant_id"
+    }
+    refused_case = replace(DELEGATION_PROJECTION_CASE, wire_payload=unattributed)
+    refused_db = _delegation_row_adapter(tmp_path / "refused")
+    correlation = str(unattributed["correlation_id"])
+
+    refused = await _run_projection_chain(
+        refused_case, monkeypatch, caplog, db_adapter=refused_db
+    )
+
+    assert DELEGATION_PROJECTION_CASE.writer_handler_name in refused.handlers_entered
+    assert any(
+        "TenantRequiredError" in failure
+        for failure in refused.not_materialized_failures
+    ), (
+        f"an unattributed terminal's tenant refusal did not fail the dispatch. "
+        f"Offset-withholding failures: {refused.not_materialized_failures or '(none)'}; "
+        f"DLQ reasons: {refused.dlq_failure_reasons or '(none)'}. A refusal the "
+        f"callback swallows is a 202 to the caller with zero rows (OMN-16831 AC4)."
+    )
+    assert not refused.dlq_failure_reasons, refused.dlq_failure_reasons
+    assert not refused.terminal_messages
+    assert refused_db.query("delegation_events", {"correlation_id": correlation}) == []
+
+    caplog.clear()
+    tenant = PROJECTION_TENANT_SLUG
+    attributed_db = _delegation_row_adapter(tmp_path / "attributed")
+    attributed = await _run_projection_chain(
+        replace(
+            DELEGATION_PROJECTION_CASE,
+            wire_payload={**unattributed, "tenant_id": tenant},
+        ),
+        monkeypatch,
+        caplog,
+        db_adapter=attributed_db,
+    )
+
+    assert not attributed.not_materialized_failures, (
+        attributed.not_materialized_failures
+    )
+    rows = attributed_db.query("delegation_events", {"correlation_id": correlation})
+    assert len(rows) == 1, rows
+    assert str(rows[0]["tenant_id"]) == str(PROJECTION_TENANT_UUID)
+    assert attributed.terminal_messages

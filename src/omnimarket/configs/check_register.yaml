@@ -366,6 +366,16 @@ checks:
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
+  - check_id: delegation.acceptance.gate.pytest_tests_present
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `pytest_tests_present` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
   - check_id: delegation.acceptance.gate.response_non_empty
     check_class: gate
     blocks:
@@ -783,6 +793,26 @@ checks:
     blocks:
     - class rubric deciding acceptance
     source: OMN-20166; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
+      non-MET
+  - check_id: delegation.rubric.document.false_pass
+    check_class: range
+    range_status: declared
+    acceptance_line:
+      check_id: delegation.rubric.document.false_pass
+      statistic: pass_rate
+      case_set: 'document: rubric-accepted answers'
+      declared_case_ids: []
+      floor: 0.9
+      window: 'document: trailing 30 days'
+      method:
+        sample_size: 100
+        confidence: 0.95
+        power: 0.8
+        margin: 0.07
+        incomplete_run_treatment: count_as_failure
+    blocks:
+    - class rubric deciding acceptance
+    source: OMN-20552; delegation_class_rubrics.v1.yaml false_pass_lines; status ships
       non-MET
   - check_id: delegation.rubric.code_generation.false_pass
     check_class: range

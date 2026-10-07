@@ -85,7 +85,7 @@ jobs:
         # work for non-sensitive values; secrets are used here for both because
         # APP_ID is stored alongside the private key as an org secret.
         if: ${{ steps.app-secret-status.outputs.present == 'true' }}
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547  # v1
         with:
           app-id: ${{ secrets.ONEXBOT_APP_ID }}
           private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
@@ -116,7 +116,7 @@ jobs:
 
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
 
@@ -317,7 +317,7 @@ jobs:
       - name: Post architectural lint summary as PR comment
         if: always()
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b  # v7
         env:
           BOT_LOGIN: ${{ needs.resolve-bot-token.outputs.bot_login }}
         with:

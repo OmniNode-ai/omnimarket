@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20006"
+title: "The Usage page renders tokens in, tokens out and cost per model from one served exposure"
+summary: "The data half of the Usage page. usage-by-model-day.v1 now keeps measured cost apart from cost that was estimated or not recorded: each call stores its usage_source, and each day-and-model row serves measured_cost_usd (NULL when no call was measured, never 0) and unmeasured_call_count beside cost_usd and call_count, which keep their meaning. The exposure is scoped to the reading tenant, the local onex delegate path writes the usage rows the page reads, a local store written before this change gains the new columns on connect, and the reasoned consumers opt-out is deleted because the omnidash Usage page is its reader. Tests: tests/test_omn19978_usage_by_model_day.py, tests/test_omn19978_usage_by_model_day_writer.py, tests/projection/test_omn20006_usage_by_model_day_served.py, tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_usage_by_model_day.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20006-usage-measured-cost-served"
+    statement: |-
+      usage-by-model-day.v1 serves, per tenant, UTC day and model, the tokens in and out of every call, the measured cost of the calls whose cost was measured, and the count of calls whose cost was not; the local onex delegate path writes those rows.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1 (data half): one local onex delegate run writes one usage_by_model_day_calls row keyed by its correlation id with the terminal's tokens and its day-and-model row, two runs with equal tokens are two rows, a failing usage write never breaks the delegation, and a read through the projection read node returns the reading tenant's rows only -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_usage_by_model_day.py tests/projection/test_omn20006_usage_by_model_day_served.py -q
+      - id: "AC3"
+        statement: |-
+          AC3 (data half): one measured and one estimated call for the same day and model give measured_cost_usd equal to the measured call's cost and unmeasured_call_count 1, on SQLite and in the Postgres writer's recount, and the usage source is stored and replays without double counting -- falsifier: uv run pytest tests/test_omn19978_usage_by_model_day.py tests/test_omn19978_usage_by_model_day_writer.py -q
+      - id: "AC4"
+        statement: |-
+          AC4 (data half): a day and model with no measured call serves measured_cost_usd as null, never 0, a measured call costing nothing serves a measured 0, and a call that does not say how its cost was obtained is unmeasured -- falsifier: uv run pytest tests/test_omn19978_usage_by_model_day.py -q -k "typed_null or measured_zero or no_usage_source"
+evidence_requirements:
+  - kind: "tests"
+    description: "The usage tests pass at the head and fail at the merge base, where no usage source, measured cost, unmeasured count, tenant scope or local usage write exists."
+    command: "uv run pytest tests/test_omn19978_usage_by_model_day.py tests/test_omn19978_usage_by_model_day_writer.py tests/projection/test_omn20006_usage_by_model_day_served.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_usage_by_model_day.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20006-ac1-local-usage-rows-per-tenant"
+    description: "One local delegate run writes its usage call and rollup rows with the terminal's tokens, equal-token runs stay apart, a failed usage write is swallowed, and the served read carries the reading tenant's rows only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_usage_by_model_day.py tests/projection/test_omn20006_usage_by_model_day_served.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20006-ac3-measured-cost-excludes-unmeasured"
+    description: "A measured and an estimated call give the measured call's cost as measured_cost_usd and one unmeasured call, on SQLite and in the Postgres recount statement; usage_source is stored and a replay changes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19978_usage_by_model_day.py tests/test_omn19978_usage_by_model_day_writer.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20006-ac4-unmeasured-cost-is-null-not-zero"
+    description: "No measured call serves a null measured cost, a measured zero stays 0, and an unstated usage source is unmeasured."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19978_usage_by_model_day.py -q -k \"typed_null or measured_zero or no_usage_source\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

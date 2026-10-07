@@ -6,8 +6,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_operation import (
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation import (
     EnumAcceptanceOperation,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
+    ModelAcceptanceVerdict,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_run_status import (
     EnumAcceptanceRunStatus,
@@ -23,9 +26,6 @@ from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acce
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_matrix_row import (
     ModelAcceptanceMatrixRow,
-)
-from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_verdict import (
-    ModelAcceptanceVerdict,
 )
 
 

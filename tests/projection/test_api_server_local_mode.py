@@ -16,6 +16,8 @@ query service. Each test names the failure it exists to catch:
   or ignores the ``dashboard.bind`` overlay key;
 * with no projection binding configured, the shim reads anything but the store
   the local writers fill;
+* with only the read binding configured (OMN-20159), the shim reads anything but
+  the store that binding names;
 * a store the real delegation writer created cannot serve the Runs exposure
   (it must answer 200 with the written row and every declared column).
 """
@@ -70,6 +72,7 @@ from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 _OVERLAY_ENV = "OMNIMARKET_PROJECTION_RUNTIME_BINDING_OVERLAY"
+_READ_OVERLAY_ENV = "OMNIMARKET_PROJECTION_READ_BINDING_OVERLAY"
 _DECISIONS = "onex.snapshot.projection.delegation.decisions.v1"
 _EMPTY = "onex.snapshot.projection.local-empty.v1"
 _UNDECLARED = "onex.snapshot.projection.never-declared.v1"
@@ -408,6 +411,135 @@ def test_a_configured_binding_wins(
     source = resolve_local_row_source()
     assert isinstance(source, SqliteTableRowSource)
     assert source.db_path == store
+
+
+# OMN-20159 F7: the read overlay alone (the dev-lane shape, no runtime overlay)
+# selects the dashboard's store; the default writers' store is not read.
+
+
+def test_the_read_binding_alone_is_the_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    store = _store(tmp_path)
+    overlay = tmp_path / "projection_read_binding.yaml"
+    overlay.write_text(
+        f"kafka_bootstrap_servers: inmemory\ndatabase_url: 'sqlite:///{store}'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv(_OVERLAY_ENV, raising=False)
+    monkeypatch.setenv(_READ_OVERLAY_ENV, str(overlay))
+    monkeypatch.setattr(
+        cli_dashboard, "default_evidence_db_path", lambda: tmp_path / "unused.sqlite"
+    )
+    source = resolve_local_row_source()
+    assert isinstance(source, SqliteTableRowSource)
+    assert source.db_path == store
+
+
+def test_the_node_serves_rows_from_the_read_binding_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    store = _store(tmp_path)
+    overlay = tmp_path / "projection_read_binding.yaml"
+    overlay.write_text(
+        f"kafka_bootstrap_servers: inmemory\ndatabase_url: 'sqlite:///{store}'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv(_OVERLAY_ENV, raising=False)
+    monkeypatch.setenv(_READ_OVERLAY_ENV, str(overlay))
+    # The default store exists and holds a different tenant's run, so serving
+    # from it would answer 200 with the wrong rows rather than fail.
+    default_store = tmp_path / "default" / "delegation.sqlite"
+    default_store.parent.mkdir()
+    conn = sqlite3.connect(default_store)
+    try:
+        conn.execute(
+            "CREATE TABLE delegation_events (correlation_id TEXT NOT NULL UNIQUE, "
+            "tenant_id TEXT, written_at TEXT, cost_usd REAL)"
+        )
+        conn.execute(
+            "INSERT INTO delegation_events VALUES (?, ?, ?, ?)",
+            ("19976999-0000-4000-8000-000000000000", _TENANT, "2026-10-02", 9.0),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(
+        cli_dashboard, "default_evidence_db_path", lambda: default_store
+    )
+    served: list[FastAPI] = []
+
+    async def serve(app: FastAPI, host: str, port: int) -> None:
+        served.append(app)
+
+    asyncio.run(
+        HandlerLocalDashboardServe(topic_map=_topic_map(), serve=serve).handle(
+            ModelLocalDashboardServeRequest(
+                host="127.0.0.1", port=7600, tenant_id=_TENANT
+            )
+        )
+    )
+    [app] = served
+    response = TestClient(app).get(f"/projection/{_DECISIONS}")
+    assert response.status_code == 200, response.json()
+    rows = response.json()["rows"]
+    assert len(rows) == 3
+    assert {row["correlation_id"][:8] for row in rows} == {"19976000"}
+
+
+# OMN-20159 F5, on the dashboard: a read variable that names a missing or
+# invalid file stops start-up with an error naming the variable and the file.
+# It falls back neither to the runtime binding nor to the default writers'
+# store, both of which are set up here and hold rows, so a silent fallback
+# would serve them instead of failing.
+
+
+@pytest.mark.parametrize(
+    ("case", "error"),
+    [
+        ("missing", FileNotFoundError),
+        ("not_a_mapping", RuntimeError),
+        ("no_database", ValidationError),
+    ],
+)
+def test_a_broken_read_binding_raises_and_never_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    error: type[BaseException],
+) -> None:
+    runtime_store = _store(tmp_path)
+    runtime_overlay = tmp_path / "projection_binding.yaml"
+    runtime_overlay.write_text(
+        f"kafka_bootstrap_servers: inmemory\ndatabase_url: 'sqlite:///{runtime_store}'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(_OVERLAY_ENV, str(runtime_overlay))
+    monkeypatch.setattr(
+        cli_dashboard, "default_evidence_db_path", lambda: runtime_store
+    )
+    broken = {
+        "missing": tmp_path / "absent.yaml",
+        "not_a_mapping": tmp_path / "list.yaml",
+        "no_database": tmp_path / "no-database.yaml",
+    }
+    broken["not_a_mapping"].write_text("- one\n- two\n", encoding="utf-8")
+    broken["no_database"].write_text(
+        "kafka_bootstrap_servers: inmemory\n", encoding="utf-8"
+    )
+    monkeypatch.setenv(_READ_OVERLAY_ENV, str(broken[case]))
+
+    try:
+        resolve_local_row_source()
+    except Exception as exc:
+        raised: BaseException = exc
+    else:
+        pytest.fail("resolve_local_row_source raised nothing")
+
+    assert type(raised).__name__ == "ProjectionReadBindingOverlayError", repr(raised)
+    assert getattr(raised, "variable", None) == _READ_OVERLAY_ENV
+    assert getattr(raised, "path", None) == str(broken[case])
+    assert isinstance(raised.__cause__, error)
 
 
 # -- the command exists ----------------------------------------------------------

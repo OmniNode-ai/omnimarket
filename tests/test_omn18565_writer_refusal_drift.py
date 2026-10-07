@@ -280,21 +280,16 @@ class TestNeitherVerdictPathCanReachTheHouseTenant:
                 "(OMN-18565, OMN-18139)"
             )
 
-    def test_the_terminal_path_legitimately_does_reach_it(self) -> None:
-        """Positive control on the assertion above.
-
-        The house-tenant ruling (2026-08-02, OMN-16831 option D) is UNCHANGED
-        for a terminal event: it owns the row and is its authority on every
-        other column, so an unattributed terminal is still stamped with the
-        house tenant EXPLICITLY, by the writer. Only a derived, partial event is
-        forbidden from authoring attribution.
-
-        Without this control, a misspelled needle above would pass on both
-        paths and the module would assert nothing at all.
-        """
+    def test_the_terminal_path_also_refuses_house_tenant_fallback(self) -> None:
+        """OMN-20651 supersedes the old terminal fallback ruling."""
         source = inspect.getsource(handler_projection_delegation.terminal_write_tenant)
-        assert "house_tenant_write_stamp" in source, (
-            "the terminal fallback no longer reaches the house tenant, so the "
-            "assertion above is no longer discriminating -- either the ruling "
-            "changed (update both) or this module now proves nothing"
+        identifiers = self._code_identifiers(source)
+        assert "house_tenant_write_stamp" not in identifiers
+        assert "TenantRequiredError" in identifiers
+
+    def test_the_identifier_check_detects_a_house_tenant_call(self) -> None:
+        """Positive control: an accidental fallback is visible to the check."""
+        identifiers = self._code_identifiers(
+            'def fallback():\n    return house_tenant_write_stamp(table="delegation_events")'
         )
+        assert "house_tenant_write_stamp" in identifiers

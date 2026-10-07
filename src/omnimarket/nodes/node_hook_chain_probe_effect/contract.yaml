@@ -5,11 +5,9 @@ name: node_hook_chain_probe_effect
 contract_name: node_hook_chain_probe_effect
 node_name: node_hook_chain_probe_effect
 node_type: EFFECT_GENERIC
-# Nothing publishes a start command for this probe and nothing consumes its
-# completion event yet -- see the runtime_dispatch note below. Declaring the
-# event_bus pair to satisfy the liveness gate would manufacture exactly the
-# wired-looking-but-unwired path this node exists to detect, so the node
-# declares its real state instead.
+# Wired: node_hook_chain_probe_trigger_effect publishes the command on the
+# runtime heartbeat and node_hook_chain_probe_verdict_effect consumes both
+# terminal events (see event_bus below).
 lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
@@ -124,13 +122,15 @@ config:
     # cost OMN-17205 a session. Public, unauthenticated, no cluster access.
     cloud_gateway_openapi_path: "/openapi.json"
 
-# This probe is invoked directly by the operator (AC4: from the Mac, with no
-# cluster access) and by the runtime's dispatch path. Nothing publishes a start
-# command for it and nothing consumes its completion event yet, so declaring
-# event_bus.subscribe_topics/publish_topics would make it an orphaned consumer
-# AND an orphaned producer in the contract topic graph -- a wired-looking path
-# that nothing is on either end of, which is the exact class of green-by-parts
-# claim this node exists to end.
+# The probe is invoked on a schedule by node_hook_chain_probe_trigger_effect and
+# directly by the operator (AC4: from the Mac, with no cluster access).
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.hook-chain-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.hook-chain-probe-completed.v1
+    - onex.evt.omnimarket.hook-chain-probe-failed.v1
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.hook-chain-probe-requested.v1
   terminal_events:

@@ -23,9 +23,9 @@ hard CI failure instead of a live dogfood-rail wound.
 What "the input model" means here
 ---------------------------------
 The runtime validates against the model the *handler* consumes, NOT the
-contract's declared ``handler.input_model`` (that field points at
-``ModelCreateTicketStartCommand`` for create_ticket — the very field that had
-drifted). Empirically (OMN-13964, verified 2026-07-05) the validated model is:
+contract's declared ``handler.input_model`` (for create_ticket that field once
+pointed at a separate start-command model -- the very field that had drifted;
+OMN-20595 pointed it back at the request model ``handle()`` takes). Empirically (OMN-13964, verified 2026-07-05) the validated model is:
 
   * COMPUTE/EFFECT/REDUCER handlers: the first non-``self`` parameter annotation
     of ``handle()`` (e.g. ``handle(request: ModelCreateTicketRequest)``).

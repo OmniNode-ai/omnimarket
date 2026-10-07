@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20572"
+title: "A completed delegation is sent to the acceptance judge"
+summary: "Adds node_delegation_acceptance_judge_request_compute, a pure compute node that maps a completed delegate-skill event to one acceptance-judge request. AC1 is bound to its wiring test. AC2 is a dev-202 bus readback and is not bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-completed-delegation-reaches-the-judge"
+    statement: "A completed delegation produces exactly one acceptance-judge request. The criterion below is transcribed from the ticket body; its id is the label the binding item claims through binds_ac. AC2 is not bound here: it reads the dev-202 redpanda, which this repository's hosted check cannot reach."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a pure compute node subscribed to onex.evt.omnimarket.delegate-skill-completed.v1 publishes exactly one request on onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1 for a completed payload and none for a payload that is not complete -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: the judge request node decodes the delegate-skill-completed payloads as published, including the publish-time keys actual_score, required_bar, causation_id, emitted_at, schema_version and entity_id, instead of refusing them -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The wiring test proves one request for a completed payload and none for an incomplete one. It passes at the head and fails at the merge base, where the node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20572-ac1-judge-request-wiring"
+    description: "AC1 hosted probe. The wiring test proves one request for a completed payload and none for an incomplete one. It passes at the head and fails at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20572-ac3-published-terminal-decode"
+    description: "AC3 hosted probe. The published-terminal test decodes recorded published payloads and drives each through the judge render path. It passes at the head and fails at the merge base, where the test file does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
