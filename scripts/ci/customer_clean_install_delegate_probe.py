@@ -285,7 +285,10 @@ def probe(onex: Path, *, timeout: int) -> list[str]:
                 return failures
 
             refused = _run(
-                [str(onex), "delegate", PROMPT], env=env, cwd=work, timeout=timeout
+                [str(onex), "delegate", PROMPT, "--json"],
+                env=env,
+                cwd=work,
+                timeout=timeout,
             )
             overlay = home / ".omninode" / "delegation" / "bifrost_overrides.yaml"
             refusal_text = refused.stdout + refused.stderr
@@ -308,7 +311,10 @@ def probe(onex: Path, *, timeout: int) -> list[str]:
             overlay.parent.mkdir(parents=True, exist_ok=True)
             overlay.write_text(customer_overlay_yaml(model.port), encoding="utf-8")
             done = _run(
-                [str(onex), "delegate", PROMPT], env=env, cwd=work, timeout=timeout
+                [str(onex), "delegate", PROMPT, "--json"],
+                env=env,
+                cwd=work,
+                timeout=timeout,
             )
             terminal = _terminal(done.stdout)
             if done.returncode != 0:
@@ -338,7 +344,7 @@ def probe(onex: Path, *, timeout: int) -> list[str]:
             )
             posts_before = len(model.chat_posts())
             short = _run(
-                [str(onex), "delegate", TWO_WORD_PROMPT],
+                [str(onex), "delegate", TWO_WORD_PROMPT, "--json"],
                 env=env,
                 cwd=work,
                 timeout=timeout,
