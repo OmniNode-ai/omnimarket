@@ -34,7 +34,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_contract_subject.py -q -p no:randomly"
+        check_value: "uv run pytest tests/test_omn20696_dod_verdict_contract_subject.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20696-rebuild-real-postgres"
@@ -42,6 +42,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_rebuild_real_postgres.py -q -p no:randomly"
+        check_value: "uv run pytest tests/test_omn20696_dod_verdict_rebuild_real_postgres.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
