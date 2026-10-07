@@ -286,6 +286,9 @@ projection_api:
         # OMN-17426: grouped on tenant_id as of migration 089; declared as
         # `tenant_column` at the foot of this exposure.
         - tenant_id
+        # OMN-20008: measured totals exclude these persisted provenance classes.
+        - estimated_run_count
+        - unknown_run_count
       json_columns:
         - rows
         - recent_runs

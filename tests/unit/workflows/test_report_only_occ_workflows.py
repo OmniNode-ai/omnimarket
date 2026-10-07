@@ -245,10 +245,9 @@ def test_author_workflow_does_not_stamp_product_body_with_ambient_token() -> Non
 
     It is product-scoped and *would* be authorized, which makes it the tempting
     "simplification" — but a body edit authored by GITHUB_TOKEN does not emit
-    ``pull_request: edited`` (GitHub's recursion guard), and
-    ``call-occ-preflight.yml`` lists ``edited`` in its trigger types so the
-    stamp re-evaluates eligibility. Using the ambient token would land the
-    bytes and silently fail to unjam the PR — a false-GREEN worse than the 403.
+    ``pull_request: edited`` (GitHub's recursion guard). The retained
+    body-reading gates need that event to re-evaluate; the ambient token
+    would land the bytes without notifying them.
     """
     run = _author_step("Run node_occ_companion_effect")
     assert "OMNI_OCC_PRODUCT_TOKEN" in run["run"]
@@ -466,7 +465,6 @@ def test_observation_store_mode_flows_into_the_effect_payload() -> None:
 #: one head sha produced three PRs in 29 seconds.
 _OCC_PR_EVENT_WORKFLOWS = (
     "call-occ-attestation-observe.yml",
-    "call-occ-autobind.yml",
     "call-occ-companion-observe.yml",
 )
 
@@ -492,13 +490,11 @@ def test_occ_pr_event_workflow_declares_concurrency(filename: str) -> None:
 
 @pytest.mark.unit
 def test_observer_workflows_key_concurrency_on_head_sha() -> None:
-    """Observers key on head sha; the mutating publisher deliberately does not.
+    """Observers key on head sha to preserve each distinct observation.
 
     An observer produces one record per sha, so a new push must NOT cancel the
     observation for the previous sha — only redundant runs for the SAME sha are
-    collapsed, and those emit byte-identical output. The autobind publisher is the
-    opposite case: it rewrites the PR body, so two publishers racing on one PR is
-    a lost-update hazard and the newest state must always win.
+    collapsed, and those emit byte-identical output.
     """
     for filename in (
         "call-occ-attestation-observe.yml",
@@ -508,9 +504,3 @@ def test_observer_workflows_key_concurrency_on_head_sha() -> None:
         assert "github.event.pull_request.head.sha" in group, (
             f"{filename} is an observer and must not drop a per-sha observation"
         )
-
-    autobind = _load(_WORKFLOWS / "call-occ-autobind.yml")["concurrency"]["group"]
-    assert "head.sha" not in autobind, (
-        "call-occ-autobind mutates the PR; keying on head sha would let two "
-        "publishers run concurrently for different shas on the same PR"
-    )

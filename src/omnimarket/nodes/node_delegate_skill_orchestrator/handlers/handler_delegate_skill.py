@@ -57,6 +57,7 @@ from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
     caller_lane_refusal,
 )
+from omnimarket.models.delegation.delegation_lineage import resolve_lineage
 from omnimarket.models.delegation.delegation_ticket_id import (
     DELEGATION_TICKET_METADATA_KEY,
     ticket_id_refusal,
@@ -174,6 +175,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -195,6 +197,52 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _AttributionDispatchKwargs(TypedDict, total=False):
+    """Who issued a delegation and what it follows, for the port (OMN-20606).
+
+    The in-process port writes its own evidence terminal and published it with
+    no caller lane, ticket or lineage, which is why every in-process fallback
+    row on the dev lane had an empty caller_lane. Passed only when the request
+    names any of them, so an anonymous request calls the port exactly as
+    before; a port must declare ``attribution`` before omnimarket pins a
+    release that passes it (omnibase_infra declares it from OMN-20606).
+    """
+
+    attribution: dict[str, str]
+
+
+def _request_attribution(request: ModelDelegateSkillRequest) -> dict[str, str]:
+    """The request's caller lane, ticket and lineage, each only when well formed."""
+    attribution: dict[str, str] = {}
+    caller_lane = _request_caller_lane(request)
+    if caller_lane is not None:
+        attribution[DELEGATION_CALLER_LANE_METADATA_KEY] = caller_lane
+    ticket_id = _request_ticket_id(request)
+    if ticket_id is not None:
+        attribution[DELEGATION_TICKET_METADATA_KEY] = ticket_id
+    lineage, refusal = resolve_lineage(
+        request.metadata, own_correlation_id=request.correlation_id
+    )
+    if refusal is not None:
+        logger.warning(
+            "delegate-skill request lineage refused (correlation_id=%s): %s",
+            request.correlation_id,
+            refusal,
+        )
+    elif lineage is not None:
+        attribution.update(lineage.as_columns())
+    return attribution
+
+
+def _attribution_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _AttributionDispatchKwargs:
+    attribution = _request_attribution(request)
+    if attribution:
+        return {"attribution": attribution}
     return {}
 
 
@@ -1273,6 +1321,8 @@ class HandlerDelegateSkill:
                     response_format=request.response_format,
                     # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
                     **_no_escalation_dispatch_kwargs(request),
+                    # OMN-20606: only when named -- see _AttributionDispatchKwargs.
+                    **_attribution_dispatch_kwargs(request),
                 ),
                 timeout=float(
                     execution_timeout_seconds
@@ -1473,10 +1523,8 @@ def _request_reap_context(
         provenance=request.provenance,
         runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
         request=request,
+        # Grace is the whole recovery window after execution. Adding the
+        # caller's delivery margin again delays recovery beyond budget + grace.
         deadline_at=datetime.now(UTC)
-        + timedelta(
-            seconds=execution_seconds
-            + budget.terminal_delivery_margin_seconds
-            + config.grace_seconds
-        ),
+        + timedelta(seconds=execution_seconds + config.grace_seconds),
     )

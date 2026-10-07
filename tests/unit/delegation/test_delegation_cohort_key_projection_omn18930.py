@@ -40,6 +40,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_coh
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -65,6 +70,7 @@ def _load(name: str) -> Any:
 
 def _terminal(capture: str, key: object = None) -> ModelDelegateSkillTerminalProjection:
     payload = _load(f"terminal_payload_{capture}.json")
+    payload["tenant_id"] = PROJECTION_TENANT_SLUG
     if key is not None:
         payload["cohort_key"] = key
     return ModelDelegateSkillTerminalProjection.from_payload(payload)
@@ -240,10 +246,14 @@ class _RecordingDb:
 
     def __init__(self) -> None:
         self.rows: list[dict[str, object]] = []
+        self.registry = InmemoryDatabaseAdapter()
+        seed_tenant_registry(self.registry)
 
     def query(
         self, table: str, filters: dict[str, object], **_: object
     ) -> list[dict[str, Any]]:
+        if table == "tenant_registry_mirror":
+            return self.registry.query(table, filters)
         return []
 
     def upsert(self, table: str, conflict_key: object, row: dict[str, object]) -> bool:

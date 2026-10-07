@@ -15,7 +15,8 @@ capabilities:
   side_effect_class: database_write
 dependencies:
   - "omnibase_core>=0.46.13"
-  - "omnibase-infra>=0.38.3"
+  - "omnibase-infra>=0.38.66"
+  - "omnibase-spi>=0.23.3"
   - "psycopg2-binary"
   - "boto3"
   - "cryptography"

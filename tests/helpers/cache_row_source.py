@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from omnimarket.projection.models import ProjectionTableConfig
 
@@ -62,11 +63,21 @@ class CacheRowSource:
 
     backing = "bus"
 
-    def __init__(self, cache: Any) -> None:
+    def __init__(
+        self, cache: Any, tenant_registry: dict[str, UUID] | None = None
+    ) -> None:
         self.cache = cache
+        # slug -> UUID, the ``tenant_registry_mirror`` a test's rows were
+        # written against (OMN-19972). Empty: no slug resolves.
+        self.tenant_registry = dict(tenant_registry or {})
 
     def unavailable(self, topic: str) -> tuple[str, str] | None:
         return CachePageView(self.cache).unavailable_reason(topic)
+
+    async def registry_tenant_uuid(
+        self, cfg: ProjectionTableConfig, tenant_slug: str
+    ) -> UUID | None:
+        return self.tenant_registry.get(tenant_slug)
 
     async def rows(
         self,

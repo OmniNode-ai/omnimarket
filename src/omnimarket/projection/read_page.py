@@ -36,6 +36,11 @@ from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
     resolve_serving_tenant,
 )
+from omnimarket.projection.tenant_registry_resolution import (
+    TenantRegistryResolutionError,
+    parse_tenant_uuid,
+    resolve_registry_tenant_uuid,
+)
 
 PROJECTION_VERSION = "1.0.0"
 FRESH_THRESHOLD = timedelta(minutes=5)
@@ -50,6 +55,14 @@ TENANT_CONTEXT_TICKET = "OMN-15797"
 TENANT_CONTEXT_DEGRADED_REASON = (
     "this exposure is tenant-scoped and no tenant context was resolved for the "
     "request; supply ?tenant=<id>"
+)
+# OMN-19972: also fixed, and for the same reason it never names the value the
+# caller sent. The caller supplied a tenant; it is not one this surface can
+# resolve to the identifier its rows are stored under.
+TENANT_UNREGISTERED_DEGRADED_REASON = (
+    "this exposure is tenant-scoped and the tenant named for the request does "
+    "not resolve to a registered tenant on this surface; supply a registered "
+    "tenant"
 )
 
 
@@ -383,14 +396,68 @@ def tenant_scope(
     try:
         return resolve_serving_tenant(requested_tenant, topic=topic), None
     except TenantContextMissingError:
-        return None, {
-            "status": "degraded",
-            "error": "tenant_context_unresolved",
-            "topic": topic,
-            "tenant_column": cfg.tenant_column,
-            "degraded_reason": TENANT_CONTEXT_DEGRADED_REASON,
-            "migration_ticket": TENANT_CONTEXT_TICKET,
-        }
+        return None, _tenant_unresolved_body(cfg, topic, TENANT_CONTEXT_DEGRADED_REASON)
+
+
+def _tenant_unresolved_body(
+    cfg: ProjectionTableConfig, topic: str, reason: str
+) -> dict[str, Any]:
+    return {
+        "status": "degraded",
+        "error": "tenant_context_unresolved",
+        "topic": topic,
+        "tenant_column": cfg.tenant_column,
+        "degraded_reason": reason,
+        "migration_ticket": TENANT_CONTEXT_TICKET,
+    }
+
+
+async def serving_tenant_scope(
+    cfg: ProjectionTableConfig,
+    topic: str,
+    requested_tenant: str | None,
+    source: ProtocolProjectionRowSource,
+) -> tuple[str | None, ProjectionPage | None]:
+    """The tenant a read is served under, in the form its rows are stored, or the refusal.
+
+    OMN-19972. :func:`tenant_scope` answers with the identity the caller or the
+    lane named, verbatim. The writers never store a slug: they resolve it
+    through ``tenant_registry_mirror`` and stamp the registry UUID
+    (:func:`resolve_registry_tenant_uuid`), so comparing a slug against the
+    tenant column -- or setting it as ``app.tenant_id`` -- read zero rows from a
+    table holding the tenant's own and served them as an empty ``200``. A slug
+    is therefore resolved here by the SAME function the writer uses, against
+    the same relation, read through ``source``:
+
+    * a slug the registry holds is served as the registry's UUID;
+    * a slug it does not hold (and that is not one of the closed legacy slugs
+      the writer also accepts) is a ``422 tenant_context_unresolved`` -- the
+      read is never issued, so neither a literal-slug compare nor an empty
+      ``200`` can result; registry drift against the closed mapping is refused
+      the same way, as the writer refuses it;
+    * a registry that cannot be read is the source's named ``503``.
+
+    A UUID-shaped identity is passed through unchanged and the registry is not
+    read: this function changes what a SLUG means and nothing else. An exposure
+    with no tenant column never reaches the registry either.
+    """
+    tenant, refusal = tenant_scope(cfg, topic, requested_tenant)
+    if refusal is not None:
+        return None, ProjectionPage(422, refusal)
+    if tenant is None or parse_tenant_uuid(tenant) is not None:
+        return tenant, None
+    try:
+        registry_uuid = await source.registry_tenant_uuid(cfg, tenant)
+    except ProjectionReadError as exc:
+        return None, ProjectionPage(exc.status_code, read_refusal(topic, exc))
+    try:
+        resolved = resolve_registry_tenant_uuid(tenant, registry_uuid=registry_uuid)
+    except TenantRegistryResolutionError:
+        return None, ProjectionPage(
+            422,
+            _tenant_unresolved_body(cfg, topic, TENANT_UNREGISTERED_DEGRADED_REASON),
+        )
+    return str(resolved), None
 
 
 def read_refusal(topic: str, exc: ProjectionReadError) -> dict[str, Any]:
@@ -474,9 +541,11 @@ async def read_projection_page(
             503, {"status": "degraded", "error": unavailable[0], "topic": topic}
         )
 
-    scope_tenant, tenant_refusal = tenant_scope(cfg, topic, tenant)
+    scope_tenant, tenant_refusal = await serving_tenant_scope(
+        cfg, topic, tenant, source
+    )
     if tenant_refusal is not None:
-        return ProjectionPage(422, tenant_refusal)
+        return tenant_refusal
 
     if correlation_id is not None and not topic_supports_correlation_id_filter(cfg):
         return ProjectionPage(

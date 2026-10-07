@@ -39,6 +39,10 @@ descriptor:
   timeout_ms: 600000
 
 terminal_event: onex.evt.omnimarket.evidence-pipeline-completed.v1
+# The handler has no failure branch: a port exception propagates to the caller,
+# so there is no failure terminal event.
+terminal_events:
+  success: onex.evt.omnimarket.evidence-pipeline-completed.v1
 
 event_bus:
   subscribe_topics:

@@ -92,9 +92,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("session_id", "sessionId"),
     )
     # string-id-ok: tenant_id is a named tenant identifier, not a UUID
-    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the delegation FSM's
-    # ONEX_TENANT_ID-sourced tenant identity when present. None means the
-    # delegation_events row falls back to the 'omninode' column default.
+    # Carried from the delegation FSM's declared tenant identity. A missing
+    # value is refused by the terminal writer before SQL (OMN-20651).
     tenant_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("tenant_id", "tenantId"),
@@ -184,15 +183,18 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("caller_lane", "callerLane"),
     )
 
-    # Cross-run lineage is decoded as text so malformed attribution is
-    # refused by the pure fold without dead-lettering the terminal row.
+    # OMN-20606: the delegation this one falls back or escalates from, the kind
+    # of relation, and why the parent failed (delegation_lineage.py). Declared
+    # here, on the consumer, as text decoded like ``caller_lane``: a malformed
+    # value is refused by the projection's lineage fold and never dead-letters
+    # the delegation's own row.
     parent_correlation_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("parent_correlation_id", "parentCorrelationId"),
     )
-    attempt_kind: str | None = Field(
+    lineage_kind: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("attempt_kind", "attemptKind"),
+        validation_alias=AliasChoices("lineage_kind", "lineageKind"),
     )
     parent_failure_cause: str | None = Field(
         default=None,
@@ -203,7 +205,7 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         "ticket_id",
         "caller_lane",
         "parent_correlation_id",
-        "attempt_kind",
+        "lineage_kind",
         "parent_failure_cause",
         mode="before",
     )

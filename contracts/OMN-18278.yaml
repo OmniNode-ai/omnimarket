@@ -39,3 +39,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn18278_bus_path_strips_reasoning_preamble.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn18278-ac1-unclosed-leading-trace"
+    description: "An unclosed leading reasoning tag stays visible to the quality gate after local extraction; the test fails at the merge base, where extraction hid the raw trace."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_reasoning_preamble_inline_omn18278.py -k test_local_extraction_cannot_hide_an_unclosed_leading_trace -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18278-ac1-reasoning-boundary-tags"
+    description: "The residual-tag floor covers the thinking and reasoning boundary tags; the added cases fail at the merge base, where the contract declared only the think tags."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_reasoning_preamble_inline_omn18278.py -k 'test_residual_tag_refuses_and_climbs or test_a_trace_after_the_answer_starts_is_left_for_the_floor or test_policy_exposes_residual_tags' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

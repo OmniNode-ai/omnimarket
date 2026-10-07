@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -14,7 +14,13 @@ from uuid import UUID
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
@@ -29,6 +35,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _CONFIG_KEY = "delegation_runtime_dispatch"
+_V2_TERMINAL_ADAPTER: TypeAdapter[
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+] = TypeAdapter(
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+)
 
 
 class ProtocolDelegationEventBus(Protocol):
@@ -104,7 +119,12 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
+        # OMN-20606: accepted and unused. This port publishes the request to a
+        # deployed lane, whose handler stamps the caller onto its own terminal;
+        # only the in-process port writes an evidence terminal of its own.
+        del attribution
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than
@@ -322,6 +342,23 @@ def _parse_delegation_terminal(
     if not isinstance(envelope_payload, dict):
         return None
 
+    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
+    wire_payload = envelope_payload.get("payload", envelope_payload)
+    if isinstance(wire_payload, dict) and (
+        topic.endswith(".v2")
+        or any(
+            field in wire_payload
+            for field in ("routing_disposition", "terminal_outcome", "backend_ref")
+        )
+    ):
+        # Validate before flattening: correlation alone cannot make a URL-shaped
+        # backend, absent pricing version or contradictory gate result evidence.
+        # The released wire contracts own these invariants (OMN-17013).
+        try:
+            _V2_TERMINAL_ADAPTER.validate_python(wire_payload)
+        except ValidationError:
+            return None
+
     terminal_payload = _flatten_terminal_payload(
         cast(dict[str, object], envelope_payload)
     )
@@ -340,7 +377,6 @@ def _parse_delegation_terminal(
     # both the full topic (legacy / test-simulated shape) and its derived
     # alias so either form classifies correctly; ``failure_reason`` remains
     # the final fallback for shapes that carry neither.
-    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
     failed_alias = _short_topic_alias(failed_topic)
     is_failed = (
         terminal_payload.get("terminal_outcome") == "failed"

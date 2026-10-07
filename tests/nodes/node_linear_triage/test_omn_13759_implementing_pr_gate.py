@@ -292,7 +292,9 @@ class TestMentionOnlyDoesNotFlag:
         gh = _stub_github(search_prs_results=[mention_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820002" not in _would_close_ids(result), (
             "mention-only PR must NOT flag OMN-820002 as done; "
@@ -312,7 +314,9 @@ class TestMentionOnlyDoesNotFlag:
         gh = _stub_github(search_prs_results=[mention_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 0
         client.save_issue.assert_not_called()
@@ -337,7 +341,9 @@ class TestImplementingPrFlags:
         gh = _stub_github(search_prs_results=[impl_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820005" in _would_close_ids(result)
         assert any("OMN-820005" in s for s in result.suppressed_closes)
@@ -354,7 +360,9 @@ class TestImplementingPrFlags:
         gh = _stub_github(search_prs_results=[impl_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820006" in _would_close_ids(result)
 
@@ -373,7 +381,9 @@ class TestImplementingPrFlags:
         )
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820007" in _would_close_ids(result)
 
@@ -388,7 +398,9 @@ class TestImplementingPrFlags:
         gh = _stub_github(search_prs_results=[impl_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1
         client.save_issue.assert_called_once_with(issue_id="e-1", state="Done")
@@ -425,7 +437,9 @@ class TestReopenedAfterMergeNotFlagged:
         gh = _stub_github(search_prs_results=[impl_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820009" not in _would_close_ids(result), (
             "ticket reopened after merge must NOT be flagged as done"
@@ -455,7 +469,9 @@ class TestReopenedAfterMergeNotFlagged:
         gh = _stub_github(search_prs_results=[impl_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820010" in _would_close_ids(result)
 
@@ -492,7 +508,9 @@ class TestEpicWithOpenChildrenNotFlagged:
         gh.pr_closing_ticket_refs.return_value = []
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820011" not in _would_close_ids(result), (
             "epic with an open child must NOT be flagged on a merged PR"
@@ -519,6 +537,8 @@ class TestEpicWithOpenChildrenNotFlagged:
         gh.pr_closing_ticket_refs.return_value = []
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert "OMN-820013" in _would_close_ids(result)

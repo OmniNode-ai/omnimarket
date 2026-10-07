@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -122,24 +121,6 @@ def _receipt(outcome: Any) -> dict[str, Any]:
         return dict(data["replacement"])
     ModelDodReceipt.model_validate(data)
     return dict(data)
-
-
-@pytest.mark.unit
-def test_every_workflow_runner_step_has_the_job_token() -> None:
-    text = (_ROOT / ".github" / "workflows" / "occ-receipt-runner.yml").read_text(
-        encoding="utf-8"
-    )
-    workflow = yaml.safe_load(text)
-    steps = [
-        step
-        for job in workflow["jobs"].values()
-        for step in job["steps"]
-        if "occ_receipt_runner.py" in step.get("run", "")
-    ]
-    assert len(steps) >= 2
-    for step in steps:
-        assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
-    assert not re.search(r"GH_TOKEN:.*(secrets\.|occ-app-token)", text)
 
 
 @pytest.mark.unit

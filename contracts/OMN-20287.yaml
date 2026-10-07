@@ -2,19 +2,19 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20287"
 title: "Delegation run rows carry parent lineage in the projection consumer"
-summary: "Consumer half of delegation lineage. delegation_events run rows carry parent_correlation_id, attempt_kind and parent_failure_cause through a pure fold used by both writers, and ModelDelegateSkillResponse decodes the three keys. AC1 is bound to the unit tests. The dev-202 or stability-test deployed readback is not bound."
+summary: "Consumer half of delegation lineage, reconciled onto the OMN-20606 schema. delegation_events run rows carry parent_correlation_id, lineage_kind and parent_failure_cause (migration 0055_delegation_events_lineage.sql, shipped in omnibase_infra 0.38.67) through the OMN-20606 fold and both writers; this change drops its own attempt_kind column and migration 0055_delegation_events_run_lineage.sql, so the node declares one lineage kind column. AC1 is bound to the unit tests. The dev-202 or stability-test deployed readback is not bound."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-delegation-run-rows-carry-lineage"
-    statement: "The delegation projection fold returns all three lineage columns or none with a named refusal, a lineage-less re-emit keeps stored lineage, and the delegate skill response decodes the lineage keys. The deployed readback on dev-202 or stability-test is not bound here: this repository's hosted check cannot reach it."
+    statement: "The delegation projection node declares one cross-run lineage schema: parent_correlation_id, lineage_kind and parent_failure_cause, added only by 0055_delegation_events_lineage.sql; no migration, contract column, SQLite column or terminal field names attempt_kind, and the cross-run lineage_kind values share none with the in-ladder EnumDelegationAttemptKind. The deployed readback on dev-202 or stability-test is not bound here: this repository's hosted check cannot reach it."
     acceptance:
       - id: "AC1"
-        statement: "AC1: the lineage fold, both writers and the response model behave as specified -- falsifier: uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q in omnimarket"
+        statement: "AC1: the node declares only the OMN-20606 lineage columns and a terminal carrying attempt_kind stores no lineage -- falsifier: uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
-    description: "AC1 hosted probe. The lineage unit tests pass at the head and fail at the merge base, where the lineage fold does not exist."
+    description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
     command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q"
 emergency_bypass:
   enabled: false
@@ -22,7 +22,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20287-ac1-run-lineage-projection"
-    description: "AC1 hosted probe. The lineage unit tests pass at the head and fail at the merge base."
+    description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"
