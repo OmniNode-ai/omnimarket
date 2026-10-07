@@ -30,6 +30,7 @@ port's own ``_resolve_initial_backend`` — not a hand-built stand-in for either
 
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -324,6 +325,90 @@ def test_bound_contract_does_not_pick_up_the_incidental_home_overlay(
     _point_module_defaults_at(monkeypatch, contract=contract, home_overlay=home_overlay)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    routing_mod._load_bifrost_endpoints.cache_clear()
+
+    port = _build_local_dispatch_port(tmp_path)
+    try:
+        reducer_backend = routing_mod._load_bifrost_endpoints()[_BACKEND_ID]
+        dispatch_backend = port._resolve_initial_backend(
+            _TASK_TYPE, backend_id=_BACKEND_ID
+        )
+    finally:
+        routing_mod._load_bifrost_endpoints.cache_clear()
+
+    assert dispatch_backend.model_id == _CONTRACT_MODEL
+    assert dispatch_backend.endpoint_ref == _CONTRACT_ENDPOINT
+    assert str(home_overlay) not in dispatch_backend.model_id_source
+    assert reducer_backend.model_name == dispatch_backend.model_id
+    assert reducer_backend.endpoint_url == dispatch_backend.endpoint_ref
+
+
+@pytest.mark.unit
+def test_bound_overlay_provenance_line_is_logged_on_local_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """AC3, falsifier (log half): a bound overlay honoured by the local
+    dispatch path leaves a provenance line in the log, not a silent read.
+
+    The single-seam resolver emits the delegation provenance line at INFO for
+    every binding it resolves (OMN-12967, ``resolve_optional_path_config`` ->
+    ``ModelDelegationConfigProvenance.log_line``). Asserting on that line's
+    documented shape — ``config_provenance surface=delegation``, the env key
+    and the resolved path — proves the local dispatch path honoured the
+    binding through the seam rather than coincidentally reading the right
+    file through some unlogged route.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing_mod,
+    )
+
+    contract, fixture_overlay, _home_overlay = _write_fixtures(tmp_path)
+    _point_module_defaults_at(
+        monkeypatch, contract=contract, home_overlay=_home_overlay
+    )
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(fixture_overlay))
+    routing_mod._load_bifrost_endpoints.cache_clear()
+
+    port = _build_local_dispatch_port(tmp_path)
+    with caplog.at_level(logging.INFO):
+        try:
+            port._resolve_initial_backend(_TASK_TYPE, backend_id=_BACKEND_ID)
+        finally:
+            routing_mod._load_bifrost_endpoints.cache_clear()
+
+    assert any(
+        "config_provenance surface=delegation" in line
+        and "config_key=BIFROST_OVERLAY_PATH" in line
+        and str(fixture_overlay) in line
+        for line in caplog.messages
+    ), (
+        "the local dispatch path resolved the bound overlay without emitting "
+        "its provenance line (OMN-12967): a bound-but-silent read"
+    )
+
+
+@pytest.mark.unit
+def test_bound_overlay_that_does_not_exist_is_not_replaced_by_the_home_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC3, falsifier (fallback half): a bound overlay that cannot be read must
+    not be silently replaced by the home-directory overlay, on either caller.
+
+    Pinned behaviour, not a refusal: both callers treat a bound-but-absent
+    overlay file as "no overlay" and the bound contract stands alone. The
+    binding still decides; the incidental home file never supplies the result.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing_mod,
+    )
+
+    contract, _fixture_overlay, home_overlay = _write_fixtures(tmp_path)
+    _point_module_defaults_at(monkeypatch, contract=contract, home_overlay=home_overlay)
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract))
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(tmp_path / "does-not-exist.yaml"))
     routing_mod._load_bifrost_endpoints.cache_clear()
 
     port = _build_local_dispatch_port(tmp_path)

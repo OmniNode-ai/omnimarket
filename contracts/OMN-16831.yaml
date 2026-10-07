@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-16831"
 title: "The tenant authority regression gate examines both failure paths"
-summary: "The projection write-path regression gate examined only DLQ failure reasons, while current write-path failures surface as ProjectionNotMaterializedError wrapping ProjectionTenantContextError. The gate now examines both DLQ and offset-withholding failures, and a real-adapter test covers every declared tenant read, upsert and upsert_returning operation. No runtime source is changed."
+summary: "The projection write-path regression gate examined only DLQ failure reasons, while current write-path failures surface as ProjectionNotMaterializedError wrapping ProjectionTenantContextError. The gate now examines both DLQ and offset-withholding failures, and a real-adapter test covers every declared tenant read, upsert and upsert_returning operation. The AC4 row drives an unattributed terminal through the real dispatch and requires the refusal to fail the callback. No runtime source is changed."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -12,7 +12,12 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: every declared tenant relation reaches SQL without a bound authority, through the real adapter and topology -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q finds a relation whose operation is refused for missing authority"
+      - id: "AC4"
+        statement: "AC4: a tenant refusal on a projection write fails the dispatch and is never acked -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q finds the unattributed terminal's TenantRequiredError DLQ'd and acked, a terminal published, or a row stored"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC4 hosted probe. The unattributed delegation terminal fails the real dispatch with its typed refusal and stores no row; the same terminal with a registered tenant stores exactly one."
+    command: "env -u PYTHONPATH uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
   - kind: "tests"
     description: "AC1 hosted probe. The chain gate test passes at the head, and the new test is absent at the merge base."
     command: "env -u PYTHONPATH uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q"
@@ -29,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn16831-ac4-tenant-refusal-fails-dispatch"
+    description: "AC4 hosted probe. The unattributed delegation terminal fails the real dispatch with its typed refusal and stores no row; the same terminal with a registered tenant stores exactly one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
