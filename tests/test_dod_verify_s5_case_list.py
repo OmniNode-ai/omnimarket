@@ -236,16 +236,20 @@ def test_contract_with_no_bound_criterion_reads_incomplete_coverage(
 ) -> None:
     """Weak contract: a test runs but no criterion is bound to it.
 
-    The head verifies on the behaviour check alone. The merge-base control step
-    finds zero bound checks and leaves its line at ``refused``.
+    OMN-20070: the head no longer verifies on the behaviour check alone; it
+    reads NO_ACCEPTANCE_CHECKS naming both unbound criteria. The merge-base
+    control step finds zero bound checks and leaves its line at ``refused``.
     """
     state = _verify(
         tmp_path,
         monkeypatch,
         _contract(["AC1", "AC2"], [_item("dod-1", _TEST_A, [])]),
     )
-    assert state.status is EnumDodVerifyStatus.VERIFIED
+    assert state.status is EnumDodVerifyStatus.SKIPPED
     assert state.acceptance_basis is EnumDodAcceptanceBasis.NO_ACCEPTANCE_CHECKS
+    assert state.acceptance_unbound_criteria == ("AC1", "AC2")
+    assert state.error_message is not None
+    assert state.error_message.startswith("NO_ACCEPTANCE_CHECKS")
     assert all(not check.binds_ac for check in state.checks)
 
     result = _difference(tmp_path, state, _CONTROL_REFUSED)
@@ -258,18 +262,16 @@ def test_contract_with_no_bound_criterion_reads_incomplete_coverage(
     _assert_labelled_control_is_refused(tmp_path, state, _CONTROL_REFUSED)
 
 
-def test_one_unbound_criterion_is_not_refused_by_the_evidence_check(
+def test_one_unbound_criterion_is_refused_as_incomplete_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Documents a gap: the verifier does not refuse a partly unbound contract.
+    """OMN-20070 AC3: the verifier refuses a partly unbound contract.
 
-    AC1 is bound and AC2 is not. The head reads ``verified`` and the control
-    (AC1's bound test failing at the base) passes, so this check admits. The
-    guard for the missing binding is the repository's own suite,
-    ``test_every_repo_contract_binds_every_criterion`` in
-    ``tests/ci/test_repo_evidence_caller_workflow.py``, not the evidence check.
-    If the verifier is taught to refuse this, update this test and the pilot's
-    case list together.
+    AC1 is bound and AC2 is not. The head reads NO_ACCEPTANCE_CHECKS naming
+    AC2, so the evidence check refuses even though the control (AC1's bound
+    test failing at the base) passes. Before OMN-20070 this read ``verified``
+    and only omnimarket's own ``test_every_repo_contract_binds_every_criterion``
+    caught it, which a second repository adopting the gate would not carry.
     """
     state = _verify(
         tmp_path,
@@ -282,14 +284,21 @@ def test_one_unbound_criterion_is_not_refused_by_the_evidence_check(
             ],
         ),
     )
-    assert state.status is EnumDodVerifyStatus.VERIFIED
-    assert state.error_message is None
-    assert state.acceptance_basis is EnumDodAcceptanceBasis.NO_ACCEPTANCE_CHECKS
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.acceptance_unbound_criteria == ("AC2",)
+    assert state.error_message is not None
+    assert state.error_message.startswith("NO_ACCEPTANCE_CHECKS")
     assert [check.binds_ac for check in state.checks] == [("AC1",), ()]
 
     result = _difference(tmp_path, state, _CONTROL_PASSED)
-    assert result.new_admitted is True
-    assert result.outcome == "agree"
+    assert result.new_admitted is False
+    assert result.outcome == "expected_difference"
+    assert (
+        result.reason_code
+        is EnumOccVerdictDifferenceReason.INCOMPLETE_CRITERION_COVERAGE
+    )
+    assert result.passed is True
+    _assert_labelled_control_is_refused(tmp_path, state, _CONTROL_PASSED)
 
 
 def test_failing_bound_test_refuses_with_no_reason_code(

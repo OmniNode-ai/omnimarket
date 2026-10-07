@@ -475,6 +475,18 @@ class HandlerDodVerify:
             overall = EnumDodVerifyStatus.SKIPPED
             self_acceptance_demotion = True
 
+        # OMN-20070: a repo-owned contract binds every declared criterion, so
+        # a criterion no item binds is unproven. This rule used to live only
+        # in omnimarket's own contract-binds test.
+        unbound_demotion = False
+        if (
+            acceptance_summary is not None
+            and acceptance_summary.unbound_criteria
+            and overall == EnumDodVerifyStatus.VERIFIED
+        ):
+            overall = EnumDodVerifyStatus.SKIPPED
+            unbound_demotion = True
+
         error_message: str | None = None
         if occ_ref_failure_cause is not None:
             # OMN-17796: its own remedy text, because OMN-17022's below is the
@@ -532,6 +544,20 @@ class HandlerDodVerify:
                 f"that authored them, or by no one ({', '.join(bindings)}). A binding is "
                 "accepted by a second lane that re-runs the bound check, never "
                 "by its author; until then the criterion is unproven."
+            )
+        elif unbound_demotion:
+            unbound = (
+                acceptance_summary.unbound_criteria
+                if acceptance_summary is not None
+                else ()
+            )
+            n = len(unbound)
+            error_message = (
+                f"NO_ACCEPTANCE_CHECKS: {command.ticket_id} declares {n} acceptance "
+                f"{'criterion' if n == 1 else 'criteria'} that no dod_evidence item "
+                f"binds through binds_ac ({', '.join(unbound)}). Bind each criterion "
+                "to a check whose test fails without the change; an unbound "
+                "criterion is unproven."
             )
         elif no_acceptance_demotion:
             declared = (
@@ -679,6 +705,9 @@ class HandlerDodVerify:
             ),
             acceptance_self_accepted_bindings=(
                 acceptance_summary.self_accepted_bindings if acceptance_summary else ()
+            ),
+            acceptance_unbound_criteria=(
+                acceptance_summary.unbound_criteria if acceptance_summary else ()
             ),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,

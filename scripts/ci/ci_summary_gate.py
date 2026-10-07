@@ -543,7 +543,10 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Stale TODO Gate",
     "URL Authority Gate",
     "call / validate-docs",
-    "call-reject-skip-token / occ-preflight / eligibility",
+    # OMN-20073: the scan's reusable no longer nests the change-control
+    # preflight (omniclaude#2540), so `call-reject-skip-token / occ-preflight /
+    # eligibility` has no producer; the standalone `occ-preflight / eligibility`
+    # above carries that verdict.
     "call-reject-skip-token / scan / reject-skip-gate-token",
     "contract-validation",
     # OMN-19451 (delegation-health-check.yml): the delegation-health check on
@@ -716,10 +719,11 @@ EXTERNAL_FAILURE_SUPERSESSION_GRACE_S: int = 1200
 #: same unmerged companion is SKIPPED rather than run, so its row is a statement
 #: about its DEPENDENCY, never about this head. Its rerun concluded `success` 38
 #: seconds after `CI Summary` had already recorded FAILURE on the stale skip.
-#: This repository is exposed to exactly that shape:
-#: `call-reject-skip-token / scan / reject-skip-gate-token` is in
-#: :data:`EXPECTED_EXTERNAL_CONTEXTS` and its job `needs:` the occ-preflight
-#: gate that is also there.
+#: This repository was exposed to exactly that shape while
+#: `call-reject-skip-token / scan / reject-skip-gate-token`'s job `needs:`-ed
+#: a nested occ-preflight gate; the pinned reusable dropped that edge under
+#: OMN-20073 (omniclaude#2540), and any other producer that `needs:` a failed
+#: gate keeps the same exposure.
 #:
 #: THIS DOES NOT REOPEN THE SKIP-AS-PASS VECTOR (OMN-15057 / OMN-14854). That
 #: vector is `skipped` read as SUCCESS. Here it is read as NO VERDICT YET: the
@@ -1298,9 +1302,9 @@ def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
     omnimarket differs from the sibling copies in omnibase_core and
     omnibase_infra, which resolve on ``(started_at, id)`` alone. Those repos do
     not assert a context that ~52 independent caller workflows all mint against
-    one SHA; this one does, twice over (``occ-preflight / eligibility`` and its
-    ``call-reject-skip-token`` alias are both in
-    :data:`EXPECTED_EXTERNAL_CONTEXTS`). Those producers post within the same
+    one SHA; this one does (``occ-preflight / eligibility`` is in
+    :data:`EXPECTED_EXTERNAL_CONTEXTS`; its ``call-reject-skip-token`` alias was
+    until OMN-20073 removed the nested producer). Those producers post within the same
     second, so ``started_at`` ties routinely and a tie is NOT a rerun history.
     Resolving such a tie by id would pick one caller arbitrarily and could hide
     a red sibling behind a green one -- the OMN-15112 ANY-vs-ALL exposure. The
