@@ -97,7 +97,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 33,
-    "table": 105,
+    "table": 106,
     "view": 10
   },
   "relations": [
@@ -3429,6 +3429,52 @@
       "writers": [
         "node_delegate_skill_orchestrator",
         "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0056_delegation_budget_applied_events.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, cost_tier_name, budget_period, correlation_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation",
+      "name": "delegation_budget_applied_events",
+      "owner_declaration": "node_projection_delegation",
+      "partitioning": [],
+      "producer": "node_projection_delegation",
+      "readers": [],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation"
       ]
     },
     {
@@ -8947,8 +8993,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 96,
-    "source_declared_tables": 105
+    "source_created_tables": 97,
+    "source_declared_tables": 106
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -8964,7 +9010,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 96 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 97 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
