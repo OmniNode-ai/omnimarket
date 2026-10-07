@@ -90,6 +90,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
     EnumOccRefRefreshOutcome,
     EnumProductCloneFreshness,
+    ModelCommandCheckFailure,
     ModelEvidenceCheckResult,
     ModelProductClonePin,
     ModelProductClonePinSet,
@@ -100,7 +101,12 @@ from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
     is_accepted_binding,
     unique_derived_id,
 )
+from omnimarket.nodes.node_dod_verify.services.behavior_check_execution import (
+    command_failure,
+    scrub_database_environment,
+)
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
+    classify_check,
     classify_item_checks,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
@@ -2255,6 +2261,7 @@ class EvidenceCollector:
         # subprocess's own output: a check under test can print any banner it
         # likes, and a product that forged this one would launder its own red.
         self._last_check_budget_exceeded: bool = False
+        self._last_command_failure: ModelCommandCheckFailure | None = None
         # OMN-16846 D1 (local path): memo of the lock-exact ephemeral
         # environment built for each uv project root a check's ``cwd`` names.
         # Per-run rather than module-global so one collector builds each
@@ -4923,6 +4930,7 @@ class EvidenceCollector:
                         description=description,
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=msg,
+                        failure=self._last_command_failure,
                         proof_class=item_proof_class,
                         product_clones=tuple(clones),
                     )
@@ -6789,6 +6797,7 @@ class EvidenceCollector:
         # OMN-17795: clear the per-check budget flag before every run, so it
         # can only ever describe THIS invocation.
         self._last_check_budget_exceeded = False
+        self._last_command_failure = None
 
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
@@ -6985,6 +6994,16 @@ class EvidenceCollector:
             cmd_str,
         )
 
+        # Behavior proof requires tests to provision their database explicitly.
+        # Never borrow the verifier's service settings, even without a venv overlay.
+        if (
+            check.get("check_type") == "test_passes"
+            or classify_check(check) == EnumCheckProofClass.BEHAVIOR
+        ):
+            run_env = scrub_database_environment(
+                run_env if run_env is not None else os.environ
+            )
+
         timeout_s = _check_timeout_s()
         start = time.monotonic()
         try:
@@ -7013,7 +7032,10 @@ class EvidenceCollector:
         stderr = result.stderr.strip()
 
         if result.returncode != 0:
-            detail = stderr or stdout or f"exit code {result.returncode}"
+            detail = "\n".join(part for part in (stdout, stderr) if part)
+            self._last_command_failure = command_failure(
+                result.returncode, stdout, stderr
+            )
             # OMN-18756: only for a command this frame re-pointed. An unrouted
             # check resolved its own interpreter, so nothing here knows whose
             # environment the failure is about.
@@ -7025,7 +7047,10 @@ class EvidenceCollector:
                         f"{_VERIFIER_ENV_FAILURE_MARKER} {env_reason} "
                         f"Runner output: {detail}",
                     )
-            return False, f"FAILED ({elapsed_ms}ms): {detail}"
+            return False, (
+                f"FAILED {self._last_command_failure.summary()} "
+                f"({elapsed_ms}ms): {detail}"
+            )
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
 
