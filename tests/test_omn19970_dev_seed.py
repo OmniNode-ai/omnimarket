@@ -16,11 +16,14 @@ The Postgres half (the migration and the summary view) is in
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -28,9 +31,23 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.nodes.node_dev_seed_effect.handlers.handler_dev_seed import (
     HandlerDevSeed,
 )
+from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
+    create_dashboard_app,
+)
+from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
+    ModelCounterfactualBaseline,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
 )
+from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
+    HandlerProjectionRead,
+)
+from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
+    SqliteTableRowSource,
+)
+from omnimarket.projection import sqlite_metering_summary
+from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.envelope import (
     DATA_SOURCE_FIXTURE,
     DATA_SOURCE_REAL,
@@ -42,6 +59,7 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.sqlite_metering_reader import read_metering_records
 from tests.helpers.tenant_registry import (
     PROJECTION_TENANT_SLUG,
+    PROJECTION_TENANT_UUID,
     seed_tenant_registry,
 )
 
@@ -159,6 +177,44 @@ def test_fixture_set_carries_both_outcomes_so_runs_page_shows_each() -> None:
     assert {r["terminal_ok"] for r in rows} == {True, False}
 
 
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "onex.snapshot.projection.delegation.decisions.v1",
+        "onex.snapshot.projection.delegation.correlation-trace.v1",
+    ],
+)
+def test_fixture_label_reaches_each_delegation_exposure(
+    tmp_path: Path, topic: str
+) -> None:
+    db, path = _sqlite_store(tmp_path)
+    seeded = HandlerDevSeed().seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
+    topics = build_projection_topic_map()
+    handler = HandlerProjectionRead(
+        topic_map=topics, row_source=SqliteTableRowSource(path)
+    )
+    client = TestClient(
+        create_dashboard_app(
+            handler=handler, topic_map=topics, tenant=str(PROJECTION_TENANT_UUID)
+        )
+    )
+    response = client.get(f"/projection/{topic}")
+    assert response.status_code == 200, response.json()
+    rows = response.json()["rows"]
+    assert {r["correlation_id"] for r in rows} == set(seeded.correlation_ids)
+    assert {r.get("data_source") for r in rows} == {"fixture"}
+
+
+def test_every_delegation_row_exposure_declares_fixture_provenance() -> None:
+    exposures = [
+        cfg
+        for cfg in build_projection_topic_map().values()
+        if cfg.table == "delegation_events"
+    ]
+    assert len(exposures) == 4
+    assert all("data_source" in cfg.columns for cfg in exposures)
+
+
 # --- failure mode 4: measured savings exclude fixture rows by default
 
 
@@ -181,6 +237,61 @@ def test_metering_excludes_fixture_rows_unless_asked(tmp_path: Path) -> None:
 
     everything = read_metering_records(db_path=path, include_fixtures=True)
     assert {r.correlation_id for r in everything} == {real, *seeded.correlation_ids}
+
+
+def test_overview_measured_savings_are_unchanged_by_seeding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    db, path = _sqlite_store(tmp_path)
+    HandlerProjectionDelegation(
+        publisher=_NullPublisher()
+    ).project_delegate_skill_terminal(_terminal(str(uuid4()), 0.25), db)
+    baseline = ModelCounterfactualBaseline(
+        model="test-baseline",
+        price_in_per_1k=Decimal("1"),
+        price_out_per_1k=Decimal("2"),
+        as_of="2026-09-28",
+        pricing_manifest_version="1",
+        source="test_manifest",
+    )
+    monkeypatch.setattr(sqlite_metering_summary, "resolve_baseline", lambda _: baseline)
+    tenant = str(PROJECTION_TENANT_UUID)
+    now = datetime.now(UTC) + timedelta(seconds=1)
+
+    def refresh(*, include_fixtures: bool = False) -> None:
+        sqlite_metering_summary.refresh_metering_summary(
+            path, tenant, baseline.model, now, include_fixtures=include_fixtures
+        )
+
+    topics = build_projection_topic_map()
+    handler = HandlerProjectionRead(
+        topic_map=topics, row_source=SqliteTableRowSource(path)
+    )
+    client = TestClient(
+        create_dashboard_app(handler=handler, topic_map=topics, tenant=tenant)
+    )
+
+    def overview() -> dict[str, Any]:
+        response = client.get(
+            "/projection/onex.snapshot.projection.metering-summary.v1"
+        )
+        assert response.status_code == 200, response.json()
+        return next(r for r in response.json()["rows"] if r["window_kind"] == "all")
+
+    refresh()
+    before = overview()
+    assert before["runs_measured"] == 1
+    assert Decimal(before["savings_usd"]) == Decimal("0.14")
+    HandlerDevSeed().seed_local(db, tenant_id=PROJECTION_TENANT_SLUG)
+    refresh()
+    after = overview()
+    assert after["runs_measured"] == before["runs_measured"]
+    assert after["savings_usd"] == before["savings_usd"]
+    # Positive control: these fixtures can contribute when explicitly included.
+    refresh(include_fixtures=True)
+    included = overview()
+    assert included["runs_measured"] > after["runs_measured"]
+    assert Decimal(included["savings_usd"]) > Decimal(after["savings_usd"])
 
 
 def test_metering_reads_a_store_written_before_the_label_existed(
