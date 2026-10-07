@@ -261,41 +261,15 @@ def test_strict_gate_failure_fails() -> None:
     assert code == EXIT_FAILURE
 
 
-def test_occ_companion_merged_gate_is_strict_and_fails_closed() -> None:
-    """OMN-15427: the companion-merged gate must BLOCK, not merely report.
-
-    omnimarket#1953 carried a CLOSED-unmerged OCC companion citation and no
-    omnimarket surface caught it. Detection without enforcement is the failure
-    mode being closed, so this pins the enforcement wiring itself: the gate is
-    a STRICT gate (a red/skipped/cancelled conclusion fails the required
-    ``CI Summary`` context) and its absence is PENDING, never a vacuous green.
-    """
-
-    gate = "OCC Companion Merged Gate (OMN-15214)"
-    assert gate in STRICT_GATE_JOBS
-    assert gate not in SKIPPABLE_GATE_JOBS
-
-    # Red → FAILURE, and the gate is named in the report.
-    jobs = [
-        _job(gate, conclusion="failure") if j["name"] == gate else j
-        for j in _healthy_jobs()
-    ]
+def test_occ_companion_merged_gate_is_not_expected() -> None:
+    """OMN-20073: healthy CI passes without an OCC companion gate row."""
+    name = "OCC Companion Merged Gate (OMN-15214)"
+    assert name not in STRICT_GATE_JOBS
+    assert name not in SKIPPABLE_GATE_JOBS
+    jobs = _healthy_jobs()
+    assert all(job["name"] != name for job in jobs)
     code, report = evaluate(jobs)
-    assert code == EXIT_FAILURE, report
-    assert gate in report
-
-    # Skipped → FAILURE (the job is unconditional in ci.yml; a skip is anomalous).
-    jobs = [
-        _job(gate, conclusion="skipped") if j["name"] == gate else j
-        for j in _healthy_jobs()
-    ]
-    code, _ = evaluate(jobs)
-    assert code == EXIT_FAILURE
-
-    # Absent entirely → PENDING (completeness anchor), never SUCCESS.
-    jobs = [j for j in _healthy_jobs() if j["name"] != gate]
-    code, _ = evaluate(jobs)
-    assert code == EXIT_PENDING
+    assert code == EXIT_SUCCESS, report
 
 
 def test_merge_hold_gate_is_strict_and_fails_closed() -> None:
@@ -919,20 +893,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "self-declared report-only, non-blocking observer (job name: "
         "'OCC Attestation Observe (report-only, non-blocking)')."
     ),
-    ("occ-receipt-runner.yml", "occ-receipt-runner"): (
-        "OMN-16859 AC3b — an UNBLOCKER, not a gate. It executes the "
-        "companion's declared test_passes checks in this repo's checkout and "
-        "writes the results into the open OCC companion so occ-preflight can "
-        "go green. It is `continue-on-error: true`, carries no required "
-        "status-check name, and is referenced by no `needs:` — including CI "
-        "Summary's. A red check is reported by the FAIL receipt it writes "
-        "(which correctly keeps the companion ineligible), never by this job. "
-        "Making it blocking would deadlock the very PRs it exists to clear."
-    ),
-    ("call-occ-autobind.yml", "publish-occ-autobind"): (
-        "additive command publisher, never fails a PR — same contract as "
-        "the omniweb/omnibase_infra call-occ-autobind siblings."
-    ),
     ("call-occ-companion-author.yml", "occ-companion-author"): (
         "OCC companion authoring automation (dry_run by default per "
         "OMNI_OCC_AUTOAUTHOR_MODE), not a PR content validator."
@@ -940,11 +900,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("call-occ-companion-observe.yml", "occ-companion-observe"): (
         "self-declared dry_run, non-blocking observer (job name: "
         "'OCC Companion Observe (dry_run, non-blocking)')."
-    ),
-    ("call-occ-preflight.yml", "governance-readiness"): (
-        "self-declared REPORT-ONLY shadow (WS3/OMN-14646); its own inline "
-        "comment states it is 'WITHOUT being added to branch-protection "
-        "required_status_checks' by design."
     ),
     ("pr-merged-publisher.yml", "publish-pr-merged"): (
         "post-merge automation (if: pull_request.merged == true) — "
@@ -1488,8 +1443,8 @@ def test_draft_gate_still_fails_closed_without_marker() -> None:
 # row and failed closed; a re-run could not clear it, only a new head SHA.
 #
 # This repo is exposed through the same door: call-reject-skip.yml,
-# pr-title-check.yml, main-target-guard.yml, non-dev-base-guard.yml and
-# call-occ-preflight.yml all carry `edited` in their pull_request `types:`.
+# pr-title-check.yml, main-target-guard.yml and non-dev-base-guard.yml all
+# carry `edited` in their pull_request `types:`.
 #
 # Every relaxation below is paired with a positive control that must STILL fail.
 # --------------------------------------------------------------------------- #

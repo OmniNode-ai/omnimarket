@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Structural proof that omnimarket's automated pushes carry the App identity (OMN-18273).
 
-Two workflows in this repo commit and push as a bot into
-``OmniNode-ai/onex_change_control``: the OCC receipt runner (the companion
-publisher) and the behavior-proof backfill. Both already mint a per-run
-``onexbot-occ-writer`` App token, and both already push with it — but neither
-commit is attributable and neither is traceable back to the run that made it.
+The behavior-proof backfill commits and pushes as a bot into
+``OmniNode-ai/onex_change_control``. The OCC receipt runner workflow was
+retired under OMN-20073 S6. The retained backfill mints a per-run
+``onexbot-occ-writer`` App token. These tests preserve commit attribution and
+traceability back to the run that made the commit.
 
 Every assertion here corresponds to a measured defect, not a preference:
 
@@ -77,7 +77,6 @@ RUN_TRAILER = "Onex-Run:"
 
 # (workflow file, job id) pairs whose pushes must carry the App identity.
 IN_SCOPE: tuple[tuple[str, str], ...] = (
-    ("occ-receipt-runner.yml", "occ-receipt-runner"),
     ("occ-behavior-proof-backfill.yml", "backfill"),
 )
 
@@ -428,7 +427,7 @@ def test_positive_control_the_push_scan_finds_the_known_pushers() -> None:
         "known to push; an empty result means the scan broke, not that the "
         "pushers went away."
     )
-    for known in ("occ-receipt-runner.yml", "release-cut.yml"):
+    for known in ("occ-behavior-proof-backfill.yml", "release-cut.yml"):
         assert known in observed, f"{known} pushes but the scan missed it"
 
 

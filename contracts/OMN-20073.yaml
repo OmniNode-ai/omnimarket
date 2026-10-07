@@ -20,6 +20,11 @@ requirements:
         statement: "The skip-token caller pins the omniclaude reusable that runs the token scan with no nested change-control preflight (omniclaude#2540), and CI Summary and the required-checks manifest stop naming the nested preflight context, while the standalone occ-preflight / eligibility context stays expected -- falsifier: uv run pytest tests/ci/test_reject_skip_caller_without_preflight_omn20073.py -q"
       - id: "AC5"
         statement: "The repo-evidence caller passes compare-with-occ \"false\" once dev branch protection requires no OCC context, so the reusable's difference step no longer waits for an occ-preflight / eligibility verdict, and verifier-version stays a release that ships the classifier for a rollback -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+  - id: "req-occ-callers-removed"
+    statement: "Remove omnimarket's OCC callers and OCC merge requirements."
+    acceptance:
+      - id: "AC6"
+        statement: "omnimarket deletes the callers that mint, heal, wait on or verify a PR's OCC companion (call-occ-preflight.yml, call-occ-autobind.yml, occ-autobind-mint-verify.yml, occ-companion-merge-heal.yml, occ-receipt-runner.yml, call-receipt-gate.yml, the OCC Companion Merged Gate job); CI Summary expects no companion context (occ-preflight / eligibility, verify / verify) and keeps the two emitter tests; the required-checks manifest names none of the four OCC contexts branch protection dropped; so a pull request merges gated by repo-evidence / dod-verify with no OCC companion -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -36,6 +41,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The repo-evidence caller turns the OCC difference step off after the cut-over."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+  - kind: "tests"
+    description: "The OCC companion callers are deleted and CI Summary and the manifest expect no companion context."
+    command: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -81,3 +89,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-occ-callers-removed"
+    description: "PR admission requires repo-owned evidence with no OCC companion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
