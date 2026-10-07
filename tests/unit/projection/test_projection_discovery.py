@@ -1001,8 +1001,10 @@ class TestOmn15800ExposureParity:
         # results (false-pass and false-refusal rates per class, stratum, arm).
         # 70 as of OMN-20007: +1 for the bus-backed, tenant-scoped metering
         # summary (fixed UTC day rows plus one all-time row per baseline).
+        # 71 as of OMN-20071: +1 for the bus-backed DoD verdict runs,
+        # read per ticket by the omniclaude Done gate through the access node.
         topic_map = real_topic_map
-        assert len(topic_map) == 70
+        assert len(topic_map) == 71
         assert "onex.snapshot.projection.metering-summary.v1" in topic_map
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map

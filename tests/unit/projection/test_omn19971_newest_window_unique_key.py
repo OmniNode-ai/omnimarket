@@ -509,6 +509,7 @@ class _WindowedSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
         self.window_reads.append(selection)
@@ -520,6 +521,8 @@ class _WindowedSource:
         if correlation_id is not None:
             # The table reader filters in its WHERE clause, before the window.
             rows = [r for r in rows if r["correlation_id"] == correlation_id]
+        if ticket_id is not None:
+            rows = [r for r in rows if r["ticket_id"] == ticket_id]
         if since is not None:
             assert cfg.cursor_column is not None
             rows = [r for r in rows if r[cfg.cursor_column] > int(since)]

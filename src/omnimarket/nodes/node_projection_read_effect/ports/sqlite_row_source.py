@@ -61,6 +61,7 @@ def build_sqlite_window_query(
     tenant_id: str | None,
     since: str | None = None,
     correlation_id: str | None = None,
+    ticket_id: str | None = None,
     selection: str = "newest",
 ) -> WindowQuery:
     """The SQLite SQL for one exposure's served window.
@@ -90,6 +91,10 @@ def build_sqlite_window_query(
     if correlation_id is not None:
         params.append(correlation_id)
         where.append(f"CAST({quote_identifier('correlation_id')} AS TEXT) = ?")
+
+    if ticket_id is not None:
+        params.append(ticket_id)
+        where.append(f"CAST({quote_identifier('ticket_id')} AS TEXT) = ?")
 
     if since is not None:
         if cfg.cursor_column is None:
@@ -301,6 +306,7 @@ class SqliteTableRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
@@ -310,6 +316,7 @@ class SqliteTableRowSource:
             tenant_id=tenant_id,
             since=since,
             correlation_id=correlation_id,
+            ticket_id=ticket_id,
             selection=selection,
         )
         return await asyncio.to_thread(self._fetch, cfg, order_spec, query)

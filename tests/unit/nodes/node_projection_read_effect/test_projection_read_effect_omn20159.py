@@ -110,6 +110,7 @@ class _RecordingSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
         self.tenants.append(tenant_id)

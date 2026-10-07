@@ -56,7 +56,10 @@ from omnimarket.nodes.node_projection_dod_verdict.models import (
     ModelDodVerdictRow,
     ModelDodVerdictWire,
 )
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.table_reader import serialise_row
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +125,7 @@ _UPSERT = f"""
         contract_repository = EXCLUDED.contract_repository,
         contract_commit_sha = EXCLUDED.contract_commit_sha,
         contract_repo_path = EXCLUDED.contract_repo_path
-    RETURNING ticket_id, correlation_id, completed_at, outcome, outcome_refusal
+    RETURNING *
 """
 
 
@@ -160,6 +163,14 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
+        exposures = load_projection_exposures_from_contract(
+            self._contract,
+            str(self._contract.get("name", "projection_dod_verdict")),
+            _path,
+        )
+        self._snapshot_exposure: ProjectionTableConfig | None = next(
+            (exposure for exposure in exposures if exposure.bus_backed), None
+        )
         self._fold = HandlerProjectionDodVerdict()
 
     @property
@@ -215,7 +226,11 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         declined = result.row is None
         await self.db.connect()
         try:
-            written = None if result.row is None else await self._persist(result.row)
+            written = (
+                None
+                if result.row is None
+                else await self._persist(result.row, meta=meta)
+            )
         finally:
             await self._stop_producer()
             await self.db.close()
@@ -242,10 +257,12 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         Boolean because :class:`BaseProjectionRunner`'s own consume loop is its
         caller and commits offsets on that answer.
         """
-        await self._project_verdict(data)
+        await self._project_verdict(data, meta=meta)
         return True
 
-    async def _project_verdict(self, data: dict[str, Any]) -> dict[str, Any] | None:
+    async def _project_verdict(
+        self, data: dict[str, Any], *, meta: MessageMeta | None = None
+    ) -> dict[str, Any] | None:
         """Fold and persist one verdict.
 
         Returns a compact description of the row the database accepted, or
@@ -257,7 +274,7 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         result = self._fold_verdict(data)
         if result.row is None:
             return None
-        return await self._persist(result.row)
+        return await self._persist(result.row, meta=meta)
 
     def _fold_verdict(self, data: dict[str, Any]) -> ModelDodVerdictProjectionResult:
         """Validate the wire payload and run the pure fold over it.
@@ -278,7 +295,9 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
             )
         return result
 
-    async def _persist(self, row: ModelDodVerdictRow) -> dict[str, Any] | None:
+    async def _persist(
+        self, row: ModelDodVerdictRow, *, meta: MessageMeta | None = None
+    ) -> dict[str, Any] | None:
         """Upsert one folded row; describe what the database accepted."""
         written = await self.db.execute(
             _UPSERT,
@@ -316,6 +335,23 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
             return None
 
         accepted = written[0]
+        # OMN-20071: publish the persisted values, including the database's
+        # cursor, rather than a reconstruction of the arriving event. Both
+        # public dispatch paths carry their source coordinates; the private
+        # persistence seam used by rebuilds has no bus event to acknowledge.
+        exposure = self._snapshot_exposure
+        if exposure is not None and meta is not None:
+            await self.publish_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=serialise_row(
+                    exposure, {column: accepted[column] for column in exposure.columns}
+                ),
+                source_event_id=meta.fallback_id,
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+            )
         return {
             "ticket_id": str(accepted["ticket_id"]),
             "correlation_id": str(accepted["correlation_id"]),

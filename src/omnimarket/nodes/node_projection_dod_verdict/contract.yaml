@@ -135,15 +135,52 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-dod-verdict-applied.v1
 
-# Deliberately NO projection_api block. Nothing renders this table on a
-# dashboard today, and a bus_backed exposure with no reader turns
-# exposure-reader-coverage red on every open omnibase_infra pull request
-# until an opt-out is declared beside it. Its reader is the plan's report
-# node (Task 1), an omnimarket compute node that reads the relation through
-# its own db_io rather than through the snapshot bus. Declaring an exposure
-# for a renderer nobody has specified would be an opt-out with no expiry,
-# which is the thing that opt-out mechanism exists to prevent. Several
-# projection nodes ship without the block for the same reason.
+# OMN-20071: the omniclaude Done gate reads repo-owned verdicts for one ticket
+# through node_projection_read_effect, over the runtime POST /skill edge.
+# Its reader lives in omniclaude plugins/onex/hooks/lib/no_pr_bound_evidence.py.
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.dod-verdict.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "dod_verify_runs"
+  # As for lab-lane-health, discovery resolves the physical schema from db_io.
+  schema: "omnidash_analytics"
+  columns:
+    - "ticket_id"
+    - "correlation_id"
+    - "completed_at"
+    - "started_at"
+    - "status"
+    - "unresolved_cause"
+    - "outcome"
+    - "outcome_refusal"
+    - "total_checks"
+    - "verified_count"
+    - "failed_count"
+    - "skipped_count"
+    - "contract_source"
+    - "contract_repository"
+    - "contract_commit_sha"
+    - "contract_repo_path"
+    - "projected_at"
+    - "projection_cursor"
+  order_by: "completed_at DESC"
+  # Select the latest verdict before limiting, while retaining cursor walks.
+  page_selection: "order_by"
+  cursor_column: "projection_cursor"
+  freshness_column: "projected_at"
+  limit: 100
+  # OMN-15864: the writer publishes the persisted row in the same change.
+  bus_backed: true
+  key_columns: [ticket_id, correlation_id, completed_at]
+  # OMN-18908: one source run owns this key for its life; an idempotent upsert
+  # repeats that run, while a new completion time gives a new run its own key.
+  key_grain: "immutable"
+  consumers: none
+  consumers_reason: >-
+    No dashboard or status page renders this exposure. Its reader is the
+    omniclaude Done gate, which reads the latest repo-owned verdict for one
+    ticket through node_projection_read_effect over the runtime /skill edge
+    (OMN-20071).
 
 metadata:
   transport_type: kafka

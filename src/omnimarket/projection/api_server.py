@@ -364,6 +364,7 @@ async def morning_page(
 async def projection_query(
     topic: str,
     correlation_id: str | None = Query(default=None),
+    ticket_id: str | None = Query(default=None),
     since: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
@@ -379,6 +380,7 @@ async def projection_query(
         topic_map=topic_map,
         source=source,
         correlation_id=correlation_id,
+        ticket_id=ticket_id,
         since=since,
         limit=limit,
         order=order,

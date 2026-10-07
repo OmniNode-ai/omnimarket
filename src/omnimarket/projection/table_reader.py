@@ -346,6 +346,7 @@ def build_window_query(
     since: str | None = None,
     since_type: str | None = None,
     correlation_id: str | None = None,
+    ticket_id: str | None = None,
     selection: str = "newest",
     relation_columns: frozenset[str] | None = None,
     unique_keys: tuple[frozenset[str], ...] = (),
@@ -395,6 +396,10 @@ def build_window_query(
     if correlation_id is not None:
         params.append(correlation_id)
         where.append(f"{quote_identifier('correlation_id')}::text = ${len(params)}")
+
+    if ticket_id is not None:
+        params.append(ticket_id)
+        where.append(f"{quote_identifier('ticket_id')}::text = ${len(params)}")
 
     if since is not None:
         if cfg.cursor_column is None or since_type is None:
@@ -611,6 +616,7 @@ class ProtocolProjectionRowSource(Protocol):
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]: ...
 
@@ -869,6 +875,7 @@ class TableRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
@@ -906,6 +913,7 @@ class TableRowSource:
                     since=since,
                     since_type=since_type,
                     correlation_id=correlation_id,
+                    ticket_id=ticket_id,
                     selection=selection,
                     relation_columns=relation_columns,
                     unique_keys=catalogue.unique_keys,

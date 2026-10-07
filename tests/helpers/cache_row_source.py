@@ -87,10 +87,11 @@ class CacheRowSource:
         tenant_id: str | None,
         since: str | None = None,
         correlation_id: str | None = None,
+        ticket_id: str | None = None,
         selection: str = "newest",
     ) -> list[dict[str, Any]]:
-        # ``since`` and ``correlation_id`` are applied by the route over the
-        # whole set, as they were over the cache.
+        # ``since``, ``correlation_id`` and ``ticket_id`` are applied by the
+        # shared page read over the whole set, as they were over the cache.
         rows: list[dict[str, Any]] = self.cache.get_rows(
             cfg.topic,
             unbounded=True,

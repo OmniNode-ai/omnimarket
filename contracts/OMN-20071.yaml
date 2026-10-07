@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20071"
+title: "The DoD verdict projection exposes a ticket's verdict rows, contract subject included, through node_projection_read_effect"
+summary: "OR.3, AC4: this repository binds the projection-access half of AC4; omniclaude binds the Done gate half. The existing runtime projection access node reads the latest repo-owned dod_verify verdict for one ticket, including its contract source, repository, commit and path, without the gate reading the database directly."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      This repository binds the projection-access half of AC4; omniclaude binds the gate half. The acceptance criterion below is transcribed verbatim from OMN-20071.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: The omniclaude Done gate looks for a ticket's contract first in the repository its PR merged into and takes the verdict from the S3 check run on the merged head (or from the `dod_verify` verdict through the existing projection access node, never the database directly, per RULING 2026-10-02T15:56:36Z), and treats onex_change_control as the source only for tickets whose contracts are there -- falsifier: the gate admits Done on a scratch ticket whose omnimarket contract leaves one criterion unbound, or refuses it after every criterion is bound and the S3 check run on the merged head is green
+evidence_requirements:
+  - kind: "tests"
+    description: "The real contract discovers a bus-backed verdict exposure with its contract subject, ticket-scoped node reads return the newest verdict first, unsupported filters are refused, and HTTP and node reads return the same page."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_projection_read_effect/test_projection_read_ticket_filter_omn20071.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The real fold and writer persist verdicts for two tickets on PostgreSQL with migrations 0000, 0002, 0003 and 0004; the access node reads exactly one ticket's verdicts with both repository-owned contract sources and their subjects intact."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/integration/nodes/node_projection_read_effect/test_dod_verdict_read_by_ticket_real_postgres_omn20071.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20071-projection-read-ticket-filter"
+    description: "The existing projection access node and HTTP route serve the same ticket-filtered verdict page, contract subject included, and refuse an exposure without a ticket column."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_projection_read_effect/test_projection_read_ticket_filter_omn20071.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20071-verdict-read-real-postgres"
+    description: "Rows written through the real verdict fold and writer are read for exactly one ticket through HandlerProjectionRead and TableRowSource, with product_repository and onex_change_control subjects intact."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/integration/nodes/node_projection_read_effect/test_dod_verdict_read_by_ticket_real_postgres_omn20071.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

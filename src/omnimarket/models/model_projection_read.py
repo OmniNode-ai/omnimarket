@@ -24,7 +24,8 @@ class ModelProjectionReadRequest(BaseModel):
     The row filter is named ``row_correlation_id``, not ``correlation_id``: the
     runtime's local ingress stamps a field named ``correlation_id`` with the
     request's own correlation id, which would silently filter every read by an
-    id no row carries.
+    id no row carries. ``row_ticket_id`` uses the same row_* namespace to
+    distinguish a row predicate from command-envelope identity.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -36,6 +37,7 @@ class ModelProjectionReadRequest(BaseModel):
     order: str | None = Field(default=None, pattern="^(?i:asc|desc)$")
     order_by: str | None = None
     row_correlation_id: str | None = None
+    row_ticket_id: str | None = Field(default=None, min_length=1)
 
 
 class ModelProjectionReadResult(BaseModel):

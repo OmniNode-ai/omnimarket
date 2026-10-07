@@ -82,6 +82,13 @@ def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
     return "correlation_id" in bare_columns
 
 
+def topic_supports_ticket_id_filter(cfg: ProjectionTableConfig) -> bool:
+    """Only exposures declaring ticket_id (or SELECT *) accept a ticket filter."""
+    return cfg.columns == ("*",) or "ticket_id" in {
+        col.strip('"') for col in cfg.columns
+    }
+
+
 def compute_freshness(
     latest_ts: str | None,
     expected_event_interval_seconds: int | None = None,
@@ -488,6 +495,7 @@ async def read_projection_page(
     topic_map: dict[str, ProjectionTableConfig],
     source: ProtocolProjectionRowSource,
     correlation_id: str | None = None,
+    ticket_id: str | None = None,
     since: str | None = None,
     limit: int | None = None,
     order: str | None = None,
@@ -561,6 +569,20 @@ async def read_projection_page(
             },
         )
 
+    if ticket_id is not None and not topic_supports_ticket_id_filter(cfg):
+        return ProjectionPage(
+            422,
+            {
+                "error": "unsupported_filter",
+                "filter": "ticket_id",
+                "topic": topic,
+                "detail": (
+                    f"Topic '{topic}' does not expose a 'ticket_id' column "
+                    "and cannot be filtered by it."
+                ),
+            },
+        )
+
     if since is not None and cfg.cursor_column is None:
         return ProjectionPage(
             422,
@@ -620,6 +642,7 @@ async def read_projection_page(
             tenant_id=scope_tenant,
             since=since,
             correlation_id=correlation_id,
+            ticket_id=ticket_id,
             selection=selection,
         )
         # OMN-19971: one window read per page. The unfiltered newest window
@@ -629,7 +652,11 @@ async def read_projection_page(
             cfg,
             tenant_id=scope_tenant,
             window_rows=(
-                all_rows if selection == "newest" and correlation_id is None else None
+                all_rows
+                if selection == "newest"
+                and correlation_id is None
+                and ticket_id is None
+                else None
             ),
         )
     except ProjectionReadError as exc:
@@ -639,7 +666,7 @@ async def read_projection_page(
         cursor_column=cfg.cursor_column,
         cursor=since,
         correlation_id=correlation_id,
-        ticket_id=None,
+        ticket_id=ticket_id,
         repo=None,
         pr_number=None,
     )

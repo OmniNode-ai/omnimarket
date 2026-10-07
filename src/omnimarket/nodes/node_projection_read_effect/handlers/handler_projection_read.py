@@ -135,6 +135,7 @@ class HandlerProjectionRead:
             topic_map=self._topics(),
             source=source,
             correlation_id=request.row_correlation_id,
+            ticket_id=request.row_ticket_id,
             since=request.since,
             limit=request.limit,
             order=request.order,
