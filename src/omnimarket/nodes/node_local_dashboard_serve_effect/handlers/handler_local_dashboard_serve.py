@@ -55,14 +55,13 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
-    DashboardBundleError,
-    ensure_bundle,
-)
-
 from omnimarket.models.model_projection_read import (
     ModelProjectionReadRequest,
     ModelProjectionReadResult,
+)
+from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
+    DashboardBundleError,
+    ensure_bundle,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,

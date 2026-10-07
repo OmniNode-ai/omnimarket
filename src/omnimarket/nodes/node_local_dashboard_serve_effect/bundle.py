@@ -39,7 +39,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
+from omnimarket.github_api import GitHubApiError, download_release_asset
 
 #: Where a verified bundle is unpacked. Keyed by digest, so a pin bump lands
 #: beside the old copy rather than over it and a rollback needs no re-download.
@@ -160,13 +160,9 @@ def _extract(archive: Path, into: Path) -> None:
 
 
 def _download(url: str, to: Path) -> None:
-    to.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            to.write_bytes(response.content)
-    except (httpx.HTTPError, OSError) as exc:
+        download_release_asset(url, to)
+    except GitHubApiError as exc:
         raise DashboardBundleError(
             f"could not download the dashboard bundle from {url}: {exc}"
         ) from exc

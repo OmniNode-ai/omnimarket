@@ -25,7 +25,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn19917-pin-shape-and-wheel-placement"
+  - id: "dod-omn19917-pin-shape-and-wheel"
     description: "AC1 hosted probe. The pin is well formed, ships inside the wheel, and an unusable pin is refused."
     source: "manual"
     checks:
@@ -33,7 +33,7 @@ dod_evidence:
         check_value: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k pin"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn19917-refuses-a-bundle-that-does-not-match"
+  - id: "dod-omn19917-refuses-wrong-bytes"
     description: "AC2 hosted probe. A tampered cache and an escaping member are both refused."
     source: "manual"
     checks:
@@ -41,7 +41,7 @@ dod_evidence:
         check_value: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k 'tamper or escap or cache'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn19917-pages-served-beside-the-projection-routes"
+  - id: "dod-omn19917-pages-beside-api"
     description: "AC3 hosted probe. The root serves the page, a client route falls back, a missing asset is a 404, and the API is not shadowed."
     source: "manual"
     checks:

@@ -19,6 +19,7 @@ the download in a clean container, which is the acceptance criterion.
 from __future__ import annotations
 
 import hashlib
+import re
 import tarfile
 import tomllib
 from pathlib import Path
@@ -89,7 +90,8 @@ def test_the_repository_pins_a_bundle() -> None:
     assert pin.repository == "OmniNode-ai/omnidash"
     assert len(pin.sha256) == 64
     assert pin.url.startswith("https://github.com/OmniNode-ai/omnidash/releases/")
-    assert pin.asset in pin.url and pin.version in pin.url
+    assert pin.asset in pin.url
+    assert pin.version in pin.url
 
 
 def test_the_pin_ships_inside_the_wheel() -> None:
@@ -213,12 +215,12 @@ def test_a_bundle_with_no_index_is_refused(
     monkeypatch.setattr(
         bundle_mod,
         "_download",
-        lambda url, to: (
+        lambda _url, to: (
             to.parent.mkdir(parents=True, exist_ok=True),
             to.write_bytes(archive.read_bytes()),
         )[0],
     )
-    with pytest.raises(DashboardBundleError, match="no index.html"):
+    with pytest.raises(DashboardBundleError, match=re.escape("no index.html")):
         ensure_bundle(pin, cache_root=tmp_path / "cache")
 
 
@@ -281,6 +283,8 @@ def test_a_crafted_path_cannot_reach_outside_the_bundle(tmp_path: Path) -> None:
 
 def test_no_pages_means_the_api_alone(tmp_path: Path) -> None:
     """The data-only app stays constructible, so the mount is additive."""
-    client = TestClient(create_dashboard_app(handler=_ReadNode(), tenant="t", topic_map={}))
+    client = TestClient(
+        create_dashboard_app(handler=_ReadNode(), tenant="t", topic_map={})
+    )
     assert client.get("/projections").status_code == 200
     assert client.get("/").status_code == 404
