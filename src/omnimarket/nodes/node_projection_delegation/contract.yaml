@@ -341,6 +341,7 @@ projection_api:
         - pricing_manifest_version
         - timestamp
         - created_at
+        - data_source
       order_by: created_at DESC
       freshness_column: created_at
       limit: 500
@@ -368,6 +369,7 @@ projection_api:
         - escalation_count
         - authority_source
         - pricing_manifest_version
+        - data_source
       order_by: timestamp DESC
       freshness_column: timestamp
       limit: 100
@@ -520,6 +522,8 @@ projection_api:
         - response_text
         - timestamp
         - created_at
+        # Keep fixture provenance on the detail page as well as the Runs list.
+        - data_source
         # The tenant identity, declared as `tenant_column` below. This surface
         # serves prompt_text/response_text, so it is tenant-scoped; the model
         # refuses a scoped exposure that does not return its scoping column.
