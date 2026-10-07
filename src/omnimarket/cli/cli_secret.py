@@ -32,8 +32,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import sys
 from getpass import getpass
+from pathlib import Path
 
 import click
 from pydantic import SecretStr, ValidationError
@@ -41,16 +43,31 @@ from pydantic import SecretStr, ValidationError
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
-    register_local_byok_credential,
-    revoke_local_byok_credential,
+)
+from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
+    HandlerLocalSecretStore,
+    LocalSecretStoreRefusedError,
+    offered_provider,
+)
+from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
+    ModelLocalSecretRequest,
+)
+from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_result import (
+    ModelLocalSecretResult,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    apply_credential_registered,
+    apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
     CredentialPlanUndeterminedError,
     CredentialStoreError,
+    ModelCredentialRegisteredEvent,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
     register_inference_credential,
 )
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -85,10 +102,7 @@ def _offered_provider(secret_ref: str) -> str | None:
     reference (already the customer's) and for a provider the catalogue does
     not offer (no customer backend to route to).
     """
-    slug = house_provider_slug(secret_ref)
-    if slug is None or resolve_byok_provider_backend(slug) is None:
-        return None
-    return slug
+    return offered_provider(secret_ref)
 
 
 def _refuse_plan_not_permitted(provider: str, plan: str) -> None:
@@ -329,6 +343,33 @@ def register_tenant_key(
     )
 
 
+def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> None:
+    """Fold the effect's credential events into the local projection store.
+
+    Mode 1 has no broker: the local runtime folds a node's events in-process
+    into the SQLite store the local dashboard serves, as the delegation and
+    metering folds do. That store is the same file as the secret store (the
+    2026-09-18 ruling: one local database), and the rows carry the fingerprint
+    prefix and set time, never the value.
+    """
+    if not result.events:
+        return
+    try:
+        db = SqliteDatabaseAdapter(db_path)
+        for event in result.events:
+            payload = event.model_dump(mode="json")
+            if isinstance(event, ModelCredentialRegisteredEvent):
+                apply_credential_registered(payload, db)
+            else:
+                apply_credential_revoked(payload, db)
+    except sqlite3.Error as error:
+        raise click.ClickException(
+            f"{result.secret_ref} is {'removed' if result.operation == 'delete' else 'stored'}, "
+            f"but the Credentials page was not updated ({type(error).__name__}: {error}). "
+            "Run the command again to retry."
+        ) from None
+
+
 @secret_group.command("set")
 @click.argument("secret_ref")
 @click.option(
@@ -382,14 +423,25 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
         if provider is not None
         else None
     )
-    asyncio.run(store.set_secret(secret_ref, value))
-    click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
-    if provider is not None:
-        # The same key, under the tenant-shaped reference the customer route
-        # carries. Replaces any earlier one for this provider (one key each).
-        route_ref = register_local_byok_credential(
-            provider, value, plan=plan, model=model, db_path=store.db_path
+    # OMN-19985: the local secret store effect stores the key and, for a provider
+    # key, registers it under a freshly minted route ref (replacing any earlier
+    # one for this provider, one key each) and returns the credential events.
+    try:
+        result = HandlerLocalSecretStore().handle(
+            ModelLocalSecretRequest(
+                operation="set",
+                secret_ref=secret_ref,
+                value=SecretStr(value),
+                force=force,
+                plan=plan,
+                model=model,
+            )
         )
+    except LocalSecretStoreRefusedError as refusal:
+        raise click.ClickException(str(refusal)) from None
+    click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
+    route_ref = result.route_ref
+    if provider is not None and route_ref is not None:
         details = [
             f"plan: {plan}" if plan is not None else None,
             f"model: {model}" if model is not None else None,
@@ -397,6 +449,7 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
         shown = [detail for detail in details if detail is not None]
         suffix = f" ({', '.join(shown)})" if shown else ""
         click.echo(f"Registered it as your {provider} route key{suffix}: {route_ref}.")
+    _fold_credential_events(result, store.db_path)
 
 
 @secret_group.command("list")
@@ -422,14 +475,13 @@ def list_secrets() -> None:
 def delete_secret(secret_ref: str) -> None:
     """Remove the stored value for SECRET_REF."""
     store = LocalByokCredentialStore()
-    if not asyncio.run(store.delete_secret(secret_ref)):
-        raise click.ClickException(
-            f"this machine holds no value for {secret_ref}; nothing was "
-            "removed. Run 'onex secret list' to see what is stored."
+    try:
+        result = HandlerLocalSecretStore().handle(
+            ModelLocalSecretRequest(operation="delete", secret_ref=secret_ref)
         )
+    except LocalSecretStoreRefusedError as refusal:
+        raise click.ClickException(str(refusal)) from None
     click.echo(f"Removed {secret_ref}.")
-    provider = _offered_provider(secret_ref)
-    if provider is not None and revoke_local_byok_credential(
-        provider, db_path=store.db_path
-    ):
-        click.echo(f"Withdrew your {provider} route key with it.")
+    if result.route_withdrawn:
+        click.echo(f"Withdrew your {result.provider} route key with it.")
+    _fold_credential_events(result, store.db_path)
