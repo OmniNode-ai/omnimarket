@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19970"
+title: "Fixture provenance labels survive the runtime projection seam"
+summary: "The dev-seed handler tags payload and envelope with data_source=fixture, the delegation projection reads provenance through envelope_data_source before writing, and every delegation_events row exposure declares data_source."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-fixture-label-survives-runtime-seam"
+    statement: "A fixture row seeded through the runtime path keeps its fixture label in storage and in every delegation row exposure, and fixture savings stay out of the measured total."
+    acceptance:
+      - id: "AC1"
+        statement: "Replaying the seed through the runtime keeps fixture labels and the measured total unchanged -- falsifier: uv run pytest tests/test_omn19970_dev_seed.py -q -k runtime_seed_replay"
+      - id: "AC2"
+        statement: "Every delegation row exposure declares fixture provenance and the label reaches each exposure -- falsifier: uv run pytest tests/test_omn19970_dev_seed.py -q -k 'delegation_row_exposure or each_delegation_exposure'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Runtime seed replay and exposure provenance tests."
+    command: "uv run pytest tests/test_omn19970_dev_seed.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-runtime-seed-replay-keeps-labels"
+    description: "Runtime seed replay keeps fixture labels and the measured total."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py -q -k runtime_seed_replay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-every-exposure-declares-provenance"
+    description: "Every delegation row exposure declares data_source and receives the fixture label."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py -q -k 'delegation_row_exposure or each_delegation_exposure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
