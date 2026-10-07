@@ -1,33 +1,89 @@
 ---
-schema_version: "1.0.0"
-ticket_id: "OMN-19362"
-title: "OMN-19362: Cap serialized diagnostic bytes in delegated test loop orchestrator"
-summary: "Caps the delegated test loop's returned diagnostic text by serialized bytes after writing the loop receipt, and refuses metadata that cannot fit the compact byte budget. Tests cover oversized ASCII, Unicode and escaped diagnostics, retained receipt fields, matching child run IDs, status replay, and receipt persistence before oversized test-path rejection."
+schema_version: 1.0.0
+ticket_id: OMN-19362
+title: Delegated test loop orchestrator node and its compact result
+summary: Owning ticket criteria for the existing loop and compact result. Executable probes cover AC1-AC5 and AC7. AC6 requires the original T1 model path and design-review verdict in the PR; its historical citation is not reverified on this lab host. The original T8 receipts are absent here, so replay proof below uses a newly recorded fake-child loop receipt. No Done claim or rollout authorization is made.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-cap-serialized-diagnostics"
-    statement: |-
-      The delegated test loop must return the tested oversized diagnostic results below 4096 serialized bytes, retain the original exception type and top frame in the receipt, preserve matching child run IDs and failed-status replay, and write the receipt before refusing oversized test-path metadata.
-    acceptance:
-      - id: "AC1"
-        statement: |-
-          AC1: oversized ASCII, Unicode and escaped diagnostics yield a failed result below 4096 bytes using both result_json_bytes and UTF-8 model_dump_json, with three attempts and delegate calls; the receipt retains the original exception type and top frame, its delegate and run receipt IDs match the returned result, and it replays to the same failed status; an oversized test path raises ValueError for metadata exceeding the compact byte budget after the receipt records the full test path and delegate run-1 -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider
+- id: req-delegated-test-loop
+  statement: The existing loop must bound delegate calls, stop for no progress, refuse infrastructure faults, replay recorded child results, and return a compact result without test source.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: No behaviour makes more than three delegate calls. -- falsifier: a fake-child test in `uv run pytest src/omnimarket/nodes/node_delegated_test_loop_orchestrator/tests -q` whose every run fails counts four delegate dispatches.'
+  - id: AC2
+    statement: 'AC2: Two identical fingerprints in a row stop the loop with `no_progress`. -- falsifier: a fake-child test.'
+  - id: AC3
+    statement: 'AC3: An infrastructure fault is never accepted. -- falsifier: `test_infra_error_is_never_accepted` with a fake child returning a missing junit file.'
+  - id: AC4
+    statement: 'AC4: Replaying a recorded loop receipt''s child results through the decision function gives the same status. -- falsifier: a replay test over a recorded loop receipt.'
+  - id: AC5
+    statement: 'AC5: The serialized result stays under 4 KB. -- falsifier: a test with the maximum digest.'
+  - id: AC6
+    statement: 'AC6: The model-before-build citation is present. -- falsifier: the PR body lacks the T1 model path and verdict line.'
+  - id: AC7
+    statement: 'AC7: The node declares no `Plugin*` class. -- falsifier: `omnibase_infra.validators.no_plugin_daemon_classes` over the node.'
 evidence_requirements:
-  - kind: "tests"
-    description: "Fake-port orchestrator tests assert both serialized byte bounds for oversized diagnostic examples, retained exception type and top frame, matching child run IDs, failed-status replay, and receipt persistence before oversized test-path rejection."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q -p no:cacheprovider"
+- kind: tests
+  description: Execute the focused orchestrator probes on a lab host. Historical T1 and T8 artifact verification and the central bound dod_verify remain outstanding.
+  command: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_test_loop_orchestrator -q -p no:cacheprovider
 emergency_bypass:
   enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
+  justification: ''
+  follow_up_ticket_id: ''
 dod_evidence:
-  - id: "dod-serialized-diagnostics-ac1"
-    description: "The changed orchestrator test file checks compact serialized diagnostics, retained receipt fields and child IDs, status replay, and receipt persistence before oversized metadata rejection."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
+- id: dod-omn19362-three-call-bound
+  description: All failed runs dispatch exactly three delegates.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_attempt_bound_is_three -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn19362-no-progress
+  description: Consecutive identical failure fingerprints stop after two delegates.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_two_identical_fingerprints_in_a_row_stop_with_no_progress -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn19362-infra-refusal
+  description: Missing or empty junit is never accepted at fixed, prefix or mutation, even with exit code zero; the infrastructure terminal replays.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_infra_error_is_never_accepted tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_missing_junit_is_never_accepted -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn19362-receipt-replay
+  description: A recorded, serialized fake-child receipt lists all children and replays to the same status. The historical T8 artifact is not verified by this probe.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn19362-compact-result
+  description: Oversized ASCII, Unicode and escaped diagnostics fit both JSON serializers; full receipt fields and replay are retained. Oversized immutable metadata is refused after receipt persistence.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_result_carries_no_test_source_and_stays_under_4kb tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_oversized_diagnostics_are_compact_and_retained_in_the_receipt tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_oversized_metadata_is_refused_after_the_receipt_is_written -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn19362-no-plugin
+  description: All node Python sources contain no Plugin class declaration or envelope type.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_node_declares_no_plugin_class_and_no_envelope -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC7
