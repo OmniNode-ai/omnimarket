@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19448"
 title: "delegation_events stores finish_reason and truncated"
-summary: "omnimarket adds nullable finish_reason and truncated columns to delegation_events through migration 0053, carries both in the local dispatch terminal payload, and writes them from the deciding rung of the terminal. Unknown stop reasons stay NULL. Each acceptance criterion is bound to the pull request's own tests."
+summary: "omnimarket adds nullable finish_reason and truncated columns to delegation_events through migration 0053, carries both in the local dispatch terminal payload, and writes them from the deciding rung of the terminal. Unknown stop reasons stay NULL. Migration 0058 adds nullable requested_model, queue_wait_ms and execution_ms, written from the terminal: the first attempt's model, the measured queue wait and the measured execution time. Each acceptance criterion is bound to the pull request's own tests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -17,10 +17,23 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: the local dispatch payload and the canonical terminal carry the deciding rung's stop reason, and the projection writes both columns, keeps them across a later sparse terminal, and leaves them NULL for an unknown stop reason -- falsifier: uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q
+  - id: "req-requested-model-and-timing-columns"
+    statement: |-
+      delegation_events must record the model the ladder first requested and the terminal's measured queue wait and execution time, written from the terminal, with NULL meaning not measured.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: migration 0058 adds the nullable requested_model, queue_wait_ms and execution_ms columns idempotently, ships a rollback, and no other migration adds them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_columns_omn19448.py -q -k "only_migration_0058"
+      - id: "AC4"
+        statement: |-
+          AC4: the delegate-skill terminal and the canonical terminal write the three columns, a measured zero is stored as zero, an unmeasured value stays NULL, and a later sparse terminal does not erase them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The stop reason column tests."
     command: "uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q"
+  - kind: "tests"
+    description: "The requested model and timing column tests."
+    command: "uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,3 +55,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-requested-model-and-timing-ac3"
+    description: "Migration 0058 adds the nullable requested_model, queue_wait_ms and execution_ms columns idempotently, ships a rollback, and is the only migration that adds them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_columns_omn19448.py -q -k \"only_migration_0058\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-requested-model-and-timing-ac4"
+    description: "Both terminal paths write requested_model, queue_wait_ms and execution_ms; a measured zero stays zero, an unmeasured value stays NULL, and a sparse later terminal keeps them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

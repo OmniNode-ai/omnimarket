@@ -60,6 +60,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_accepting_attempt,
     _stamp_declared_failure_cause,
     _stamp_terminal_stop_reason,
+    _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
     compute_generation_proof_fields,
 )
@@ -1586,11 +1587,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "backend_id",
             "host",
             "finish_reason",
+            "requested_model",
         ):
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
                 row[key] = existing[key]
                 if key == "finish_reason" and row.get("truncated") is None:
                     row["truncated"] = existing.get("truncated")
+        # Same None-only timing merge as the sync writer; keep measured zero.
+        for key in ("queue_wait_ms", "execution_ms"):
+            if row.get(key) is None and existing.get(key) is not None:
+                row[key] = existing[key]
         if bool(existing.get("request_override_applied")):
             row["request_override_applied"] = True
         if existing.get("override_within_bounds") is False:
@@ -1800,7 +1806,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if not normalized.get("correlation_id"):
             normalized["correlation_id"] = meta.fallback_id
         try:
-            event = ModelProjectionTaskDelegatedEvent(**normalized)
+            event = ModelProjectionTaskDelegatedEvent.model_validate(normalized)
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
                 data, f"delegation terminal event failed model validation: {exc}", meta
@@ -1958,6 +1964,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        _stamp_terminal_timing_and_requested_model(
+            row,
+            event.attempts[0].model_id if event.attempts else None,
+            event.queue_wait_ms,
+            event.execution_duration_ms,
+        )
         # Same rule as the sync builder: a terminal that was never scored names
         # neither column, so the row stores NULL on insert, never zero.
         for column, value in (
