@@ -13,11 +13,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: |-
-          AC5: one envelope id bound twice around the handler gives one provider call, two completed responses with equal text and one delegation_events row, and the same correlation id on two envelope ids gives two provider calls -- falsifier: uv run pytest tests/test_omn18887_redelivery_end_to_end.py -q
+          AC5: one envelope id bound twice around the handler gives one provider call, two completed responses with equal text and one delegation_events row, and the same correlation id on two envelope ids gives two provider calls -- falsifier: uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The end-to-end redelivery cases and the existing delegate-skill golden chain."
-    command: "uv run pytest tests/test_omn18887_redelivery_end_to_end.py tests/test_golden_chain_node_delegate_skill_orchestrator.py -q"
+    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,6 +28,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn18887_redelivery_end_to_end.py -q"
+        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]

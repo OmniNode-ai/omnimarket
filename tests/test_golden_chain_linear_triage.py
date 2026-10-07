@@ -143,7 +143,7 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([])
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.status == "completed"
         assert result.total_scanned == 0
@@ -156,7 +156,7 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([_make_issue(days_ago=3)])
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.total_scanned == 1
         assert result.recent_count == 1
@@ -181,7 +181,9 @@ class TestLinearTriageGoldenChain:
         gh = _stub_github(merged_prs={"OMN-1234": fake_pr})
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False required: this test exercises the approved-close path
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1
         client.save_issue.assert_called_once_with(issue_id="abc", state="Done")
@@ -199,7 +201,9 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([_make_issue(days_ago=2, identifier="OMN-1234")])
         gh = _stub_github(merged_prs={"OMN-1234": fake_pr})
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(dry_run=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", dry_run=True)
+        )
 
         assert result.dry_run is True
         assert result.marked_done == 0
@@ -214,7 +218,9 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([issue])
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(threshold_days=14))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", threshold_days=14)
+        )
 
         assert result.stale_count == 1
         assert result.stale_flagged == 1
@@ -226,7 +232,7 @@ class TestLinearTriageGoldenChain:
         client = _stub_client([issue])
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.orphaned == 1
 
@@ -258,7 +264,7 @@ class TestLinearTriageGoldenChain:
         # child3 is in the issue list (non-done) so parent-id is a known parent
         # BUT child3.state = In Progress -> not all done -> epic NOT closed
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
         assert result.epics_closed == 0
 
     async def test_epic_completion_all_done(self) -> None:
@@ -293,7 +299,9 @@ class TestLinearTriageGoldenChain:
         gh = _stub_github()
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=False required: this test exercises the approved-close path
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_closed == 1
         client.save_issue.assert_any_call(issue_id="parent-id", state="Done")
@@ -326,7 +334,7 @@ class TestFlagOnlySafety:
         handler = HandlerLinearTriage(client=client, github_client=gh)
 
         # Default ModelLinearTriageStartCommand has flag_only=True
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         # ZERO mutations — the core invariant
         client.save_issue.assert_not_called()
@@ -359,7 +367,9 @@ class TestFlagOnlySafety:
         gh = _stub_github(merged_prs={"OMN-9002": fake_pr})
         handler = HandlerLinearTriage(client=client, github_client=gh)
 
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         client.save_issue.assert_not_called()
         client.save_comment.assert_not_called()
@@ -396,7 +406,7 @@ class TestFlagOnlySafety:
         handler = HandlerLinearTriage(client=client, github_client=gh)
 
         # Default command: flag_only=True
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         client.save_issue.assert_not_called()
         client.save_comment.assert_not_called()
@@ -429,7 +439,7 @@ class TestFlagOnlySafety:
         gh = _stub_github(merged_prs=prs)
         handler = HandlerLinearTriage(client=client, github_client=gh)
 
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         client.save_issue.assert_not_called()
         client.save_comment.assert_not_called()
@@ -459,7 +469,9 @@ class TestLinearTriageTimeout:
 
         with pytest.raises(TimeoutError):
             asyncio.run(
-                _run_with_timeout(handler, ModelLinearTriageStartCommand(), timeout=1)
+                _run_with_timeout(
+                    handler, ModelLinearTriageStartCommand(scope="backlog"), timeout=1
+                )
             )
 
     def test_no_timeout_completes_normally(self) -> None:
@@ -469,7 +481,9 @@ class TestLinearTriageTimeout:
         handler.handle.return_value = expected
 
         result = asyncio.run(
-            _run_with_timeout(handler, ModelLinearTriageStartCommand(), timeout=30)
+            _run_with_timeout(
+                handler, ModelLinearTriageStartCommand(scope="backlog"), timeout=30
+            )
         )
 
         assert result.total_scanned == 3

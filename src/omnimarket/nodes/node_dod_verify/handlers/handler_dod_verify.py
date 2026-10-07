@@ -614,6 +614,19 @@ class HandlerDodVerify:
                     f"verified for {command.ticket_id}"
                 )
 
+        if overall == EnumDodVerifyStatus.FAILED and error_message is None:
+            failures = [
+                f"{check.evidence_id}: "
+                + (
+                    check.failure.summary()
+                    if check.failure is not None
+                    else (check.message or "check failed")
+                )
+                for check in executable_checks
+                if check.status == EnumEvidenceCheckStatus.FAILED
+            ]
+            error_message = "EVIDENCE_CHECK_FAILED: " + " | ".join(failures)
+
         state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
