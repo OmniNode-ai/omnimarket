@@ -67,6 +67,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationDeliverableEvidence,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
+    ModelDelegationRawResponse,
     ModelQualityGateInput,
 )
 
@@ -528,6 +529,7 @@ def _response_contract_evidence_for_attempt(
     deliverable_contract: ModelDeliverableContract,
     outbound_system_prompt: str | None,
     validated: bool,
+    raw_response: ModelDelegationRawResponse | None,
 ) -> ModelDelegationContractEvidence | None:
     """Record the response contract this attempt conveyed and graded (OMN-19201).
 
@@ -563,6 +565,7 @@ def _response_contract_evidence_for_attempt(
         output_shape=output_shape,
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
+        raw_response=raw_response,
     )
 
 
@@ -3126,6 +3129,7 @@ class LocalDelegationDispatchPort:
                 deliverable_contract=deliverable_contract,
                 outbound_system_prompt=outbound_system_prompt,
                 validated=gate_result.passed,
+                raw_response=result.raw_response,
             ),
         )
 
