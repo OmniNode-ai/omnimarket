@@ -32,7 +32,7 @@ Example::
         HandlerIntentEventConsumer,
         ModelIntentEventConsumerConfig,
     )
-    from omnimarket.nodes.node_intent_storage_effect.adapters import (
+    from omnimarket.nodes.node_intent_storage_effect import (
         HandlerIntentStorageAdapter,
     )
 
@@ -90,7 +90,7 @@ from omnimarket.nodes.node_intent_event_consumer_effect.utils import (
 )
 
 if TYPE_CHECKING:
-    from omnimarket.nodes.node_intent_storage_effect.adapters.adapter_intent_storage import (  # type: ignore[import-untyped]
+    from omnimarket.nodes.node_intent_storage_effect import (
         HandlerIntentStorageAdapter,
     )
 
