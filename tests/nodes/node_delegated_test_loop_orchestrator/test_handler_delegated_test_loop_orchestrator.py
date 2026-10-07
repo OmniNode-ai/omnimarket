@@ -309,6 +309,46 @@ def test_the_result_carries_no_test_source_and_stays_under_4kb() -> None:
     assert "def test_x" not in json.dumps(result.model_dump(mode="json"))
 
 
+@pytest.mark.parametrize(
+    "text", ["x" * 6000, "😀" * 500, "\\" * 2000], ids=["ascii", "unicode", "escaped"]
+)
+def test_oversized_diagnostics_are_compact_and_retained_in_the_receipt(
+    text: str,
+) -> None:
+    class LargeDigestPorts(FakePorts):
+        def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
+            return _digest(
+                "failed_call",
+                "fp" + receipt.receipt_id,
+                message=text[:500],
+                exception_type=text,
+                top_frame=text,
+            )
+
+    ports = LargeDigestPorts({"fixed": ["failed_call"] * 3})
+    result = _run(ports)
+    assert result.status is EnumLoopStatus.FAILED
+    assert result_json_bytes(result) < MAX_RESULT_BYTES
+    assert len(result.model_dump_json().encode("utf-8")) < MAX_RESULT_BYTES
+    assert result.attempts == ports.delegate_calls == 3
+    recorded = ports.written[CORRELATION]["result"]
+    assert recorded["final_digest"]["exception_type"] == text
+    assert recorded["final_digest"]["top_frame"] == text
+    assert recorded["delegate_run_ids"] == list(result.delegate_run_ids)
+    assert recorded["run_receipt_ids"] == list(result.run_receipt_ids)
+    assert replay_loop_receipt(ports.written[CORRELATION]) is result.status
+
+
+def test_oversized_metadata_is_refused_after_the_receipt_is_written() -> None:
+    ports = FakePorts({"fixed": ["passed"], "prefix": ["failed_call"]})
+    path = "tests/" + "x" * MAX_RESULT_BYTES + ".py"
+    with pytest.raises(ValueError, match="metadata exceeds the compact byte budget"):
+        _run(ports, test_path=path)
+    receipt = ports.written[CORRELATION]
+    assert receipt["result"]["test_path"] == path
+    assert receipt["delegate_run_ids"] == ["run-1"]
+
+
 def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status() -> None:
     ports = FakePorts(
         {
