@@ -25,6 +25,8 @@ requirements:
     acceptance:
       - id: "AC6"
         statement: "omnimarket deletes the callers that mint, heal, wait on or verify a PR's OCC companion (call-occ-preflight.yml, call-occ-autobind.yml, occ-autobind-mint-verify.yml, occ-companion-merge-heal.yml, occ-receipt-runner.yml, call-receipt-gate.yml, the OCC Companion Merged Gate job); CI Summary expects no companion context (occ-preflight / eligibility, verify / verify) and keeps the two emitter tests; the required-checks manifest names none of the four OCC contexts branch protection dropped; so a pull request merges gated by repo-evidence / dod-verify with no OCC companion -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
+      - id: "AC7"
+        statement: "omnimarket deletes the report-only OCC observers that computed, planned or attested a PR's OCC companion (call-occ-companion-observe.yml, call-occ-companion-author.yml, call-occ-attestation-observe.yml), so no pull_request workflow in omnimarket reads or writes an OCC companion or observation -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -44,6 +46,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The OCC companion callers are deleted and CI Summary and the manifest expect no companion context."
     command: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
+  - kind: "tests"
+    description: "The report-only OCC observer callers are deleted."
+    command: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -97,3 +102,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-occ-observers-removed"
+    description: "No pull_request workflow in omnimarket computes, plans or attests an OCC companion; the test fails at the merge base, where the three observer callers still exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
