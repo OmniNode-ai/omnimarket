@@ -126,6 +126,8 @@ class HandlerDelegationEvalSample:
         shortfalls: list[ModelDelegationEvalShortfall] = []
         for (_, outcome, _), rows in sorted(groups.items()):
             stratum = _stratum(rows[0])
+            # quotas is keyed by gate outcome (EnumDelegationEvalGateOutcome),
+            # which is the middle element of the group key, not task_class.
             quota = quotas[outcome]
             ordered = sorted(rows, key=lambda row: _order(request.seed, _key(row)))
             imported = [row for row in ordered if _key(row) in imports]
