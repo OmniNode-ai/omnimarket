@@ -68,6 +68,7 @@ class _MockLinearClient:
         self,
         *,
         team: str,
+        project_id: str | None = None,
         state_not_in: list[str] | None = None,
         limit: int = 250,
         after: str | None = None,
@@ -163,7 +164,9 @@ async def test_all_recent_no_pr_no_action() -> None:
         ]
     )
     handler = HandlerLinearTriage(client=client, github_client=_MockGitHubClient())
-    result = await handler.handle(ModelLinearTriageStartCommand(team="Omninode"))
+    result = await handler.handle(
+        ModelLinearTriageStartCommand(scope="backlog", team="Omninode")
+    )
 
     assert result.status == "completed"
     assert result.total_scanned == 2
@@ -179,7 +182,7 @@ async def test_stale_ticket_is_flagged() -> None:
     # NEGATIVE CONTROL: a 120-day-old In Progress ticket must be flagged stale.
     client = _MockLinearClient([_node("OMN-9", "In Progress", _STALE)])
     handler = HandlerLinearTriage(client=client, github_client=_MockGitHubClient())
-    result = await handler.handle(ModelLinearTriageStartCommand())
+    result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
     assert result.stale_count == 1
     assert result.stale_flagged == 1
@@ -199,7 +202,9 @@ async def test_flag_only_suppresses_merged_close() -> None:
         github_client=_MockGitHubClient(merged_for=frozenset({"OMN-7"})),
     )
     # flag_only defaults to True → no mutation, candidate recorded for review.
-    result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+    result = await handler.handle(
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+    )
 
     assert result.flag_only is True
     assert result.marked_done == 0
@@ -219,7 +224,7 @@ async def test_merged_pr_marks_done_when_not_flag_only() -> None:
         github_client=_MockGitHubClient(merged_for=frozenset({"OMN-8"})),
     )
     result = await handler.handle(
-        ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+        ModelLinearTriageStartCommand(scope="backlog", flag_only=False, dry_run=False)
     )
 
     assert result.marked_done == 1
@@ -233,7 +238,9 @@ async def test_merged_pr_marks_done_when_not_flag_only() -> None:
 async def test_team_routing_is_passed_through() -> None:
     client = _MockLinearClient([_node("OMN-5", "Backlog", _FRESH)])
     handler = HandlerLinearTriage(client=client, github_client=_MockGitHubClient())
-    result = await handler.handle(ModelLinearTriageStartCommand(team="CustomTeam"))
+    result = await handler.handle(
+        ModelLinearTriageStartCommand(scope="backlog", team="CustomTeam")
+    )
 
     assert client.team_seen == "CustomTeam"
     assert result.total_scanned == 1

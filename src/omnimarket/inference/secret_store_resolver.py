@@ -621,6 +621,23 @@ def _configured_secret_store() -> ProtocolSecretStore | None:
     if not config_path:
         return None
 
+    return secret_store_from_config_path(config_path, allow_inline=True)
+
+
+def secret_store_from_config_path(
+    config_path: str, *, allow_inline: bool = False
+) -> ProtocolSecretStore:
+    """Construct a store from an explicitly declared resolver config.
+
+    Uses the same typed validation and Infisical bootstrap as the lane store.
+    The caller's selection never mutates the process-wide cached lane store.
+    Explicit files must exist; only the configured lane may resolve its missing
+    rendered artifact from the lane's declared inline source.
+    """
+    if not allow_inline and not Path(config_path).is_file():
+        raise SecretStoreConfigurationError(
+            "Explicit secret resolver config file is missing"
+        )
     config = _load_lane_resolver_config(config_path)
     resolver = SecretResolver(
         config=config,
@@ -1208,4 +1225,5 @@ __all__: list[str] = [
     "resolve_api_key_async",
     "resolve_api_key_loop_safe",
     "resolve_tenant_scoped_api_key_async",
+    "secret_store_from_config_path",
 ]

@@ -1,0 +1,31 @@
+{
+  "branch_coverage_pct": 72.0,
+  "candidate_count": 13,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_delegation_routing_feedback_reducer.handlers.handler_delegation_routing_feedback",
+  "handler_module_sha256": "sha256:b047265657b1942f7cbbbe54fdaa1444daa099bd6a523a5544f88a583f6bdbb5",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_delegation_routing_feedback_reducer",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-10-05T07:49:31.978956+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 8,
+  "selected_input_hashes": [
+    "sha256:11e56152ecaa4eaed8286f310cd4612eb52451a73eabb5fa6d9886f4fe757a7e",
+    "sha256:51a9341964f77b0a20280b7966d31709e9953b23a9c379028674e57c995cc2d5",
+    "sha256:7b02c42d770d8dc5d8ecb3ed5f0c3113c49717624be537bdbc3ed198da766576",
+    "sha256:29aa88145b9b8018013a99a9a9333926bec9c0ddafc63abf25364670f88b47cf",
+    "sha256:bf2bb38603bb7ee1866498b50d91d6f19b948722c9b0fe9e523740e6d210e8d3",
+    "sha256:5caea5617fc7a82a0c917582b3eb06e4fc333cb9ad4521e61157889c390cf066",
+    "sha256:cef30c5e8305b884c21498a2b399f57a981c1b1aea9b3a4be61995d931e72059",
+    "sha256:84b9a2e4dce27214ec9aac9565202e2df1077749fa695d527a12671dec81df98"
+  ],
+  "uncovered_waiver": {
+    "reason": "Typed-payload adapter-boundary hand-flip: handle(request) normalizes the payload structurally and delegates to the preserved accumulate; _feedback_key, _compute_rates and _now_iso are also byte-identical to base_ref and re-derived from git by the hand-flip gate. build_receipt measures branch-inclusive coverage scoped to this handler file at 72.0% over the 13-candidate parity corpus (8 selected); import-time def, class and import lines count as uncovered because coverage starts after import. The branches the corpus leaves unexecuted are in accumulate: reuse of an existing in-memory ModelRoutingFeedback for a repeated model and task key, and rehydration of a caller-supplied dict state; both are unchanged from base_ref and are covered by the node unit tests that call accumulate with prior state. The declared parity tests assert the single BaseModel-typed handle parameter (RED on its own assertion at base_ref where the parameter is object) and compare the complete feedback with the preserved accumulate for every corpus candidate, including the no-op payloads.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": [
+    "feedback.window_start",
+    "feedback.last_updated"
+  ]
+}

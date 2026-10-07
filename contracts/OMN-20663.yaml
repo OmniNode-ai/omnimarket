@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20663"
+title: "diff-derived DoD proofs run with a scrubbed database environment and report failure diagnostics"
+summary: "dod_verify behavior checks drop ambient POSTGRES_*, PG*, DSN and database URL settings, and failed checks carry failing test ids and the first error line into the verdict, receipt and CLI summary."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-scrubbed-proof-environment"
+    statement: "Diff-derived behavior proofs do not inherit the verifier host's database settings, and a failed check names its failing tests."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a diff-derived behaviour proof declares its database requirement, and dod_verify runs it with a scrubbed environment (no ambient POSTGRES_* or DSN variables) -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20663_ambient_database_env.py -k dod_verify_proof_ignores_ambient_postgres_env -q"
+      - id: "AC2"
+        statement: "AC2: a failed behaviour check carries its failing test ids and first error line into the verdict, and the sweep summary prints them -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20663_ambient_database_env.py -k failed_check_reports_test_ids -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the ambient database environment and failure diagnostics tests."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20663_ambient_database_env.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20663-ambient-database-env"
+    description: "A behavior proof runs without ambient database settings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20663_ambient_database_env.py -k dod_verify_proof_ignores_ambient_postgres_env -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20663-failure-diagnostics"
+    description: "A failed behavior check reports its failing test ids."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20663_ambient_database_env.py -k failed_check_reports_test_ids -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

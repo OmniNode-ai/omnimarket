@@ -79,16 +79,12 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
-    # OMN-20578: the directory carries only the migrations omnibase_infra
-    # vendors; its contract, handlers and entry point land with the wiring PR,
-    # which removes this line and the MIGRATION_ONLY_NODE_DIRS entry together.
-    "node_projection_routing_feedback",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS = {"node_projection_routing_feedback"}
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -204,16 +200,6 @@ def _with_wrong_contract_name(inv: _Inventory) -> _Inventory:
     )
 
 
-def _with_contract_on_migration_only_dir(inv: _Inventory) -> _Inventory:
-    return dataclasses.replace(
-        inv,
-        contract_names={
-            **inv.contract_names,
-            "node_projection_routing_feedback": "projection_routing_feedback",
-        },
-    )
-
-
 def _with_wrong_entry_target(inv: _Inventory) -> _Inventory:
     return dataclasses.replace(
         inv,
@@ -238,7 +224,6 @@ def _without_expected_missing_dir(inv: _Inventory) -> _Inventory:
         _with_wrong_contract_name,
         _with_wrong_entry_target,
         _without_expected_missing_dir,
-        _with_contract_on_migration_only_dir,
     ],
 )
 def test_market_node_inventory_fails_on_a_missing_or_extra_node(
@@ -248,6 +233,18 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
     # checks that replaced the pinned totals.
     assert _inventory_violations(_real_inventory()) == []
     assert _inventory_violations(mutate(_real_inventory())) != []
+
+
+def test_migration_only_dir_fails_once_it_gains_a_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No directory is migration-only on this head, so the self-expiring entry
+    # is exercised against a directory that does have a contract: listing it
+    # must be reported.
+    node = "node_similarity_compute"
+    monkeypatch.setitem(globals(), "MIGRATION_ONLY_NODE_DIRS", {node})
+    violations = _inventory_violations(_real_inventory())
+    assert f"{node}: listed as migration-only but has a contract" in violations
 
 
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
@@ -285,7 +282,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # orchestrator, like the landing reducer, so it is experimental with no
     # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
     # by the submit CLI and has no handler_routing either: 9 -> 10.
-    assert summary["skipped"] == 10
+    # node_prune_binding_effect is called in process by the two prune effects,
+    # so it is experimental with no handler_routing: 10 -> 11.
+    assert summary["skipped"] == 11
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
