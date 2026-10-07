@@ -8,6 +8,8 @@ expects a context that needs one. ``OCC Emitter Golden Gate`` and ``ONEX Change
 Control Schema Compatibility`` test this repository's own companion emitter
 against a pinned onex_change_control checkout and read no PR companion, so
 branch protection no longer requires them but CI Summary still enforces them.
+The report-only observers that computed, planned or attested a PR's companion
+are deleted too.
 """
 
 from pathlib import Path
@@ -48,6 +50,19 @@ def test_occ_caller_workflows_are_deleted() -> None:
             "occ-companion-merge-heal.yml",
             "occ-receipt-runner.yml",
             "call-receipt-gate.yml",
+        )
+        if (workflows / name).exists()
+    ]
+
+
+def test_occ_observer_workflows_are_deleted() -> None:
+    workflows = REPO_ROOT / ".github" / "workflows"
+    assert not [
+        name
+        for name in (
+            "call-occ-companion-observe.yml",
+            "call-occ-companion-author.yml",
+            "call-occ-attestation-observe.yml",
         )
         if (workflows / name).exists()
     ]
