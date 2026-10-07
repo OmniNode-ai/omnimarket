@@ -285,7 +285,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_prune_binding_effect is called in process by the two prune effects,
     # so it is experimental with no handler_routing: 10 -> 11.
     # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
-    assert summary["skipped"] == 12
+    # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
+    assert summary["skipped"] == 17
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
