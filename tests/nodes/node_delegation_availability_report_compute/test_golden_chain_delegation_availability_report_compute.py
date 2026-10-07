@@ -232,6 +232,13 @@ def test_caller_cannot_relabel_a_terminal_route_tier() -> None:
         ModelDelegationCohortObservation.model_validate(data)
 
 
+def test_terminal_without_route_tier_cannot_enter_a_per_tier_report() -> None:
+    data = _observation(Outcome.COMPLETED).model_dump()
+    data["terminal"]["cost_tier_name"] = ""
+    with pytest.raises(ValidationError, match="terminal route tier"):
+        ModelDelegationCohortObservation.model_validate(data)
+
+
 def test_terminal_construction_failure_is_not_a_content_score() -> None:
     data = _observation(Outcome.COMPLETED).model_dump()
     data["terminal"].update(

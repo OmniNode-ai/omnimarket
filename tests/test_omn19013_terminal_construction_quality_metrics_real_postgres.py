@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +125,31 @@ def projected_metrics() -> Iterator[Any]:
             insert("other-tenant-passed", True, tenant=_OTHER_TENANT)
 
         class _Reader:
+            @contextmanager
+            def without_construction_predicate(self, view: str) -> Iterator[None]:
+                """Temporarily mutate the applied view, then restore its definition."""
+                assert view in _VIEWS
+                with conn.cursor() as cur:
+                    cur.execute(f"SET search_path TO {schema}, public")
+                    cur.execute("SELECT pg_get_viewdef(%s::regclass)", (view,))
+                    definition = cur.fetchone()[0]
+                    mutant, count = re.subn(
+                        r"\(\((?:\w+\.)?operational_outcome IS DISTINCT FROM "
+                        r"'terminal_construction_failed'::text\) OR "
+                        r"\((?:\w+\.)?content_verdict IS DISTINCT FROM "
+                        r"'undetermined'::text\)\)",
+                        "TRUE",
+                        definition,
+                    )
+                    assert count > 0, "negative control must remove a real predicate"
+                    cur.execute(f"CREATE OR REPLACE VIEW {view} AS {mutant}")
+                try:
+                    yield
+                finally:
+                    with conn.cursor() as cur:
+                        cur.execute(f"CREATE OR REPLACE VIEW {view} AS {definition}")
+                    self.set_invoker(view, enabled=True)
+
             def row(self, view: str) -> dict[str, Any]:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(f"SET search_path TO {schema}, public")
@@ -213,6 +240,31 @@ def test_exact_terminal_pair_is_excluded_from_real_quality_readers(
     model = model_routing["by_model"][0]
     assert model["total_count"] == 5
     assert model["qg_pass_rate"] == pytest.approx(2 / 3)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("view", _VIEWS)
+def test_k4_quality_reader_detects_removal_of_construction_predicate(
+    projected_metrics: Any,
+    view: str,
+) -> None:
+    """The K4 readback must fail when the exact-pair exclusion is removed."""
+
+    def pass_rate() -> float:
+        row = projected_metrics.row(view)
+        if view == "projection_delegation_summary":
+            return float(row["qualityGatePassRate"])
+        if view == "projection_delegation_quality_gate":
+            return float(row["overall_pass_rate"])
+        return float(row["by_model"][0]["qg_pass_rate"])
+
+    assert pass_rate() == pytest.approx(2 / 3)
+    with projected_metrics.without_construction_predicate(view):
+        assert pass_rate() == pytest.approx(3 / 5)
+        with pytest.raises(AssertionError):
+            assert pass_rate() == pytest.approx(2 / 3)
+        assert projected_metrics.construction_gate_facts() == [False, True]
+    assert pass_rate() == pytest.approx(2 / 3)
 
 
 @pytest.mark.integration

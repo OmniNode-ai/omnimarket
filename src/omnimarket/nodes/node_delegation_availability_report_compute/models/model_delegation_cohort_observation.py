@@ -38,10 +38,7 @@ class ModelDelegationCohortObservation(BaseModel):
                 raise ValueError("terminal must belong to the observed request")
             if self.terminal.attempts_count != self.attempts_count:
                 raise ValueError("attempts_count must match the terminal")
-            if (
-                self.terminal.cost_tier_name
-                and self.terminal.cost_tier_name != self.backend_tier
-            ):
+            if self.terminal.cost_tier_name != self.backend_tier:
                 raise ValueError("backend_tier must match the terminal route tier")
             if self.terminal.operational_outcome is None:
                 raise ValueError("cohort reporting requires typed terminal outcomes")
