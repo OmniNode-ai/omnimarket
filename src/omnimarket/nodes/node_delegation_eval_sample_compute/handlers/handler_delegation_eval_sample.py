@@ -72,7 +72,8 @@ class HandlerDelegationEvalSample:
         self, request: ModelDelegationEvalSampleRequest
     ) -> ModelDelegationEvalManifest:
         config = request.sampling
-        quotas = {row.name: row.count for row in config.quotas}
+        ordered_quotas = tuple(sorted(config.quotas, key=lambda row: row.name))
+        quotas = {row.name: row.count for row in ordered_quotas}
         candidates: dict[ModelDelegationEvalKey, ModelDelegationEvalCandidate] = {}
         for candidate in request.candidates:
             key = _key(candidate)
@@ -143,7 +144,7 @@ class HandlerDelegationEvalSample:
             "window_start": request.window_start,
             "window_end": request.window_end,
             "query_text": request.query_text,
-            "quotas": [row.model_dump(mode="json") for row in config.quotas],
+            "quotas": [row.model_dump(mode="json") for row in ordered_quotas],
             "item_keys": [item.key.model_dump(mode="json") for item in items],
         }
         manifest_id = hashlib.sha256(
@@ -155,7 +156,7 @@ class HandlerDelegationEvalSample:
             window_start=request.window_start,
             window_end=request.window_end,
             query_text=request.query_text,
-            quotas=config.quotas,
+            quotas=ordered_quotas,
             items=tuple(items),
             shortfalls=tuple(shortfalls),
             excluded_holdout_bucket=sum(

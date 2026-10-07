@@ -144,6 +144,23 @@ def test_same_seed_same_manifest() -> None:
         )
 
 
+def test_same_seed_same_manifest_with_reordered_quotas() -> None:
+    request = _request(_candidates(130))
+    reordered = request.model_copy(
+        update={
+            "sampling": request.sampling.model_copy(
+                update={"quotas": tuple(reversed(request.sampling.quotas))}
+            )
+        }
+    )
+    handler = sampler.HandlerDelegationEvalSample()
+    first = handler.handle(request)
+    second = handler.handle(reordered)
+    assert first.items == second.items
+    assert first.manifest_id == second.manifest_id
+    assert first.model_dump_json() == second.model_dump_json()
+
+
 def test_holdout_bucket_never_drawn() -> None:
     blocked = _candidates(3, holdout=True)
     result = sampler.HandlerDelegationEvalSample().handle(
