@@ -249,9 +249,18 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     name        TEXT,
     provider    TEXT,
     created_at  TEXT NOT NULL,
-    revoked_at  TEXT
+    revoked_at  TEXT,
+    fingerprint TEXT,
+    set_at      TEXT
 )
 """
+
+# 0005: a file made before the fingerprint and set time existed gains them on open,
+# so a read of the exposure's declared columns never meets a missing one.
+_TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
+    "fingerprint": None,
+    "set_at": None,
+}
 
 _DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
@@ -391,6 +400,11 @@ class SqliteDatabaseAdapter:
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
+        self._ensure_columns(
+            conn,
+            "tenant_inference_credentials",
+            _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+        )
         self._apply_usage_source_vocabulary_step(conn, self._db_path)
         return conn
 
