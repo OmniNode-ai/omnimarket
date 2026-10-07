@@ -1,0 +1,210 @@
+{
+  "bar": {
+    "source": "takeover plan S5 proof, RULING 2026-10-02T15:53:06Z: 30 eligible PRs, no seven-day minimum"
+  },
+  "pilot_prs": {
+    "source": "S5 pilot record section 5, rows 1 to 6; check runs read back 2026-10-07 as repo-evidence / dod-verify, conclusion success, app 15368, head_sha equal to pr_head",
+    "rows": [
+      {
+        "pr": 3377,
+        "pr_head": "9c822cdff257e2486d4ae12d7be8008abf0f8201",
+        "check_run": 111505792922,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3386,
+        "pr_head": "ed0b92dda3562b500543d2b9b68b77158fb777c3",
+        "check_run": 111528511960,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3382,
+        "pr_head": "1c9efd28a211eedad61c7f5c9a3937596d889f61",
+        "check_run": 111536205742,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3390,
+        "pr_head": "7c1224bcf95a4d2c88b9d03026ee5d9f9a7b62ad",
+        "check_run": 111553205393,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3369,
+        "pr_head": "aa6df56ac534e3d0dcda479795a09e2148226157",
+        "check_run": 111535911873,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3364,
+        "pr_head": "35a207547b357cc6bf81bf4b64a434be976ac617",
+        "check_run": 111556570598,
+        "outcome": "agree",
+        "reason_code": null
+      }
+    ]
+  },
+  "window": {
+    "source": "rolling ledger STATUS 2026-10-07T10:04:55Z, lane occ-canary-0950; the merge count re-read locally with git log --first-parent c67377bf8..dd276da73 (114 commits)",
+    "after_merge": "c67377bf8",
+    "through_merge": "dd276da73",
+    "first_parent_merges": 114,
+    "bot_version_bumps_excluded": 8,
+    "not_counted": [
+      {
+        "pr": 3183,
+        "check_run": 111355445955
+      },
+      {
+        "pr": 3319,
+        "check_run": 111422270254
+      },
+      {
+        "pr": 3363,
+        "check_run": 111404446969
+      }
+    ],
+    "not_counted_reason": "newest repo-evidence / dod-verify run predates omnimarket#3380, compare-with-occ false, no difference outcome",
+    "counted": 103,
+    "bar_violations": {
+      "new_path_admit_over_behavioural_occ_refusal": 0,
+      "counted_comparison_without_reason_code": 0,
+      "accepted_negative_control": 0
+    }
+  },
+  "cases": {
+    "source": "S5 pilot record sections 4, 7 and 8 for the check runs; rolling ledger STATUS 2026-10-07T10:04:55Z for C13, C14 and C16",
+    "rows": [
+      {
+        "case": "C1",
+        "check_runs": [
+          111536205742
+        ]
+      },
+      {
+        "case": "C2",
+        "check_runs": [
+          111525693345,
+          111536205742
+        ]
+      },
+      {
+        "case": "C4",
+        "check_runs": [
+          111558217999,
+          111558233762
+        ]
+      },
+      {
+        "case": "C5",
+        "check_runs": [
+          111558243937
+        ]
+      },
+      {
+        "case": "C8",
+        "check_runs": [
+          111558256531
+        ]
+      },
+      {
+        "case": "C10",
+        "check_runs": [
+          111495889698
+        ]
+      },
+      {
+        "case": "C12",
+        "check_runs": [
+          111528205374,
+          111528511960
+        ]
+      },
+      {
+        "case": "C13",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "live on omnimarket#3462, merged head one run after 16 sibling merges, verdict unchanged"
+      },
+      {
+        "case": "C14",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "live in substance: OCC red for companion latency, new path admitted, the OCC context held the merge; never observed with occ_not_on_main"
+      },
+      {
+        "case": "C15",
+        "check_runs": [
+          111558265465,
+          111563677255
+        ]
+      },
+      {
+        "case": "C16",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "isolated: user-token status on an unreferenced commit, ref update refused HTTP 422, rule suite 4404187383, ruleset 24462257 names the expected GitHub app"
+      },
+      {
+        "case": "C17",
+        "check_runs": [
+          111558279570
+        ]
+      },
+      {
+        "case": "C18",
+        "check_runs": [
+          111536237889
+        ]
+      }
+    ]
+  },
+  "drill": {
+    "source": "S5 pilot record sections 2 and 3, read 2026-10-04T17:53:04Z",
+    "ruleset": 24462257,
+    "pre_pilot_contexts": [
+      "Architectural Compliance Lint",
+      "CI Naming Convention",
+      "CI Summary",
+      "Canonical Inference Gate",
+      "Customer Path Boundary (OMN-18012)",
+      "Dep Provenance Gate",
+      "Ecosystem Integration Validation",
+      "Enforce validator-requirements.yaml (OMN-13291)",
+      "Hostile Review Gate",
+      "Hostile Reviewer (adversarial gate)",
+      "JS Toolchain Hermetic (OMN-18012)",
+      "Leaked Literals Gate",
+      "Legacy Compatibility Check",
+      "No Faked Boundary Gate",
+      "OCC Emitter Golden Gate",
+      "ONEX Change Control Schema Compatibility",
+      "Omni Standards Gate",
+      "PR Arch Review Gate",
+      "Precommit Fail-Loud Gate",
+      "Projection Exposure Drift Gate",
+      "Repository Structure Validation",
+      "Resolve Bot Token",
+      "Stale TODO Gate",
+      "URL Authority Gate",
+      "Wire Compatibility Gate",
+      "call / validate-docs",
+      "call-reject-skip-token / occ-preflight / eligibility",
+      "dispatcher-route-coverage",
+      "imperative-contract-guard / Imperative Contract Guard",
+      "main-target-guard",
+      "non-dev-base-guard",
+      "occ-preflight / eligibility",
+      "pr-title / check-title",
+      "required-check-skip-guard / check-skip-vectors",
+      "state-coverage-gate"
+    ],
+    "readback_added": [],
+    "readback_removed": []
+  }
+}
