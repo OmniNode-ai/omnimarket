@@ -18,6 +18,8 @@ requirements:
         statement: "The repo-evidence caller pins the omnibase_core reusable whose caller-evidence dod-verify job exempts dependency bots and a pin-only writer-app bump, so a bot version bump is not refused for binding no evidence of its own."
       - id: "AC4"
         statement: "The skip-token caller pins the omniclaude reusable that runs the token scan with no nested change-control preflight (omniclaude#2540), and CI Summary and the required-checks manifest stop naming the nested preflight context, while the standalone occ-preflight / eligibility context stays expected -- falsifier: uv run pytest tests/ci/test_reject_skip_caller_without_preflight_omn20073.py -q"
+      - id: "AC5"
+        statement: "The repo-evidence caller passes compare-with-occ \"false\" once dev branch protection requires no OCC context, so the reusable's difference step no longer waits for an occ-preflight / eligibility verdict, and verifier-version stays a release that ships the classifier for a rollback -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -31,6 +33,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The skip-token caller carries no nested change-control preflight and nothing here still expects its context."
     command: "uv run pytest tests/ci/test_reject_skip_caller_without_preflight_omn20073.py -q"
+  - kind: "tests"
+    description: "The repo-evidence caller turns the OCC difference step off after the cut-over."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -68,3 +73,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_reject_skip_caller_without_preflight_omn20073.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-repo-evidence-compare-with-occ-off"
+    description: "The repo-evidence caller passes compare-with-occ \"false\"; the test fails at the merge base, whose caller still passes \"true\"."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
