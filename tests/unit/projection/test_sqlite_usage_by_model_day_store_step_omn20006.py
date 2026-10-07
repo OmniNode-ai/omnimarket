@@ -20,6 +20,8 @@ Each test names the failure it exists to catch:
   read still takes the write lock;
 * the columns are added but the step record fails, so a half-done step is
   committed and never retried as a whole;
+* a failed step propagates without rolling back, so its write lock outlives
+  the error and the next writer finds the store locked;
 * a busy writable store is passed off as read-only and read without the
   columns;
 * two first opens of one store race and the second adds a column twice.
@@ -243,6 +245,32 @@ def test_a_failed_step_record_leaves_the_columns_unadded(tmp_path: Path) -> None
     assert USAGE_STEP not in _steps(path)
 
 
+def test_a_failed_step_releases_the_write_lock_before_it_propagates(
+    tmp_path: Path,
+) -> None:
+    # The step runs under BEGIN IMMEDIATE. A failure that is not a read-only
+    # store propagates, but its transaction is rolled back first: while the
+    # error is still held (its traceback keeps the failing connection alive),
+    # another writer of the store must not find it locked.
+    path = tmp_path / "evidence.sqlite"
+    _store_written_before_the_change(path)
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute(
+            f"CREATE TRIGGER refuse_usage_step BEFORE INSERT ON {STEPS_TABLE} "
+            f"WHEN NEW.step = '{USAGE_STEP}' "
+            "BEGIN SELECT RAISE(ABORT, 'step record refused'); END"
+        )
+        conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="step record refused") as held:
+        SqliteDatabaseAdapter(path).query("usage_by_model_day")
+
+    with closing(sqlite3.connect(path, timeout=0)) as other:
+        other.execute("BEGIN IMMEDIATE")
+        other.rollback()
+    assert held.value is not None
+
+
 def test_a_locked_store_written_before_the_change_raises_rather_than_reading(
     tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -264,13 +292,13 @@ def test_two_first_opens_together_add_each_column_once(tmp_path: Path) -> None:
     path = tmp_path / "evidence.sqlite"
     _store_written_before_the_change(path)
     barrier = threading.Barrier(2)
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def open_store() -> None:
         barrier.wait()
         try:
             SqliteDatabaseAdapter(path).query("usage_by_model_day")
-        except BaseException as exc:
+        except Exception as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=open_store) for _ in range(2)]

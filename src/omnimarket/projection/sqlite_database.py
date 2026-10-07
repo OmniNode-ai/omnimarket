@@ -561,12 +561,9 @@ class SqliteDatabaseAdapter:
                     (step, datetime.now(UTC).isoformat()),
                 )
                 conn.commit()
-            except BaseException as exc:
+            except sqlite3.OperationalError as exc:
                 conn.rollback()
-                if not (
-                    isinstance(exc, sqlite3.OperationalError)
-                    and (exc.sqlite_errorcode & 0xFF) == sqlite3.SQLITE_READONLY
-                ):
+                if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
                     raise
                 logger.warning(
                     "%s is read-only and has not %s; reading it as it is",
@@ -574,6 +571,9 @@ class SqliteDatabaseAdapter:
                     ", nor ".join(lacking for _, _, lacking in pending[index:]),
                 )
                 return
+            except BaseException:
+                conn.rollback()
+                raise
 
     @staticmethod
     def _relabel_usage_source(conn: sqlite3.Connection) -> None:
