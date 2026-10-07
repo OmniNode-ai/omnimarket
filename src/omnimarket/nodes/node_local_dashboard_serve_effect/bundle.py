@@ -36,10 +36,10 @@ import hashlib
 import shutil
 import tarfile
 import tomllib
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 #: Where a verified bundle is unpacked. Keyed by digest, so a pin bump lands
 #: beside the old copy rather than over it and a rollback needs no re-download.
@@ -98,7 +98,9 @@ def load_pin(path: Path | None = None) -> BundlePin:
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise DashboardBundleError(f"{source} is unreadable: {exc}") from exc
     pin = (table.get("tool") or {}).get("onex", {}).get("dashboard_bundle") or {}
-    missing = [k for k in ("version", "sha256", "asset", "repository") if not pin.get(k)]
+    missing = [
+        k for k in ("version", "sha256", "asset", "repository") if not pin.get(k)
+    ]
     if missing:
         raise DashboardBundleError(
             f"[tool.onex.dashboard_bundle] in {source} is missing {', '.join(missing)}"
@@ -134,7 +136,8 @@ def _extract(archive: Path, into: Path) -> None:
     into.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "r:gz") as tar:
         root = into.resolve()
-        for member in tar.getmembers():
+        members = tar.getmembers()
+        for member in members:
             target = (root / member.name).resolve()
             if not target.is_relative_to(root):
                 raise DashboardBundleError(
@@ -145,18 +148,25 @@ def _extract(archive: Path, into: Path) -> None:
                 raise DashboardBundleError(
                     f"refusing the bundle: member {member.name!r} is a link"
                 )
-        # ``filter="data"`` is a second, independent refusal of the same
-        # classes the loop above names, kept because tarfile's own check is
-        # maintained against archive tricks this code has not thought of.
-        tar.extractall(into, filter="data")  # noqa: S202 - filtered and checked
+        # Every member is checked before any member is written, so a bad
+        # archive leaves nothing behind. ``filter="data"`` is a second,
+        # independent refusal of the same classes the loop above names, kept
+        # because tarfile's own check is maintained against archive tricks
+        # this code has not thought of. Members are extracted one at a time
+        # rather than with ``extractall``, which cannot be given a reviewed
+        # list without also being given the archive's own idea of one.
+        for member in members:
+            tar.extract(member, into, filter="data")
 
 
 def _download(url: str, to: Path) -> None:
     to.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 - https release URL built from the pin
-            to.write_bytes(response.read())
-    except (urllib.error.URLError, OSError) as exc:
+        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            to.write_bytes(response.content)
+    except (httpx.HTTPError, OSError) as exc:
         raise DashboardBundleError(
             f"could not download the dashboard bundle from {url}: {exc}"
         ) from exc
