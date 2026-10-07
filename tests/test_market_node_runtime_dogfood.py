@@ -79,6 +79,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
+    # OMN-19985: the local secret store runs from `onex secret set` / `onex
+    # secret delete`; it returns credential events for the CLI shim to fold and
+    # subscribes to no topic, so it has no onex.nodes entry point.
+    "node_local_secret_store_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
