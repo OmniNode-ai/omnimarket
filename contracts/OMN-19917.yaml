@@ -30,7 +30,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k pin"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k pin"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19917-refuses-wrong-bytes"
@@ -38,7 +38,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k 'tamper or escap or cache'"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k 'tamper or escap or cache'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19917-pages-beside-api"
@@ -46,6 +46,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
