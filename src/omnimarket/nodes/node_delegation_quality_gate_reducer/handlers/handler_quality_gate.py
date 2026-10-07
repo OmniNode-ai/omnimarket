@@ -1188,6 +1188,17 @@ _UNIT_MARK_ASSIGNMENT = re.compile(
 )
 
 
+def _pytest_attribute_exists(attr: str) -> bool | None:
+    """OMN-12717: ``attr`` on the installed pytest module; None if absent."""
+    import importlib
+
+    try:
+        module = importlib.import_module("pytest")
+    except ImportError:
+        return None
+    return hasattr(module, attr)
+
+
 def _check_uses_pytest_mark_unit(content: str) -> str | None:
     """Deterministic: delegated tests must carry the unit-test marker (OMN-19524).
 
@@ -1201,7 +1212,9 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
 
     The code is read with ``ast``. Code that does not parse is read with
     ``tokenize`` with comments and strings dropped; only when even that yields
-    nothing is the old substring test used.
+    nothing is the old substring test used. A ``pytest.<name>`` read naming an
+    attribute the installed pytest lacks (``pytest.mark_unit``) is refused
+    first (OMN-12717).
     """
     blocks = _extract_fenced_code_blocks(content)
     code = "\n".join(blocks) if blocks else content
@@ -1209,6 +1222,17 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
         tree = ast.parse(code)
     except SyntaxError:
         return _unit_mark_by_tokens(code)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "pytest"
+            and _pytest_attribute_exists(node.attr) is False
+        ):
+            return (
+                f"TASK_MISMATCH: pytest.{node.attr} does not exist; "
+                "test module would fail to import"
+            )
     scopes: list[ast.Module | ast.ClassDef] = [tree]
     for node in ast.walk(tree):
         if isinstance(
