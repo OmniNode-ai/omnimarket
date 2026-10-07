@@ -127,6 +127,7 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
             # from a behavior-proving one.
             "proof_class": str(check.proof_class),
             "message": _elide_message(check.message or "", _DETAIL_MESSAGE_MAX_CHARS),
+            "failure": check.failure.model_dump(mode="json") if check.failure else None,
         }
         for check in state.checks
     ]
@@ -499,6 +500,8 @@ def main() -> None:
         )
 
     sys.stdout.write(state.model_dump_json(indent=2) + "\n")
+    if state.error_message:
+        sys.stderr.write(state.error_message + "\n")
 
     receipt_path = _resolve_receipt_path(
         ticket_id=args.ticket_id,
