@@ -82,7 +82,6 @@ MUST_LIST_EDITED: tuple[str, ...] = (
     "call-reject-skip.yml",
     "main-target-guard.yml",
     "non-dev-base-guard.yml",
-    "call-occ-preflight.yml",
 )
 
 

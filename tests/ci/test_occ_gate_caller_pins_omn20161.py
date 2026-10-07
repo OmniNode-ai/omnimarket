@@ -1,13 +1,11 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-20161 - the OCC gate caller pins must resolve the writer-app pin-only exemption.
+"""OMN-20161: the retained receipt caller pins the writer-app exemption.
 
-omnibase_core#1820 exempts the OCC writer app from ``occ-preflight.yml`` and
-``receipt-gate.yml`` only when the pin-only probe proves the producer's outcome.
-Callers here pin both reusable workflows by sha, so the exemption reaches this
-repository only once every pin resolves a workflow that carries it. This test
-follows the chain: caller pin, then the pinned workflow text.
+The OCC preflight caller is retired under OMN-20073 S6. The receipt-gate
+caller still pins the reusable that exempts the writer app when the pin-only
+probe proves the producer's outcome. Follow its caller pin to the workflow.
 """
 
 from __future__ import annotations
@@ -26,7 +24,7 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 REQUIRED_CHECKS_PATH = REPO_ROOT / ".github" / "required-checks.yaml"
 CORE = "OmniNode-ai/omnibase_core"
 EXPECTED_SHA = "52851458622f368c3b596c82bf810bc6acce1d5e"  # pragma: allowlist secret
-GATE_FILES = ("occ-preflight.yml", "receipt-gate.yml")
+GATE_FILES = ("receipt-gate.yml",)
 WRITER_APP = "onexbot-occ-writer"
 PIN_ONLY_PROBE = "--check-no-companion-required"
 
@@ -93,17 +91,14 @@ def _fetch_core_file(ref: str, path: str) -> str:
     return done.stdout
 
 
-def test_both_gate_callers_are_found() -> None:
-    """Positive control: the scan sees both reusables, so an empty scan cannot pass."""
+def test_retained_receipt_gate_caller_is_found() -> None:
+    """Positive control: the retained reusable cannot disappear from the scan."""
     assert {file for _, file, _ in _sha_pins_only()} == set(GATE_FILES)
 
 
 def test_workflow_callers_use_yaml_uses_keys() -> None:
     """Every caller workflow pins through a real ``uses`` key, not prose."""
-    for name, gate in (
-        ("call-occ-preflight.yml", "occ-preflight.yml"),
-        ("call-receipt-gate.yml", "receipt-gate.yml"),
-    ):
+    for name, gate in (("call-receipt-gate.yml", "receipt-gate.yml"),):
         data = yaml.safe_load((WORKFLOWS_DIR / name).read_text())
         uses = [
             str(job["uses"])
@@ -111,23 +106,6 @@ def test_workflow_callers_use_yaml_uses_keys() -> None:
             if f"/{gate}@" in str(job.get("uses", ""))
         ]
         assert len(uses) == 1, f"{name}: expected one {gate} caller, got {uses}"
-
-
-def test_every_occ_preflight_pin_is_the_expected_sha() -> None:
-    stale = [
-        p
-        for p in _sha_pins_only()
-        if p[1] == "occ-preflight.yml" and p[2] != EXPECTED_SHA
-    ]
-    assert not stale, (
-        f"occ-preflight pins not at {EXPECTED_SHA}: {stale}. The writer-app pin-only "
-        "exemption (omnibase_core#1820) reaches this repo only when they move."
-    )
-
-
-def test_occ_preflight_pins_move_together() -> None:
-    refs = {ref for _, file, ref in _sha_pins_only() if file == "occ-preflight.yml"}
-    assert len(refs) == 1, f"occ-preflight pins diverge: {sorted(refs)}"
 
 
 @pytest.mark.parametrize("gate", GATE_FILES)

@@ -73,28 +73,6 @@ gates:
     skip_semantics: never
     rationale: "Live required status check on BOTH omnimarket dev and main branch protection (re-verified 2026-08-13 via gh api required_status_checks: dev has 33 contexts incl. 'CI Summary', main has 28 incl. 'CI Summary'). Corrects a stale `branch: main` on this row — the omission of `branch:` now correctly means 'required on both', per the schema-v3 convention documented at the top of this file."
 
-  - name: "OCC Emitter Golden Gate"
-    mode: REQUIRED
-    branch: dev
-    producer_kind: local
-    workflow: occ-emitter-golden-gate.yml
-    job_path: ["occ-emitter-golden"]
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
-
-  - name: "occ-preflight / eligibility"
-    mode: REQUIRED
-    branch: dev
-    producer_kind: cross_repo
-    caller_workflow: call-occ-preflight.yml
-    caller_job: occ-preflight
-    # OMN-18647 canary pin; reverts to @main under OMN-18884. Kept in step with
-    # call-occ-preflight.yml deliberately: this field is the asserted intent and a
-    # stale one reads as a gate nobody moved.
-    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@52851458622f368c3b596c82bf810bc6acce1d5e"
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
-
   - name: "zone-filter / Zone Filter (docs-only check)"
     mode: REQUIRED
     branch: main
@@ -227,14 +205,6 @@ gates:
     job_path: ["omni-standards-gate"]
     skip_semantics: never
     rationale: "Live required status check on omnimarket dev and main branch protection (verified 2026-07-20 via gh api required_status_checks)."
-
-  - name: "ONEX Change Control Schema Compatibility"
-    mode: REQUIRED
-    producer_kind: local
-    workflow: onex-schema-compat.yml
-    job_path: ["schema-compat"]
-    skip_semantics: neutral_ok
-    rationale: "KNOWN FINDING (OMN-14857 guard fan-out build): job 'schema-compat' in onex-schema-compat.yml has a job-level `if:` that explicitly re-checks needs.occ-preflight.result inside the condition (vector-2). skip_semantics: neutral_ok pending triage in OMN-14861."
 
   - name: "No Faked Boundary Gate"
     mode: REQUIRED
