@@ -11,11 +11,11 @@ requirements:
     statement: "A delegation terminal that declares no tenant is refused by both writers rather than attributed to the house tenant. The criterion below is the label the binding item claims through binds_ac."
     acceptance:
       - id: "AC1"
-        statement: "AC1: the terminal write path names TenantRequiredError and no house-tenant fallback -- falsifier: uv run pytest tests/test_omn18565_writer_refusal_drift.py::TestNeitherVerdictPathCanReachTheHouseTenant::test_the_terminal_path_also_refuses_house_tenant_fallback -q in omnimarket"
+        statement: "AC1: the terminal write path names TenantRequiredError and no house-tenant fallback -- falsifier: uv run pytest tests/test_omn18565_writer_refusal_drift.py -k test_the_terminal_path_also_refuses_house_tenant_fallback -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The drift test inspects the terminal write path and requires the TenantRequiredError refusal with no house-tenant fallback."
-    command: "env -u PYTHONPATH uv run pytest tests/test_omn18565_writer_refusal_drift.py::TestNeitherVerdictPathCanReachTheHouseTenant::test_the_terminal_path_also_refuses_house_tenant_fallback -q"
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn18565_writer_refusal_drift.py -k test_the_terminal_path_also_refuses_house_tenant_fallback -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -26,6 +26,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn18565_writer_refusal_drift.py::TestNeitherVerdictPathCanReachTheHouseTenant::test_the_terminal_path_also_refuses_house_tenant_fallback -q"
+        check_value: "uv run pytest tests/test_omn18565_writer_refusal_drift.py -k test_the_terminal_path_also_refuses_house_tenant_fallback -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]

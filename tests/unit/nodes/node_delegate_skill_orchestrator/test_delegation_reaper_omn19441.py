@@ -409,6 +409,7 @@ async def test_no_terminal_round_trip_projection_and_pinned_delegate_cli():
     assert row["terminal_failure_cause"] == "no_terminal"
     assert row["operational_outcome"] == "timeout"
     success = ModelDelegateSkillCompleted(
+        tenant_id=ctx.tenant_id,
         correlation_id=ctx.correlation_id,
         task_type=ctx.task_type,
         model_name="evidenced-model",

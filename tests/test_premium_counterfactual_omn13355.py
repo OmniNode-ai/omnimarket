@@ -26,6 +26,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 HANDLER = HandlerProjectionDelegation()
 
@@ -76,6 +80,7 @@ class TestBuildPremiumCounterfactual:
 class TestProjectionPersistsCounterfactual:
     def test_compat_project_persists_jsonb(self) -> None:
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         cf = build_premium_counterfactual(
             prompt_tokens=1000,
             completion_tokens=500,
@@ -83,6 +88,7 @@ class TestProjectionPersistsCounterfactual:
         )
         assert cf is not None
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-cf-001",
             task_type="code-review",
             delegated_to="local-qwen",
@@ -107,6 +113,7 @@ class TestProjectionPersistsCounterfactual:
 
     def test_terminal_projection_carries_counterfactual(self) -> None:
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         cf = build_premium_counterfactual(
             prompt_tokens=11,
             completion_tokens=22,
@@ -115,6 +122,7 @@ class TestProjectionPersistsCounterfactual:
         assert cf is not None
         terminal = ModelDelegateSkillTerminalProjection.from_payload(
             {
+                "tenant_id": PROJECTION_TENANT_SLUG,
                 "status": "completed",
                 "correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f81",
                 "task_type": "code_generation",

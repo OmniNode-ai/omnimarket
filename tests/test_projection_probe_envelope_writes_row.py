@@ -34,6 +34,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 # Probe identity — must stay byte-identical to
 # tests/integration/e2e_probe/test_delegation_e2e_probe.py::_build_delegation_payload
@@ -45,6 +49,7 @@ _PROBE_SOURCE_TOOL = "omnimarket.e2e-probe-harness.omn-12789"
 
 def _build_probe_payload(correlation_id: str) -> dict[str, Any]:
     return {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "correlation_id": correlation_id,
         "task_type": _PROBE_TASK_TYPE,
         "delegated_to": _PROBE_DELEGATED_TO,
@@ -89,6 +94,7 @@ async def test_probe_envelope_upserts_delegation_row() -> None:
     db.execute = AsyncMock(return_value=[])
     db.connect = AsyncMock()
     db.close = AsyncMock()
+    mock_tenant_registry(db)
 
     runner = DelegationProjectionRunner(publish_fn=None)
     runner._db = db

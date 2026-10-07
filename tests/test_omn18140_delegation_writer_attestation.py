@@ -50,6 +50,10 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 _Capture = Callable[[str, bytes], Any]
 
@@ -126,6 +130,7 @@ def _wire_record(payload: dict[str, Any], *, event_type: str) -> bytes:
 
 def _task_delegated_delivery(*, correlation_id: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "correlation_id": correlation_id,
         "task_type": "code_review",
         "delegated_to": "local",
@@ -148,7 +153,7 @@ def _task_delegated_delivery(*, correlation_id: str) -> dict[str, Any]:
 def _mock_db(*, returning: list[dict[str, Any]] | None = None) -> AsyncMock:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=returning if returning is not None else [])
-    db.fetchval = AsyncMock(return_value=None)
+    mock_tenant_registry(db)
     return db
 
 
@@ -194,7 +199,7 @@ def _returning_db(stored: dict[str, Any]) -> AsyncMock:
 
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=_execute)
-    db.fetchval = AsyncMock(return_value=None)
+    mock_tenant_registry(db)
     return db
 
 
