@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_prune_binding_effect.models import ModelPruneBinding
+from omnimarket.models.model_prune_binding import ModelPruneBinding
 from omnimarket.topic_archive.models import EnumArchiveEncryption
 
 #: The operator's floor (OPERATOR-CONSENT 2026-09-25T18:27:30Z): rows 30 days

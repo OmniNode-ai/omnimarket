@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_prune_binding_effect.models import ModelPruneBinding
+from omnimarket.models.model_prune_binding import ModelPruneBinding
 from omnimarket.topic_archive.models import EnumArchiveEncryption
 
 

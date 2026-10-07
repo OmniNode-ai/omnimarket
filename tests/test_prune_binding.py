@@ -13,6 +13,11 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.models.model_prune_binding import (
+    ModelPruneBinding,
+    ModelPruneBindingRequest,
+    PruneKind,
+)
 from omnimarket.nodes.node_prune_binding_effect.handlers import (
     handler_prune_binding as binding_module,
 )
@@ -21,11 +26,6 @@ from omnimarket.nodes.node_prune_binding_effect.handlers.handler_prune_binding i
     PruneConfigurationError,
     load_prune_binding,
     prune_database_url,
-)
-from omnimarket.nodes.node_prune_binding_effect.models import (
-    ModelPruneBinding,
-    ModelPruneBindingRequest,
-    PruneKind,
 )
 
 pytestmark = pytest.mark.unit

@@ -35,6 +35,7 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from omnibase_spi.protocols.services import ProtocolSecretStore
 
+from omnimarket.models.model_prune_binding import ModelPruneBindingRequest
 from omnimarket.nodes.node_dead_letter_prune_effect.models import (
     EnumDeadLetterDayStatus,
     EnumDeadLetterPruneVerdict,
@@ -54,7 +55,6 @@ from omnimarket.nodes.node_prune_binding_effect.handlers.handler_prune_binding i
     PruneConfigurationError,
     prune_database_url,
 )
-from omnimarket.nodes.node_prune_binding_effect.models import ModelPruneBindingRequest
 from omnimarket.topic_archive.codec import gzip_deterministic, sha256_hex
 from omnimarket.topic_archive.live import LocalDirArchiveSink, NoArchiveCipher
 from omnimarket.topic_archive.models import EnumArchiveEncryption
