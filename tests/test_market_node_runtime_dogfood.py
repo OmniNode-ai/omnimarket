@@ -282,7 +282,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # orchestrator, like the landing reducer, so it is experimental with no
     # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
     # by the submit CLI and has no handler_routing either: 9 -> 10.
-    assert summary["skipped"] == 10
+    # node_prune_binding_effect is called in process by the two prune effects,
+    # so it is experimental with no handler_routing: 10 -> 11.
+    assert summary["skipped"] == 11
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
