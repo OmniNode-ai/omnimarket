@@ -18,6 +18,7 @@ from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _provisioned_runner,
 )
 from tests.test_omn18928_terminal_outcome_projection_real_postgres import (
+    _TENANT,
     _quota_terminal,
     _wire,
 )
@@ -48,6 +49,8 @@ async def test_terminal_stores_requested_model_and_timings_and_keeps_sparse_evid
         }
     )
     payload["queue_wait_ms"] = queue_wait_ms
+    if path == "skill":
+        payload["tenant_id"] = _TENANT
     cid = str(payload["correlation_id"])
     async with _provisioned_runner() as (runner, admin_conn, _schema):
         # Re-apply the migration to prove its idempotent shape on Postgres.
