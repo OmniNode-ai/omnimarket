@@ -43,7 +43,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn19985-ac2-value-reaches-no-event-row-or-output"
+  - id: "dod-omn19985-ac2-value-in-no-event-row-or-output"
     description: "A planted value is absent from the event bytes, the result, every refusal, the CLI output and every tenant_inference_credentials column; a secret that is not a provider key emits nothing."
     source: "manual"
     checks:
@@ -51,7 +51,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k \"c1_c2_c5 or c4 or h1 or h4 or h5\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn19985-ac3-exposure-serves-ref-provider-fingerprint-set-time"
+  - id: "dod-omn19985-ac3-exposure-serves-fp-and-set-time"
     description: "The migration adds the two nullable columns, the exposure serves fingerprint and set_at and names the Credentials page, register stores them, revoke keeps them, and the golden chain reads them back through the served exposure after set and after delete."
     source: "manual"
     checks:
