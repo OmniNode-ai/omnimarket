@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelLinearTriageStartCommand(BaseModel):
@@ -21,6 +23,17 @@ class ModelLinearTriageStartCommand(BaseModel):
     # above an acceptable threshold via human-in-the-loop validation.
     flag_only: bool = True
     team: str = "Omninode"
+    scope: Literal["sprint", "backlog"] = "sprint"
+    project_id: str = ""
+    secret_resolver_config_path: str = ""
+
+    @model_validator(mode="after")
+    def _validate_scope(self) -> ModelLinearTriageStartCommand:
+        if self.scope == "backlog" and self.project_id:
+            raise ValueError("backlog scope cannot carry a sprint project_id")
+        if self.project_id and not self.project_id.strip():
+            raise ValueError("project_id must not be blank")
+        return self
 
 
 class ModelLinearTicket(BaseModel):

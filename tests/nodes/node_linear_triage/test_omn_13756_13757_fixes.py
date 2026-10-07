@@ -154,7 +154,9 @@ class TestOmn13756BacklogPrCheck:
         gh = _stub_github(search_prs_results=[merged_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         would_mark_done_actions = [
             a for a in result.actions if a.action == EnumTriageAction.WOULD_MARK_DONE
@@ -185,7 +187,9 @@ class TestOmn13756BacklogPrCheck:
         gh = _stub_github(search_prs_results=[merged_pr])
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.marked_done == 1, (
             f"Backlog+merged PR with flag_only=False must mark_done. "
@@ -224,7 +228,9 @@ class TestOmn13756BacklogPrCheck:
         gh.list_prs_by_head.return_value = []
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         would_mark_done = [
             a for a in result.actions if a.action == EnumTriageAction.WOULD_MARK_DONE
@@ -283,7 +289,9 @@ class TestOmn13757OrphanedStaleLists:
         gh = _stub_github()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert result.orphaned == len(result.orphaned_tickets), (
             f"Enumeration invariant violated: orphaned={result.orphaned} but "
@@ -311,7 +319,9 @@ class TestOmn13757OrphanedStaleLists:
         gh = _stub_github()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=True))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=True)
+        )
 
         assert result.orphaned == 20
         assert len(result.orphaned_tickets) == 20, (
@@ -349,7 +359,9 @@ class TestOmn13757OrphanedStaleLists:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         result = await handler.handle(
-            ModelLinearTriageStartCommand(flag_only=True, threshold_days=14)
+            ModelLinearTriageStartCommand(
+                scope="backlog", flag_only=True, threshold_days=14
+            )
         )
 
         assert result.stale_count == len(result.stale_tickets), (
