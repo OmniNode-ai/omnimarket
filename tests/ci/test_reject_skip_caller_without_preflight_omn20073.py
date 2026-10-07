@@ -10,13 +10,9 @@ file runs the scan with no preflight. This repository adopts that by its own
 pin bump, and every place here that named the nested preflight's context
 (``call-reject-skip-token / occ-preflight / eligibility``) stops naming it,
 because nothing produces it any more. The token scan itself stays enforced
-through CI Summary, and the change-control verdict stays enforced through the
-standalone ``occ-preflight / eligibility`` context, which this change leaves
-untouched.
-
-The nested context is still required by branch protection on ``dev`` until the
-S6 cut-over removes it, so this change lands with that ruleset change and not
-before (plan S6, OMN-20068).
+through CI Summary. S6 part 2 also deletes the standalone preflight caller
+and removes its context from CI Summary and the required-checks manifest,
+so PR admission requires repo-owned evidence without an OCC companion.
 """
 
 from __future__ import annotations
@@ -61,7 +57,7 @@ def test_ci_summary_no_longer_expects_the_nested_preflight() -> None:
         expected = gate.expected_external_contexts(event)
         assert NESTED_PREFLIGHT not in expected, event
         assert SCAN in expected, event
-        assert STANDALONE_PREFLIGHT in expected, event
+        assert STANDALONE_PREFLIGHT not in expected, event
 
 
 def test_required_checks_manifest_declares_no_nested_preflight_row() -> None:
@@ -69,4 +65,4 @@ def test_required_checks_manifest_declares_no_nested_preflight_row() -> None:
     names = {row["name"] for row in manifest["gates"] if isinstance(row, dict)}
     assert NESTED_PREFLIGHT not in names
     assert SCAN in names
-    assert STANDALONE_PREFLIGHT in names
+    assert STANDALONE_PREFLIGHT not in names
