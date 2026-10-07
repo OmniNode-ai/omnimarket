@@ -407,16 +407,6 @@ gates:
     skip_semantics: never
     rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
 
-  - name: "call-reject-skip-token / occ-preflight / eligibility"
-    mode: REQUIRED
-    branch: dev
-    producer_kind: cross_repo
-    caller_workflow: call-reject-skip.yml
-    caller_job: call-reject-skip-token
-    cross_repo_ref: "OmniNode-ai/omniclaude/.github/workflows/reject-deploy-gate-skip.yml@main"
-    skip_semantics: never
-    rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
-
   - name: "call-reject-skip-token / scan / reject-skip-gate-token"
     mode: REQUIRED
     branch: main
