@@ -10,33 +10,65 @@
 # its key resolves at the effect boundary from the secret store by that
 # reference. Nothing about the provider is a literal in the handler.
 #
-# UNWIRED. No event_bus, runtime_dispatch or handler_routing block, and no
-# onex.nodes entry point: nothing subscribes or dispatches it. It is invoked
-# in-process, and by `python -m omnimarket.nodes.node_typed_decision_effect`,
-# until a decision contract composes it behind a caller.
+# The bus seam is shadow-only: it returns the incumbent and records the
+# backend outcome without steering. The existing direct effect API remains
+# available to bounded typed-decision callers.
 name: node_typed_decision_effect
 lifecycle: experimental
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
-  Asks one typed question of the contract-pinned typed-decision backend and
-  returns the answer the caller acts on, naming which decider produced it: the
-  model, or the caller's optional incumbent answer on a refusal, a backend error
-  or an answer below the abstention threshold. Without an incumbent the request
-  is blind, and those outcomes return no_answer with a null answer.
-  A work unit that does not belong
-  to a public repository, resolved live and failing closed, is refused before
-  anything is sent to the backend.
+  Observes the contract-pinned typed-decision backend in shadow without steering
+  the incumbent decision, retaining the observed model, abstention, refusal or
+  error outcome in the receipt. Reports independently adjudicated calibration
+  only after the contract sample floor is reached. A work unit that does not
+  belong to a public repository, resolved live and failing closed, is refused
+  before anything is sent to the backend.
 
 input_model:
-  name: ModelTypedDecisionRequest
+  name: ModelTypedDecisionWorkflowRequest
   module: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision
 
 output_model:
-  name: ModelTypedDecisionResult
+  name: ModelTypedDecisionWorkflowResult
   module: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision
+
+shadow_calibration:
+  minimum_samples: 300
+  reliability_bins: 15
+
+handler:
+  module: omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision
+  class: HandlerTypedDecisionWorkflow
+  input_model: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision.ModelTypedDecisionWorkflowRequest
+  output_model: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision.ModelTypedDecisionWorkflowResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: typed_decision_shadow
+      handler:
+        name: HandlerTypedDecisionWorkflow
+        module: omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision
+      event_model:
+        name: ModelTypedDecisionWorkflowRequest
+        module: omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision
+
+terminal_event: onex.evt.omnimarket.typed-decision-shadow-completed.v1
+published_events:
+  - topic: onex.evt.omnimarket.typed-decision-shadow-completed.v1
+    event_type: TypedDecisionWorkflowResult
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.typed-decision-shadow-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.typed-decision-shadow-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.typed-decision-shadow-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.typed-decision-shadow-completed.v1
 
 decision_routing:
   # The routing contract's typed-decision backend. Swapping the provider or
@@ -80,14 +112,8 @@ descriptor:
   runtime_profiles:
     - effects
 
-seam:
-  # Not a runtime declaration: discovery reads nothing here.
-  handler:
-    module: omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision
-    class: HandlerTypedDecision
-
 metadata:
-  transport_type: http
+  transport_type: kafka
   description: "Typed decision effect node"
   author: "OmniNode Team"
   tags:

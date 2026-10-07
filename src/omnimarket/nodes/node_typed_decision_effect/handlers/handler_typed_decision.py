@@ -35,6 +35,7 @@ Order of operations, and why:
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -58,8 +59,14 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
     EnumTypedDecisionDecider,
     EnumTypedDecisionKind,
     EnumTypedDecisionReason,
+    ModelTypedDecisionCalibrationReport,
+    ModelTypedDecisionCalibrationRequest,
+    ModelTypedDecisionReliabilityBin,
     ModelTypedDecisionRequest,
     ModelTypedDecisionResult,
+    ModelTypedDecisionShadowResult,
+    ModelTypedDecisionWorkflowRequest,
+    ModelTypedDecisionWorkflowResult,
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -73,6 +80,7 @@ _QUESTION_ID = "decision"
 #: The routing task class a typed-decision backend declares as its capability.
 _TASK_CLASS = "typed_decision"
 _DETAIL_LIMIT = 300
+_LOGGER = logging.getLogger(__name__)
 
 
 class ModelTypedDecisionRouting(BaseModel):
@@ -219,7 +227,20 @@ class HandlerTypedDecision:
                 latency_ms=latency_ms,
                 detail=response.text[:_DETAIL_LIMIT],
             )
-        return self._from_answer(request, backend, response, latency_ms)
+        try:
+            return self._from_answer(request, backend, response, latency_ms)
+        except ValueError:
+            # A parsed answer can still violate the typed receipt's probability
+            # constraints. That is a backend shape failure, never a caller error.
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR,
+                EnumTypedDecisionReason.BACKEND_MALFORMED_RESPONSE,
+                backend=backend,
+                http_status=response.status_code,
+                latency_ms=latency_ms,
+                detail="the answer violates the typed receipt schema",
+            )
 
     # ------------------------------------------------------------------ scoping
 
@@ -472,4 +493,118 @@ def _int_or_none(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-__all__: list[str] = ["HandlerTypedDecision"]
+class ModelTypedDecisionCalibrationPolicy(BaseModel):
+    """The immutable sample floor and reliability bins declared by the contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    minimum_samples: int = Field(..., ge=300)
+    reliability_bins: int = Field(..., ge=1, le=100)
+
+
+class HandlerTypedDecisionWorkflow:
+    """Wire the existing effect into a shadow-only bus workflow and its report.
+
+    The incumbent is the only returned decision. The effect's outcome remains
+    in the receipt for adjudication, including refusals, timeouts and abstentions.
+    Calibration consumes independently labelled observations, never that incumbent.
+    """
+
+    def __init__(self, *, decision_handler: HandlerTypedDecision | None = None) -> None:
+        self._decision_handler = decision_handler
+        self._calibration_policy = ModelTypedDecisionCalibrationPolicy.model_validate(
+            _load_contract_block("shadow_calibration")
+        )
+
+    def handle(
+        self, request: ModelTypedDecisionWorkflowRequest
+    ) -> ModelTypedDecisionWorkflowResult:
+        if request.calibration is not None:
+            return ModelTypedDecisionWorkflowResult(
+                calibration=self._calibrate(request.calibration)
+            )
+        assert request.decision is not None
+        observed = (self._decision_handler or HandlerTypedDecision()).handle(
+            request.decision
+        )
+        receipt = ModelTypedDecisionShadowResult.model_validate(
+            {
+                **observed.model_dump(),
+                "answer": request.decision.incumbent_answer,
+                "decided_by": EnumTypedDecisionDecider.INCUMBENT_SHADOW,
+                "shadow_decided_by": observed.decided_by,
+            }
+        )
+        _LOGGER.info(
+            "typed decision shadow receipt",
+            extra={"decision_receipt": receipt.model_dump(mode="json")},
+        )
+        return ModelTypedDecisionWorkflowResult(decision=receipt)
+
+    def _calibrate(
+        self, request: ModelTypedDecisionCalibrationRequest
+    ) -> ModelTypedDecisionCalibrationReport:
+        observations = request.observations
+        count = len(observations)
+        floor = self._calibration_policy.minimum_samples
+        if count < floor:
+            return ModelTypedDecisionCalibrationReport(
+                sample_count=count,
+                minimum_samples=floor,
+                reason="insufficient_samples",
+            )
+        options = sorted(observations[0].probabilities)
+        bins = self._calibration_policy.reliability_bins
+        diagram: dict[str, tuple[ModelTypedDecisionReliabilityBin, ...]] = {}
+        ece: dict[str, float] = {}
+        for option in options:
+            counts = [0] * bins
+            probability_sums = [0.0] * bins
+            label_sums = [0] * bins
+            for row in observations:
+                probability = row.probabilities[option]
+                index = min(int(probability * bins), bins - 1)
+                counts[index] += 1
+                probability_sums[index] += probability
+                label_sums[index] += int(row.adjudicated_answer == option)
+            diagram[option] = tuple(
+                ModelTypedDecisionReliabilityBin(
+                    lower=index / bins,
+                    upper=(index + 1) / bins,
+                    count=counts[index],
+                    mean_probability=(
+                        probability_sums[index] / counts[index]
+                        if counts[index]
+                        else None
+                    ),
+                    observed_frequency=(
+                        label_sums[index] / counts[index] if counts[index] else None
+                    ),
+                )
+                for index in range(bins)
+            )
+            ece[option] = (
+                sum(
+                    abs(probability_sums[index] - label_sums[index])
+                    for index in range(bins)
+                )
+                / count
+            )
+        brier = (
+            sum(
+                (row.probabilities[option] - int(row.adjudicated_answer == option)) ** 2
+                for row in observations
+                for option in options
+            )
+            / count
+        )
+        return ModelTypedDecisionCalibrationReport(
+            sample_count=count,
+            minimum_samples=floor,
+            brier_score=brier,
+            per_option_ece=ece,
+            reliability_diagram=diagram,
+        )
+
+
+__all__: list[str] = ["HandlerTypedDecision", "HandlerTypedDecisionWorkflow"]
