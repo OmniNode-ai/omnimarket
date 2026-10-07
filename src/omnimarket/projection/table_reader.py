@@ -670,15 +670,27 @@ class TableRowSource:
         self._clock: Callable[[], float] = time.monotonic
 
     @classmethod
-    def for_database_url(cls, database_url: str) -> TableRowSource:
+    def for_database_url(
+        cls, database_url: str, *, internal_database_url: str | None = None
+    ) -> TableRowSource:
         """Read every exposure through one database (OMN-20159).
 
         The runtime-resident read node is bound to the runtime's own projection
         database, where the writers materialize every table, so every relation
         schema is read through that one binding rather than per-schema DSNs.
+
+        ``internal_database_url`` is the one exception (OMN-20071): the
+        ``omninode_internal`` schema is read through it when given, because the
+        read binding's role holds no USAGE there. The caller resolves it; this
+        class reads no environment variable on this path.
         """
         dsn_envs = (DEFAULT_DSN_ENV, *_RELATION_SCHEMA_DSN_ENV.values())
-        return cls(environ=dict.fromkeys(dsn_envs, database_url))
+        environ = dict.fromkeys(dsn_envs, database_url)
+        if internal_database_url:
+            environ[_RELATION_SCHEMA_DSN_ENV["omninode_internal"]] = (
+                internal_database_url
+            )
+        return cls(environ=environ)
 
     async def close(self) -> None:
         pools, self._pools = self._pools, {}

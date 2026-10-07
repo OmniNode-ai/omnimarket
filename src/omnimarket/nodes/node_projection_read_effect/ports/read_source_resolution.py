@@ -11,6 +11,13 @@ variable itself. ``node_delegate_skill_orchestrator``'s claim and evidence
 stores follow the runtime binding only, so a read binding that logs in as a
 reader never becomes their write principal (OMN-20159).
 
+The one exception is the ``omninode_internal`` schema (OMN-20071): the read
+binding's role holds no USAGE there, so those exposures are read through the
+runtime's own principal, whose URL the runner resolves
+(:func:`omnimarket.projection.runner.projection_internal_database_url`). The
+URL is used only for a Postgres binding, and a runtime without it reads that
+schema through the read binding as before.
+
 The binding may name Postgres, where the deployed writers materialize their
 tables, or the local SQLite store a local runtime's writers fill (local MVP
 mode 1, OMN-20329). Either way the read goes to the database the writers were
@@ -31,6 +38,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 from omnimarket.projection.runner import (
     PROJECTION_READ_BINDING_UNSET_DETAIL,
     ProjectionReadBindingOverlayError,
+    projection_internal_database_url,
     projection_read_binding_from_overlay_env,
 )
 from omnimarket.projection.sqlite_database import (
@@ -80,7 +88,9 @@ def resolve_projection_read_source() -> TableRowSource | SqliteTableRowSource:
         ) from exc
     scheme = urlsplit(database_url).scheme.lower()
     if scheme in _POSTGRES_SCHEMES:
-        return TableRowSource.for_database_url(database_url)
+        return TableRowSource.for_database_url(
+            database_url, internal_database_url=projection_internal_database_url()
+        )
     if scheme in SQLITE_SCHEMES:
         return SqliteTableRowSource(sqlite_path_from_dsn(database_url))
     raise ProjectionReadError(

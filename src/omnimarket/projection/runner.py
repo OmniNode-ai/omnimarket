@@ -75,6 +75,10 @@ PROJECTION_READ_BINDING_UNSET_DETAIL = (
     f"nor {PROJECTION_RUNTIME_BINDING_OVERLAY_ENV} (the runtime binding a read "
     "falls back to) is set"
 )
+# The runtime's own login (``omninode_runtime``), the principal the writers of the
+# ``omninode_internal`` read models were granted to. See
+# projection_internal_database_url().
+PROJECTION_INTERNAL_DATABASE_URL_SECRET_REF = "env:OMNINODE_INTERNAL_DB_URL"
 DEFAULT_GROUP_ID = "omnimarket-projections-v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection"
 RETRY_BASE_DELAY = 2.0
@@ -392,6 +396,27 @@ def projection_read_binding_from_overlay_env() -> ModelProjectionRuntimeBinding 
         raise ProjectionReadBindingOverlayError(
             PROJECTION_READ_BINDING_OVERLAY_ENV, overlay_path, type(exc).__name__
         ) from exc
+
+
+def projection_internal_database_url() -> str | None:
+    """The database URL ``omninode_internal`` reads are made through, or ``None``.
+
+    ``omninode_internal`` holds the platform-internal read models. The runtime's
+    own principal (``omninode_runtime``) holds their declared, delivered USAGE
+    and SELECT; the dashboard reader a read binding usually logs in as
+    (``role_omnidash``) holds neither, and a grant to it is an undeclared grant
+    the live ACL gate refuses. The read node therefore reads those schemas
+    through the runtime's own variable, resolved here with the same
+    ``env:<NAME>`` secret-reference path every binding uses, so no other module
+    reads it. ``None`` when the runtime does not carry the variable, in which
+    case the read goes through the read binding as it always did.
+    """
+    try:
+        return _resolve_database_url_secret_ref(
+            PROJECTION_INTERNAL_DATABASE_URL_SECRET_REF
+        )
+    except RuntimeError:
+        return None
 
 
 def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str:
