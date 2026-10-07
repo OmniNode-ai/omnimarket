@@ -1,0 +1,59 @@
+{
+  "capture": {
+    "run_id": "b7a6bedd-ac28-4d8f-9824-ef4dbe8d91ab",
+    "correlation_id": "303b50a7-12e2-41b0-999f-4461534fac08",
+    "bus": "kafka",
+    "lane": "dev",
+    "locus": "deployed-lane",
+    "status": "success",
+    "source_receipt": "$ONEX_STATE_DIR/runs/b7a6bedd-ac28-4d8f-9824-ef4dbe8d91ab/receipt.json",
+    "source_receipt_sha256": "75411687144206d1c32d6d0e7a877afe9a43ad8997e3e1985b7ebdebdd2719fd",
+    "runtime_host": "omnipc2",
+    "runtime_stamped_at": "2026-10-06T12:43:11.192595Z",
+    "omnimarket": {
+      "commit": "f4e49803eebf3d32e028de95ca1c8dcfe0d29b38",
+      "import_path": null,
+      "name": "omnimarket",
+      "source": "vcs",
+      "version": "0.4.302"
+    }
+  },
+  "terminal": {
+    "correlation_id": "303b50a7-12e2-41b0-999f-4461534fac08",
+    "envelope_id": "cc2f13da-ebe3-59d8-840b-0b6343c2ca82",
+    "envelope_timestamp": "2026-10-06T12:43:11.195391Z",
+    "event_type": "omnimarket.delegate-skill-completed",
+    "parent_envelope_id": "a0003c68-0275-4fd4-8cd2-5db62c85d275",
+    "source_tool": null,
+    "payload": {
+      "status": "completed",
+      "correlation_id": "303b50a7-12e2-41b0-999f-4461534fac08",
+      "task_type": "document",
+      "ticket_id": "OMN-17013",
+      "caller_lane": "lab-fill-omn17013-10061230",
+      "provider": "local",
+      "model_name": "Qwen3.8-27B",
+      "pricing_manifest_version": 1,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "required_quality_bar": 0.8,
+      "score_vs_required_bar": "at_or_above_bar",
+      "attempts_count": 1,
+      "escalation_count": 0,
+      "error_message": "",
+      "attempts": [
+        {
+          "tier": "local",
+          "backend_id": "local-omnipc2-chat",
+          "model_id": "Qwen3.8-27B",
+          "quality_gate_passed": true,
+          "quality_score": 1.0,
+          "acceptance_decision": "accept",
+          "acceptance_reason": "quality_bar_met",
+          "attempt_id": "b19e79cc-0889-5413-950a-b953132e1934",
+          "attempt_kind": "first_try"
+        }
+      ]
+    }
+  }
+}

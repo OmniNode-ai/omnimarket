@@ -3,10 +3,17 @@
 """First-claim context sufficient to answer an abandoned delegation."""
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, field_validator
+
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
+
+# Shared by intake and recovery in this process; a new runtime gets a new id.
+DELEGATION_RUNTIME_INSTANCE_ID = uuid4()
 
 
 class ModelDelegationReapContext(BaseModel):
@@ -22,6 +29,8 @@ class ModelDelegationReapContext(BaseModel):
     session_id: str | None
     provenance: ModelDelegationProvenance | None
     deadline_at: datetime
+    runtime_instance_id: UUID | None = None
+    request: ModelDelegateSkillRequest | None = None
 
     @field_validator("deadline_at")
     @classmethod

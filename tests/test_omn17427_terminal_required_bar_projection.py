@@ -41,6 +41,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 if TYPE_CHECKING:
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
@@ -59,6 +63,7 @@ def _deployed_lane_terminal(
     ``actual_score`` key.
     """
     payload: dict[str, Any] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "status": "completed",
         "correlation_id": correlation_id,
         "task_type": "document",
@@ -79,7 +84,7 @@ def _deployed_lane_terminal(
 def _mock_db() -> AsyncMock:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=[])
-    db.fetchval = AsyncMock(return_value=None)
+    mock_tenant_registry(db)
     return db
 
 

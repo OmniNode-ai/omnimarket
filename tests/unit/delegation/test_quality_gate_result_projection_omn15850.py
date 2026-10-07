@@ -48,6 +48,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _ROOT = Path(__file__).resolve().parents[3]
 _PROJECTION_CONTRACT_PATH = (
@@ -183,6 +187,7 @@ def test_quality_gate_result_does_not_clobber_existing_terminal_fields() -> None
     """
     correlation_id = uuid4()
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
 
     # Seed the row via the plain ModelTaskDelegatedEvent path (handle()'s
     # default fallback for an event_type that matches none of the special-cased
@@ -193,6 +198,7 @@ def test_quality_gate_result_does_not_clobber_existing_terminal_fields() -> None
     # against the identical `delegation_events` table + `correlation_id`
     # conflict key, without needing to replicate that converter's payload shape.
     terminal_payload: dict[str, object] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "correlation_id": str(correlation_id),
         "task_type": "code_generation",
         "delegated_to": "claude",

@@ -303,7 +303,8 @@ def test_failing_bound_test_refuses_with_no_reason_code(
         failing=frozenset({_TEST_A}),
     )
     assert state.status is EnumDodVerifyStatus.FAILED
-    assert state.error_message is None
+    assert state.error_message is not None
+    assert state.error_message.startswith("EVIDENCE_CHECK_FAILED: dod-1: ")
 
     result = _difference(tmp_path, state, _CONTROL_PASSED)
     assert result.outcome == "unclassified_difference"

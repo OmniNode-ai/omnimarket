@@ -32,6 +32,8 @@ instead of silently passing.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -43,11 +45,11 @@ from omnibase_core.models.delegation.wire.model_delegation_completed import (
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 
 # The raw endpoint the rung was actually posted to. This is the value the pre-fix
@@ -285,3 +287,396 @@ async def test_bus_receipt_binds_provider_accepted_attempt_gate_and_manifest_ver
     # (3) a real manifest version from the pricing manifest, not the field's 0 default.
     assert response.pricing_manifest_version > 0
     assert response.pricing_manifest_version == get_manifest_version_int()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("outcome", "invalid_field"),
+    [
+        ("completed", None),
+        ("failed_routed", None),
+        ("failed_unrouted", None),
+        ("completed", "backend_url"),
+        ("completed", "pricing_absent"),
+        ("completed", "pricing_zero"),
+        ("completed", "routing_disposition_absent"),
+        ("completed", "routing_identity_absent"),
+        ("completed", "quality_comparison"),
+        ("completed", "evaluation_provider"),
+    ],
+)
+async def test_v2_bus_terminal_identity_reaches_receipt(
+    outcome: str,
+    invalid_field: str | None,
+) -> None:
+    from datetime import UTC, datetime
+
+    from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+        ModelDelegationTerminalCompletedV2,
+        ModelDelegationTerminalFailedRoutedV2,
+        ModelDelegationTerminalFailedUnroutedV2,
+    )
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+        load_runtime_delegation_dispatch_config,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+        TOPIC_ID_DELEGATION_COMPLETED_V2,
+        TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+        TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
+    )
+    from omnimarket.pricing import get_manifest_version_int
+
+    correlation_id = uuid4()
+    # Distinct versions falsify a receipt reconstructed from the reader's manifest.
+    wire_version = get_manifest_version_int() + 1
+    common: dict[str, Any] = {
+        "correlation_id": correlation_id,
+        "task_type": "test",
+        "model_used": "qwen-coder",
+        "endpoint_url": _ENDPOINT_URL,
+        "content": "bus receipt proof",
+        "latency_ms": 12,
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "total_tokens": 5,
+        "fallback_to_claude": False,
+        "failure_reason": "",
+        "tokens_to_compliance": 0,
+        "compliance_attempts": 1,
+        "escalation_count": 1,
+        "escalation_history": _LADDER,
+        "routing_tiers_hash": "test-routing",
+        "escalation_config_hash": "test-escalation",
+        "attempts_count": 2,
+        "cumulative_attempt_cost": 0.0,
+        "cumulative_input_tokens": 3,
+        "cumulative_output_tokens": 2,
+        "final_attempt_cost": 0.0,
+        "context_pack_hash": "",
+        "cost_tier_name": "local",
+        "tenant_id": "test-tenant",
+        "terminal_outcome": "completed" if outcome == "completed" else "failed",
+    }
+    routed: dict[str, Any] = {
+        "routing_disposition": "routed",
+        "backend_ref": "local-heavy-reasoning",
+        "pricing_manifest_version": wire_version,
+        "quality_bar_evaluation": {
+            "quality_score": 0.95,
+            "required_quality_bar": 0.8,
+            "score_vs_required_bar": "at_or_above_bar",
+        },
+        "failed_acceptance_criteria": (),
+    }
+    config = load_runtime_delegation_dispatch_config().model_copy(
+        update={"wait_timeout_seconds": 1}
+    )
+    if outcome == "completed":
+        terminal = ModelDelegationTerminalCompletedV2(
+            **common, **routed, quality_passed=True
+        )
+        topic = TOPIC_ID_DELEGATION_COMPLETED_V2
+    elif outcome == "failed_routed":
+        common["escalation_history"] = _LADDER[:1]
+        routed["quality_bar_evaluation"] = {
+            "quality_score": 0.2,
+            "required_quality_bar": 0.8,
+            "score_vs_required_bar": "below_bar",
+        }
+        terminal = ModelDelegationTerminalFailedRoutedV2(
+            **common,
+            **routed,
+            quality_passed=False,
+            terminal_failure_reason="quality gate refused",
+            routed_failure_cause={"kind": "quality_gate_rejection"},
+        )
+        topic = TOPIC_ID_DELEGATION_FAILED_ROUTED_V2
+    else:
+        common["escalation_history"] = ()
+        terminal = ModelDelegationTerminalFailedUnroutedV2(
+            **common,
+            routing_disposition="unrouted",
+            unrouted_reason="no_eligible_backend",
+            terminal_failure_reason="no eligible backend",
+        )
+        topic = TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2
+
+    bus = EventBusInmemory(environment="test", group="receipt-v2")
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[type(terminal)](
+            payload=terminal,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=topic,
+            source_tool="receipt-v2-test",
+        )
+        if invalid_field is not None:
+            # A malformed terminal must not win the wait just because it has
+            # the expected correlation id. The valid producer terminal follows
+            # it on the same bus, so the receipt must bind that valid evidence.
+            malformed = json.loads(envelope.model_dump_json())
+            payload = malformed["payload"]
+            if invalid_field == "backend_url":
+                payload["backend_ref"] = _ENDPOINT_URL
+            elif invalid_field == "pricing_absent":
+                del payload["pricing_manifest_version"]
+            elif invalid_field == "pricing_zero":
+                payload["pricing_manifest_version"] = 0
+            elif invalid_field == "routing_disposition_absent":
+                del payload["routing_disposition"]
+            elif invalid_field == "routing_identity_absent":
+                for field in ("routing_disposition", "terminal_outcome", "backend_ref"):
+                    del payload[field]
+            elif invalid_field == "quality_comparison":
+                payload["quality_bar_evaluation"]["score_vs_required_bar"] = "below_bar"
+            elif invalid_field == "evaluation_provider":
+                payload["quality_bar_evaluation"]["provider"] = _ENDPOINT_URL
+            await bus.publish(topic, None, json.dumps(malformed).encode(), None)
+        await bus.publish(topic, None, envelope.model_dump_json().encode(), None)
+
+    try:
+        await bus.subscribe(
+            config.topics.command, group_id="receipt-v2-producer", on_message=on_command
+        )
+        handler = HandlerDelegateSkill(
+            dispatch_port=RuntimeDelegationDispatchPort(event_bus=bus, config=config)
+        )
+        response = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="Prove v2 bus receipt identity",
+                task_type="test",
+                source="claude-code",
+                correlation_id=correlation_id,
+                tenant_id="test-tenant",
+            )
+        )
+    finally:
+        await bus.close()
+
+    assert response.status == ("completed" if outcome == "completed" else "failed")
+    assert response.provider == (
+        "" if outcome == "failed_unrouted" else "local-heavy-reasoning"
+    )
+    assert response.pricing_manifest_version == (
+        0 if outcome == "failed_unrouted" else wire_version
+    )
+    assert response.quality_gate_passed is (outcome == "completed")
+    if outcome == "completed":
+        assert len(response.attempts) == 2
+        assert response.attempts[-1].backend_id == response.provider
+        assert (
+            response.attempts[-1].acceptance_decision
+            is EnumDelegationAcceptanceDecision.ACCEPT
+        )
+        assert response.attempts[-1].quality_gate_passed is True
+        assert response.quality_score == 0.95
+        assert response.score_vs_required_bar == "at_or_above_bar"
+    else:
+        assert response.error_message == terminal.terminal_failure_reason
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize("rerouted", [False, True], ids=["first-route", "rerouted"])
+async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    rerouted: bool,
+) -> None:
+    """Keep the winning route's identity after rejection and manifest changes."""
+    from datetime import UTC, datetime
+
+    from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+        ModelDelegationTerminalCompletedV2,
+    )
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
+    from omnimarket.events.delegation import ModelDelegationRequest
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+        RuntimeDelegationDispatchPort,
+        load_runtime_delegation_dispatch_config,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
+        TOPIC_ID_DELEGATION_COMPLETED_V2,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow_module,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+        ModelRoutingIntent,
+    )
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+        ModelQualityGateResult,
+    )
+    from omnimarket.pricing import get_manifest_version_int
+    from tests.unit.delegation.test_omn17802_v2_terminal_route_boundary import (
+        _make_routing_decision,
+        _make_success_response,
+    )
+
+    correlation_id = uuid4()
+    backend_ref = "local-heavy-reasoning"
+    route_version = get_manifest_version_int() + 1
+    config = load_runtime_delegation_dispatch_config().model_copy(
+        update={"wait_timeout_seconds": 1}
+    )
+    bus = EventBusInmemory(environment="test", group="producer-receipt")
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        command = ModelEventEnvelope[ModelDelegationRequest].model_validate_json(
+            message.value
+        )
+        producer = workflow_module.HandlerDelegationWorkflow(workflows={})
+        producer.handle_delegation_request(command.payload)
+        if rerouted:
+            monkeypatch.setattr(
+                workflow_module, "get_manifest_version_int", lambda: route_version - 1
+            )
+            producer.handle_routing_decision(
+                _make_routing_decision(
+                    correlation_id, backend_ref="local-coder"
+                ).model_copy(update={"tier_name": "local"})
+            )
+            producer.handle_inference_response(_make_success_response(correlation_id))
+            rejected_events = producer.handle_gate_result(
+                ModelQualityGateResult(
+                    correlation_id=correlation_id,
+                    passed=False,
+                    quality_score=0.1,
+                    failure_reasons=("assertions_missing",),
+                )
+            )
+            assert any(
+                isinstance(event, ModelRoutingIntent) for event in rejected_events
+            )
+            assert not any(
+                isinstance(event, ModelDelegationTerminalCompletedV2)
+                for event in rejected_events
+            )
+        monkeypatch.setattr(
+            workflow_module, "get_manifest_version_int", lambda: route_version
+        )
+        producer.handle_routing_decision(
+            _make_routing_decision(correlation_id, backend_ref=backend_ref)
+        )
+        # Neither the producer's now-current manifest nor the consumer's local
+        # manifest is the one that priced this route.
+        monkeypatch.setattr(
+            workflow_module, "get_manifest_version_int", lambda: route_version + 1
+        )
+        producer.handle_inference_response(_make_success_response(correlation_id))
+        events = producer.handle_gate_result(
+            ModelQualityGateResult(
+                correlation_id=correlation_id, passed=True, quality_score=0.95
+            )
+        )
+        terminals = [
+            event
+            for event in events
+            if isinstance(event, ModelDelegationTerminalCompletedV2)
+        ]
+        assert len(terminals) == 1, "producer must emit a real routed v2 completion"
+        terminal = terminals[0]
+        envelope = ModelEventEnvelope[ModelDelegationTerminalCompletedV2](
+            payload=terminal,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=TOPIC_ID_DELEGATION_COMPLETED_V2,
+        )
+        await bus.publish(
+            TOPIC_ID_DELEGATION_COMPLETED_V2,
+            None,
+            envelope.model_dump_json().encode(),
+            None,
+        )
+
+    try:
+        await bus.subscribe(
+            config.topics.command, group_id="producer-receipt", on_message=on_command
+        )
+        handler = HandlerDelegateSkill(
+            dispatch_port=RuntimeDelegationDispatchPort(event_bus=bus, config=config)
+        )
+        receipt = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="Prove producer identity survives the bus",
+                task_type="test",
+                source="claude-code",
+                correlation_id=correlation_id,
+                tenant_id="test-tenant",
+            )
+        )
+    finally:
+        await bus.close()
+
+    assert receipt.status == "completed", receipt.error_message
+    assert receipt.provider == backend_ref
+    assert "://" not in receipt.provider
+    assert receipt.pricing_manifest_version == route_version
+    assert receipt.quality_gate_passed is True
+    assert receipt.attempts_count == len(receipt.attempts) == (2 if rerouted else 1)
+    if rerouted:
+        rejected_attempt = receipt.attempts[0]
+        assert rejected_attempt.backend_id == "local-coder"
+        assert (
+            rejected_attempt.acceptance_decision
+            is EnumDelegationAcceptanceDecision.CLIMB
+        )
+        assert rejected_attempt.quality_gate_passed is False
+    attempt = receipt.attempts[-1]
+    assert attempt.backend_id == backend_ref
+    assert attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+    assert attempt.quality_gate_passed is True
+
+
+@pytest.mark.unit
+def test_captured_deployed_bus_receipt_preserves_identity_attempt_and_manifest() -> (
+    None
+):
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+    from omnimarket.adapters.codex.runtime_client import _parse_terminal_result
+    from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+        ModelDelegateSkillResponse,
+    )
+
+    evidence_path = (
+        Path(__file__).resolve().parents[4]
+        / "docs/evidence/OMN-17013-deployed-bus-receipt.json"
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    capture = evidence["capture"]
+    assert (capture["bus"], capture["lane"], capture["locus"]) == (
+        "kafka",
+        "dev",
+        "deployed-lane",
+    )
+    assert capture["status"] == "success"
+    wire = json.dumps(evidence["terminal"]).encode()
+    # Validate the typed envelope before replay: the parser's legacy fallback
+    # must not make an incompatible captured receipt look like a passing proof.
+    envelope = ModelEventEnvelope[ModelDelegateSkillResponse].model_validate_json(wire)
+    terminal = _parse_terminal_result(wire)
+    assert terminal is not None
+    assert terminal.status == "completed"
+    assert str(terminal.correlation_id) == capture["correlation_id"]
+    assert terminal.payload is not None
+    receipt = ModelDelegateSkillResponse.model_validate(terminal.payload)
+    assert receipt == envelope.payload
+    assert receipt.provider == "local"
+    assert "://" not in receipt.provider
+    assert receipt.attempts_count == len(receipt.attempts) == 1
+    attempt = receipt.attempts[-1]
+    assert attempt.backend_id == "local-omnipc2-chat"
+    assert attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+    assert attempt.quality_gate_passed is receipt.quality_gate_passed is True
+    assert receipt.pricing_manifest_version == 1

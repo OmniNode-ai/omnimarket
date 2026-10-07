@@ -291,6 +291,14 @@ sub_handler_dependencies:
 
 terminal_event: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
 
+# Success is the completed event, emitted by consumer.py for every sweep the
+# handler returns, including one that ends in the FAILED state (its payload
+# carries final_state). Failure is the failed event, emitted by consumer.py only
+# when an exception escapes the handler.
+terminal_events:
+  success: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+  failure: onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1

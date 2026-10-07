@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19977"
+title: "node_projection_metering_summary is the one savings definition, and onex metering and Overview read its rows"
+summary: "The omnimarket half of OMN-19977. The end of each mode 1 onex delegate refreshes the metering rows itself: once the terminal delegation_events row is durable, the local dispatch port issues the metering node's own fold request for the run's UTC day plus the all row, and a changed resolved baseline or pricing manifest version sends the same command for the whole tenant (ruling D-A). onex metering reads the stored metering-summary.v1 row through HandlerProjectionRead and prints its fields, with no fold, write or price arithmetic, and an absent or stale row is a typed state. AC1 is bound to the refresh tests and AC2 to the render tests. The ticket's own AC1 falsifier, the whole node_projection_metering_summary module, already passes at the merge base (omnimarket#3079 delivered the fold), so it cannot be a must-fail control and is not bound here. AC3 (Overview equals the CLI to the cent) is OmniDash's binding plus the lab readback and is not claimed by this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criteria declared on the OMN-19977 ticket body, as read on 2026-10-05. The ticket body is the source and this block is the copy. AC3 is not claimed by this contract: it needs the OmniDash Overview binding and the lab readback, which land separately.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A recorded window replayed twice gives byte-identical rows, an unmeasured run counts but is not summed, and a baseline change with no new delegation recomputes every row -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary -q fails any of the three
+      - id: "AC2"
+        statement: |-
+          AC2: The CLI's `--json` equals the exposure row -- falsifier: the same pytest module finds a field that differs
+evidence_requirements:
+  - kind: "tests"
+    description: "Over the real local dispatch path on a fresh HOME, with only the provider stubbed, one onex delegate writes its UTC day row and the all row; a second identical terminal delivery changes no byte; a failed run counts in runs_total and in no sum; a changed baseline model or manifest version refolds every row for the tenant; runs either side of UTC midnight land on their own days; another tenant's rows are untouched; a refresh failure is surfaced and never fails the delegation. At the merge base every test in the file fails."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_metering_refresh_omn19977.py -q -p no:randomly"
+  - kind: "tests"
+    description: "onex metering --json prints exactly the fields of the metering-summary.v1 row read through HandlerProjectionRead for the same tenant, window and baseline; rendering runs no fold, write or price arithmetic (store bytes compared, spies with a positive control); a missing, older or differently priced row is a typed state, never a recomputed figure; the default baseline is resolved, not frozen at import; an unresolved baseline is never a number. At the merge base 11 of the 12 fail."
+    command: "uv run pytest tests/test_omn19977_metering_renders_the_row.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19977-ac1-delegation-refreshes-its-rows"
+    description: "The end-of-delegate refresh and the whole-tenant refresh on a baseline or manifest change produce AC1's three clauses on the rows the CLI and Overview read: a second identical terminal delivery leaves the stored rows byte-identical, a failed (unmeasured) run counts in runs_total and in no sum, and a changed resolved baseline model or pricing manifest version, with no new delegation, refolds every day row and the all row for the tenant."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_metering_refresh_omn19977.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19977-ac2-cli-renders-the-served-row"
+    description: "Every field onex metering --json prints equals the same field of the metering-summary.v1 row served through HandlerProjectionRead for the same tenant, window and baseline, and the CLI prints no field the row does not carry; rendering performs no fold, write or price arithmetic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19977_metering_renders_the_row.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

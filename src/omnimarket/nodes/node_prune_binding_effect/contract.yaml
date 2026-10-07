@@ -1,0 +1,49 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prune_binding_effect
+contract_name: node_prune_binding_effect
+node_name: node_prune_binding_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Resolve consumer-flow and dead-letter retention bindings from the declared
+  contract binding and services.prune in the protected runtime overlay. When
+  requested, resolve the database URL through the injected lane secret store.
+  Missing or invalid configuration raises a sanitized PruneConfigurationError.
+  Invoked in process by the two prune effect handlers; no event-bus topics or
+  subscriptions are needed.
+
+handler:
+  module: omnimarket.nodes.node_prune_binding_effect.handlers.handler_prune_binding
+  class: HandlerPruneBinding
+  input_model: omnimarket.nodes.node_prune_binding_effect.models.ModelPruneBindingRequest
+
+input_model:
+  name: ModelPruneBindingRequest
+  module: omnimarket.nodes.node_prune_binding_effect.models
+  description: Declared binding, prune kind and optional database-resolution flag.
+
+output_model:
+  name: ModelPruneBindingResult
+  module: omnimarket.nodes.node_prune_binding_effect.models
+  description: Overlay-resolved binding and optional SecretStr database URL.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+dod_evidence:
+  PYTEST:
+    description: "overlay validation, secret resolution, redaction and handler parity"
+    command: "uv run pytest tests/test_prune_binding.py -q"
+    pass_criteria: >
+      the handler resolves the same binding as load_prune_binding; database
+      resolution uses the secret store only when requested; invalid overlays
+      and unresolved credentials refuse without disclosing secret values
