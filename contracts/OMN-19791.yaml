@@ -12,6 +12,8 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "Reversing the quota entries with unchanged values yields the same selected items, the same manifest_id and the same serialized manifest -- falsifier: uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k reordered_quotas"
+      - id: "AC2"
+        statement: "Candidates whose slash-delimited stratum labels collide stay in separate strata, so reversing the input rows yields the same manifest -- falsifier: uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k colliding_stratum_labels"
 evidence_requirements:
   - kind: "tests"
     description: "Regression test for quota-order independence of the manifest."
@@ -29,3 +31,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k reordered_quotas"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-colliding-stratum-labels-same-manifest"
+    description: "Colliding slash-delimited stratum labels stay distinct and row order does not change the manifest; the test fails at the merge base, which merges the colliding strata."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k colliding_stratum_labels"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
