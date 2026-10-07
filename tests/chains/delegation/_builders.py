@@ -22,6 +22,7 @@ from omnibase_core.enums.enum_agent_task_lifecycle_type import (
     EnumAgentTaskLifecycleType,
 )
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
 )
@@ -166,6 +167,13 @@ def lifecycle(
         task_id=uuid4(),
         correlation_id=cid,
         lifecycle_type=kind,
+        # OMN-18928: a success fixture must include a final response; the
+        # lifecycle status alone is not a usable artifact or a quality score.
+        artifact=(
+            {"answer": ModelSchemaValue.from_value("valid final artifact")}
+            if kind is EnumAgentTaskLifecycleType.COMPLETED
+            else None
+        ),
         remote_task_handle="remote-omn19713",
         occurred_at=datetime.now(UTC),
         error=error,

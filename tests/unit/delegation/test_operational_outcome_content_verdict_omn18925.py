@@ -43,6 +43,10 @@ import pytest
 from omnibase_core.enums.enum_agent_task_lifecycle_type import (
     EnumAgentTaskLifecycleType,
 )
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
+from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
+    ModelAgentTaskLifecycleEvent,
+)
 from omnibase_core.models.delegation.wire import (
     EnumDelegationContentVerdict,
     EnumDelegationOperationalOutcome,
@@ -84,6 +88,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
+    HandlerQualityGateIntent,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -300,6 +307,58 @@ class TestNoProviderResponseIsNeverAQualityScore:
 class TestGradedResponsesKeepTheirScoreAndGetAVerdict:
     """A response that reached the gate is graded; the verdict says how."""
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "outcome", "verdict"),
+        [
+            ('{"summary":"valid artifact"}', _OUTCOME.COMPLETED, _VERDICT.USABLE),
+            (
+                '{"unrelated":"invalid artifact"}',
+                _OUTCOME.SCHEMA_REJECTED,
+                _VERDICT.UNUSABLE,
+            ),
+        ],
+    )
+    async def test_declared_schema_through_typed_handlers(
+        self,
+        content: str,
+        outcome: EnumDelegationOperationalOutcome,
+        verdict: EnumDelegationContentVerdict,
+    ) -> None:
+        cid = uuid4()
+        handler = HandlerDelegationWorkflow()
+        request = _request(cid).model_copy(
+            update={
+                "response_contract": {
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                    "required": ["summary"],
+                }
+            }
+        )
+        await handler.handle(request)
+        await handler.handle(_routing_decision(cid))
+        events = await handler.handle(
+            ModelInferenceResponseData(
+                correlation_id=cid,
+                content=content,
+                model_used="qwen3-coder-30b",
+                latency_ms=50,
+            )
+        )
+        intent = next(
+            event for event in events if isinstance(event, ModelQualityGateIntent)
+        )
+        gate = HandlerQualityGateIntent().handle(intent)
+        handler.workflows[cid].escalation_count = _LADDER_EXHAUSTED
+
+        terminal = _only_terminal(await handler.handle(gate))
+
+        assert terminal.correlation_id == cid
+        assert terminal.operational_outcome is outcome
+        assert terminal.content_verdict is verdict
+        assert terminal.quality_score is not None
+
     def test_valid_raw_response_is_completed_and_usable(self) -> None:
         # Positive control: an artifact-only valid completion stays usable and
         # completed, and keeps the score it was graded at.
@@ -455,6 +514,93 @@ class TestGateOutcomePair:
 
 
 class TestOperationalOutcomeMaps:
+    @pytest.mark.asyncio
+    async def test_remote_cancellation_preserves_prior_gate_evidence(self) -> None:
+        cid = uuid4()
+        handler = HandlerDelegationWorkflow()
+        await handler.handle(_request(cid))
+        await handler.handle(
+            _routing_decision(cid).model_copy(update={"tier_name": "local"})
+        )
+        await handler.handle(
+            ModelInferenceResponseData(
+                correlation_id=cid,
+                content="### ANSWER\ndef test_x():\n    assert True",
+                model_used="qwen3-coder-30b",
+                latency_ms=50,
+            )
+        )
+        await handler.handle(
+            ModelQualityGateResult(
+                correlation_id=cid,
+                passed=False,
+                quality_score=0.1,
+                failure_reasons=("WEAK_OUTPUT: inadequate test coverage",),
+            )
+        )
+        workflow = handler.workflows[cid]
+        assert workflow.state is EnumDelegationState.ROUTED
+        prior_history = tuple(
+            attempt.model_dump(mode="json") for attempt in workflow.escalation_history
+        )
+        assert prior_history
+
+        terminal = _only_terminal(
+            await handler.handle(
+                ModelAgentTaskLifecycleEvent(
+                    task_id=uuid4(),
+                    correlation_id=cid,
+                    lifecycle_type=EnumAgentTaskLifecycleType.CANCELED,
+                    occurred_at=datetime.now(UTC),
+                )
+            )
+        )
+
+        _assert_no_response_shape(terminal, _OUTCOME.CANCELLED)
+        assert terminal.escalation_history == prior_history
+
+    @pytest.mark.asyncio
+    async def test_remote_completion_without_artifact_is_not_a_quality_score(
+        self,
+    ) -> None:
+        cid = uuid4()
+        handler = _routed_workflow(cid)
+        event = ModelAgentTaskLifecycleEvent(
+            task_id=uuid4(),
+            correlation_id=cid,
+            lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+            occurred_at=datetime.now(UTC),
+        )
+
+        terminal = _only_terminal(await handler.handle(event))
+
+        _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
+        assert terminal.content == ""
+        assert handler.workflows[cid].state is EnumDelegationState.FAILED
+        assert await handler.handle(event) == []
+
+    @pytest.mark.asyncio
+    async def test_remote_completion_with_artifact_remains_usable(self) -> None:
+        cid = uuid4()
+        handler = _routed_workflow(cid)
+        event = ModelAgentTaskLifecycleEvent(
+            task_id=uuid4(),
+            correlation_id=cid,
+            lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+            artifact={"answer": ModelSchemaValue.from_value("valid artifact")},
+            occurred_at=datetime.now(UTC),
+        )
+
+        terminal = _only_terminal(await handler.handle(event))
+
+        assert isinstance(terminal, ModelDelegationCompleted)
+        assert terminal.operational_outcome is _OUTCOME.COMPLETED
+        assert terminal.content_verdict is _VERDICT.USABLE
+        assert terminal.quality_score == 1.0
+        assert terminal.content == '{"answer": "valid artifact"}'
+        assert handler.workflows[cid].state is EnumDelegationState.COMPLETED
+        assert await handler.handle(event) == []
+
     @pytest.mark.parametrize(
         ("failure_class", "outcome"),
         [
