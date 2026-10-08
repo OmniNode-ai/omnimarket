@@ -10,7 +10,8 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.branch-claim-check-requested.v1
-  terminal_events: [onex.evt.omnimarket.branch-claim-check-completed.v1]
+  terminal_events:
+    success: onex.evt.omnimarket.branch-claim-check-completed.v1
 input_model: omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_check_request.ModelBranchClaimCheckRequest
 output_model: omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_check_result.ModelBranchClaimCheckResult
 description: >
