@@ -462,6 +462,18 @@ def test_loader_parity_uses_the_live_exposure_set() -> None:
     )
 
 
+def test_loader_parity_on_a_tree_the_loader_drops(tmp_path: Path) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_rejected", "t.rejected.v1", key_grain="mutable")
+    path = nodes / "node_projection_rejected" / "contract.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projection_api"]["exposures"][0]["schema"] = "unserved_schema"
+    path.write_text(yaml.safe_dump(document))
+    # The gate's enumerated set is the loader's set (empty here), not the raw
+    # declaration count, so a dropped declaration cannot widen the measured set.
+    assert gate.collect_exposures(nodes) == []
+
+
 def test_loader_dropped_exposure_is_refused_and_named(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

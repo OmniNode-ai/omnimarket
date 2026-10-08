@@ -15,7 +15,7 @@ requirements:
   - id: AC1
     statement: 'AC1 — the gate and contract discovery agree on the exposure set, not merely the count.
       -- falsifier: a test asserts the gate''s enumerated set equals the loader''s set as sets, and it
-      fails on today''s tree naming `node_projection_open_obligations`.'
+      fails on a tree whose declaration the loader drops, where the pre-change gate counted it.'
   - id: AC2
     statement: 'AC2 — a declared exposure the loader drops is a gate refusal. -- falsifier: a test adding
       a contract whose exposure the loader excludes asserts a non-zero exit naming that exposure, with
@@ -38,7 +38,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q -k "test_loader_parity_uses_the_live_exposure_set"
+    check_value: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q -k "test_loader_parity_uses_the_live_exposure_set or test_loader_parity_on_a_tree_the_loader_drops"
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
