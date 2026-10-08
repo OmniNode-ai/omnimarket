@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20754"
+title: "The local store serves the model-routing and quality-gate delegation projections the Overview reads"
+summary: "A local store gains SQLite counterparts of the projection_delegation_model_routing (migration 0055) and projection_delegation_quality_gate (migration 0045) views, so onex dashboard lists both topics ok and serves them, and the Overview renders Run locally, Tier mix and Quality."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-local-routing-and-quality"
+    statement: |-
+      The local dashboard serves the delegation model-routing and quality-gate exposures from the local store.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: On a fresh container with one delegation recorded, `/projections` lists `delegation.model-routing.v1` and `delegation.quality-gate.v1` as status ok, and each read returns 200 with one row -- falsifier: either topic is listed degraded, or its read returns anything but 200 with a row
+      - id: "AC2"
+        statement: |-
+          AC2: The served Overview's Run locally, Tier mix and Quality rows render values on that container -- falsifier: any of the three shows Not served
+evidence_requirements:
+  - kind: "tests"
+    description: "One recorded delegation in a fresh local store reads 200 with one row from both exposures, with the Postgres views' aggregates."
+    command: "uv run pytest tests/unit/projection/test_sqlite_delegation_routing_quality_views_omn20754.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The dashboard lists both topics ok and serves every field the Run locally, Tier mix and Quality rows read."
+    command: "uv run pytest tests/projection/test_dashboard_serves_routing_and_quality_omn20754.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20754-local-routing-quality-views"
+    description: "A fresh local store with one delegation serves model-routing and quality-gate: 200 with one row each."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_sqlite_delegation_routing_quality_views_omn20754.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20754-overview-rows-served"
+    description: "The dashboard lists both topics ok and serves the fields the Overview's Run locally, Tier mix and Quality rows render."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_serves_routing_and_quality_omn20754.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

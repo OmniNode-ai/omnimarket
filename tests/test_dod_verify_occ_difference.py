@@ -37,6 +37,7 @@ def test_inventory_exact() -> None:
         "circular_contract": ("may_admit", "refuse", True),
         "final_newline": ("admits_after_receipt_hash_recompute", "refuse", True),
         "PR_number_only_binding": ("admits_stale_or_foreign_commit", "refuse", True),
+        "contract_in_another_repo": ("may_admit", "refuse", True),
         "foreign_policy_outside_declared_manifest": ("may_refuse", "admit", True),
         "old_behavioral_refusal": ("refuse", "admit", False),
         "unclassified": ("any", "any", False),
@@ -55,6 +56,7 @@ def test_inventory_exact() -> None:
         "circular_contract",
         "final_newline",
         "PR_number_only_binding",
+        "contract_in_another_repo",
     ],
 )
 def test_new_path_stricter_expected_difference(reason: str) -> None:
@@ -267,6 +269,185 @@ def _write_ticket(
     (directory / f"head-{ticket}.json").write_text(json.dumps(head), encoding="utf-8")
     if control is not None:
         (directory / f"base-{ticket}.control.txt").write_text(control, encoding="utf-8")
+
+
+def test_omnibase_core_1907_shape_is_contract_in_another_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The caller stops before writing a head when the product contract is elsewhere."""
+    tickets = ["OMN-20704"]
+    (tmp_path / "contract-home-OMN-20704.txt").write_text(
+        "OmniNode-ai/omnimarket\n", encoding="utf-8"
+    )
+    tickets_file = tmp_path / "tickets.txt"
+    tickets_file.write_text("OMN-20704\n", encoding="utf-8")
+    occ_file = tmp_path / "occ.json"
+    occ_file.write_text('{"conclusion": "success"}', encoding="utf-8")
+
+    new = load_new_verdict(tmp_path, tickets)
+    assert new.admitted is False
+    assert new.reason == "contract_in_another_repo"
+    result = classify(load_occ_verdict(occ_file), new, negative_control=False)
+    assert result.passed is True
+    assert result.outcome == "expected_difference"
+    assert result.reason_code == "contract_in_another_repo"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "occ-difference",
+            "--dod-dir",
+            str(tmp_path),
+            "--tickets-file",
+            str(tickets_file),
+            "--occ-check-run",
+            str(occ_file),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    printed = json.loads(captured.out)
+    assert printed == result.model_dump(mode="json")
+    assert printed["passed"] is True
+    assert printed["outcome"] == "expected_difference"
+    assert printed["reason_code"] == "contract_in_another_repo"
+    assert printed["old_admitted"] is True
+    assert printed["new_admitted"] is False
+    assert printed["old_reason"] is None
+    assert printed["new_reason"] == "contract_in_another_repo"
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "onex_change_control\n",
+        "OmniNode-ai/onex_change_control\n",
+        "\n  OmniNode-ai/onex_change_control  \nOmniNode-ai/omnimarket\n",
+    ],
+)
+def test_onex_change_control_only_contract_is_contract_in_another_repo(
+    tmp_path: Path, marker: str
+) -> None:
+    """omniclaude#2591 has no head or base control and an OCC-only contract."""
+    (tmp_path / "contract-home-OMN-18983.txt").write_text(marker, encoding="utf-8")
+    new = load_new_verdict(tmp_path, ["OMN-18983"])
+    assert new.admitted is False
+    assert new.reason == "contract_in_another_repo"
+    result = classify(ModelOccVerdict(admitted=True), new, negative_control=False)
+    assert result.passed is True
+    assert result.outcome == "expected_difference"
+    assert result.reason_code == "contract_in_another_repo"
+
+
+def test_omnibase_infra_4725_shape_is_contract_in_another_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The caller stops before writing a head when the contract is in OCC."""
+    (tmp_path / "contract-home-OMN-16106.txt").write_text(
+        "OmniNode-ai/onex_change_control\n", encoding="utf-8"
+    )
+    tickets_file = tmp_path / "tickets.txt"
+    tickets_file.write_text("OMN-16106\n", encoding="utf-8")
+    occ_file = tmp_path / "occ.json"
+    occ_file.write_text('{"conclusion": "success"}', encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "occ-difference",
+            "--dod-dir",
+            str(tmp_path),
+            "--tickets-file",
+            str(tickets_file),
+            "--occ-check-run",
+            str(occ_file),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    printed = json.loads(captured.out)
+    assert printed["passed"] is True
+    assert printed["outcome"] == "expected_difference"
+    assert printed["reason_code"] == "contract_in_another_repo"
+    assert printed["old_admitted"] is True
+    assert printed["new_admitted"] is False
+    assert printed["old_reason"] is None
+    assert printed["new_reason"] == "contract_in_another_repo"
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("marker", ["", "\n \n", None])
+def test_contract_home_absent_or_empty_stays_unclassified(
+    tmp_path: Path, marker: str | None
+) -> None:
+    if marker is not None:
+        (tmp_path / "contract-home-OMN-20704.txt").write_text(marker, encoding="utf-8")
+    new = load_new_verdict(tmp_path, ["OMN-20704"])
+    assert new.admitted is False
+    assert new.reason is None
+    result = classify(ModelOccVerdict(admitted=True), new, negative_control=False)
+    assert result.passed is False
+    assert result.outcome == "unclassified_difference"
+    assert result.reason_code == "unclassified"
+
+
+@pytest.mark.parametrize("unreadable", ["directory", "invalid_utf8"])
+def test_unreadable_contract_home_stays_unclassified(
+    tmp_path: Path, unreadable: str
+) -> None:
+    marker = tmp_path / "contract-home-OMN-20704.txt"
+    if unreadable == "directory":
+        marker.mkdir()
+    else:
+        marker.write_bytes(b"\xff")
+    new = load_new_verdict(tmp_path, ["OMN-20704"])
+    assert new.admitted is False
+    assert new.reason is None
+    result = classify(ModelOccVerdict(admitted=True), new, negative_control=False)
+    assert result.passed is False
+    assert result.outcome == "unclassified_difference"
+
+
+@pytest.mark.parametrize("head_content", [b"null", b"not JSON", b"\xff", None])
+@pytest.mark.parametrize(
+    "marker",
+    ["omnimarket", "\n  OmniNode-ai/omnimarket  \n", "OmniNode-ai/ONEX_CHANGE_CONTROL"],
+)
+def test_unloaded_head_uses_first_nonempty_case_sensitive_contract_home(
+    tmp_path: Path, head_content: bytes | None, marker: str
+) -> None:
+    head = tmp_path / "head-OMN-20704.json"
+    if head_content is None:
+        head.mkdir()
+    else:
+        head.write_bytes(head_content)
+    (tmp_path / "contract-home-OMN-20704.txt").write_text(marker, encoding="utf-8")
+    new = load_new_verdict(tmp_path, ["OMN-20704"])
+    assert new.admitted is False
+    assert new.reason == "contract_in_another_repo"
+
+
+def test_verified_head_and_passed_control_ignore_contract_home(tmp_path: Path) -> None:
+    _write_ticket(tmp_path, {"status": "verified"}, "passed", "OMN-20704")
+    (tmp_path / "contract-home-OMN-20704.txt").write_text(
+        "OmniNode-ai/omnimarket\n", encoding="utf-8"
+    )
+    new = load_new_verdict(tmp_path, ["OMN-20704"])
+    assert new.admitted is True
+    assert new.reason is None
 
 
 @pytest.mark.parametrize(

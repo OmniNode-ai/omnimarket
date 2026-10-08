@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.305"
+version = "0.4.306"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -1079,9 +1079,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
-version = "v1.1.4"
-sha256 = "7a6b840c0ce1808a776e2371207f56d58118a2f628bc6dacbc9cc3104512a5d8"
-asset = "omnidash-bundle-v1.1.4.tar.gz"
+version = "v1.1.6"
+sha256 = "6cc902ecd87a1868932fba068e3ba4c18918fa7f72741120aeb2a965e2e6797c"
+asset = "omnidash-bundle-v1.1.6.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
