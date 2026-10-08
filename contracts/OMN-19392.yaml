@@ -39,6 +39,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_routing_tiers_contract.py tests/nodes/node_delegation_routing_reducer -q -p no:randomly"
+        check_value: "uv run pytest tests/integration/node_delegation_routing_reducer/test_omn15628_bifrost_renderer_reducer_seam.py::test_packaged_contract_renders_and_routes_after_retirement tests/test_routing_tiers_contract.py tests/nodes/node_delegation_routing_reducer -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
