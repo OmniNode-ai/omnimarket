@@ -47,6 +47,13 @@ handler:
   input_model: omnimarket.nodes.node_evidence_bundle.models.ModelBundleGenerateRequest
   output_model: omnimarket.nodes.node_evidence_bundle.models.ModelEvidenceBundle
 
+# The bundle store is injected by the caller; it is not auto-wired.
+dependencies:
+  - name: store
+    dependency_type: protocol
+    description: ProtocolBundleStore backend injected into the handler constructor
+    required: true
+
 descriptor:
   node_archetype: compute
   purity: impure  # saves the bundle through the injected ProtocolBundleStore
