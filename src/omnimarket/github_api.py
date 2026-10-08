@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
@@ -180,6 +182,35 @@ def _base_headers(token: str) -> dict[str, str]:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": _GITHUB_API_VERSION,
     }
+
+
+def download_release_asset(url: str, to: Path) -> None:
+    """Fetch a public release asset to ``to``, creating parent directories.
+
+    This lives here rather than beside its caller because the imperative
+    contract guard treats a raw HTTP call in a freestanding module as a
+    violation, and this module is the one declared to make them
+    (``freestanding_raw_http``, OMN-12750). No token is sent: a release asset
+    on a public repository is readable unauthenticated, and the clean-container
+    install path (OMN-19917) has no credential to offer.
+
+    The caller is responsible for deciding whether the bytes are acceptable.
+    Nothing here verifies them.
+
+    Raises:
+        GitHubApiError: On a non-https URL, or any HTTP or network failure.
+    """
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise GitHubApiError(f"refusing a non-https asset URL: {url}")
+    to.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+            to.write_bytes(resp.read())
+    except urllib.error.HTTPError as exc:
+        raise GitHubApiError(str(exc), status_code=exc.code) from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise GitHubApiError(str(exc)) from exc
 
 
 def rest_json(

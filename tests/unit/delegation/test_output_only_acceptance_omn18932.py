@@ -58,6 +58,45 @@ def test_artifact_only_raw_response_is_accepted() -> None:
     assert verdict.raw_chars == verdict.caller_chars == len(_ARTIFACT)
 
 
+@pytest.mark.parametrize(
+    "fenced",
+    [
+        "```python\nprint(1)\n~~~",
+        "````python\nprint(1)\n```",
+        "```python\nprint(1)\n``` self-review",
+        "~~~python\nprint(1)\n~~~ self-review",
+    ],
+    ids=(
+        "different-marker",
+        "short-closing-fence",
+        "backtick-closing-prose",
+        "tilde-closing-prose",
+    ),
+)
+def test_malformed_fence_is_refused_even_with_two_fence_lines(fenced: str) -> None:
+    caller = f"{_ARTIFACT}\n\n{fenced}"
+    verdict = _verdict(caller, caller)
+    assert verdict.accepted is False
+    assert verdict.refusals == (EnumOutputOnlyRefusal.MALFORMED_STRUCTURE,)
+
+
+@pytest.mark.parametrize(
+    "fenced",
+    [
+        "```python\nprint(1)\n```",
+        "~~~python\nprint(1)\n~~~~",
+        "````markdown\n```python\nprint(1)\n```\n````",
+        "```text\n~~~\n```",
+    ],
+    ids=("backticks", "longer-tilde-close", "nested-example", "other-marker-in-code"),
+)
+def test_artifact_with_valid_fences_passes_unchanged(fenced: str) -> None:
+    caller = f"{_ARTIFACT}\n\n{fenced}"
+    verdict = _verdict(caller, caller)
+    assert verdict.accepted is True, verdict.details
+    assert verdict.raw_chars == verdict.caller_chars == len(caller)
+
+
 def test_the_declared_render_start_marker_is_the_only_permitted_leading_text() -> None:
     assert _verdict("### ANSWER\n" + _ARTIFACT, _ARTIFACT).accepted is True
     refused = _verdict("=== ANSWER ===\n" + _ARTIFACT, _ARTIFACT)

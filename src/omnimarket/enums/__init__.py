@@ -24,6 +24,7 @@ from omnimarket.enums.enum_dispatch_terminal_reason import (
     EnumDispatchTerminalDisposition,
     EnumDispatchTerminalReason,
 )
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_execution_audience import (
     EnumDodVerifyExecutionAudience,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",
     "EnumDispatchTerminalReason",
+    "EnumDodContractSource",
     "EnumDodVerifyExecutionAudience",
     "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",

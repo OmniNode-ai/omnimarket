@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19984"
+title: "Autobind with nothing left to bind reads DECLINED, not ERROR"
+summary: "When the change-control window branch has no new commits, POST /pulls returns HTTP 422 'No commits between'. The companion emitter now raises NothingToBindError for that body only and returns skip:NOTHING_TO_BIND, which the classifier posts as a neutral DECLINED outcome. Every other fault still reads ERROR."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-autobind-nothing-to-bind-declined"
+    statement: "An autobind run whose companion has nothing left to bind must post a neutral DECLINED outcome, and every real fault must still post a failing ERROR outcome."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a 422 'No commits between' on PR create raises NothingToBindError and the emitter returns a skip decline, while every other PR create fault is still a GitHub error -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_nothing_to_bind_omn_19984.py -k 'no_commits_between or still_a_github_error or skip_decline' -q in omnimarket fails at the merge base, where the test does not exist"
+      - id: "AC2"
+        statement: "AC2: nothing to bind posts a neutral DECLINED outcome and every real error still posts a failing ERROR outcome -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_nothing_to_bind_omn_19984.py -k 'neutral_declined_outcome or failing_error_outcome' -q in omnimarket fails at the merge base, where the test does not exist"
+evidence_requirements:
+  - kind: "tests"
+    description: "The OMN-19984 autobind tests pass at the head and fail at the merge base, where the test file does not exist."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_nothing_to_bind_omn_19984.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19984-ac1-nothing-to-bind-skip"
+    description: "AC1 hosted probe. The 'No commits between' 422 is a nothing-to-bind skip and every other PR create fault is still a GitHub error."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_nothing_to_bind_omn_19984.py -k 'no_commits_between or still_a_github_error or skip_decline' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19984-ac2-declined-outcome"
+    description: "AC2 hosted probe. Nothing to bind posts a neutral DECLINED outcome and real errors still post a failing ERROR outcome."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_nothing_to_bind_omn_19984.py -k 'neutral_declined_outcome or failing_error_outcome' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

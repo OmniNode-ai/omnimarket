@@ -328,7 +328,7 @@ def _isolate_unit_env(
 ) -> None:
     """Isolate unit tests from live-infra env vars.
 
-    Guards two classes of pre-existing failures:
+    Guards three classes of pre-existing failures:
 
     1. Kafka hang (OMN-13068 Cluster A/C): unit tests that construct
        BaseProjectionRunner subclasses call _emit_terminal_event after a
@@ -344,6 +344,12 @@ def _isolate_unit_env(
        assertion failures.  Redirect ONEX_STATE_DIR (and its alias
        ONEX_STATE_ROOT) to the per-test tmp_path so no cross-run state leaks.
 
+    3. Ambient tenant leak (OMN-17427): the delegation orchestrator and savings
+       runner read ONEX_TENANT_ID as a single-tenant fallback (OMN-14058).
+       A lane runner's shell exports one, adding a tenant-attributed terminal
+       and a tenant-registry lookup the test never asked for.  Clear the value;
+       tests that need a tenant use monkeypatch.setenv in their body.
+
     Only tests that live under ``tests/integration/`` (the true integration
     suite that requires live Kafka/DB) are exempted.  Tests outside that
     directory that carry ``@pytest.mark.integration`` are golden-chain or
@@ -357,6 +363,9 @@ def _isolate_unit_env(
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     monkeypatch.delenv("KAFKA_BROKER", raising=False)
     monkeypatch.delenv("KAFKA_BROKERS", raising=False)
+
+    # Clear a lane shell's single-tenant fallback (OMN-17427, item 3 above).
+    monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
 
     # Redirect node-generation-consumer replay state to an isolated tmp dir.
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))

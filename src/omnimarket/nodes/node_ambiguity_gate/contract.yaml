@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_ambiguity_gate
+contract_name: node_ambiguity_gate
+node_name: node_ambiguity_gate
+
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: compute
+# Invoked in process; event-bus activation is a separate step.
+lifecycle: experimental
+description: Reject ambiguous work units before ticket compilation
+
+input_model:
+  name: ModelGateCheckRequest
+  module: omnimarket.nodes.node_ambiguity_gate.models
+output_model:
+  name: ModelGateCheckResult
+  module: omnimarket.nodes.node_ambiguity_gate.models
+
+capabilities:
+  - name: nl.ambiguity.gate.compute
+    description: Reject ambiguous work units before ticket compilation
+    version: 0.1.0
+
+io_operations:
+  - operation: check
+    description: Reject ambiguous work units before ticket compilation
+    protocol_method: handle
+    input_fields:
+      - request: ModelGateCheckRequest
+    output_fields:
+      - result: ModelGateCheckResult
+    idempotent: true
+
+handler:
+  module: omnimarket.nodes.node_ambiguity_gate.handlers.handler_ambiguity_gate_default
+  class: HandlerAmbiguityGateDefault
+  input_model: omnimarket.nodes.node_ambiguity_gate.models.ModelGateCheckRequest
+  output_model: omnimarket.nodes.node_ambiguity_gate.models.ModelGateCheckResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18008
+  maturity: alpha
+  tags: [compute, pipeline, nl-to-ticket]

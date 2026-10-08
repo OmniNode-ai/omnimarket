@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19385"
+title: "Delegation terminals retain the raw provider content"
+summary: "The inference effects capture the provider message content before trimming or reasoning removal and carry the bounded Core carrier through the local dispatch port into terminal contract evidence, so the output-only bar can see prose after a JSON answer. Full UTF-8 length and SHA-256 survive responses above the 64 KiB text bound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-raw-provider-content-retained"
+    statement: "The delegation terminal carries the raw provider content, its full UTF-8 length and its SHA-256. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the raw response carrier regressions pass at the head -- falsifier: uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -q in omnimarket fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The raw response carrier regressions pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19385-ac1-raw-response-carrier"
+    description: "AC1 hosted probe. The raw response carrier regressions pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

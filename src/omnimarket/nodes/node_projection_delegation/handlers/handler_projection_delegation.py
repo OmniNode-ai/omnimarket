@@ -72,6 +72,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
+    HandlerDelegationLineageFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
     HandlerDelegationRunAttributionFold,
     ModelDelegationRunAttributionFoldRequest,
@@ -92,6 +95,7 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     DATA_SOURCES,
+    envelope_data_source,
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
@@ -769,7 +773,9 @@ class HandlerProjectionDelegation:
             or _is_delegate_skill_terminal_payload(payload)
         ):
             terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
-            result = self.project_delegate_skill_terminal(terminal, db_raw)
+            result = self.project_delegate_skill_terminal(
+                terminal, db_raw, data_source=envelope_data_source(input_data)
+            )
             return result.model_dump(mode="json")
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
             payload = _canonical_result_to_task_delegated_payload(payload)
@@ -1052,6 +1058,18 @@ class HandlerProjectionDelegation:
                 caller_lane.caller_lane_refusal,
             )
         row.update(caller_lane.row_columns())
+        # OMN-20606: the delegation this one falls back or escalates from, as
+        # the pure fold returns it. No lineage, or a malformed one, names no
+        # column, so a lineage-less re-emit leaves stored lineage untouched and
+        # a bad value never dead-letters the row.
+        lineage = HandlerDelegationLineageFold().handle(event)
+        if lineage.lineage_refusal is not None:
+            logger.warning(
+                "delegation terminal lineage refused (correlation_id=%s): %s",
+                event.correlation_id,
+                lineage.lineage_refusal,
+            )
+        row.update(lineage.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

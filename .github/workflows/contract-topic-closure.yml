@@ -112,7 +112,7 @@ jobs:
           repository: OmniNode-ai/omnibase_infra
           # dev, not main: main is release-synced, so a validator that has landed on the
           # integration branch would otherwise not be visible until the next release.
-          ref: v0.38.67
+          ref: v0.38.68
           path: omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -235,6 +235,8 @@ jobs:
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: Sync omnimarket environment
         run: uv sync
+      - name: Prove key-grain loader parity and refusal controls
+        run: uv run pytest tests/validators/test_key_grain_declared_omn18908.py -q
       - name: Run key-grain-declared gate
         run: uv run python -m omnimarket.validators.key_grain_declared
 
