@@ -85,6 +85,10 @@ from omnimarket.intelligence.events import (
     ModelIntentOutcomeLabeledEnvelope,
     ModelIntentPatternPromotedEnvelope,
 )
+from omnimarket.models.delegation_acceptance_judge.model_delegation_acceptance_judged_event import (
+    ModelDelegationAcceptanceJudgedEvent,
+    judged_acceptance_event_id_for,
+)
 
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
@@ -111,6 +115,7 @@ __all__ = [
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
     "ModelDeferredChainWarning",
+    "ModelDelegationAcceptanceJudgedEvent",
     "ModelDelegationJudgeVerdictEvent",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
@@ -151,6 +156,7 @@ __all__ = [
     "default_socket_path",
     "evaluate_prod_digest_gate",
     "evaluate_prod_promotion_gate",
+    "judged_acceptance_event_id_for",
     "lane_target",
     "sha256_json",
     "sha256_text",
