@@ -137,17 +137,21 @@ class TestTaskTypeBackendCoverage:
             "rehoming the task types it was the last declarant for."
         )
 
-    def test_prose_and_test_classes_kept_a_local_rung(self) -> None:
-        """``test``/``documentation``/``summarization`` stay on owned GPUs.
+    def test_prose_classes_kept_a_local_rung(self) -> None:
+        """``documentation``/``summarization`` stay on owned GPUs.
 
-        All three were served in the ``local`` tier ONLY by the retired
+        Both were served in the ``local`` tier ONLY by the retired
         ``local-reasoner``. Coverage alone would be satisfied by the metered
         cheap_cloud tier, so assert the stronger property the rehoming exists
-        for: each keeps a zero-marginal-cost LOCAL declarant. All three also
+        for: each keeps a zero-marginal-cost LOCAL declarant. Both also
         declare ``local`` in their tier_order, so dropping the rung would fail
         the OMN-15630 routing-completeness gate outright.
+
+        ``test`` was in this set until OMN-20477, which removed its local
+        declarant on purpose (operator RULING 2026-10-08T22:58:17Z): the model
+        writes tests only through the repair loop's backend pin.
         """
-        for task_type in ("test", "documentation", "summarization"):
+        for task_type in ("documentation", "summarization"):
             serving = _serving_backends(task_type)
             assert serving.get("local"), (
                 f"{task_type!r} has no local-tier backend — it would fall "
