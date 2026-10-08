@@ -90,6 +90,13 @@ requirements:
       - id: "AC16"
         statement: |-
           AC16: a faithful BLOCKED summary whose host blockers sit on later lines of a contract-declared report section is grounded, a neighbouring report does not ground it, and the readable diagnostic survives the redactor -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q fails at the merge base
+  - id: "req-ambient-tenant-scrub"
+    statement: |-
+      The unit test isolation fixture clears the ambient ONEX_TENANT_ID, so a lane shell that exports it cannot change a delegation unit test's outcome.
+    acceptance:
+      - id: "AC17"
+        statement: |-
+          AC17: with ONEX_TENANT_ID exported by the shell, a unit test sees it unset and a delegation boundary failure yields exactly one ModelDelegationFailed terminal -- falsifier: uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -130,6 +137,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A summary is grounded within its complete report section and the diagnostic label survives the redactor."
     command: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
+  - kind: "tests"
+    description: "The unit isolation fixture clears the ambient ONEX_TENANT_ID and a delegation boundary failure yields one terminal."
+    command: "uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -239,3 +249,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn17427-ac17-ambient-tenant-scrub"
+    description: "The unit isolation fixture clears the ambient ONEX_TENANT_ID and a delegation boundary failure yields exactly one terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
