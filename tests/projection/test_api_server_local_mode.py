@@ -231,6 +231,28 @@ def test_an_install_without_an_identity_refuses_scoped_reads(tmp_path: Path) -> 
     assert response.status_code == 422
 
 
+def test_the_catalogue_names_the_install_tenant_and_a_read_with_it_is_served(
+    tmp_path: Path,
+) -> None:
+    """OMN-20728 AC1: the page learns its tenant from the catalogue, and it works."""
+    client = _client(tmp_path)
+    declared = client.get("/projections").json()["tenant"]
+    assert declared == _TENANT
+    response = client.get(f"/projection/{_DECISIONS}?tenant={declared}")
+    assert response.status_code == 200
+    assert {row["tenant_id"] for row in response.json()["rows"]} == {_TENANT}
+
+
+def test_an_install_without_an_identity_declares_no_tenant(tmp_path: Path) -> None:
+    handler = HandlerProjectionRead(
+        topic_map=_topic_map(), row_source=SqliteTableRowSource(_store(tmp_path))
+    )
+    client = TestClient(
+        create_dashboard_app(handler=handler, topic_map=_topic_map(), tenant=None)
+    )
+    assert client.get("/projections").json()["tenant"] is None
+
+
 # -- AC1: SQL stays in the adapter, reads go through the node ------------------
 
 
