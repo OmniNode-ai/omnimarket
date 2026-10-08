@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from omnibase_infra.errors import EventTopicAuthorizationError
 
 from omnimarket.delegated_test_loop.lane_bus import BusKind, LabRunBusError
 from omnimarket.models.lab_job import ModelLabJobSpec
@@ -222,4 +223,30 @@ def test_bus_unavailable_exits_69(
     result = CliRunner().invoke(lab_job_group, ["submit", "--spec-file", str(path)])
 
     assert result.exit_code == cli.EXIT_BUS_UNAVAILABLE
+    assert bus.published == []
+
+
+def test_bus_publish_refused_exits_69(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bus, _ = _stub_bus(monkeypatch)
+    path = _write(tmp_path, _spec())
+
+    async def publish(
+        topic: str, key: bytes | None, value: bytes, headers: object = None
+    ) -> None:
+        raise EventTopicAuthorizationError(
+            f"No WRITE grant on topic '{topic}'",
+            context=None,
+            topic=topic,
+        )
+
+    monkeypatch.setattr(bus, "publish", publish)
+
+    result = CliRunner().invoke(lab_job_group, ["submit", "--spec-file", str(path)])
+
+    assert result.exit_code == cli.EXIT_BUS_UNAVAILABLE
+    assert "bus: publish refused by the broker's ACLs:" in result.stderr
+    assert LAB_JOB_SUBMITTED_TOPIC_V1 in result.output
+    assert "Traceback" not in result.output
     assert bus.published == []
