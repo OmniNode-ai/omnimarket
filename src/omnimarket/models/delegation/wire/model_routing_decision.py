@@ -35,7 +35,11 @@ class ModelRoutingDecision(BaseModel):
     )
     selected_backend_id: UUID = Field(
         ...,
-        description="Identifier for the backend in the Bifrost config.",
+        description=(
+            "Stable UUID derived from the platform backend reference, or the "
+            "tenant-qualified overlay backend reference. Distinguishes backends "
+            "serving the same model."
+        ),
     )
     endpoint_url: str = Field(
         ...,
