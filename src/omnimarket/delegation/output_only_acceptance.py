@@ -82,7 +82,7 @@ from omnimarket.inference.task_class_authority import (
 #: planning prose" means one thing in both places.
 _LEAD_IN_WINDOW_CHARS: int = 120
 
-_FENCE_LINE = re.compile(r"^[ \t]{0,3}(```|~~~)")
+_FENCE_LINE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})(.*)$")
 
 
 @unique
@@ -419,12 +419,29 @@ def _malformed_structure(answer: str, contract: ModelDeliverableContract) -> str
         if violations:
             return f"JSON violates the declared schema: {violations[0]}"
         return None
-    fences = sum(
-        1 for line in answer.splitlines() if _FENCE_LINE.match(line) is not None
-    )
+    fences = [
+        match
+        for line in answer.splitlines()
+        if (match := _FENCE_LINE.match(line)) is not None
+    ]
     if contract.output_shape is EnumDelegationOutputShape.MARKDOWN:
-        if fences % 2:
-            return f"unbalanced code fence ({fences} fence lines)"
+        opening: str | None = None
+        for match in fences:
+            marker, suffix = match.groups()
+            if opening is None:
+                # Backtick info strings cannot contain backticks. Such a
+                # line is ordinary text rather than an opening fence.
+                if marker[0] == "`" and "`" in suffix:
+                    continue
+                opening = marker
+            elif (
+                marker[0] == opening[0]
+                and len(marker) >= len(opening)
+                and not suffix.strip()
+            ):
+                opening = None
+        if opening is not None:
+            return f"unbalanced code fence ({len(fences)} fence lines)"
         return None
     if fences:
         return "plain-text deliverable carries a code fence"

@@ -18,6 +18,8 @@ requirements:
         statement: "AC3: the alert dedup key is stable across resends, and stale attempt events are dropped -- falsifier: uv run pytest tests/test_lab_job_reducer.py -k 'dedup_key or stale_attempt' -q in omnimarket"
       - id: "AC4"
         statement: "AC4: the lane-liveness wire models are defined once in omnimarket.models.liveness and the compute node re-exports them, so one definition serves every importer -- falsifier: uv run pytest tests/unit/test_liveness_shared_models.py -q in omnimarket fails when a model is defined twice or is missing from the shared package"
+      - id: "AC5"
+        statement: "AC5: the lab job submit command catches a broker ACL refusal, prints the refusal to stderr, and exits 69 with no traceback and nothing published -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q in omnimarket fails at the merge base, where the test does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3 hosted probe. The reducer tests pass at the head and fail at the merge base, where the reducer does not exist."
@@ -59,3 +61,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_liveness_shared_models.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20604-ac5-submit-acl-refusal-exits-69"
+    description: "AC5 hosted probe. A broker ACL refusal on submit exits 69 with the refusal on stderr and no traceback. The test exists only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

@@ -594,3 +594,56 @@ def test_receipt_refuses_partial_or_blank_backend_provenance(
         ValidationError, match=r"route and provider must be paired|non-blank"
     ):
         _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
+
+
+@pytest.mark.parametrize("source", ["customer_key", "house", "none"])
+def test_receipt_preserves_the_effect_boundary_credential_and_route_provider(
+    source: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _receipt_body(route="byok-openrouter", provider="openrouter")
+        body["credential_source"] = source
+        return httpx.Response(200, json=body)
+
+    receipt = _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
+
+    assert receipt.credential_source == source
+    assert receipt.route_provider == "openrouter"
+    assert receipt.model_dump()["route_provider"] == "openrouter"
+    assert receipt.terminal_model_used == "gemini-2.5-flash-lite"
+
+
+def test_a_legacy_receipt_keeps_unknown_credential_and_route_provider() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _receipt_body()
+        body.pop("route")
+        body.pop("provider")
+        return httpx.Response(200, json=body)
+
+    receipt = _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
+
+    assert receipt.credential_source is None
+    assert receipt.route_provider is None
+
+
+def test_receipt_accepts_an_explicit_stamped_route_provider() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _receipt_body()
+        body["route_provider"] = "openrouter"
+        body["credential_source"] = "house"
+        return httpx.Response(200, json=body)
+
+    receipt = _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
+
+    assert receipt.route_provider == "openrouter"
+    assert receipt.credential_source == "house"
+
+
+def test_receipt_refuses_conflicting_stamped_provider_names() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _receipt_body(route="byok-openrouter", provider="openrouter")
+        body["route_provider"] = "gemini"
+        return httpx.Response(200, json=body)
+
+    with pytest.raises(ValidationError, match="route_provider and provider must agree"):
+        _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")

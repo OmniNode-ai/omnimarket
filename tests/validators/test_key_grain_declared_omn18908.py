@@ -15,10 +15,13 @@ Related Tickets:
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
+from omnimarket.projection import discovery
 from omnimarket.validators import key_grain_declared as gate
 
 pytestmark = pytest.mark.unit
@@ -52,6 +55,7 @@ def _contract(
         f"    - topic: {topic}\n"
         f"{grain_line}"
         "      table: some_rows\n"
+        "      columns: [id]\n"
     )
     if writer_source_offset is not None:
         (node_dir / "handler.py").write_text(
@@ -178,6 +182,8 @@ def test_ac2_a_constant_partition_beside_a_moving_offset_is_not_a_defect(
         "  exposures:\n"
         "    - topic: t.x.v1\n"
         '      key_grain: "mutable"\n'
+        "      table: some_rows\n"
+        "      columns: [id]\n"
     )
     (node_dir / "handler.py").write_text(
         "def publish(row):\n"
@@ -204,6 +210,8 @@ def test_ac2_a_multiline_call_is_still_found(tmp_path: Path) -> None:
         "  exposures:\n"
         "    - topic: t.x.v1\n"
         '      key_grain: "mutable"\n'
+        "      table: some_rows\n"
+        "      columns: [id]\n"
     )
     (node_dir / "handler.py").write_text(
         "def publish(row):\n"
@@ -230,6 +238,8 @@ def test_ac2_a_writer_under_tests_is_not_read_as_production(tmp_path: Path) -> N
         "  exposures:\n"
         "    - topic: t.x.v1\n"
         '      key_grain: "mutable"\n'
+        "      table: some_rows\n"
+        "      columns: [id]\n"
     )
     (node_dir / "tests" / "test_x.py").write_text(
         "def test_x():\n    encode_snapshot_delta(source_offset=0)\n"
@@ -340,9 +350,18 @@ def test_ac5_the_real_tree_clears_the_declared_floor() -> None:
     assert len(exposures) >= gate.DEFAULT_MIN_EXPECTED_EXPOSURES
 
 
-def test_ac5_the_gate_is_green_on_the_real_tree() -> None:
-    """The literal assertion the pre-commit hook and the CI job make."""
-    assert gate.main([]) == 0
+def test_ac5_the_gate_accounts_for_loader_drops_on_the_real_tree(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A live loader omission is red until its contract is reconciled."""
+    exposures = gate.collect_exposures(gate.DEFAULT_NODES_ROOT)
+    dropped = gate._dropped_exposure_findings(gate.DEFAULT_NODES_ROOT, exposures)
+    assert gate.main([]) == (1 if dropped else 0)
+    if dropped:
+        error = capsys.readouterr().err
+        for finding in dropped:
+            assert finding.node in error
+            assert finding.topic in error
 
 
 # --------------------------------------------------------------------------
@@ -402,6 +421,8 @@ def test_both_contract_shapes_are_enumerated(tmp_path: Path) -> None:
         "  expose: true\n"
         "  topic: t.legacy.v1\n"
         '  key_grain: "mutable"\n'
+        "  table: some_rows\n"
+        "  columns: [id]\n"
     )
     _contract(nodes, "node_projection_listed", "t.listed.v1", key_grain="mutable")
 
@@ -418,3 +439,168 @@ def test_an_unexposed_contract_is_not_enumerated(tmp_path: Path) -> None:
         "projection_api:\n  expose: false\n  topic: t.hidden.v1\n"
     )
     assert gate.collect_exposures(nodes) == []
+
+
+# Loader parity: declarations the serving path drops must stay visible as refusals.
+
+
+def test_loader_parity_uses_the_live_exposure_set() -> None:
+    manifest = discovery.discover_contracts()
+    names = {
+        contract.name: contract.contract_path.parent.name
+        for contract in manifest.contracts
+    }
+    served = {
+        (names[cfg.source_contract], topic)
+        for topic, cfg in discovery.build_projection_topic_map(manifest).items()
+    }
+    enumerated = {
+        (e.node, e.topic) for e in gate.collect_exposures(gate.DEFAULT_NODES_ROOT)
+    }
+    assert enumerated == served, (
+        f"gate-only: {enumerated - served}; loader-only: {served - enumerated}"
+    )
+
+
+def test_loader_parity_on_a_tree_the_loader_drops(tmp_path: Path) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_rejected", "t.rejected.v1", key_grain="mutable")
+    path = nodes / "node_projection_rejected" / "contract.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projection_api"]["exposures"][0]["schema"] = "unserved_schema"
+    path.write_text(yaml.safe_dump(document))
+    # The gate's enumerated set is the loader's set (empty here), not the raw
+    # declaration count, so a dropped declaration cannot widen the measured set.
+    assert gate.collect_exposures(nodes) == []
+
+
+def test_loader_dropped_exposure_is_refused_and_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_rejected", "t.rejected.v1", key_grain="mutable")
+    path = nodes / "node_projection_rejected" / "contract.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projection_api"]["exposures"][0]["schema"] = "unserved_schema"
+    path.write_text(yaml.safe_dump(document))
+    assert _run(tmp_path) == 1
+    error = capsys.readouterr().err
+    assert "declared_exposure_not_loaded" in error
+    assert "node_projection_rejected" in error
+    assert "t.rejected.v1" in error
+    assert gate.collect_exposures(nodes) == []
+
+    document["projection_api"]["exposures"][0]["schema"] = "public"
+    path.write_text(yaml.safe_dump(document))
+    assert _run(tmp_path) == 0
+    assert len(gate.collect_exposures(nodes)) == 1
+
+
+def test_loader_floor_is_derived_from_the_served_count() -> None:
+    served_count = len(discovery.build_projection_topic_map())
+    assert 0 < gate.DEFAULT_MIN_EXPECTED_EXPOSURES < served_count
+    assert gate.DEFAULT_MIN_EXPECTED_EXPOSURES == (
+        gate.DEFAULT_MEASURED_EXPOSURES - gate.DEFAULT_EXPOSURE_REMOVAL_MARGIN
+    )
+    source = Path(gate.__file__).read_text()
+    assert f"{gate.DEFAULT_MEASURED_EXPOSURES} served exposures" in source
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema", "unserved_schema"),
+        ("table", ""),
+        ("columns", []),
+        ("key_grain", "mutabl"),
+    ],
+)
+def test_loader_rejected_fields_do_not_silently_reduce_the_scan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], field: str, value: object
+) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_x", "t.x.v1", key_grain="mutable")
+    _contract(nodes, "node_projection_y", "t.y.v1", key_grain="mutable")
+    path = nodes / "node_projection_y" / "contract.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projection_api"]["exposures"][0][field] = value
+    path.write_text(yaml.safe_dump(document))
+    assert _run(tmp_path) == 1
+    error = capsys.readouterr().err
+    assert "declared_exposure_not_loaded" in error
+    assert "node_projection_y" in error
+    assert "t.y.v1" in error
+    assert {(e.node, e.topic) for e in gate.collect_exposures(nodes)} == {
+        ("node_projection_x", "t.x.v1")
+    }
+
+
+def test_loader_duplicate_topic_refuses_the_dropped_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_x", "t.shared.v1", key_grain="mutable")
+    _contract(nodes, "node_projection_y", "t.shared.v1", key_grain="mutable")
+    assert _run(tmp_path) == 1
+    error = capsys.readouterr().err
+    assert "node_projection_y" in error
+    assert "t.shared.v1" in error
+    assert [(e.node, e.topic) for e in gate.collect_exposures(nodes)] == [
+        ("node_projection_x", "t.shared.v1")
+    ]
+
+
+def test_loader_floor_counts_served_exposures_and_names_omissions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    nodes = tmp_path / "nodes"
+    _contract(nodes, "node_projection_x", "t.x.v1", key_grain="mutable")
+    _contract(nodes, "node_projection_y", "t.y.v1", key_grain="mutable")
+    path = nodes / "node_projection_y" / "contract.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projection_api"]["exposures"][0]["schema"] = "unserved_schema"
+    path.write_text(yaml.safe_dump(document))
+    assert _run(tmp_path, minimum=2) == 1
+    error = capsys.readouterr().err
+    assert "vacuity guard" in error
+    assert "only 1 projection exposure(s)" in error
+    assert "node_projection_y" in error
+
+
+def test_loader_omissions_cannot_be_fenced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _contract(tmp_path / "nodes", "node_projection_x", "t.x.v1", key_grain="mutabl")
+    monkeypatch.setattr(
+        gate, "_FENCED_PAIRS", frozenset({("node_projection_x", "t.x.v1")})
+    )
+    assert _run(tmp_path) == 1
+
+
+def test_loader_an_empty_scan_is_not_a_clean_tree(tmp_path: Path) -> None:
+    assert _run(tmp_path, minimum=gate.DEFAULT_MIN_EXPECTED_EXPOSURES) == 1
+
+
+def test_loader_reconciled_live_contract_fixture_passes(tmp_path: Path) -> None:
+    """Positive control; the serving-schema repair itself belongs elsewhere.
+
+    Copy only the excluded node and use a supported schema in that fixture.
+    Every other node, writer and content-addressing assertion is unchanged.
+    This proves the strengthened gate accepts a reconciled set without editing
+    the live contract or widening the serving loader's schema policy.
+    """
+    nodes = tmp_path / "nodes"
+    nodes.mkdir()
+    for node in gate.DEFAULT_NODES_ROOT.iterdir():
+        if not node.is_dir():
+            continue
+        target = nodes / node.name
+        if node.name == "node_projection_open_obligations":
+            shutil.copytree(node, target)
+            path = target / "contract.yaml"
+            document = yaml.safe_load(path.read_text())
+            document["projection_api"]["schema"] = "omnidash_analytics"
+            path.write_text(yaml.safe_dump(document))
+        else:
+            target.symlink_to(node.resolve(), target_is_directory=True)
+    assert gate.main([str(nodes), str(gate.DEFAULT_TESTS_ROOT)]) == 0

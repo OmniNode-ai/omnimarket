@@ -16,7 +16,7 @@
   ["ci-bus-overlay-parity.yml", 98, "actions/checkout", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"],
   ["ci-bus-overlay-parity.yml", 103, "actions/checkout", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"],
   ["ci-bus-overlay-parity.yml", 143, "astral-sh/setup-uv", "d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86"],
-  ["ci.yml", 115, "OmniNode-ai/omniclaude/.github/workflows/route-runner-reusable.yml", "b6ba84ef6c9ba3f220204c3d672de1da5131132c"],
+  ["ci.yml", 115, "OmniNode-ai/omnimarket/.github/workflows/route-runner-reusable.yml", "01a0d1b3e7d7ba1a09012f9af245ba29afa000b5"],
   ["ci.yml", 235, "OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml", "7631ef3321e1a6561f4b2c70019ee57d24160620"],
   ["ci.yml", 287, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
   ["ci.yml", 297, "astral-sh/setup-uv", "38f3f104447c67c051c4a08e39b64a148898af3a"],

@@ -55,7 +55,10 @@ from omnimarket.inference.provider_response_error import (
     failure_class_for_status,
     provider_error_from_body,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    resolve_api_key,
+)
 from omnimarket.models.model_call_correlation import (
     SELF_HOSTED_CORRELATION_HEADER,
     SELF_HOSTED_CORRELATION_QUERY_PARAM,
@@ -495,9 +498,9 @@ def _provenance_stamp_fields(
     passed in by the caller from the resolution it performed.
 
     ``credential_source`` is ``None`` only when resolution itself never
-    completed, and it is then omitted rather than guessed: a boundary that
-    never resolved a binding has no credential fact to report, and ``NONE``
-    would be a claim that a call ran unauthenticated.
+    completed, and it is then omitted rather than guessed. A confirmed
+    missing or empty binding reports ``NONE``, including when that finding
+    refused the call before any provider request.
 
     Guarded on the response model exposing each field, mirroring
     ``_tenant_round_trip_fields``, so the effect degrades cleanly against a
@@ -794,12 +797,17 @@ class HandlerInferenceIntent:
         # It stays inside the try: a declared reference with no stored value
         # fails closed in the resolver, and that failure must be returned as an
         # error response like any other so the orchestrator can escalate.
-        # ``credential_source`` remains None on that path on purpose -- no
-        # binding was resolved, so the boundary reports no credential fact
-        # rather than guessing one.
+        # A confirmed missing binding reports NONE even when it refuses the
+        # call. An unreadable store leaves the credential fact unknown.
         credential_source: EnumCredentialSource | None = None
         try:
-            api_key = _resolve_api_key(intent.api_key_ref)
+            try:
+                api_key = _resolve_api_key(intent.api_key_ref)
+            except SecretResolutionError:
+                # The resolver completed a store read and found no value.
+                # Other failures leave the credential fact unknown.
+                credential_source = EnumCredentialSource.NONE
+                raise
             credential_source = _credential_source_for(intent.api_key_ref, api_key)
             # OMN-18201: fail closed BEFORE the request when the routing
             # authority said a credential was required and none resolved. The
