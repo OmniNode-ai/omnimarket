@@ -55,9 +55,10 @@ async def _connect_or_skip() -> asyncpg.Connection:
     db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
     dsn = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
     try:
-        return await asyncpg.connect(dsn)
+        conn = await asyncpg.connect(dsn)
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover
         pytest.skip(f"no reachable Postgres for usage write-path proof: {exc}")
+    return conn
 
 
 def _scoped(statement: str) -> str:
