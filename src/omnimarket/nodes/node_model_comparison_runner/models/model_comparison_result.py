@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.ranges import (
+    ModelComparisonResult as ModelPairedComparisonResult,
+)
+
 
 class ModelComparisonCell(BaseModel):
     """Per-model result for a single comparison run."""
@@ -37,6 +41,7 @@ class ModelComparisonResult(BaseModel):
     cells: tuple[ModelComparisonCell, ...]
     winner_label: str | None
     winner_criteria: str
+    shadow_comparison: ModelPairedComparisonResult | None = None
 
 
 __all__ = ["ModelComparisonCell", "ModelComparisonResult"]
