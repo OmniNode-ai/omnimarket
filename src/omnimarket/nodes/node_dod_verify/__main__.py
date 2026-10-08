@@ -14,6 +14,8 @@ Usage:
 OCC retirement S5 (OMN-20072):
     ``occ-difference`` compares same-head receipt-gate and OCC verdict artifacts,
     printing JSON and exiting 0 only when the difference check passes.
+    The dod directory may include caller-supplied ``contract-home-<ticket>.txt``
+    markers naming where a contract absent from the PR head lives (OMN-20074).
 
 Receipt persistence (OMN-10046, OMN-12403):
     When ``ONEX_EVIDENCE_ROOT`` is set in the environment, the node writes a

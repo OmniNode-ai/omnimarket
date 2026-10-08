@@ -7,6 +7,11 @@ difference is enforced as the stricter path's verdict: earlier caller steps
 already enforce the new path's own refusal, and OCC's context stays required.
 This check decides only whether the difference itself is allowed.
 
+OMN-20074, operator ruling 2026-10-08T09:57:41Z: a missing head whose
+caller-supplied contract-home marker names another product repository refuses
+with ``contract_in_another_repo``. The onex_change_control-only case stays
+unclassified pending an operator answer.
+
 A PR labelled as a negative control is meant to be refused. Its refusal passes
 whatever OCC said, because every negative control must be rejected by the new
 path even when OCC accepted it; its admission fails as
@@ -41,11 +46,14 @@ EXPECTED_DIFFERENCES: Final[Mapping[str, tuple[str, str, bool]]] = {
     "circular_contract": ("may_admit", "refuse", True),
     "final_newline": ("admits_after_receipt_hash_recompute", "refuse", True),
     "PR_number_only_binding": ("admits_stale_or_foreign_commit", "refuse", True),
+    "contract_in_another_repo": ("may_admit", "refuse", True),
     "foreign_policy_outside_declared_manifest": ("may_refuse", "admit", True),
     "old_behavioral_refusal": ("refuse", "admit", False),
     "unclassified": ("any", "any", False),
     "accepted_negative_control": ("any", "admit", False),
 }
+
+CHANGE_CONTROL_REPOSITORY: Final[str] = "onex_change_control"
 
 # Plain EnumOccEligibilityReason wire strings keep parsing total for unknown
 # values without coupling the verifier to omnibase_core's enum version.
@@ -163,12 +171,22 @@ def _ticket_verdict(head: object, control_first_line: str) -> ModelNewPathVerdic
     return ModelNewPathVerdict(admitted=True)
 
 
+def _contract_home_is_another_repo(line: str) -> bool:
+    """Strip whitespace and an optional owner; compare bare names case-sensitively."""
+    repository = line.strip().split("/", 1)[-1]
+    return bool(repository) and repository != CHANGE_CONTROL_REPOSITORY
+
+
 def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdict:
     """Require every sorted ticket's verified head and passed base control.
 
-    Missing or malformed heads refuse without a classified reason. Missing or
-    empty controls have no passed first line. An empty ticket list refuses
-    without a reason rather than admitting a PR with no verdict artifacts.
+    OMN-20074, ruling 2026-10-08T09:57:41Z: when head is None, the first
+    non-empty line of contract-home-<ticket>.txt may name another repository
+    holding contracts/<ticket>.yaml, yielding contract_in_another_repo. An
+    absent, empty, or unreadable marker leaves the refusal unclassified; the
+    onex_change_control-only case stays unclassified pending an operator answer.
+    A present head ignores the marker. Missing or empty controls have no passed
+    first line. An empty ticket list refuses without a reason.
     """
     if not tickets:
         return ModelNewPathVerdict(admitted=False)
@@ -179,6 +197,23 @@ def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdi
             )
         except (OSError, UnicodeError, json.JSONDecodeError):
             head = None
+        if head is None:
+            try:
+                contract_home_lines = (
+                    (dod_dir / f"contract-home-{ticket}.txt")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                )
+            except (OSError, UnicodeError):
+                contract_home_lines = []
+            contract_home = next(
+                (line for line in contract_home_lines if line.strip()), ""
+            )
+            if _contract_home_is_another_repo(contract_home):
+                return ModelNewPathVerdict(
+                    admitted=False,
+                    reason=EnumOccVerdictDifferenceReason.CONTRACT_IN_ANOTHER_REPO.value,
+                )
         try:
             control_lines = (
                 (dod_dir / f"base-{ticket}.control.txt")

@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20074"
+title: "node_dod_verify names contract_in_another_repo as an expected OCC difference"
+summary: "Operator ruling 2026-10-08T09:57:41Z makes a cross-repo ticket whose contract exists only in another product repository an expected OCC difference when the new path refuses and OCC admits. omnibase_core#1907 cites OMN-20704, whose contract is in omnimarket, and stops before writing a head verdict. A caller-supplied contract-home marker lets node_dod_verify name contract_in_another_repo. The onex_change_control-only case stays unclassified pending an operator answer."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-contract-in-another-repo"
+    statement: |-
+      Classify a missing or unreadable head with a caller-supplied marker naming another product repository as contract_in_another_repo, preserving existing head verdicts and leaving the onex_change_control-only case unclassified.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnibase_core#1907's shape (OMN-20704, no head or base control, contract-home-OMN-20704.txt naming OmniNode-ai/omnimarket, OCC success) prints passed true, outcome expected_difference, and reason_code contract_in_another_repo; absent, empty, unreadable, or onex_change_control markers leave reason unset, and a verified head with passed control still admits -- falsifier: #1907's shape still prints unclassified_difference
+evidence_requirements:
+  - kind: "tests"
+    description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20074-contract-in-another-repo"
+    description: "The #1907 shape prints contract_in_another_repo as an expected OCC difference."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
