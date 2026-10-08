@@ -113,7 +113,7 @@ descriptor:
     - effects
 
 metadata:
-  transport_type: kafka
+  transport_type: http
   description: "Typed decision effect node"
   author: "OmniNode Team"
   tags:
