@@ -174,6 +174,8 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         "acceptance_self_accepted_bindings": list(
             state.acceptance_self_accepted_bindings
         ),
+        "acceptance_retired_bindings": list(state.acceptance_retired_bindings),
+        "acceptance_refused_retirements": list(state.acceptance_refused_retirements),
     }
 
     def render(kept: int) -> str:
