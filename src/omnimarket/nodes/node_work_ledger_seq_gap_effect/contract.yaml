@@ -5,6 +5,7 @@
 # with the lab database DSN, and its shared reader is the witness another node reads
 # in-process. `experimental` is the drift gate's marker for an intentionally
 # unsubscribed node; the topic graph sees it as an externally triggered ingress root.
+# No handler_routing block, so runtime auto-wiring never attaches it.
 name: work_ledger_seq_gap_effect
 lifecycle: experimental
 node_type: effect
@@ -17,8 +18,6 @@ handler:
   module: omnimarket.nodes.node_work_ledger_seq_gap_effect.handlers.handler_work_ledger_seq_gap
   class: HandlerWorkLedgerSeqGap
   input_model: omnimarket.nodes.node_work_ledger_seq_gap_effect.models.model_work_ledger_seq_gap_request.ModelWorkLedgerSeqGapRequest
-handler_routing:
-  default_handler: omnimarket.nodes.node_work_ledger_seq_gap_effect.handlers.handler_work_ledger_seq_gap:HandlerWorkLedgerSeqGap
 descriptor:
   node_archetype: effect
   purity: impure

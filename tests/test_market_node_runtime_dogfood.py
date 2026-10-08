@@ -292,7 +292,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # so it is experimental with no handler_routing: 10 -> 11.
     # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
     # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
-    assert summary["skipped"] == 17
+    # OMN-20541's node_work_ledger_seq_gap_effect is run by `python -m` and its
+    # reader is used in process by the branch claim check, so it has no bus route: 17 -> 18.
+    assert summary["skipped"] == 18
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
