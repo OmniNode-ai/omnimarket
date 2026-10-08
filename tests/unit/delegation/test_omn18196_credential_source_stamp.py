@@ -28,6 +28,10 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
 )
 
+from omnimarket.inference.secret_store_resolver import (
+    LocalSecretNotRegisteredError,
+    SecretResolutionError,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
     _credential_source_for,
@@ -218,6 +222,35 @@ class TestEffectBoundaryStampsTheResponse:
 
         assert response.error_message
         assert response.credential_source is EnumCredentialSource.HOUSE
+
+    @pytest.mark.parametrize(
+        "error_type", [SecretResolutionError, LocalSecretNotRegisteredError]
+    )
+    @pytest.mark.parametrize("reference", [_CUSTOMER_REF, _HOUSE_REF])
+    def test_a_confirmed_missing_credential_records_none_without_calling_provider(
+        self, error_type: type[SecretResolutionError], reference: str
+    ) -> None:
+        handler = HandlerInferenceIntent()
+        module = "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
+        with (
+            patch(
+                f"{module}._resolve_api_key",
+                side_effect=error_type("declared credential is missing"),
+            ),
+            patch.object(handler, "_call_llm_on_resolved_model") as provider_call,
+        ):
+            response = handler.handle(
+                _make_intent(
+                    api_key_ref=reference,
+                    route="byok-openrouter",
+                    provider="openrouter",
+                )
+            )
+
+        provider_call.assert_not_called()
+        assert response.error_message == "declared credential is missing"
+        assert response.credential_source is EnumCredentialSource.NONE
+        assert (response.route, response.provider) == ("byok-openrouter", "openrouter")
 
     def test_a_call_whose_credential_never_resolved_claims_nothing(self) -> None:
         """A boundary that never resolved a binding reports no credential fact.
