@@ -1,0 +1,252 @@
+{
+  "chains": [
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelQualityGateIntent",
+        "ModelDelegationFailed"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "INFERENCE_COMPLETED",
+        "FAILED"
+      ],
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>inference_response_received>gate_boundary_terminalized",
+      "terminal_fields": {
+        "content_verdict": "not_applicable",
+        "failure_reason": "leg configuration did not resolve",
+        "operational_outcome": "boundary_failure",
+        "quality_passed": false,
+        "terminal_failure_reason": "ProtocolConfigurationError: ONEX_CORE_041_INVALID_CONFIGURATION"
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelQualityGateIntent",
+        "ModelDelegationFailed",
+        "ModelDelegationTerminalFailedRoutedV2"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "INFERENCE_COMPLETED",
+        "FAILED"
+      ],
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed",
+      "terminal_fields": {
+        "failure_reason": "pre_filter_rejected: actual_score=0.200 required_bar=0.800 score_vs_bar=below_bar bar_source=task_class:test score_source=quality_gate_graded_score; failures=DELIVERABLE_EXTRACTION: ambiguous_unmarked_deliverable; refusal_detected",
+        "quality_passed": false,
+        "routing_disposition": "routed",
+        "terminal_failure_reason": "max_escalation_attempts_reached",
+        "terminal_outcome": "failed"
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInvocationCommand",
+        "ModelDelegationFailed"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "EXECUTING",
+        "FAILED"
+      ],
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>lifecycle_progress_received>lifecycle_failed",
+      "terminal_fields": {
+        "content_verdict": "not_applicable",
+        "failure_reason": "remote agent crashed",
+        "operational_outcome": "inference_failed",
+        "quality_passed": false
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelDelegationFailed"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "FAILED"
+      ],
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>terminal_failure_no_escalation",
+      "terminal_fields": {
+        "content_verdict": "not_applicable",
+        "failure_reason": "empty choices array",
+        "operational_outcome": "inference_failed",
+        "quality_passed": false,
+        "terminal_failure_reason": "non_retryable_inference_response"
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelDelegationFailed",
+        "ModelDelegationTerminalFailedUnroutedV2"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "FAILED"
+      ],
+      "kind": "error",
+      "path_id": "error:routing_boundary_terminalized",
+      "terminal_fields": {
+        "failure_reason": "leg configuration did not resolve",
+        "routing_disposition": "unrouted",
+        "terminal_failure_reason": "ProtocolConfigurationError: ONEX_CORE_041_INVALID_CONFIGURATION",
+        "terminal_outcome": "failed",
+        "unrouted_reason": "routing_configuration_invalid"
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInvocationCommand",
+        "ModelDelegationCompleted"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>early_lifecycle_completed",
+      "terminal_fields": {
+        "content_verdict": "usable",
+        "failure_reason": "",
+        "operational_outcome": "completed",
+        "quality_passed": true
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelRoutingIntent",
+        "ModelLlmDelegationEscalationTriggeredEvent",
+        "ModelDelegationCompleted"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "ROUTED",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_error_escalation_available>escalation_tier_selected>early_lifecycle_completed",
+      "terminal_fields": {
+        "content_verdict": "usable",
+        "failure_reason": "",
+        "operational_outcome": "completed",
+        "quality_passed": true
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelQualityGateIntent",
+        "ModelRoutingIntent",
+        "ModelLlmDelegationEscalationTriggeredEvent",
+        "ModelDelegationCompleted"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "INFERENCE_COMPLETED",
+        "ROUTED",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed_escalation_available>escalation_tier_selected>early_lifecycle_completed",
+      "terminal_fields": {
+        "content_verdict": "usable",
+        "failure_reason": "",
+        "operational_outcome": "completed",
+        "quality_passed": true
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelQualityGateIntent",
+        "ModelRoutingIntent",
+        "ModelDelegationCompleted"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "INFERENCE_COMPLETED",
+        "ROUTED",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed_local_retry>early_lifecycle_completed",
+      "terminal_fields": {
+        "content_verdict": "usable",
+        "failure_reason": "",
+        "operational_outcome": "completed",
+        "quality_passed": true
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInferenceIntent",
+        "ModelQualityGateIntent",
+        "ModelDelegationCompleted",
+        "ModelDelegationTerminalCompletedV2"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "INFERENCE_COMPLETED",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_passed",
+      "terminal_fields": {
+        "failure_reason": "",
+        "quality_passed": true,
+        "routing_disposition": "routed",
+        "terminal_outcome": "completed"
+      }
+    },
+    {
+      "expected_event_types": [
+        "ModelRoutingIntent",
+        "ModelInvocationCommand",
+        "ModelDelegationCompleted"
+      ],
+      "expected_states": [
+        "RECEIVED",
+        "ROUTED",
+        "EXECUTING",
+        "COMPLETED"
+      ],
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>lifecycle_progress_received>lifecycle_completed",
+      "terminal_fields": {
+        "content_verdict": "usable",
+        "failure_reason": "",
+        "operational_outcome": "completed",
+        "quality_passed": true
+      }
+    }
+  ],
+  "schema_version": 1,
+  "undriven": {},
+  "workflow_owner": "node_delegation_orchestrator"
+}

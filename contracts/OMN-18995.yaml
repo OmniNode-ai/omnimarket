@@ -1,0 +1,38 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-18995
+title: Report ordering-guard refusals from the consumer-flow projection writer
+summary: ConsumerFlowProjectionWriter reports rows_refused_by_ordering_guard from each
+  observed upsert that returns no row, so the consumer logs stale-sequence refusals
+  at INFO instead of ERROR.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-refusal-count-reported
+  statement: The writer result carries the per-message count of ordering-guard refusals.
+  acceptance:
+  - id: AC1
+    statement: The writer result carries the per-message count of ordering-guard refusals.
+evidence_requirements:
+- kind: tests
+  description: Real PostgreSQL upserts prove refusal counts for success, refusal, and
+    mixed batches.
+  command: env -u PYTHONPATH uv run pytest tests/test_omn16777_real_postgres_consumer_flow_write_path.py
+    -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-refusal-count
+  description: Real upserts prove success and refusal counts, a mixed batch, unchanged
+    stored sequences, and gap-insert exclusion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn16777_real_postgres_consumer_flow_write_path.py
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

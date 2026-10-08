@@ -406,7 +406,13 @@ def test_k6_offset489_route_resolves_to_its_declaration_row() -> None:
 def test_k6_overlay_is_packaged_once_as_a_wheel_resource() -> None:
     project = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     forced = project["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
-    assert forced == {"config/ci_bus_lanes.yaml": "omnimarket/config/ci_bus_lanes.yaml"}
+    # This test owns the lane overlay's mapping, not the whole table: asserting
+    # equality made every later force-include entry a failure here, which is how
+    # the OMN-19917 dashboard pin broke it. The concern the name states is that
+    # the overlay is mapped exactly once, and that there is no second copy under
+    # src/ for it to disagree with.
+    assert forced["config/ci_bus_lanes.yaml"] == "omnimarket/config/ci_bus_lanes.yaml"
+    assert list(forced).count("config/ci_bus_lanes.yaml") == 1
     assert _LANE_OVERLAY.is_file()
     assert not (
         _REPO_ROOT / "src" / "omnimarket" / "config" / "ci_bus_lanes.yaml"

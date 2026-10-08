@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20591"
+title: "Prune effects resolve archive and database bindings from contract overlay or store at the due boundary"
+summary: "Both prune effects resolve the archive sink and the database binding from typed contract overlay or store configuration only when a tick is due, and return a typed refusal when the lane has none configured. AC4 (the dev-202 runtime tick readback) runs after an authorized rollout and is not claimed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-prune-bindings-resolved-at-due-boundary"
+    statement: |-
+      Neither prune handler reads os.environ for the archive sink or database binding; a skipped tick never resolves the sink; a lane with no archive location configured gets a typed refusal that is not dead-lettered.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: both prune effects resolve the archive sink and database binding from overlay or store configuration at the effect boundary -- falsifier: uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py tests/test_prune_binding.py -q fails at the merge base"
+      - id: "AC2"
+        statement: "AC2: a skipped scheduled tick never resolves the sink -- falsifier: uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py -q -k skipped_tick_never_resolves_sink fails at the merge base"
+      - id: "AC3"
+        statement: "AC3: a lane with no archive location configured gets a typed refusal naming the missing key, not a KeyError -- falsifier: uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py -q -k unconfigured_sink_refuses fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 prune binding tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py tests/test_prune_binding.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20591-ac1-prune-binding"
+    description: "Both prune golden-chain files and the binding test pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py tests/test_prune_binding.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20591-ac2-skipped-tick"
+    description: "A skipped tick never resolves the sink."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py -q -k skipped_tick_never_resolves_sink"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20591-ac3-unconfigured-refusal"
+    description: "An unconfigured sink yields a typed refusal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py tests/test_golden_chain_dead_letter_prune_effect.py -q -k unconfigured_sink_refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

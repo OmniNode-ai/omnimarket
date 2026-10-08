@@ -95,7 +95,7 @@ async def test_omn_13710_handle_is_awaitable_and_runs_without_sync_only_error() 
         client=_stub_linear_empty(),
         github_client=_stub_github_empty(),
     )
-    cmd = ModelLinearTriageStartCommand()
+    cmd = ModelLinearTriageStartCommand(scope="backlog")
 
     # The handle method must be a coroutine function after OMN-13710.
     assert inspect.iscoroutinefunction(handler.handle), (

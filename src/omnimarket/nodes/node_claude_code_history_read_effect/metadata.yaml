@@ -1,0 +1,24 @@
+name: node_claude_code_history_read_effect
+version: "1.0.0"
+description: "Opt-in read of a developer's own Claude Code history into typed prompt records for the savings estimate"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_claude_code_history_read_effect: "omnimarket.nodes.node_claude_code_history_read_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "savings", "estimate", "claude-code", "read-only"]
+pack: "core"
+display_name: "Claude Code History Read"
+node_role: "effect"
+tickets: ["OMN-19979"]

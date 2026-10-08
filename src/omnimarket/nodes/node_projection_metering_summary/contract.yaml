@@ -97,6 +97,7 @@ projection_api:
         - spend_usd
         - counterfactual_usd
         - savings_usd
+        - savings_per_measured_run_usd
         - summary_json
       json_columns:
         - summary_json

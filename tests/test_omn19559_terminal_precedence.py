@@ -38,6 +38,7 @@ FIXTURE_PATH = (
 def _outer_terminal(cause: str | None = None) -> dict[str, object]:
     """Use the outer wire shape from the forced-429 seam fixture."""
     payload: dict[str, object] = {
+        "tenant_id": "omninode",
         "_event_type": (
             "onex.evt.omnimarket.delegate-skill-failed.v1"
             if cause
@@ -78,6 +79,7 @@ def _outer_terminal(cause: str | None = None) -> dict[str, object]:
 def _inner_completed() -> dict[str, object]:
     """Minimal canonical shape from test_golden_chain_projection_delegation."""
     return {
+        "tenant_id": "omninode",
         "_event_type": "onex.evt.omnimarket.delegation-completed.v1",
         "correlation_id": CORRELATION_ID,
         "task_type": "test",

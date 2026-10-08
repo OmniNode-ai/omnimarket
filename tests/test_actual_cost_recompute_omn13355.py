@@ -27,6 +27,10 @@ from omnimarket.pricing import (
     resolve_tier_cost,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 HANDLER = HandlerProjectionDelegation()
 
@@ -105,6 +109,7 @@ class TestRecomputeActualCostAndSavings:
 class TestProjectionWiresMeasuredActualCost:
     def test_metered_row_persists_measured_cost_not_zero(self) -> None:
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         cf = build_premium_counterfactual(
             prompt_tokens=1000,
             completion_tokens=500,
@@ -114,6 +119,7 @@ class TestProjectionWiresMeasuredActualCost:
         # The durable event carries cost_usd=0.0 (the workflow-handler bug); the
         # projection must OVERRIDE it with the measured tier cost.
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-actual-metered",
             task_type="code_generation",
             delegated_to="cheap-cloud-glm",
@@ -139,6 +145,7 @@ class TestProjectionWiresMeasuredActualCost:
 
     def test_free_local_row_full_counterfactual_saved(self) -> None:
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         cf = build_premium_counterfactual(
             prompt_tokens=1000,
             completion_tokens=500,
@@ -146,6 +153,7 @@ class TestProjectionWiresMeasuredActualCost:
         )
         assert cf is not None
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-actual-local",
             task_type="code_generation",
             delegated_to="local-qwen",
@@ -168,7 +176,9 @@ class TestProjectionWiresMeasuredActualCost:
         # Backward-compatible fall-through: a row without a serving tier keeps the
         # event's own cost/savings (e.g. legacy zero-token golden-chain rows).
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-no-tier",
             task_type="code-review",
             delegated_to="local-qwen",

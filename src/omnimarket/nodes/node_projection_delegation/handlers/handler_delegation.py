@@ -108,6 +108,47 @@ logger = logging.getLogger(__name__)
 
 HANDLER_ID_PROJECTION_DELEGATION = "node_projection_delegation"
 
+# OMN-20613: the atomic budget-state apply. ``applied`` yields a row only when
+# the event's identity was new, so a replayed event inserts nothing into the
+# totals. The DO UPDATE reads the stored row, never a value this process read
+# earlier, which is what makes concurrent writers add rather than overwrite.
+# ``last_event_at`` keeps the greater time and ``last_correlation_id`` follows
+# it, so an earlier event arriving late changes neither.
+_BUDGET_APPLY_SQL = """
+WITH applied AS (
+    INSERT INTO {applied}
+        (tenant_id, cost_tier_name, budget_period, correlation_id)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT DO NOTHING
+    RETURNING 1
+)
+INSERT INTO {state} AS s (
+    tenant_id, cost_tier_name, budget_period, monthly_cap_usd,
+    consumed_usd, overage_usd, headroom_remaining_usd, delegation_count,
+    last_correlation_id, first_event_at, last_event_at, created_at, updated_at
+)
+SELECT
+    $1, $2, $3, $5::numeric, $6::numeric, $7::numeric,
+    GREATEST($5::numeric - $6::numeric, 0), 1,
+    $4, $8::timestamptz, $8::timestamptz, $9::timestamptz, $9::timestamptz
+FROM applied
+ON CONFLICT (tenant_id, cost_tier_name, budget_period) DO UPDATE SET
+    monthly_cap_usd = EXCLUDED.monthly_cap_usd,
+    consumed_usd = s.consumed_usd + EXCLUDED.consumed_usd,
+    overage_usd = s.overage_usd + EXCLUDED.overage_usd,
+    headroom_remaining_usd = GREATEST(
+        EXCLUDED.monthly_cap_usd - (s.consumed_usd + EXCLUDED.consumed_usd), 0
+    ),
+    delegation_count = s.delegation_count + 1,
+    last_correlation_id = CASE
+        WHEN EXCLUDED.last_event_at >= s.last_event_at
+        THEN EXCLUDED.last_correlation_id ELSE s.last_correlation_id END,
+    first_event_at = LEAST(s.first_event_at, EXCLUDED.first_event_at),
+    last_event_at = GREATEST(s.last_event_at, EXCLUDED.last_event_at),
+    updated_at = EXCLUDED.updated_at
+"""
+
+
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
         "delegation_events",
@@ -116,6 +157,8 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "delegation_judge_verdict_events",
         # OMN-13235: per-tenant ceiling budget-state surface (cap + consumption).
         "delegation_budget_state",
+        # OMN-20613: identity of each event already applied to the budget state.
+        "delegation_budget_applied_events",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",
@@ -271,6 +314,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._table_generation: str = _by_role["generation_events"]
         self._table_judge_verdict: str = _by_role["judge_verdict_events"]
         self._table_budget_state: str = _by_role["budget_state"]
+        if "budget_applied_events" not in _by_role:
+            raise ValueError(
+                "Contract missing required table role 'budget_applied_events'"
+            )
+        self._table_budget_applied_events: str = _by_role["budget_applied_events"]
 
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
@@ -333,8 +381,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # OMN-18140: the per-row delegation exposure, resolved at construction
         # so a contract that declares one without this runner being able to
         # serve it fails HERE rather than after deploy, with an empty page.
-        self._row_exposure: ProjectionTableConfig | None = self._resolve_row_exposure(
-            _path
+        self._row_exposures: tuple[ProjectionTableConfig, ...] = (
+            self._resolve_row_exposures(_path)
         )
         # OMN-17773: counts writes to the ONE table the singleton aggregates
         # read. project_event snapshots it around the branch dispatch and
@@ -392,7 +440,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if not exposure.bus_backed:
                 continue
             if self._is_row_exposure(exposure):
-                # Resolved separately by _resolve_row_exposure; it has its own
+                # Resolved separately by _resolve_row_exposures; it has its own
                 # publish site at the delegation_events upsert.
                 continue
             if tuple(exposure.key_columns) != SNAPSHOT_AGGREGATE_KEY:
@@ -434,53 +482,42 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             _DELEGATION_ROW_KEY,
         )
 
-    def _resolve_row_exposure(
+    def _resolve_row_exposures(
         self, contract_path: Path
-    ) -> ProjectionTableConfig | None:
-        """The one per-row ``delegation_events`` exposure, if the contract has one.
+    ) -> tuple[ProjectionTableConfig, ...]:
+        """Every bus_backed per-row ``delegation_events`` exposure.
 
-        OMN-18140. ``None`` when the contract declares none (or declares it
-        without ``bus_backed``), which keeps the publish call at the write site
-        unconditional and contract-driven: whether anything is published is the
-        contract's decision, never a branch in the write path.
+        OMN-18140. Empty when the contract declares none, which keeps the
+        publish call at the write site unconditional and contract-driven:
+        whether anything is published is the contract's decision, never a
+        branch in the write path.
 
-        More than one is refused. Two per-row exposures over the same table
-        would each need their own republish from the same returned row, and
-        picking "the first" would silently serve one and leave the other an
-        empty page -- the exact confident-empty failure the bus_backed rule
-        exists to prevent.
+        More than one is served: each is republished from the same returned
+        row, so none is left a confident empty page. Every one must declare a
+        ``tenant_column``, because an unscoped per-row exposure would serve one
+        tenant's delegations to another.
         """
         node_name = str(self._contract.get("name", "projection_delegation"))
         exposures = load_projection_exposures_from_contract(
             self._contract, node_name, contract_path
         )
-        rows = [
+        rows = tuple(
             exposure
             for exposure in exposures
             if exposure.bus_backed and self._is_row_exposure(exposure)
-        ]
-        if len(rows) > 1:
-            raise ValueError(
-                "contract declares "
-                f"{len(rows)} bus_backed per-row exposures over "
-                f"{self._table_delegation!r} "
-                f"({[exposure.topic for exposure in rows]!r}); this runner "
-                "republishes the written row to exactly one, and serving only "
-                "the first would leave the others a confident empty page"
-            )
-        if not rows:
-            return None
-        exposure = rows[0]
-        if exposure.tenant_column is None:
-            raise ValueError(
-                f"projection_api exposure {exposure.topic!r} is a bus_backed "
-                f"per-row exposure over {self._table_delegation!r} but declares "
-                "no tenant_column. Every row in this table belongs to a tenant, "
-                "so an unscoped per-row exposure would serve one tenant's "
-                "delegations to another -- the leak node_projection_savings "
-                "refused to ship for savings.v1 (OMN-15797)"
-            )
-        return exposure
+        )
+        for exposure in rows:
+            if exposure.tenant_column is None:
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is a bus_backed "
+                    f"per-row exposure over {self._table_delegation!r} but "
+                    "declares no tenant_column. Every row in this table belongs "
+                    "to a tenant, so an unscoped per-row exposure would serve "
+                    "one tenant's delegations to another -- the leak "
+                    "node_projection_savings refused to ship for savings.v1 "
+                    "(OMN-15797)"
+                )
+        return rows
 
     async def _write_delegation_row(
         self,
@@ -510,8 +547,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row=row,
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
-            returning=(
-                self._row_exposure.columns if self._row_exposure is not None else ()
+            returning=tuple(
+                dict.fromkeys(
+                    column
+                    for exposure in self._row_exposures
+                    for column in exposure.columns
+                )
             ),
         )
         await self._publish_row_snapshot(written, meta)
@@ -535,23 +576,28 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         write that was refused; either way there is no stored row to describe,
         and inventing one would be the confident-empty failure inverted.
         """
-        if self._row_exposure is None or not written:
+        if not self._row_exposures or not written:
             return
-        row = dict(written[0])
-        tenant = row.get(str(self._row_exposure.tenant_column))
-        await self.publish_snapshot_delta(
-            self._row_exposure,
-            op="upsert",
-            row=row,
-            source_event_id=str(row.get(_DELEGATION_ROW_KEY) or meta.fallback_id),
-            source_topic=meta.topic,
-            source_partition=meta.partition,
-            source_offset=meta.offset,
-            # The row's OWN tenant, read back from the database, not the
-            # tenant this process resolved on the way in: the header must
-            # describe the row that exists, and RLS may have decided otherwise.
-            tenant_id=str(tenant) if tenant is not None else HOUSE_TENANT_SLUG,
-        )
+        stored = dict(written[0])
+        for exposure in self._row_exposures:
+            # Each topic carries its own declared columns only, so the lean
+            # decisions list does not pick up the heavy detail columns.
+            row = {c: stored[c] for c in exposure.columns if c in stored}
+            tenant = row.get(str(exposure.tenant_column))
+            await self.publish_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(row.get(_DELEGATION_ROW_KEY) or meta.fallback_id),
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+                # The row's OWN tenant, read back from the database, not the
+                # tenant this process resolved on the way in: the header must
+                # describe the row that exists, and RLS may have decided
+                # otherwise.
+                tenant_id=str(tenant) if tenant is not None else HOUSE_TENANT_SLUG,
+            )
 
     async def _publish_aggregate_snapshots(
         self, meta: MessageMeta, *, tenant: str
@@ -1595,66 +1641,34 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant = event.resolved_tenant()
         period = event.budget_period()
         cap = Decimal(str(cost.monthly_cap_usd))
-        drawdown = event.budget_headroom_consumed_usd
-        overage = event.cost_usd
         # OMN-15905: keep these as real datetime objects -- asyncpg's
         # TIMESTAMPTZ codec requires datetime.datetime instances, not
         # isoformat() strings, or the INSERT raises DataError.
-        now_dt = datetime.now(tz=UTC)
         event_dt = event.resolved_event_time()
+        now_dt = datetime.now(tz=UTC)
 
-        # OMN-15919: same resolver, same value as the row this method is
-        # about to upsert (``row["tenant_id"] = resolved_tenant`` below) --
-        # the existing-row lookup must run under that same GUC or an
-        # RLS-enforced writer role never sees its own prior accumulation.
-        existing_rows = await self.db.execute(
-            f"SELECT * FROM {self._table_budget_state} "
-            "WHERE tenant_id = $1 AND cost_tier_name = $2 AND budget_period = $3",
+        # OMN-20613: one transaction, no read-then-overwrite. The event's
+        # identity goes into the applied-events table; only when that insert
+        # took a row does the totals statement run, and it increments inside
+        # the database. Two writers, an A-B-A replay and a late-arriving
+        # earlier event therefore all land correctly, and a failure rolls the
+        # identity back together with the totals. ``execute`` runs the whole
+        # statement in one transaction under the row's tenant GUC (OMN-15919).
+        await self.db_for(self._table_budget_applied_events, operation="write").execute(
+            _BUDGET_APPLY_SQL.format(
+                applied=self._table_budget_applied_events,
+                state=self._table_budget_state,
+            ),
             resolved_tenant,
             cost_tier_name,
             period,
+            event.correlation_id,
+            cap,
+            event.budget_headroom_consumed_usd,
+            event.cost_usd,
+            event_dt,
+            now_dt,
             tenant=resolved_tenant,
-        )
-        if existing_rows:
-            existing = existing_rows[0]
-            # Idempotent replay guard: the same source event already applied.
-            if str(existing.get("last_correlation_id") or "") == event.correlation_id:
-                return
-            consumed = _as_decimal_local(existing.get("consumed_usd")) + drawdown
-            overage_total = _as_decimal_local(existing.get("overage_usd")) + overage
-            count = _as_int_local(existing.get("delegation_count")) + 1
-            # asyncpg returns a native datetime for a TIMESTAMPTZ column read
-            # back via SELECT -- pass it straight through, never str()-ified.
-            first_event_at = existing.get("first_event_at") or event_dt
-        else:
-            consumed = drawdown
-            overage_total = overage
-            count = 1
-            first_event_at = event_dt
-
-        headroom_remaining = cap - consumed
-        if headroom_remaining < Decimal("0"):
-            headroom_remaining = Decimal("0")
-
-        row: dict[str, object] = {
-            "tenant_id": resolved_tenant,
-            "cost_tier_name": cost_tier_name,
-            "budget_period": period,
-            "monthly_cap_usd": cap,
-            "consumed_usd": consumed,
-            "overage_usd": overage_total,
-            "headroom_remaining_usd": headroom_remaining,
-            "delegation_count": count,
-            "last_correlation_id": event.correlation_id,
-            "first_event_at": first_event_at,
-            "last_event_at": event_dt,
-            "created_at": now_dt,
-            "updated_at": now_dt,
-        }
-        await self._dynamic_upsert(
-            table=self._table_budget_state,
-            conflict_key="tenant_id,cost_tier_name,budget_period",
-            row=row,
         )
 
     async def _project_typed_event_async(
@@ -1730,34 +1744,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
-        # OMN-14898: refuse the write before it is built out further when
-        # isolation enforcement is on and no tenant was resolved. No-op while
-        # ENFORCE_TENANT_ISOLATION is False (OMN-14058 interim default).
+        # Resolve only the event's declared tenant against the registry.
+        # terminal_write_tenant refuses missing attribution regardless of
+        # enforcement or the writer's configured tenant (OMN-20651).
         require_tenant_id(event.tenant_id, table=self._table_delegation)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source event carried one -- omitting the key lets the column
-        # DEFAULT apply on INSERT and leaves an already-known tenant
-        # untouched on UPDATE (targeted-column upsert semantics).
-        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) --
-        # resolve the verified SLUG event.tenant_id to its canonical UUID
-        # before it reaches the row. This is the LIVE production write path
-        # (the async Kafka runner); the sync CLI path in
-        # HandlerProjectionDelegation.project() carries the identical fix.
-        # OMN-16804: that resolution now reads tenant_registry_mirror -- the
-        # relation node_projection_tenant_registry materializes from
-        # onex.tenant.events -- instead of a three-entry dict compiled into
-        # this source tree. Every provisioned tenant resolves, not just the
-        # three that happened to be hardcoded when the column was converted.
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             event.tenant_id, event_timestamp=safe_parse_date(event.timestamp)
         )
-        # OMN-18565: NAMED UNCONDITIONALLY. Migration 0042 removes the column
-        # DEFAULT this used to fall through to, so a write that names no tenant
-        # is now refused by NOT NULL rather than silently house-attributed by
-        # the schema. The house stamp is held INSERT-ONLY so a terminal that
-        # resolved nothing still cannot rewrite an attribution an earlier,
-        # better-informed write recorded. One implementation, shared with the
-        # sync kernel twin, so the two writers cannot drift on this again.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=self._table_delegation
         )
@@ -2003,16 +1996,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
-        # OMN-14898: same fail-closed guard as _project_typed_event_async.
+        # Same declared-tenant boundary as the canonical terminal path.
         require_tenant_id(row_model.tenant_id, table=self._table_delegation)
-        # OMN-15683: same UUID resolution as _project_typed_event_async above.
-        # OMN-16804: registry-resolved, so the terminal row is keyed by the
-        # same canonical UUID the gateway verified -- never omitted to let a
-        # column DEFAULT stand in for an identity nobody recorded.
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             row_model.tenant_id, event_timestamp=row_model.timestamp
         )
-        # OMN-18565: NAMED UNCONDITIONALLY, same reason as the typed-event path.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=self._table_delegation
         )

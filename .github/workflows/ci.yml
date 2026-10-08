@@ -482,6 +482,9 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
+      - name: Same-model sibling quality gate (OMN-19215)
+        run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.
@@ -2406,6 +2409,35 @@ jobs:
           path: golden-chain-results.xml
 
   # ============================================================================
+  # GENERATED EVENT CHAINS (epic OMN-19546, golden-chain plan generation step)
+  # Fails when a contract change breaks a generated chain or adds a walker path
+  # with no chain. SYNC with pre-commit hook check-generated-event-chains.
+  # ============================================================================
+  event-chain-generation:
+    name: Generated Event Chains (walker paths)
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run generated event-chain gate
+        run: uv run pytest tests/chains/generated -v --tb=short -m unit -p no:cacheprovider
+
+  # ============================================================================
   # SEA ACCEPTANCE + SESSION-DEFECT ERROR CHAINS (OMN-12660)
   # Runs the SEA e2e acceptance chain and all session-defect error chains
   # (D3/D9/D1+D2/D4/F1) on every dev-targeting PR.
@@ -2992,7 +3024,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.66
+          ref: v0.38.67
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -3220,63 +3252,6 @@ jobs:
       - name: Census (informational)
         if: always()
         run: uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report || true
-
-  # ============================================================================
-  # OCC COMPANION MERGED GATE (OMN-15214 canary -> OMN-15221 omniclaude ->
-  # OMN-15427 omnimarket)
-  #
-  # omnimarket was the last CI repo without this gate, and the gap was observed
-  # live: omnimarket#1953's body cited `Evidence-Source: OCC#5487`, a companion
-  # CLOSED WITHOUT MERGING (superseded by the merged OCC#5497). The canonical
-  # arbiter returns FAIL for that body -- but omnimarket CI never ran it, so the
-  # PR looked green with a dead evidence citation and nothing noticed.
-  #
-  # This job polls the PR's LIVE body (not the event payload -- occ-autobind
-  # PATCHes Evidence-Source in after the trigger fires) and greens ONLY when
-  # EVERY cited OCC companion is MERGED, or every cited OCC commit SHA is an
-  # ancestor of onex_change_control dev/main. A companion CLOSED without merging
-  # fails immediately (that IS the incident state); an OPEN companion polls and
-  # converts to FAIL at the deadline (fail-closed).
-  #
-  # Enforcement, not detection: registered in STRICT_GATE_JOBS in
-  # scripts/ci/ci_summary_gate.py, so the REQUIRED `CI Summary` context cannot
-  # go green unless this job is present + completed + success (absent/skipped/
-  # cancelled all block). Deliberately NOT a new top-level required context: a
-  # context that does not report on every PR shape wedges merges indefinitely
-  # under branch protection (see CLAUDE.md, deploy-gate section); the umbrella's
-  # check-run always instantiates, so it has no such failure mode.
-  #
-  # Unconditional (no needs/if) so CI Summary always WAITS for it; internal
-  # event scoping no-ops on push/workflow_dispatch (mirrors occ-preflight).
-  # GitHub-hosted + pure gh-API polling against a PUBLIC repo
-  # (onex_change_control): zero self-hosted/LAN dependency and no cross-repo
-  # secret -- the default GITHUB_TOKEN reads public repos. The poll window
-  # absorbs autobind mint + companion auto-merge latency instead of converting
-  # them into instant reds.
-  # ============================================================================
-  occ-companion-merged:
-    name: OCC Companion Merged Gate (OMN-15214)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-      # Poll window (seconds) -- bounded well under ci-summary's 90m deadline so
-      # this gate reaches a terminal state first; PENDING converts to FAIL.
-      DEADLINE_SECONDS: "1500"
-      POLL_INTERVAL_SECONDS: "30"
-    steps:
-      - name: Checkout (gate script)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-        with:
-          persist-credentials: false
-      - name: Require every cited OCC companion to be merged before product merge
-        run: python3 scripts/ci/check_occ_companion_merged.py
 
   # ============================================================================
   # VERIFICATION HOLD GATE (OMN-15483)

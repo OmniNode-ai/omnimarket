@@ -21,7 +21,10 @@ verbatim ruling *"Hold + fix mechanism"*): resolve identity against a
 ``omnidash_analytics`` by ``node_projection_tenant_registry`` from
 ``onex.tenant.events``. One mechanism now serves both paths -- the migration
 resolves at apply time by JOIN, the writer resolves at write time by lookup --
-and neither inlines a literal map.
+and neither inlines a literal map. OMN-19972 added the third: the serving path
+resolves a slug-named read through :func:`resolve_registry_tenant_uuid` and the
+same lookups (``read_page.serving_tenant_scope``), so a slug reads back exactly
+the UUID the writer stamped for it.
 
 Three properties this module holds, in the order they are checked:
 

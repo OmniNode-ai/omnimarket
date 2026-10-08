@@ -33,6 +33,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
@@ -251,6 +252,41 @@ def test_quality_rejection_does_not_hop_to_a_same_model_sibling(
         f"serves the same model id. backends called: {effect.calls}"
     )
     assert effect.calls == ["cloud-primary", "cloud-ceiling"]
+    assert result["status"] == "completed"
+
+
+@pytest.mark.usefixtures("_fixture_env")
+@pytest.mark.parametrize("alternate_down", [False, True], ids=["quality", "transport"])
+def test_rejected_model_stays_excluded_after_a_different_sibling(
+    tmp_path: Path, alternate_down: bool
+) -> None:
+    tiers_path = tmp_path / "routing_tiers.yaml"
+    tiers = yaml.safe_load(_ROUTING_TIERS_YAML)
+    tiers["tiers"][0]["models"].insert(
+        1,
+        {
+            "id": "alternate-model",
+            "backend_id": "cloud-alternate",
+            "max_context_tokens": 8192,
+            "use_for": ["research"],
+        },
+    )
+    tiers_path.write_text(yaml.safe_dump(tiers))
+    bifrost_path = tmp_path / "bifrost_delegation.yaml"
+    bifrost_path.write_text(
+        _BIFROST_YAML.replace(
+            _backend("cloud-mirror", "shared-model", "mirror"),
+            _backend("cloud-alternate", "alternate-model", "alternate")
+            + _backend("cloud-mirror", "shared-model", "mirror"),
+        )
+    )
+    effect = _ScriptedEffect(
+        empty=frozenset({"cloud-primary", "cloud-alternate"}),
+        down=frozenset({"cloud-alternate"}) if alternate_down else frozenset(),
+    )
+    result = _dispatch(effect, tmp_path)
+
+    assert effect.calls == ["cloud-primary", "cloud-alternate", "cloud-ceiling"]
     assert result["status"] == "completed"
 
 

@@ -330,6 +330,27 @@ def _asserts(text: str, terms: Iterable[str]) -> str | None:
     return None
 
 
+def _source_units(source: str, policy: ModelClaimGroundingPolicy) -> list[str]:
+    """Keep rows independent, except within explicitly delimited reports."""
+    units: list[str] = []
+    report: list[str] | None = None
+    for line in source.splitlines():
+        if any(
+            _compiled(pattern).fullmatch(line)
+            for pattern in policy.source_section_start_patterns
+        ):
+            if report is not None:
+                units.append("\n".join(report))
+            report = [line]
+        elif report is not None:
+            report.append(line)
+        else:
+            units.append(line)
+    if report is not None:
+        units.append("\n".join(report))
+    return units
+
+
 def evaluate_claim_grounding(
     *,
     content: str,
@@ -343,7 +364,9 @@ def evaluate_claim_grounding(
     answer that uses a word from a declared state group ("deprioritized",
     "completed", "blocked", ...) asserts that state. When the clause cites an
     identifier that occurs in the source, the state must occur, in any wording
-    of its group, in the source rows that hold that identifier. A clause with
+    of its group, in the source units that hold that identifier. A unit is a
+    row unless the contract declares an explicit report boundary; then every
+    line until the next boundary belongs to that report. A clause with
     no such identifier is not checked: a state word in free prose ("the app is
     closed") is ordinary English, and refusing it costs more than it catches.
     A state the response marks unverified is disclosed and not held against it.
@@ -358,7 +381,7 @@ def evaluate_claim_grounding(
         resolve_identifier_grounding_policy().answer_segment.stray_trace_terminator
     )
     answer = answer_segment(content, terminator=terminator)
-    source_lines = grounding_source.splitlines()
+    source_units = _source_units(grounding_source, policy)
     checked = 0
     seen: set[tuple[str, str | None]] = set()
     ungrounded: list[ModelUngroundedClaim] = []
@@ -376,7 +399,7 @@ def evaluate_claim_grounding(
         if not anchors:
             continue
         scope = "\n".join(
-            line for line in source_lines if any(a in line for a in anchors)
+            unit for unit in source_units if any(a in unit for a in anchors)
         )
         for group, terms in policy.state_groups.items():
             used = _asserts(clause, terms)

@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19528"
+title: "the node_dod_verify CLI accepts a delegation correlation ID"
+summary: "Adds an optional --delegation-correlation-id flag to the node_dod_verify CLI. The UUID is parsed before verification and forwarded to the existing ModelDodVerifyStartCommand field. Omission stays unlinked and a malformed value is refused before the handler is built. Tests: tests/test_omn19514_dod_verdict_delegation_run.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-cli-delegation-link"
+    statement: |-
+      The node_dod_verify CLI must carry an explicit delegation correlation ID to the verdict, keep omission unlinked, and refuse a malformed ID before verification.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an explicit link reaches the completed event and projection row, omission preserves the payload shape, and a malformed UUID is refused before the handler is constructed -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegation-link tests pass at the head and the CLI flag does not exist at the merge base."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-delegation-link-ac1"
+    description: "The tests prove the explicit link, the unlinked omission and the malformed-UUID refusal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

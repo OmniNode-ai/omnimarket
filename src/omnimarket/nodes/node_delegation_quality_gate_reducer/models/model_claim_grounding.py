@@ -52,6 +52,14 @@ class ModelClaimGroundingPolicy(BaseModel):
             "follows."
         ),
     )
+    source_section_start_patterns: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Python re patterns matching a source line that starts one report. "
+            "Its lines form a grounding unit until the next report starts. "
+            "Lines before the first report remain independent source rows."
+        ),
+    )
     excluded_answer_spans: tuple[str, ...] = Field(default=())
     imperative_subject_patterns: tuple[str, ...] = Field(
         default=(),
@@ -77,7 +85,12 @@ class ModelClaimGroundingPolicy(BaseModel):
         default_factory=ModelIdentifierGroundingFailurePolicy
     )
 
-    @field_validator("anchor_patterns", "excluded_answer_spans", "unverified_markers")
+    @field_validator(
+        "anchor_patterns",
+        "excluded_answer_spans",
+        "unverified_markers",
+        "source_section_start_patterns",
+    )
     @classmethod
     def _patterns_compile(cls, patterns: tuple[str, ...]) -> tuple[str, ...]:
         for pattern in patterns:

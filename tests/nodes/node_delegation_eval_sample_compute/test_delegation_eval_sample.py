@@ -144,6 +144,65 @@ def test_same_seed_same_manifest() -> None:
         )
 
 
+def test_same_seed_same_manifest_with_reordered_quotas() -> None:
+    request = _request(_candidates(130))
+    reordered = request.model_copy(
+        update={
+            "sampling": request.sampling.model_copy(
+                update={"quotas": tuple(reversed(request.sampling.quotas))}
+            )
+        }
+    )
+    handler = sampler.HandlerDelegationEvalSample()
+    first = handler.handle(request)
+    second = handler.handle(reordered)
+    assert first.items == second.items
+    assert first.manifest_id == second.manifest_id
+    assert first.model_dump_json() == second.model_dump_json()
+
+
+@pytest.mark.parametrize("count", [3, 110])
+def test_same_seed_same_manifest_with_colliding_stratum_labels(count: int) -> None:
+    # Both classes display as code_generation/accepted/refused, but they have
+    # different gate outcomes and must retain their own quotas and shortfalls.
+    rows = _candidates(count)
+    candidates = tuple(
+        row.model_copy(
+            update={"task_class": "code_generation", "deciding_path": "refused"}
+        )
+        for row in rows
+    ) + tuple(
+        row.model_copy(
+            update={
+                "task_class": "code_generation/accepted",
+                "gate_outcome": EnumDelegationEvalGateOutcome.REFUSED,
+                "attempt_index": 1,
+            }
+        )
+        for row in rows
+    )
+    handler = sampler.HandlerDelegationEvalSample()
+    request = _request(candidates)
+    first = handler.handle(request)
+    second = handler.handle(
+        request.model_copy(update={"candidates": tuple(reversed(candidates))})
+    )
+
+    assert first.model_dump_json() == second.model_dump_json()
+    assert Counter(item.task_class for item in first.items) == {
+        "code_generation": min(count, 100),
+        "code_generation/accepted": min(count, 60),
+    }
+    if count == 3:
+        assert {item.key for item in first.items} == set(map(_key, candidates))
+        assert [(row.quota, row.available, row.taken) for row in first.shortfalls] == [
+            (100, 3, 3),
+            (60, 3, 3),
+        ]
+    else:
+        assert first.shortfalls == ()
+
+
 def test_holdout_bucket_never_drawn() -> None:
     blocked = _candidates(3, holdout=True)
     result = sampler.HandlerDelegationEvalSample().handle(

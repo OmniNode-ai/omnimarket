@@ -127,6 +127,7 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
             # from a behavior-proving one.
             "proof_class": str(check.proof_class),
             "message": _elide_message(check.message or "", _DETAIL_MESSAGE_MAX_CHARS),
+            "failure": check.failure.model_dump(mode="json") if check.failure else None,
         }
         for check in state.checks
     ]
@@ -424,6 +425,12 @@ def main() -> None:
         help="Correlation ID (UUID) for this run (default: auto-generated)",
     )
     parser.add_argument(
+        "--delegation-correlation-id",
+        type=uuid.UUID,
+        default=None,
+        help="Correlation ID (UUID) of the delegation run this verification judges",
+    )
+    parser.add_argument(
         "--output-path",
         type=Path,
         default=None,
@@ -443,6 +450,7 @@ def main() -> None:
 
     command = ModelDodVerifyStartCommand(
         correlation_id=correlation_id,
+        delegation_correlation_id=args.delegation_correlation_id,
         ticket_id=args.ticket_id,
         contract_path=args.contract_path,
         dry_run=args.dry_run,
@@ -492,6 +500,8 @@ def main() -> None:
         )
 
     sys.stdout.write(state.model_dump_json(indent=2) + "\n")
+    if state.error_message:
+        sys.stderr.write(state.error_message + "\n")
 
     receipt_path = _resolve_receipt_path(
         ticket_id=args.ticket_id,

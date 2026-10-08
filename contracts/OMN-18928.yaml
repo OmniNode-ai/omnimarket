@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18928"
+title: "A remote completion with no final artifact is not scored as model quality"
+summary: "HandlerDelegationWorkflow closes a COMPLETED remote lifecycle with no final artifact as inference_failed with content_verdict not_applicable, empty content and no numeric quality score. Lifecycle terminals retain earlier graded attempt evidence and observed errors."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-missing-artifact-not-scored"
+    statement: "A remote completion without a final artifact is not usable content and carries no quality score. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a remote completion without a final artifact closes as inference_failed with content_verdict not_applicable and no quality score, while an artifact-bearing completion stays completed and usable -- falsifier: uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q in omnimarket fails at the merge base on the missing-artifact test"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The operational outcome content verdict tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18928-ac1-missing-artifact-not-scored"
+    description: "AC1 hosted probe. The operational outcome content verdict tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

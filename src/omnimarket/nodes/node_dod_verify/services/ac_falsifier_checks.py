@@ -317,6 +317,24 @@ def _declared_criteria(contract: Mapping[str, Any]) -> list[tuple[str, str]]:
     return found
 
 
+def _declared_criterion_ids(contract: Mapping[str, Any]) -> list[str]:
+    """OMN-20070: declared ids, including criteria without a string statement."""
+    requirements = contract.get("requirements")
+    if not isinstance(requirements, list):
+        return []
+    found: list[str] = []
+    for requirement in requirements:
+        if not isinstance(requirement, Mapping):
+            continue
+        acceptance = requirement.get("acceptance")
+        if not isinstance(acceptance, list):
+            continue
+        for criterion in acceptance:
+            if isinstance(criterion, Mapping) and isinstance(criterion.get("id"), str):
+                found.append(criterion["id"])
+    return found
+
+
 def _declared_item_ids(dod_items: Sequence[Any]) -> set[str]:
     return {
         item["id"]
@@ -352,7 +370,7 @@ def derive_falsifier_items(
     *,
     repo_candidates: Sequence[str],
     path_exists: Callable[[str, str], bool],
-    declared_runner: Callable[[str], str | None],
+    declared_runner: Callable[[str, str], str | None],
 ) -> tuple[list[dict[str, Any]], ModelDodAcceptanceSummary]:
     """One executable evidence item per accepted, runnable criterion falsifier.
 
@@ -360,7 +378,8 @@ def derive_falsifier_items(
     PR-bound items name, in contract order. ``path_exists(repo, path)`` says
     whether a clone holds the selector's first path; the repo that holds it
     runs it, and when none does the first candidate runs it and fails visibly.
-    ``declared_runner(repo)`` supplies that repository's test runner prefix;
+    ``declared_runner(repo, first_path)`` supplies that repository's test runner
+    prefix for the selector's first path (a bare Python form depends on it);
     a repository that declares none is reported for the collector to fail.
     """
     accepted = _accepted_labels(dod_items)
@@ -401,7 +420,7 @@ def derive_falsifier_items(
         else:
             unrunnable.append(label)
             continue
-        runner = declared_runner(repo)
+        runner = declared_runner(repo, parsed.first_path)
         if runner is None:
             # OMN-20332: no declared runner means a named failure, never a guess.
             undeclared_runner.append((label, repo))
@@ -427,6 +446,20 @@ def derive_falsifier_items(
                 "binds_ac": [label],
             }
         )
+    bound_labels: set[str] = set()
+    for item in [*dod_items, *items]:
+        if not isinstance(item, Mapping):
+            continue
+        binds_ac = item.get("binds_ac")
+        if isinstance(binds_ac, list):
+            bound_labels.update(
+                _canonical_label(label) for label in binds_ac if isinstance(label, str)
+            )
+    unbound_criteria = tuple(
+        label
+        for label in dict.fromkeys(_declared_criterion_ids(contract))
+        if _canonical_label(label) not in bound_labels
+    )
     summary = ModelDodAcceptanceSummary(
         declared_falsifier_count=declared,
         runnable_count=len(items),
@@ -434,5 +467,6 @@ def derive_falsifier_items(
         undeclared_runner=tuple(undeclared_runner),
         derived_item_ids=tuple(str(item["id"]) for item in items),
         self_accepted_bindings=self_accepted_bindings(dod_items),
+        unbound_criteria=unbound_criteria,
     )
     return items, summary

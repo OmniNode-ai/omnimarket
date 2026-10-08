@@ -7,6 +7,8 @@ A workflow that clones, checks out or calls a sibling at its live branch turns
 this repository red when the sibling merges. Every sibling read here resolves
 to a lock version, a release tag or a sha. The Event Registry Drift job is
 owned by the sibling-pin-drift-check lane and is not scanned.
+A workflow_call-only reusable hosted for other repos pins omnibase_infra by
+full commit sha instead of the lock tag, because it runs in its caller's CI.
 """
 
 from __future__ import annotations
@@ -50,6 +52,16 @@ _USES = re.compile(r"^OmniNode-ai/(?P<repo>[a-z_]+)/[^@]+@(?P<ref>\S+)$")
 _LOCK_EXPR = re.compile(
     r"""\$\(grep -A1 '\^name = "(?P<pkg>[a-z-]+)"\$' uv\.lock[^\n]*?/p'\)"""
 )
+
+
+def _hosted_reusables() -> set[str]:
+    found = set()
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        doc = yaml.safe_load(path.read_text()) or {}
+        triggers = doc.get(True, doc.get("on"))
+        if isinstance(triggers, dict) and set(triggers) == {"workflow_call"}:
+            found.add(path.name)
+    return found
 
 
 def _steps() -> list[tuple[str, str, dict[str, Any]]]:
@@ -185,10 +197,12 @@ def test_lock_expression_resolves_to_the_lock_version() -> None:
 
 
 def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
+    hosted = _hosted_reusables()
     pins = {
         str((s.get("with") or {}).get("ref"))
-        for _, _, s in _steps()
-        if str((s.get("with") or {}).get("repository")) == "OmniNode-ai/omnibase_infra"
+        for wf, _, s in _steps()
+        if wf not in hosted
+        and str((s.get("with") or {}).get("repository")) == "OmniNode-ai/omnibase_infra"
     }
     assert pins == {
         f"v{_lock_version('omnibase-infra')}",
@@ -212,3 +226,24 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
         f"infra_version={_lock_version('omnibase-infra')}",
         f"core_version={_lock_version('omnibase-core')}",
     ]
+
+
+def test_hosted_reusable_infra_checkouts_pin_a_full_sha() -> None:
+    hosted = _hosted_reusables()
+    pins = [
+        (wf, str((s.get("with") or {}).get("ref", "")))
+        for wf, _, s in _steps()
+        if wf in hosted
+        and str((s.get("with") or {}).get("repository")) == "OmniNode-ai/omnibase_infra"
+    ]
+    assert pins, "hosted reusables have no omnibase_infra checkouts"
+    for wf, ref in pins:
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), (
+            f"{wf} omnibase_infra checkout must pin a full commit sha: {ref}"
+        )
+
+
+def test_hosted_reusable_classification() -> None:
+    hosted = _hosted_reusables()
+    assert "route-runner-reusable.yml" in hosted
+    assert "ci.yml" not in hosted
