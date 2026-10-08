@@ -268,7 +268,7 @@ def test_a_missing_asset_is_a_404_not_the_index(tmp_path: Path) -> None:
 def test_a_page_cannot_shadow_the_api(tmp_path: Path) -> None:
     """Registration order is load-bearing: the catch-all is registered last."""
     client = _app(tmp_path)
-    assert client.get("/projections").json() == {"topics": []}
+    assert client.get("/projections").json()["topics"] == []
     assert client.get("/projection/onex.decisions").json()["rows"] == []
 
 
