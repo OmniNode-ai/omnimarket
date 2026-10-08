@@ -965,11 +965,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
@@ -1397,11 +1411,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
