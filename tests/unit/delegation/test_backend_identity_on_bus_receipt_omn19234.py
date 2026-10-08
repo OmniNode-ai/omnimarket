@@ -136,11 +136,11 @@ class TestTheRoutingDecisionNamesTheBackend:
             intents = workflow.handle_delegation_request(_request(task_type))
             decisions.append(routing.handle(intents[0]))
         coder, heavy = decisions
-        # The premise of the ticket, read from the real routing reducer: one
-        # model id, one hash, two backends.
+        # One model id, two backends: since OMN-17122 the backend UUID hashes
+        # the backend reference, so it no longer collides on the model id.
         assert coder.selected_model == heavy.selected_model
-        assert coder.selected_backend_id == heavy.selected_backend_id
-        # The identity that does distinguish them.
+        assert coder.selected_backend_id != heavy.selected_backend_id
+        # The raw backend key distinguishes them too.
         assert coder.selected_backend_ref == "local-coder"
         assert heavy.selected_backend_ref == "local-heavy-reasoning"
         assert coder.selected_backend_ref != heavy.selected_backend_ref

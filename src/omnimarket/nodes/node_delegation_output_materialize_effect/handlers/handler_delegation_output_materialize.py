@@ -8,8 +8,9 @@ checking that it is under the root, then writing to it, is not enough: the
 tree can change between the check and the write, and ``resolve()`` says
 nothing about a symlink created a moment later. This handler instead:
 
-1. opens the target root with ``O_DIRECTORY | O_NOFOLLOW`` (a symlinked root
-   is refused for the whole request);
+1. walks the absolute target root from ``/`` with directory descriptors and
+   ``O_DIRECTORY | O_NOFOLLOW`` (a symlink at any hop is refused for the whole
+   request before files or blobs are written);
 2. walks each parent component with ``os.open(part, O_DIRECTORY | O_NOFOLLOW,
    dir_fd=parent)``, creating missing directories with ``os.mkdir(part,
    dir_fd=parent)``, so every hop is relative to a directory file descriptor
@@ -112,6 +113,22 @@ def _open_child_dir(name: str, parent_fd: int) -> int:
         ) from exc
 
 
+def _open_target_root(path: str) -> int:
+    """Create/open an absolute root without following any symlink component."""
+    fd = os.open(os.path.sep, _DIR_FLAGS)
+    try:
+        for part in path.split(os.path.sep):
+            if not part or part == ".":
+                continue
+            child_fd = _open_child_dir(part, fd)
+            os.close(fd)
+            fd = child_fd
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def _within[T](parent_fd: int, parents: list[str], action: Callable[[int], T]) -> T:
     """Run ``action`` on the directory ``parents`` names under ``parent_fd``.
 
@@ -172,9 +189,10 @@ class HandlerDelegationOutputMaterialize:
     def handle(
         self, request: ModelDelegationOutputMaterializeRequest
     ) -> ModelDelegationOutputMaterializeResult:
-        os.makedirs(request.target_root, mode=0o755, exist_ok=True)
         try:
-            root_fd = os.open(request.target_root, _DIR_FLAGS)
+            root_fd = _open_target_root(request.target_root)
+        except _OutputRefusedError as exc:
+            raise ValueError(f"target_root refused: {exc.detail}") from exc
         except OSError as exc:
             if exc.errno in (errno.ELOOP, errno.EMLINK):
                 raise ValueError(

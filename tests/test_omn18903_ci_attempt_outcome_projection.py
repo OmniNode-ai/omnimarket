@@ -142,6 +142,22 @@ def test_a_reintroduced_commit_keeps_its_first_position() -> None:
     assert [row.attempt_ordinal for row in result.rows] == [1]
 
 
+def test_a_reintroduced_commit_does_not_leave_a_gap_in_later_ordinals() -> None:
+    """Attempts count distinct heads, so seeing an old head adds no attempt."""
+    result = _fold(
+        _event(
+            history=(_SHA_1, _SHA_2, _SHA_1, _SHA_3),
+            checks=(
+                _check("CI", _SHA_3),
+                _check("CI", _SHA_1),
+                _check("CI", _SHA_2),
+            ),
+        )
+    )
+    assert [row.head_sha for row in result.rows] == [_SHA_1, _SHA_2, _SHA_3]
+    assert [row.attempt_ordinal for row in result.rows] == [1, 2, 3]
+
+
 # --------------------------------------------------------------------------
 # AC-2: the ticket is parsed or null, never guessed.
 # --------------------------------------------------------------------------

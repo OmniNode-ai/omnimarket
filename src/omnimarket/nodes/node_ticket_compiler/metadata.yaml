@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_compiler
+version: "0.1.0"
+description: Compile work units into tickets with verifiable acceptance criteria
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ticket_compiler: omnimarket.nodes.node_ticket_compiler
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - pydantic>=2.12.5
+license: MIT
+authors: [OmniNode Team]
+tags: [compute, pipeline, nl-to-ticket]
+pack: pipeline
+display_name: Ticket Compiler
+node_role: compute

@@ -29,3 +29,19 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn18931-ac1-availability-runtime-postgres"
+    description: "AC1 hosted probe. The availability report runtime proof passes on an isolated Postgres at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18931_availability_runtime_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18931-ac1-zero-attempt-availability"
+    description: "AC1 hosted probe. Zero-attempt operational observations (missing terminal, boundary failure) stay in the availability denominator with no content verdict; this check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py -k test_zero_attempt_operational_evidence_stays_in_availability -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
