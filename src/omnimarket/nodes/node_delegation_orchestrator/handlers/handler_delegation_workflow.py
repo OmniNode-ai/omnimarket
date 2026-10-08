@@ -793,6 +793,11 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # provider answered is matched first.
     if "provider http 401" in normalized or "provider http 403" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    # OMN-20712: the same rule for an unavailable provider. The call's URL can
+    # carry "401" in its port (127.0.0.1:44011) and read a 503 as a rejected
+    # credential through the generic marker below.
+    if "provider http 503" in normalized:
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
