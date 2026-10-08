@@ -12,10 +12,15 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: the gate result carries output_refusal.contract_failure_reasons and a valid label still passes -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: when extraction withholds an invalid deliverable, the bus quality gate keeps the evidence mismatch and appends the extractor contract_failure_reasons, so the rejected label is named -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py::test_bus_gate_names_rejected_labels_before_terminal_composition -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The delegation label-set tests pass at the head and fail at the merge base, where the diagnostic is dropped."
     command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
+  - kind: "tests"
+    description: "AC2 hosted probe. The bus gate names the rejected label beside the evidence mismatch at the head; the test does not exist at the merge base."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py::test_bus_gate_names_rejected_labels_before_terminal_composition -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn18989-ac2-bus-gate-names-rejected-label"
+    description: "AC2 hosted probe. The bus quality gate appends the extractor contract_failure_reasons to the evidence mismatch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py::test_bus_gate_names_rejected_labels_before_terminal_composition -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
