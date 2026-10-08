@@ -72,7 +72,10 @@ def read_shadow_prompts(
     """
     if limit < 1:
         raise ValueError(f"limit must be at least 1, got {limit}")
-    connection = sqlite3.connect(f"file:{store_path}?mode=ro", uri=True)
+    connection = sqlite3.connect(  # no-contract-check: read-only evidence store
+        f"file:{store_path}?mode=ro",
+        uri=True,
+    )
     try:
         rows = connection.execute(
             "select correlation_id, task_type, prompt_text, response_text "
