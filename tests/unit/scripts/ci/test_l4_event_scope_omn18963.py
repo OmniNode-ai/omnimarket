@@ -112,15 +112,26 @@ def test_queue_preserves_the_existing_repo_evidence_exception() -> None:
     )
 
 
-def test_pull_request_preserves_the_full_current_tuple() -> None:
-    assert gate.expected_external_contexts("pull_request") == EXPECTED_EXTERNAL_CONTEXTS
+@pytest.mark.parametrize("ref_name", ["dev", "main", "hotfix/example"])
+def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
+    """The push-branch filter never narrows the pull-request tuple."""
+
+    resolved = gate.expected_external_contexts("pull_request", ref_name=ref_name)
+    assert resolved == gate.expected_external_contexts("pull_request")
+    assert resolved == EXPECTED_EXTERNAL_CONTEXTS
     # The owning ticket's historical count was 53; the integrated base has 55.
-    assert len(gate.expected_external_contexts("pull_request")) == 55
+    assert len(resolved) == 55
 
 
+@pytest.mark.parametrize("ref_name", [None, "dev", "main"])
 @pytest.mark.parametrize("event", [None, "", "repository_dispatch"])
-def test_resolver_unknown_events_fail_closed(event: str | None) -> None:
-    assert gate.expected_external_contexts(event) == EXPECTED_EXTERNAL_CONTEXTS
+def test_resolver_unknown_events_fail_closed(
+    event: str | None, ref_name: str | None
+) -> None:
+    """A branch never narrows an absent or unknown event's strict set."""
+
+    resolved = gate.expected_external_contexts(event, ref_name=ref_name)
+    assert resolved == EXPECTED_EXTERNAL_CONTEXTS
 
 
 @pytest.mark.parametrize(
