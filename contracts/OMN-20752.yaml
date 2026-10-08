@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20752"
+title: "The Overview shows Baseline spend from the served counterfactual"
+summary: "omnidash v1.1.6 adds a Baseline spend card to the Overview, bound to metering-summary.v1's counterfactual_usd, with a typed Baseline unresolved state. onex dashboard pins that bundle."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-overview-baseline-spend"
+    statement: |-
+      The bundle onex dashboard serves shows Baseline spend from the served counterfactual, and a typed state with no baseline.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The Overview shows a Baseline spend figure from a served exposure, equal to the CLI's counterfactual_usd for the same window -- falsifier: a vitest page test that serves a metering-summary row with a known counterfactual and fails when no Baseline spend card renders that amount
+      - id: "AC2"
+        statement: |-
+          AC2: With no baseline resolved, the Baseline spend card shows a typed not-measured state and never $0 -- falsifier: the same vitest suite serving a row with baseline_state unresolved and failing on a rendered 0
+evidence_requirements:
+  - kind: "tests"
+    description: "onex dashboard pins an omnidash bundle with the Baseline spend card (v1.1.6 or later)."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20752.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20752-bundle-pin"
+    description: "onex dashboard pins omnidash v1.1.6, the first bundle whose Overview shows Baseline spend from counterfactual_usd and Baseline unresolved with no baseline."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20752.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
