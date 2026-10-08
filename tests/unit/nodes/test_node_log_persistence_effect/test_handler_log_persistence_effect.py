@@ -318,6 +318,124 @@ def test_runtime_dispatch_rejects_non_mapping_request() -> None:
 
 
 @pytest.mark.unit
+def test_runtime_dispatch_rejects_unknown_topic() -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    with pytest.raises(ValueError, match="unknown-topic"):
+        NodeLogPersistenceEffect(pg_dsn="").handle(
+            {"_db": db, "_topic": "unknown-topic"}
+        )
+    assert db.query("log_entries") == []
+
+
+@pytest.mark.unit
+def test_runtime_dispatch_rejects_missing_topic() -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    with pytest.raises(ValueError, match=r"topic.*None"):
+        NodeLogPersistenceEffect(pg_dsn="").handle({"_db": db})
+    assert db.query("log_entries") == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["completed", "failed"])
+def test_delegation_terminal_requires_envelope_id(status: str) -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    payload = {
+        "status": status,
+        "correlation_id": str(uuid4()),
+        "task_type": "document",
+        "quality_gate_passed": status == "completed",
+        "_db": db,
+        "_topic": f"onex.evt.omnimarket.delegate-skill-{status}.v1",
+        "_envelope_timestamp": datetime(2026, 10, 6, tzinfo=UTC),
+    }
+    with pytest.raises(ValueError, match="envelope id"):
+        NodeLogPersistenceEffect(pg_dsn="").handle(payload)
+    assert db.query("log_entries") == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["completed", "failed"])
+def test_delegation_terminal_requires_envelope_timestamp(status: str) -> None:
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    payload = {
+        "status": status,
+        "correlation_id": str(uuid4()),
+        "task_type": "document",
+        "quality_gate_passed": status == "completed",
+        "_db": db,
+        "_topic": f"onex.evt.omnimarket.delegate-skill-{status}.v1",
+        "_envelope_id": str(uuid4()),
+    }
+    with pytest.raises(ValueError, match="envelope timestamp"):
+        NodeLogPersistenceEffect(pg_dsn="").handle(payload)
+    assert db.query("log_entries") == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("duration_ms", ["not-a-number", ""])
+async def test_structured_log_rejects_non_numeric_duration(duration_ms: str) -> None:
+    from omnimarket.logging.structured_logger import StructuredEventLogger
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    entry = await StructuredEventLogger("test_node").info("test log")
+    payload = entry.model_dump(mode="json")
+    payload["metadata"]["duration_ms"] = duration_ms
+    db = InmemoryDatabaseAdapter()
+    payload.update({"_db": db, "_topic": "onex.evt.platform.log-entry.v1"})
+    with pytest.raises(ValueError, match="duration_ms must be convertible to float"):
+        NodeLogPersistenceEffect(pg_dsn="").handle(payload)
+    assert db.query("log_entries") == []
+
+
+@pytest.mark.unit
+def test_contract_event_models_resolve_to_supported_classes() -> None:
+    from omnibase_core.models.logging.model_structured_log_entry import (
+        ModelStructuredLogEntry,
+    )
+
+    from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+        ModelDelegateSkillCompleted,
+        ModelDelegateSkillFailed,
+    )
+    from omnimarket.nodes.node_log_persistence_effect.handlers import (
+        handler_log_persistence_effect as handler_module,
+    )
+
+    supported = {
+        f"{cls.__module__}.{cls.__qualname__}": cls
+        for cls in (
+            ModelStructuredLogEntry,
+            ModelDelegateSkillCompleted,
+            ModelDelegateSkillFailed,
+        )
+    }
+    contract_path = (
+        Path(__file__).parents[4]
+        / "src/omnimarket/nodes/node_log_persistence_effect/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert supported == handler_module._SUPPORTED_EVENT_MODELS
+    assert {
+        route["topic"]: route["event_model"]
+        for route in contract["handler_routing"]["handlers"]
+    } == handler_module._HANDLER_EVENT_MODELS
+    for route in contract["handler_routing"]["handlers"]:
+        assert (
+            handler_module._SUPPORTED_EVENT_MODELS[route["event_model"]]
+            is supported[route["event_model"]]
+        )
+
+
+@pytest.mark.unit
 def test_runtime_contract_routes_each_subscribed_topic() -> None:
     contract_path = (
         Path(__file__).parents[4]

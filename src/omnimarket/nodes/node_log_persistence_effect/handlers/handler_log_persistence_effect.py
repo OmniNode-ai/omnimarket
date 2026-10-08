@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
 
+import yaml
 from omnibase_core.models.logging.model_structured_log_entry import (
     ModelStructuredLogEntry,
 )
@@ -47,6 +48,36 @@ logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 _SUBSCRIBE_TOPICS = contract_subscribe_topics(_CONTRACT_PATH)
 _PUBLISH_TOPICS = contract_publish_topics(_CONTRACT_PATH)
+_SUPPORTED_EVENT_MODELS: dict[
+    str,
+    type[ModelStructuredLogEntry]
+    | type[ModelDelegateSkillCompleted]
+    | type[ModelDelegateSkillFailed],
+] = {
+    f"{cls.__module__}.{cls.__qualname__}": cls
+    for cls in (
+        ModelStructuredLogEntry,
+        ModelDelegateSkillCompleted,
+        ModelDelegateSkillFailed,
+    )
+}
+
+
+def _load_handler_event_models(contract_path: Path) -> dict[str, str]:
+    """Map each contract-routed topic to its declared event_model path."""
+    contract = yaml.safe_load(contract_path.read_text())
+    routes: dict[str, str] = {}
+    for route in contract["handler_routing"]["handlers"]:
+        if route["event_model"] not in _SUPPORTED_EVENT_MODELS:
+            raise ValueError(
+                "unsupported log persistence contract event_model: "
+                f"{route['event_model']!r}"
+            )
+        routes[route["topic"]] = route["event_model"]
+    return routes
+
+
+_HANDLER_EVENT_MODELS = _load_handler_event_models(_CONTRACT_PATH)
 
 _DEFAULT_PG_DSN = os.environ.get("ONEX_PG_DSN", "")  # contract-config-ok: config  # fmt: skip
 
@@ -100,8 +131,11 @@ class NodeLogPersistenceEffect:
     def handle(self, request: object) -> dict[str, object]:
         """Persist bus activity through the contract-resolved projection database.
 
-        The runtime supplies the database from db_io. This dispatch shape avoids
-        the legacy async path's optional ONEX_PG_DSN and silent skipped writes.
+        Synchronous by design: callers must not await it. The runtime db_io
+        projection dispatch calls this method without awaiting, and
+        DatabaseAdapter.upsert is synchronous; the async direct-write API is
+        persist(). This dispatch shape avoids the legacy async path's optional
+        ONEX_PG_DSN and silent skipped writes.
         Delegation terminals produce execution logs, never copies of model text.
 
         ``request`` is the runtime-injected payload mapping (with ``_db``,
@@ -115,14 +149,17 @@ class NodeLogPersistenceEffect:
             )
         db, payload, meta = split_projection_input(dict(request))
         topic = meta.get("_topic")
-        if topic in _SUBSCRIBE_TOPICS[1:]:
-            terminal_cls = (
-                ModelDelegateSkillCompleted
-                if topic == _SUBSCRIBE_TOPICS[1]
-                else ModelDelegateSkillFailed
+        if not isinstance(topic, str) or topic not in _HANDLER_EVENT_MODELS:
+            raise ValueError(
+                f"log persistence topic is not routed by contract: {topic!r}"
             )
-            terminal = terminal_cls.model_validate(payload)
+        event_cls = _SUPPORTED_EVENT_MODELS[_HANDLER_EVENT_MODELS[topic]]
+        event = event_cls.model_validate(payload)
+        if isinstance(event, (ModelDelegateSkillCompleted, ModelDelegateSkillFailed)):
+            terminal = event
             # Source identity and event time must survive replay unchanged.
+            if "_envelope_id" not in meta:
+                raise ValueError("delegation execution log requires source envelope id")
             entry_id = UUID(str(meta["_envelope_id"]))
             timestamp = envelope_event_timestamp(meta)
             if timestamp is None:
@@ -144,7 +181,15 @@ class NodeLogPersistenceEffect:
                 },
             }
         else:
-            entry = ModelStructuredLogEntry.model_validate(payload)
+            entry = event
+            duration_ms = None
+            if "duration_ms" in entry.metadata:
+                try:
+                    duration_ms = float(entry.metadata["duration_ms"])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "structured log metadata duration_ms must be convertible to float"
+                    ) from exc
             row = {
                 "entry_id": entry.entry_id,
                 "timestamp": entry.timestamp,
@@ -155,9 +200,7 @@ class NodeLogPersistenceEffect:
                 "correlation_id": None
                 if entry.correlation_id is None
                 else str(entry.correlation_id),
-                "duration_ms": None
-                if "duration_ms" not in entry.metadata
-                else float(entry.metadata["duration_ms"]),
+                "duration_ms": duration_ms,
                 "metadata": entry.metadata,
             }
         written = db.upsert("log_entries", "entry_id", row)
