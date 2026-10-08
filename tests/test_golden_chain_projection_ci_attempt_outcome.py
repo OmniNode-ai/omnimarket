@@ -192,6 +192,28 @@ def test_the_contract_routes_only_the_writer() -> None:
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("reintroduced", [False, True])
+def test_three_distinct_heads_write_contiguous_ordinals(reintroduced: bool) -> None:
+    event = _event_one_check_per_cause()
+    pull_request = event["pr_states"][0]
+    heads = pull_request["head_sha_history"][:3]
+    checks = pull_request["check_runs"][:3]
+    pull_request["head_sha_history"] = (
+        [heads[0], heads[1], heads[0], heads[2]] if reintroduced else heads
+    )
+    pull_request["check_runs"] = [checks[2], checks[0], checks[1]]
+
+    writer = _writer()
+    result = writer.handle(event)
+
+    assert result["rows_upserted"] == 3
+    assert [row["head_sha"] for row in result["attempt_rows"]] == heads
+    assert [row["attempt_ordinal"] for row in result["attempt_rows"]] == [1, 2, 3]
+    adapter = writer._db
+    assert isinstance(adapter, _RecordingAdapter)
+    assert [params[7] for _, params in adapter.calls] == [1, 2, 3]
+
+
 def test_one_outcome_per_cause_class_yields_six_rows() -> None:
     writer = _writer()
     result = writer.handle(_event_one_check_per_cause())

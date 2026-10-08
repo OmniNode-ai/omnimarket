@@ -79,6 +79,18 @@ _SELECT_DISAPPEARED = f"""
       AND activity_state <> 'ABSENT'
 """
 
+_INSERT_UNKNOWN_TOPICS = f"""
+    INSERT INTO {TABLE_TOPIC_ACTIVITY} (topic, activity_state)
+    SELECT inventory.topic, 'UNKNOWN'
+    FROM UNNEST($1::text[]) AS inventory(topic)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM {TABLE_TOPIC_ACTIVITY} AS existing
+        WHERE existing.topic = inventory.topic
+    )
+    ON CONFLICT (topic) DO NOTHING
+    RETURNING *
+"""
+
 _MARK_DISAPPEARED_ABSENT = f"""
     UPDATE {TABLE_TOPIC_ACTIVITY}
     SET sampled_at = $2,
@@ -223,6 +235,16 @@ class TopicActivityProjectionWriter(BaseProjectionRunner):
 
         marked_absent: list[str] = []
         if event.part_index == event.part_count - 1:
+            # Empty broker topics carry inventory evidence but no measurement.
+            # Seed only missing rows, with NULL counters and timestamps; never
+            # overwrite a measurement from another part or a newer sample.
+            unknown_rows = await self.db.execute(
+                _INSERT_UNKNOWN_TOPICS, list(event.broker_topics)
+            )
+            for unknown in unknown_rows:
+                wire = _wire_row(dict(unknown))
+                written.append(wire)
+                await self._publish_snapshot_if_available(wire, meta, data)
             candidates = await self.db.execute(
                 _SELECT_DISAPPEARED, event.sampled_at, list(event.broker_topics)
             )

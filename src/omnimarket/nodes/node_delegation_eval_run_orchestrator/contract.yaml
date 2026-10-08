@@ -9,11 +9,15 @@ output_model: omnimarket.nodes.node_delegation_eval_run_orchestrator.models.mode
 description: >
   OMN-19793 (EV.4). Definition-B run operation of the delegation evals plan. An
   injected tenant-bound ProtocolDelegationEvalLabelledItems supplies one rater's
-  labelled items of a manifest; the gate-eval compute replays each three times;
+  labelled items of a manifest; the gate-eval compute replays each three times
+  and scores each rubric class's verdict (rubric arm) against the labels, with
+  the class lines from configs/delegation_class_rubrics.v1.yaml;
   the handler returns one content-free run-completed payload under eval run id
-  uuid5(manifest id, label-set sha256, gate version), so a redelivered command
-  yields the same id and rows and a gate change is a new run. One terminal per
-  command, completed or failed. TLA+ model: formal/delegation_eval_run.
+  uuid5(manifest id, label-set sha256, gate version, class rubric version) when
+  a rubric class occurs. The class rubric version is part of the eval run id;
+  runs without rubric classes retain the three-input id. A redelivered command
+  yields the same id and rows and a gate or class rubric change is a new run.
+  One terminal per command, completed or failed. TLA+ model: formal/delegation_eval_run.
   Committed lab command: python -m omnimarket.nodes.node_delegation_eval_orchestrator.lab_run run.
 handler_routing:
   routing_strategy: operation_match

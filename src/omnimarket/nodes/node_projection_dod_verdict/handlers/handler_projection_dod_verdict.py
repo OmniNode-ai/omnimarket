@@ -157,6 +157,10 @@ class HandlerProjectionDodVerdict:
             parent_goal_id=event.parent_goal_id,
             level=event.level,
             contract_revision=event.contract_revision,
+            contract_source=event.contract_source,
+            contract_repository=event.contract_repository,
+            contract_commit_sha=event.contract_commit_sha,
+            contract_repo_path=event.contract_repo_path,
         )
 
         return ModelDodVerdictProjectionResult(row=row, verdict=verdict)

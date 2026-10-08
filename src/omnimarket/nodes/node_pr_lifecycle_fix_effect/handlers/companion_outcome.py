@@ -17,13 +17,14 @@ How a run maps onto a kind
   ``occ_pr``. ``stamped`` is ``True`` only when the read-back verifier confirmed
   the companion, and ``None`` otherwise, which is the landing plan's
   "companion.verify if not stamped" case (revision 1, section 3). The check-run
-  marker for the same run reads ``DECLINED`` when no verifier is wired (the
-  ``AUTHORED_UNVERIFIED`` class the T5 reader documents); the typed outcome
-  says what the producer did, and leaves the unconfirmed stamp as ``None``
+  marker for the same run also reads ``MINTED`` (OMN-18939); both surfaces
+  say what the producer did, and leave the unconfirmed stamp as ``None``
   rather than turning a successful mint into a decline that would page an
   agent.
 * Every other return is ``DECLINED``, classified by the same function the T5
-  marker reader uses, so the two surfaces never disagree about a decline code.
+  marker reader uses. The check headline for ``ALREADY_BOUND`` and
+  ``STAMP_REBOUND`` is ``NOOP``; the typed codes and landing decisions stay
+  unchanged.
 
 ``armed`` and ``conflicting`` are never observed by the producer and stay
 ``None``.

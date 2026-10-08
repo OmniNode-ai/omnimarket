@@ -889,18 +889,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "to fail on findings, this entry moves to EXPECTED_EXTERNAL_CONTEXTS "
         "in the same PR."
     ),
-    ("call-occ-attestation-observe.yml", "occ-attestation-observe"): (
-        "self-declared report-only, non-blocking observer (job name: "
-        "'OCC Attestation Observe (report-only, non-blocking)')."
-    ),
-    ("call-occ-companion-author.yml", "occ-companion-author"): (
-        "OCC companion authoring automation (dry_run by default per "
-        "OMNI_OCC_AUTOAUTHOR_MODE), not a PR content validator."
-    ),
-    ("call-occ-companion-observe.yml", "occ-companion-observe"): (
-        "self-declared dry_run, non-blocking observer (job name: "
-        "'OCC Companion Observe (dry_run, non-blocking)')."
-    ),
     ("pr-merged-publisher.yml", "publish-pr-merged"): (
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."

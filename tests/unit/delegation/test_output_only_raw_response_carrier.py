@@ -31,21 +31,44 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
 from omnimarket.delegation import response_contract_conformance_runner
 from omnimarket.delegation.response_contract_conformance_runner import (
     FAILURE_CLASSES,
     run_live_manifest,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    HandlerDelegateSkill,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect import (
+    ModelLlmDelegationCallRequest,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
+    HandlerInferenceIntent,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+    HandlerLlmDelegationCall,
+)
+from omnimarket.routing import delegation_backend_resolution
 
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[3]
@@ -55,6 +78,194 @@ _MODEL = "Qwen3.8-27B"
 _LAB_ENDPOINT = "http://gpu-b.lab.invalid:8000/v1/chat/completions"
 _JSON_ANSWER = '{"category":"ruling","confidence":0.95}'
 _SOURCE_FIELD = "choices[0].message.content"
+
+
+@pytest.fixture
+def provider_boundary() -> Iterator[tuple[str, dict[str, Any], list[dict[str, Any]]]]:
+    """Exercise both real HTTP adapters against an isolated provider on loopback."""
+    body: dict[str, Any] = {
+        "id": "provider-body-field",
+        "model": _MODEL,
+        "choices": [{"message": {"content": _JSON_ANSWER}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 22, "total_tokens": 33},
+        "other_provider_field": "not-message-content",
+    }
+    seen: list[dict[str, Any]] = []
+
+    class Provider(BaseHTTPRequestHandler):
+        def reply(self, payload: dict[str, Any]) -> None:
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_GET(self) -> None:
+            self.reply({"data": [{"id": _MODEL}]})
+
+        def do_POST(self) -> None:
+            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append({"payload": request, "headers": dict(self.headers)})
+            self.reply(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1/chat/completions", body, seen
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize(
+    "raw",
+    [f" \n{_JSON_ANSWER}\né ", "é" * 32768, "é" * 32769],
+    ids=["exact-whitespace", "at-utf8-bound", "over-utf8-bound"],
+)
+def test_provider_boundary_field_set_keeps_only_exact_message_content(
+    provider_boundary: tuple[str, dict[str, Any], list[dict[str, Any]]], raw: str
+) -> None:
+    endpoint, body, seen = provider_boundary
+    body["choices"][0]["message"]["content"] = raw
+    intent = ModelInferenceIntent(
+        base_url=endpoint,
+        model=_MODEL,
+        system_prompt="Return only JSON.",
+        prompt="request-payload-only",
+        correlation_id=uuid4(),
+        max_tokens=128,
+        timeout_seconds=30,
+        response_contract_instruction="Return only JSON.",
+        response_contract_sha256="a" * 64,
+        response_contract_output_shape="json",
+        extra_headers={"X-Test-Field": "request-header-only"},
+    )
+    result = HandlerInferenceIntent().handle(intent)
+    assert result.error_message == ""
+    assert len(seen) == 1
+    assert seen[0]["payload"]["messages"][-1]["content"] == intent.prompt
+    assert seen[0]["headers"]["X-Test-Field"] == "request-header-only"
+    evidence = result.response_contract_evidence
+    assert evidence is not None
+    assert evidence.conveyed
+    carrier = evidence.raw_response
+    assert carrier is not None, "provider boundary dropped the raw response"
+    expected = _carrier(raw)
+    if len(raw.encode("utf-8")) > 65536:
+        expected["text"] = None
+    assert carrier.model_dump(mode="json") == expected
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+def test_local_effect_field_set_captures_before_inline_reasoning_is_removed(
+    provider_boundary: tuple[str, dict[str, Any], list[dict[str, Any]]],
+) -> None:
+    endpoint, body, seen = provider_boundary
+    raw = f"private reasoning</think>\n{_JSON_ANSWER}"
+    body["choices"][0]["message"]["content"] = raw
+    result = HandlerLlmDelegationCall()(
+        ModelLlmDelegationCallRequest(
+            request_id=str(uuid4()),
+            correlation_id=str(uuid4()),
+            causation_id=str(uuid4()),
+            model_id=_MODEL,
+            endpoint_ref=endpoint,
+            prompt="request-payload-only",
+            prompt_hash="",
+            timeout_seconds=30,
+            inline_reasoning_terminator="</think>",
+            extra_headers={"X-Test-Field": "request-header-only"},
+        )
+    )
+    assert result.success
+    assert len(seen) == 1
+    assert result.content == _JSON_ANSWER
+    assert result.raw_response is not None
+    assert result.raw_response.model_dump(mode="json") == _carrier(raw)
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize(
+    "trailing", ["", "\n\nI chose ruling because it states a decision."]
+)
+async def test_local_terminal_retains_raw_bytes_before_json_extraction(
+    provider_boundary: tuple[str, dict[str, Any], list[dict[str, Any]]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    trailing: str,
+) -> None:
+    endpoint, body, seen = provider_boundary
+    raw = f" \n{_JSON_ANSWER}{trailing}\n "
+    body["choices"][0]["message"]["content"] = raw
+    monkeypatch.setattr(
+        delegation_backend_resolution,
+        "load_bifrost_backends",
+        lambda **_: [
+            {
+                "backend_id": "local-coder",
+                "endpoint_url": endpoint,
+                "model_name": _MODEL,
+                "tier": "local",
+                "max_tokens": 8192,
+                "timeout_ms": 30000,
+                "capabilities": ["agent_delegation", "reasoning"],
+            }
+        ],
+    )
+    schema = {
+        "type": "object",
+        "properties": {
+            "category": {"type": "string"},
+            "confidence": {"type": "number"},
+        },
+        "required": ["category", "confidence"],
+        "additionalProperties": False,
+    }
+    handler = HandlerDelegateSkill(
+        dispatch_port=LocalDelegationDispatchPort(
+            effect_handler=HandlerLlmDelegationCall(),
+            evidence_db_path=tmp_path / "delegation.sqlite",
+            effect_process_boundary=False,
+        )
+    )
+    terminal = await handler.handle(
+        ModelDelegateSkillRequest(
+            prompt="Classify this source: a decision is stated. Return category and confidence.",
+            task_type="document",
+            source="codex",
+            backend_id="local-coder",
+            response_contract=schema,
+        )
+    )
+    assert terminal.status == "completed"
+    assert len(seen) == 1
+    assert json.loads(terminal.response or "") == json.loads(_JSON_ANSWER)
+    round_trip = ModelDelegateSkillResponse.model_validate_json(
+        terminal.model_dump_json()
+    )
+    evidence = round_trip.response_contract_evidence
+    assert evidence is not None
+    assert evidence.raw_response is not None, "local terminal dropped the raw response"
+    assert evidence.raw_response.model_dump(mode="json") == _carrier(raw)
+    verdict = response_contract_conformance_runner.evaluate_output_only(
+        raw_response=evidence.raw_response.text,
+        caller_bytes=terminal.response or "",
+        contract=response_contract_conformance_runner.resolve_task_class_deliverable_contract(
+            "document", schema
+        ),
+    )
+    assert verdict.evidence_basis == "raw_provider_bytes"
+    assert verdict.accepted is (not trailing)
 
 
 def _json_manifest() -> dict[str, object]:

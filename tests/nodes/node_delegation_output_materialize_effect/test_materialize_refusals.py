@@ -159,6 +159,27 @@ def test_nested_link_outside_declared_root_refuses_without_changing_outside(
     assert sorted(p.name for p in outside.iterdir()) == ["a.txt"]
 
 
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_symlink_in_target_root_ancestors_refuses_before_any_write(
+    tmp_path: Path,
+    store: ArtifactStore,
+    target_exists: bool,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if target_exists:
+        (outside / "target").mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(outside, target_is_directory=True)
+    before = sorted(p.relative_to(outside) for p in outside.rglob("*"))
+
+    with pytest.raises(ValueError, match="symlink"):
+        HandlerDelegationOutputMaterialize(store).handle(_request(link / "target"))
+
+    assert sorted(p.relative_to(outside) for p in outside.rglob("*")) == before
+    assert not any(p.is_file() for p in (tmp_path / "artifacts").rglob("*"))
+
+
 @pytest.mark.parametrize("content", ["", "é" * 40000], ids=["empty", "multi-chunk"])
 def test_lazy_store_handles_empty_and_multiple_read_chunks(
     tmp_path: Path,
@@ -220,7 +241,7 @@ def test_root_open_errors_refuse_the_whole_request(
     target.mkdir()
 
     def fail(name: str, flags: int) -> int:
-        assert name == str(target)
+        assert name == os.path.sep
         raise OSError(error, "injected root open failure")
 
     monkeypatch.setattr(os, "open", fail)

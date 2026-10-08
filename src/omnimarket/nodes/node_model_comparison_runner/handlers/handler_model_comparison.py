@@ -19,6 +19,11 @@ import logging
 import uuid
 from typing import Any, Protocol, runtime_checkable
 
+from omnimarket.delegation.shadow_comparison.harness import (
+    preflight_shadow_comparison,
+    run_shadow_comparison,
+)
+from omnimarket.delegation.shadow_comparison.models import ModelShadowRungAnswer
 from omnimarket.nodes.node_model_comparison_runner.models.model_comparison_request import (
     ModelComparisonRequest,
     ModelEndpointSpec,
@@ -100,6 +105,9 @@ class HandlerModelComparisonRunner:
         """
         comparison_id = str(uuid.uuid4())
 
+        if request.shadow_comparison is not None:
+            return await self._run_shadow(request, comparison_id)
+
         inference_results = await asyncio.gather(
             *(
                 self._call_model(spec, request.system_prompt, request.task_description)
@@ -150,6 +158,59 @@ class HandlerModelComparisonRunner:
             cells=tuple(cells),
             winner_label=winner_label,
             winner_criteria=request.winner_criteria,
+        )
+
+    async def _run_shadow(
+        self, request: ModelComparisonRequest, comparison_id: str
+    ) -> ModelComparisonResult:
+        """Replay both rungs through the inference effect and reuse the grader.
+
+        Only the two arms of one prompt are concurrent, bounding inference
+        fan-out independently of sample size. Failures count as incomplete;
+        an empty answer is graded as a refusal, not a transport failure.
+        """
+        spec = request.shadow_comparison
+        assert spec is not None
+        comparison = preflight_shadow_comparison(
+            comparison_id, spec.prompts, spec.method
+        )
+        if comparison is None:
+            answers_a: dict[str, ModelShadowRungAnswer] = {}
+            answers_b: dict[str, ModelShadowRungAnswer] = {}
+            for prompt in spec.prompts:
+                results = await asyncio.gather(
+                    *(
+                        self._call_model(arm, request.system_prompt, prompt.prompt)
+                        for arm in request.models
+                    ),
+                    return_exceptions=True,
+                )
+                for answers, result in zip(
+                    (answers_a, answers_b), results, strict=True
+                ):
+                    if isinstance(result, BaseException) and not isinstance(
+                        result, Exception
+                    ):
+                        raise result
+                    answers[prompt.correlation_id] = (
+                        ModelShadowRungAnswer(content=None, detail=str(result))
+                        if isinstance(result, Exception)
+                        else ModelShadowRungAnswer(content=result.generated_text)
+                    )
+            comparison = run_shadow_comparison(
+                comparison_id,
+                spec.prompts,
+                rung_a=lambda prompt: answers_a[prompt.correlation_id],
+                rung_b=lambda prompt: answers_b[prompt.correlation_id],
+                method=spec.method,
+            )
+        return ModelComparisonResult(
+            task_description=request.task_description,
+            comparison_id=comparison_id,
+            cells=(),
+            winner_label=None,
+            winner_criteria="paired_pass_rate",
+            shadow_comparison=comparison,
         )
 
     async def _call_model(

@@ -26,6 +26,7 @@ from uuid import UUID
 
 from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.events.pr_landing_companion import (
+    EnumPrLandingCompanionDeclineCode,
     EnumPrLandingCompanionOp,
     ModelPrLandingCompanionOutcome,
 )
@@ -44,6 +45,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome
     EnumAutobindOutcome,
     report_autobind_outcome,
     resolve_product_head_sha,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome_reader import (
+    authored_companion,
+    classify_companion_decline,
+    primary_reason,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     classify_trivial_infra_fastpath,
@@ -426,24 +432,27 @@ class HandlerPrLifecycleFix:
 
     @staticmethod
     def _classify_autobind_outcome(
-        *, errored: bool, companion_verified: bool
+        *, errored: bool, companion_verified: bool, fix_action: str = ""
     ) -> EnumAutobindOutcome:
-        """Map a completed autobind arm onto its terminal disposition.
+        """Report what the emitter did, independently of stamp verification.
 
-        Three states, deliberately distinct on the check surface:
-
-        * an exception -> ``ERROR``: an infrastructure/credential/transport
-          fault. The companion will not appear without intervention.
-        * no exception, companion verified -> ``MINTED``.
-        * no exception, companion NOT verified -> ``DECLINED``: every no-mint
-          exit from :class:`OccCompanionEmitter` is a deliberate policy return
-          (lease held, mergeability suppression, already bound, dry run,
-          deferred hand-authoring, no derivable red check). Legible, never
-          merge-blocking.
+        OMN-18939: a mint is MINTED even when its stamp needs verification;
+        an existing binding or repaired stamp is NOOP. Policy returns remain
+        DECLINED even if a verifier finds an existing companion. An exception
+        always wins. The no-action form retains the legacy classifier API.
         """
         if errored:
             return EnumAutobindOutcome.ERROR
-        if companion_verified:
+        primary = primary_reason(fix_action)
+        if authored_companion(primary) is not None:
+            return EnumAutobindOutcome.MINTED
+        code, _, _ = classify_companion_decline(primary)
+        if code in {
+            EnumPrLandingCompanionDeclineCode.ALREADY_BOUND,
+            EnumPrLandingCompanionDeclineCode.STAMP_REBOUND,
+        }:
+            return EnumAutobindOutcome.NOOP
+        if not fix_action and companion_verified:
             return EnumAutobindOutcome.MINTED
         return EnumAutobindOutcome.DECLINED
 
@@ -514,6 +523,7 @@ class HandlerPrLifecycleFix:
                 outcome=self._classify_autobind_outcome(
                     errored=run.error is not None,
                     companion_verified=run.occ_companion_verified,
+                    fix_action=run.fix_action,
                 ),
                 reason=run.fix_action,
             )
@@ -563,6 +573,7 @@ class HandlerPrLifecycleFix:
                 outcome=self._classify_autobind_outcome(
                     errored=run.error is not None,
                     companion_verified=run.occ_companion_verified,
+                    fix_action=run.fix_action,
                 ),
                 reason=run.fix_action,
                 resolved=(token, head_sha),

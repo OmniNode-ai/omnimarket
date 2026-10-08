@@ -318,9 +318,9 @@ def _measure_request_size_band(
     )
 
 
-def _backend_id_for_model(model_id: str) -> UUID:
-    """Generate a stable UUID for a model ID."""
-    return uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{model_id}")
+def _backend_id_for_ref(backend_ref: str) -> UUID:
+    """Generate a stable backend UUID, independent of the served model."""
+    return uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{backend_ref}")
 
 
 def _backend_secret_available(backend: BifrostBackendRef) -> bool:
@@ -2360,9 +2360,8 @@ def _decision_from_tenant_overlay(
         selected_model=overlay.model_name,
         # Namespaced by tenant_id so two tenants' overlay rows that happen to
         # name the same backend_id string never collide on the derived UUID
-        # (_backend_id_for_model is a bare uuid5 of the model_id/backend_id
-        # string alone).
-        selected_backend_id=_backend_id_for_model(
+        # (_backend_id_for_ref hashes the supplied reference alone).
+        selected_backend_id=_backend_id_for_ref(
             f"{overlay.tenant_id}:{overlay.backend_id}"
         ),
         endpoint_url=overlay.endpoint_url,
@@ -3110,7 +3109,7 @@ def delta(
                 correlation_id=request.correlation_id,
                 task_type=task_type,
                 selected_model=model_name,
-                selected_backend_id=_backend_id_for_model(selected.id),
+                selected_backend_id=_backend_id_for_ref(selected.backend_ref),
                 endpoint_url=backend.endpoint_url,
                 api_key_ref=backend.api_key_ref,
                 extra_headers=backend.extra_headers,
@@ -3131,10 +3130,9 @@ def delta(
                 dod_deterministic_source=dod_resolution.deterministic_source,
                 dod_heuristic_source=dod_resolution.heuristic_source,
                 tier_name=tier.name,
-                # OMN-14402: the raw backend_ref, distinct from selected_backend_id
-                # (a UUID hashed from .id alone, which collides across backends
-                # sharing an id — OMN-14396). Same-tier backend fallback keys its
-                # already-tried exclusion set off this field.
+                # The raw backend_ref is also the UUID's identity input, so rungs
+                # serving the same model remain distinct in telemetry. Same-tier
+                # fallback keys its already-tried exclusion set off this field.
                 selected_backend_ref=selected.backend_ref,
                 route=selected.backend_ref,
                 provider=backend.provider,

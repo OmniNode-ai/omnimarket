@@ -505,6 +505,23 @@ class MergedBatchMissingMemberError(StaleBatchHeadError):
     """The batch merged at a head that omitted the triggering member."""
 
 
+class NothingToBindError(RuntimeError):
+    """GitHub refused to open the companion PR: the branch has no commit to show.
+
+    OMN-19984: when the companion this command would write already merged, the
+    rebuilt branch stages nothing (``_commit_staged`` skips the empty commit),
+    the push leaves the branch at the OCC default branch, and ``POST /pulls``
+    answers 422 "No commits between <base> and <branch>". That is not a fault:
+    there is nothing left to bind, so :meth:`OccCompanionEmitter._emit_companion_sync`
+    turns it into a ``skip:NOTHING_TO_BIND`` decline instead of an ERROR.
+    """
+
+
+def _is_no_commits_between(exc: GitHubApiError) -> bool:
+    """True only for the 422 GitHub answers when a PR head adds nothing to its base."""
+    return exc.status_code == 422 and "No commits between" in str(exc)
+
+
 # OMN-18853: a receipt directory id that encodes SOME product PR
 # (``dod-<repo-slug>-pr-<n>`` plus any suffix such as ``-ci``). Used only to
 # PROVE a merged companion belongs to another PR before its stamp is replaced.
@@ -716,6 +733,14 @@ class OccCompanionEmitter:
                     "attempt %s/3; restarting from fresh OCC dev",
                     attempt,
                 )
+            except NothingToBindError as exc:
+                action = (
+                    f"skip:NOTHING_TO_BIND — {repo}#{pr_number}: nothing left to "
+                    f"bind, the companion branch adds no commit to OCC's default "
+                    f"branch ({exc}) (OMN-19984)"
+                )
+                logger.info("occ_companion_emitter: %s", action)
+                return action
         raise AssertionError("unreachable batch rebuild retry state")
 
     def _emit_companion_sync_once(
@@ -5378,17 +5403,24 @@ class OccCompanionEmitter:
         # unmergeable mega-PR. Basing on the default keeps the companion PR a
         # clean net-new-files diff.
         base = self._occ_default_branch(owner, repo_name, token)
-        resp = rest_json(
-            "POST",
-            f"/repos/{owner}/{repo_name}/pulls",
-            token=token,
-            body={
-                "title": title,
-                "head": branch,
-                "base": base,
-                "body": rendered_body,
-            },
-        )
+        try:
+            resp = rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/pulls",
+                token=token,
+                body={
+                    "title": title,
+                    "head": branch,
+                    "base": base,
+                    "body": rendered_body,
+                },
+            )
+        except GitHubApiError as exc:
+            if not _is_no_commits_between(exc):
+                raise
+            raise NothingToBindError(
+                f"{branch} has no commit past {base} on {owner}/{repo_name}: {exc}"
+            ) from exc
         number = resp.get("number")
         if not isinstance(number, int):
             raise RuntimeError(

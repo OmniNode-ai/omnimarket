@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
@@ -37,6 +38,10 @@ class ModelLlmDelegationCallResult(BaseModel):
 
     # Populated on success
     content: str | None = None
+    raw_response: ModelDelegationRawResponse | None = Field(
+        default=None,
+        description="Bounded provider message content captured before any extraction.",
+    )
     reasoning_stripped_chars: int = Field(
         default=0,
         ge=0,

@@ -3,6 +3,9 @@
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
+    ModelDodContractSubject,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
@@ -26,6 +29,7 @@ __all__ = [
     "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",
     "EnumEvidenceCheckStatus",
+    "ModelDodContractSubject",
     "ModelDodEvidenceGithubLookupCommand",
     "ModelDodEvidenceGithubLookupResultEvent",
     "ModelDodVerifyCompletedEvent",

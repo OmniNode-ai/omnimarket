@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18008"
+title: "Migrate the manifest fetch canary and NL-to-ticket nodes to omnimarket"
+summary: "Add the manifest fetch effect and five NL-to-ticket nodes with contracts, package registration, golden chains and pipeline proof. The omniclaude copies remain untouched for removal in a separate change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-manifest-fetch-canary"
+    statement: "Migrate one runnable effect node with contract, registration and typed execution proof."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_manifest_fetch_effect lands in omnimarket with its contract, onex.nodes registration and golden chain; the omniclaude copy is untouched"
+  - id: "req-nl-to-ticket-nodes"
+    statement: "Migrate the five in-process NL-to-ticket compute nodes with typed pipeline proofs."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the five NL-to-ticket nodes (node_nl_intent_pipeline, node_ambiguity_gate, node_plan_dag_generator, node_ticket_compiler, node_evidence_bundle) land in omnimarket with contracts, onex.nodes registration, golden chains and the R1/R2 pipeline test; the omniclaude copies are untouched"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: registered contract resolves and executes typed success and timeout requests with mocked HTTP transport."
+    command: "uv run pytest tests/nodes/node_manifest_fetch_effect/test_golden_chain_manifest_fetch_effect.py -q"
+  - kind: "tests"
+    description: "AC2: five registered compute contracts execute typed golden chains and the R1/R2 pipeline passes."
+    command: "uv run pytest tests/nodes/test_nl_to_ticket_pipeline.py tests/nodes/node_nl_intent_pipeline tests/nodes/node_ambiguity_gate tests/nodes/node_plan_dag_generator tests/nodes/node_ticket_compiler tests/nodes/node_evidence_bundle -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18008-ac1-manifest-fetch"
+    description: "AC1: manifest fetch golden chain passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_manifest_fetch_effect/test_golden_chain_manifest_fetch_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18008-ac2-nl-to-ticket"
+    description: "AC2: NL-to-ticket golden chains, unit tests and R1/R2 pipeline pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_nl_to_ticket_pipeline.py tests/nodes/node_nl_intent_pipeline tests/nodes/node_ambiguity_gate tests/nodes/node_plan_dag_generator tests/nodes/node_ticket_compiler tests/nodes/node_evidence_bundle -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

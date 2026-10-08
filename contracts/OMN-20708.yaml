@@ -1,0 +1,73 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-20708
+title: Branch claim check reads the database work ledger, not the markdown ledger in a repo
+summary: A canonical effect node on the lab answers the branch-claim question for a pull request head from
+  omninode_internal.work_ledger_rows, fails closed when the ledger's own row identity shows claim-transition
+  rows for the ticket missing from the database, and posts the answer as a check on the head. The omniclaude
+  caller that reads that check is a separate change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-branch-claim-from-work-ledger
+  statement: The branch-claim decision for a pull request head is computed on the lab from work_ledger_rows
+    and reported as a check on the head, and it never reads as clean when the database is incomplete for
+    the window it reads.
+  acceptance:
+  - id: AC1
+    statement: 'AC1 — the branch claim decision for a PR is computed from work_ledger_rows by a canonical node
+      on the lab and reported as a check on the PR''s head. -- falsifier: the decision reads a markdown ledger
+      file, or a CI runner connects to the database.'
+  - id: AC2
+    statement: 'AC2 — a CLAIM row present in the database for a branch makes the check report that holder,
+      and a branch with no live claim passes. -- falsifier: either case answers wrongly on a planted pair
+      of rows.'
+  - id: AC3
+    statement: 'AC3 — the check fails closed, naming the cause, when the parity check shows CLAIM or TERMINAL
+      rows missing from the database for the window it reads. -- falsifier: a planted missing CLAIM row
+      reads as "unclaimed".'
+evidence_requirements:
+- kind: tests
+  description: Database-authority, planted-pair and fail-closed handler tests, the resolution port, and the
+    golden and error chains.
+  command: uv run pytest tests/test_omn20708_branch_claim_resolution.py tests/test_omn20708_branch_claim_check_handler.py
+    tests/test_golden_chain_branch_claim_check.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-branch-claim-ac1
+  description: 'AC1: the holder and its citation come from the database reader; the golden chain posts one
+    check on the head.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn20708_branch_claim_check_handler.py tests/test_golden_chain_branch_claim_check.py
+      -q -k "test_database_claim_decides_holder or test_thresholds_not_literals_and_handler_uses_only_boundaries
+      or test_golden_chain"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-branch-claim-ac2
+  description: 'AC2: a planted CLAIM names its holder; an unclaimed branch passes.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn20708_branch_claim_check_handler.py tests/test_omn20708_branch_claim_resolution.py
+      -q -k "test_planted_pair or test_resolution_cases"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-branch-claim-ac3
+  description: 'AC3: missing CLAIM or TERMINAL rows, and every unreadable input, fail closed with the cause
+    named.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn20708_branch_claim_check_handler.py -q -k "test_missing_transition_fails_closed
+      or test_unreadable_inputs_fail_closed or test_a_transition_the_database_cannot_carry_fails_closed"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

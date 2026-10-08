@@ -54,6 +54,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
+from omnimarket.projection.read_page import sort_for_presentation
 from omnimarket.projection.table_reader import ProtocolProjectionPageView
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
@@ -261,6 +262,7 @@ class ModelMorningPage(BaseModel):
     work_events: ModelProjectionRead
     sessions: ModelProjectionRead
     skill_executions: ModelProjectionRead
+    topic_activity: ModelProjectionRead
     promotion_gate: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
@@ -275,7 +277,7 @@ def read_projection(
     topic_map: dict[str, ProjectionTableConfig],
     cache: ProtocolProjectionPageView,
     *,
-    limit: int,
+    limit: int | None,
     tenant_id: UUID | None = None,
 ) -> ModelProjectionRead:
     """Read one exposure, mirroring ``GET /projection/{topic}``'s refusals exactly.
@@ -648,9 +650,27 @@ def read_backend_projection(
             latest_event_at=None,
             cached_row_count=0,
         )
-    return read_projection(
-        topics[0], topic_map, cache, limit=limit, tenant_id=tenant_id
+    config = topic_map[topics[0]]
+    complete = any(
+        reader.id == reader_id and reader.read_all_rows
+        for reader in config.backend_readers
     )
+    read = read_projection(
+        topics[0],
+        topic_map,
+        cache,
+        limit=None if complete else limit,
+        tenant_id=tenant_id,
+    )
+    if complete:
+        read = read.model_copy(
+            update={
+                "rows": tuple(
+                    sort_for_presentation(list(read.rows), config.order_by_spec)
+                )
+            }
+        )
+    return read
 
 
 def build_morning_page(
@@ -723,6 +743,15 @@ def build_morning_page(
             topic_map,
             cache,
             limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
+        topic_activity=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="topic_activity",
+            route="/",
+            limit=_FLOW_ROW_CAP,
             tenant_id=tenant_id,
         ),
         promotion_gate=read_backend_projection(
@@ -970,6 +999,47 @@ def _render_rows_panel(read: ModelProjectionRead, title: str, note: str) -> str:
     )
 
 
+def _render_topic_activity(read: ModelProjectionRead) -> str:
+    head = (
+        "<h2><span>topic activity</span>"
+        f'<span class="src">{_esc(read.topic)}</span></h2>'
+    )
+    if read.state != EnumPanelState.LIVE:
+        return (
+            f'<section id="topic-activity">{head}<div class="body">'
+            f"{_render_read_status(read)}</div></section>"
+        )
+    columns = (
+        ("topic", "topic"),
+        ("activity_state", "state"),
+        ("messages_last_hour", "messages / 1h"),
+        ("rate_last_hour_per_second", "messages / second (1h)"),
+        ("rate_per_second", "messages / second (sample)"),
+        ("newest_message_at", "newest event"),
+        ("newest_message_age_seconds_at_sample", "newest age at sample (s)"),
+        ("sampled_at", "sampled at"),
+        ("retention_truncated", "retention truncated"),
+    )
+    header = "".join(f"<th>{_esc(label)}</th>" for _, label in columns)
+    body = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{_esc(row[key] if row.get(key) is not None else 'UNKNOWN')}</td>"
+            for key, _ in columns
+        )
+        + "</tr>"
+        for row in read.rows
+    )
+    return (
+        f'<section id="topic-activity">{head}<div class="body">'
+        '<p class="src">Counts cover the hour ending at sampled at; '
+        "UNKNOWN means no measurement. "
+        f"Showing {len(read.rows)} of {read.cached_row_count} topic rows.</p>"
+        f'<div class="scroll"><table><thead><tr>{header}</tr></thead>'
+        f"<tbody>{body}</tbody></table></div></div></section>"
+    )
+
+
 def _render_inventory(rows: tuple[ModelInventoryRow, ...], bus_backed: int) -> str:
     body = "".join(
         "<tr>"
@@ -1010,6 +1080,7 @@ def render_morning_page(page: ModelMorningPage) -> str:
     sections = [
         _render_flow(page.flow),
         _render_savings(page.savings),
+        _render_topic_activity(page.topic_activity),
         _render_rows_panel(
             page.registry,
             "node registry — runtime services",

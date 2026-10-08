@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20712"
+title: "Host lab selection and disk hygiene nodes with deployment overlays"
+summary: "Host two in-process operator nodes with typed deployment configuration, portable unit tests and golden chains. Caller wiring and registration hand-over remain separate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-lab-fill"
+    statement: "Host deterministic selection and approved-work freshness without built-in repository identities."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: selection and freshness contracts resolve and execute typed golden chains; repository roles arrive only as a required typed deployment validated from the overlay mapping, with no built-in repository identity"
+  - id: "req-disk-hygiene"
+    statement: "Host conservative disk hygiene with a deployment-configured census."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: disk hygiene resolves and executes a typed golden chain; missing census configuration preserves containers while prunes still run."
+  - id: "req-portable-hosting"
+    statement: "Keep the nodes unregistered and in process, with public fixtures and strict overlay resolution."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the disk hygiene overlay pointer wins over ordered roots and invalid overlays fail; lab-fill overlay mappings are validated strictly; contracts have no bus route and the inventory records the deferred registration"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: selection and freshness unit tests and golden chains pass."
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_approved_work_freshness.py tests/nodes/node_lab_fill_selection_compute/test_golden_chain_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: disk hygiene unit tests and golden chain pass."
+    command: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_golden_chain_lab_disk_hygiene_effect.py tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: overlay resolution and unregistered inventory tests pass."
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20712-ac1-lab-fill"
+    description: "AC1: selection and freshness port passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_approved_work_freshness.py tests/nodes/node_lab_fill_selection_compute/test_golden_chain_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20712-ac2-disk-hygiene"
+    description: "AC2: conservative disk hygiene port passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_golden_chain_lab_disk_hygiene_effect.py tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20712-ac3-overlays-inventory"
+    description: "AC3: strict overlays and deferred registration pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
