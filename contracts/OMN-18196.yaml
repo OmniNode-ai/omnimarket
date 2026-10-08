@@ -21,7 +21,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn18196-ac1-confirmed-missing-credential-source-none"
+  - id: "dod-omn18196-ac1-missing-credential-none"
     description: "AC1 hosted probe. The credential source stamp and cloud delegation transport tests pass at the head."
     source: "manual"
     checks:
