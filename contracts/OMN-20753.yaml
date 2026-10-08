@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20753"
+title: "The decisions exposure does not serve run status or cost, so Runs shows Not recorded for values the store holds"
+summary: "The decisions exposure serves terminal_ok and cost_usd from delegation_events, and the local store declares terminal_ok, so Runs can show a run status and cost the receipt recorded; a cost never measured is served null."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-decisions-status-and-cost"
+    statement: |-
+      The decisions exposure serves each run terminal status and cost, and an unmeasured cost stays distinguishable from zero.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The decisions exposure serves each run's terminal status and cost, and Runs shows success and $0.00 for a run whose receipt records them -- falsifier: a pytest that writes one delegation_events row with terminal_ok 1 and cost_usd 0.0, reads the decisions exposure through create_dashboard_app, and fails when either field is absent from the served row
+      - id: "AC2"
+        statement: |-
+          AC2: A run whose cost was never measured still shows Not recorded, never $0.00 -- falsifier: a vitest Runs page test serving one row with cost_usd null and one with 0.0, failing unless the first renders Not recorded and the second $0.00
+evidence_requirements:
+  - kind: "tests"
+    description: "A fresh local store read through onex dashboard serves terminal_ok and cost_usd on the decisions row, and a cost never measured as null."
+    command: "uv run pytest tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20753-decisions-serve-status-and-cost"
+    description: "The decisions row carries terminal_ok and cost_usd for a measured run (true, 0.0) and null cost for an unmeasured one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
