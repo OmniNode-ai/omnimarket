@@ -28,19 +28,25 @@ from omnimarket.projection.tenant_isolation import TENANT_GUC
 _INSERT_CALL = """
     INSERT INTO public.usage_by_model_day_calls (
         call_id, tenant_id, usage_day, model_id, input_tokens, output_tokens,
-        cost_usd, occurred_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        cost_usd, occurred_at, usage_source
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (call_id) DO NOTHING
     RETURNING call_id
 """
 
+# measured_cost_usd sums the measured calls only, and is NULL (not 0) when the key
+# has none; unmeasured_call_count counts the rest. cost_usd and call_count keep
+# their meaning: every call.
 _RECOUNT_AGGREGATE = """
     INSERT INTO public.usage_by_model_day (
         tenant_id, usage_day, model_id, input_tokens, output_tokens,
-        cost_usd, call_count, updated_at
+        cost_usd, measured_cost_usd, unmeasured_call_count, call_count, updated_at
     )
     SELECT tenant_id, usage_day, model_id, SUM(input_tokens), SUM(output_tokens),
-           SUM(cost_usd), COUNT(*), clock_timestamp()
+           SUM(cost_usd),
+           SUM(cost_usd) FILTER (WHERE usage_source = 'measured'),
+           COUNT(*) FILTER (WHERE usage_source <> 'measured'),
+           COUNT(*), clock_timestamp()
     FROM public.usage_by_model_day_calls
     WHERE tenant_id = $1 AND usage_day = $2 AND model_id = $3
     GROUP BY tenant_id, usage_day, model_id
@@ -48,11 +54,14 @@ _RECOUNT_AGGREGATE = """
         input_tokens = EXCLUDED.input_tokens,
         output_tokens = EXCLUDED.output_tokens,
         cost_usd = EXCLUDED.cost_usd,
+        measured_cost_usd = EXCLUDED.measured_cost_usd,
+        unmeasured_call_count = EXCLUDED.unmeasured_call_count,
         call_count = EXCLUDED.call_count,
         updated_at = EXCLUDED.updated_at,
         projection_cursor = EXCLUDED.projection_cursor
     RETURNING tenant_id, usage_day, model_id, input_tokens, output_tokens,
-              cost_usd, call_count, updated_at, projection_cursor
+              cost_usd, measured_cost_usd, unmeasured_call_count, call_count,
+              updated_at, projection_cursor
 """
 
 
@@ -168,6 +177,7 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                 delta.output_tokens,
                 delta.cost_usd,
                 delta.occurred_at,
+                delta.usage_source.value,
             )
             if not inserted:
                 return None

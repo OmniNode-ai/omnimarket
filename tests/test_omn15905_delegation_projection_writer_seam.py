@@ -56,7 +56,7 @@ GREEN post-fix (real ``datetime``).
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -68,7 +68,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+from omnimarket.projection.tenant_isolation import TenantRequiredError
 
 _TENANT = "beta-business-proof"
 _CORRELATION_ID = "9c6a9b1e-3f7a-4b8e-8a5a-2c1d0e4f7a11"
@@ -280,24 +280,8 @@ class TestDelegationCompletedTerminalWriterParity:
             f"wall-clock isoformat() string (got {type(by_column['timestamp'])!r})"
         )
 
-    def test_canonical_terminal_failed_still_refuses_write_without_tenant_only_if_enforced(
-        self,
-    ) -> None:
-        """Baseline (non-enforcement lane): a terminal with NO tenant_id still
-        writes -- proving the tenant seam is additive (stamps when present) and
-        not a regression of the OMN-14058 interim default when isolation
-        enforcement is off.
-
-        OMN-18565 changed WHO records the fallback, not whether the write
-        succeeds. It used to be the relation's column DEFAULT, reached by
-        omitting the key; it is now the writer, which names the house tenant
-        explicitly and holds it INSERT-ONLY so a late unattributed terminal
-        still cannot rewrite an attribution an earlier write recorded. The
-        stored byte is the same. Migration 0042 removes the DEFAULT, because a
-        schema-authored attribution is what let a tenant-less quality-gate
-        verdict create a row the real terminal was then refused on under FORCE
-        ROW LEVEL SECURITY.
-        """
+    def test_canonical_terminal_failed_refuses_write_without_tenant(self) -> None:
+        """OMN-20651: even with enforcement off, absent attribution refuses."""
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
         runner._db = mock_db  # type: ignore[assignment]
@@ -312,21 +296,12 @@ class TestDelegationCompletedTerminalWriterParity:
         del data["tenant_id"]
         meta = MessageMeta(partition=0, offset=1, fallback_id=_CORRELATION_ID)
 
-        ok = asyncio.run(runner.project_event(topic, data, meta))
-
-        assert ok is True
-        insert_calls = [
-            c
-            for c in mock_db.execute.await_args_list
-            if str(c.args[0]).strip().startswith("INSERT INTO delegation_events")
-        ]
-        assert len(insert_calls) == 1
-        by_column = _param_by_column(insert_calls[0].args)
-        # OMN-18565: the house tenant is NAMED by the writer, in the
-        # representation this relation's column expects, and is never a
-        # hand-stamped None (OMN-14058) nor a value the schema invented.
-        assert by_column["tenant_id"] == str(HOUSE_TENANT_UUID)
-        assert by_column["quality_gate_passed"] is False
+        with pytest.raises(TenantRequiredError, match="no tenant_id"):
+            asyncio.run(runner.project_event(topic, data, meta))
+        assert not any(
+            str(call.args[0]).strip().startswith("INSERT INTO delegation_events")
+            for call in mock_db.execute.await_args_list
+        )
 
 
 @pytest.mark.unit
@@ -479,6 +454,7 @@ def _real_delegate_skill_terminal_payload(*, correlation_id: str) -> dict[str, A
     """
     return {
         "status": "completed",
+        "tenant_id": _TENANT,
         "correlation_id": correlation_id,
         "task_type": "code-review",
         "quality_gate_passed": True,
@@ -574,49 +550,30 @@ class TestBudgetStateMaterializationWriterParity:
                 )
             )
 
-        insert_calls = [
+        # OMN-20613: one statement per event. $8 is the event time and $9 the
+        # write time; both must bind datetime objects, never isoformat() strings.
+        apply_calls = [
             c
             for c in mock_db.execute.await_args_list
-            if str(c.args[0]).strip().startswith("INSERT INTO delegation_budget_state")
+            if "INTO delegation_budget_state" in str(c.args[0])
         ]
-        assert len(insert_calls) == 1
-        by_column = _param_by_column(insert_calls[0].args)
-        for column in ("first_event_at", "last_event_at", "created_at", "updated_at"):
-            assert isinstance(by_column[column], datetime), (
-                f"delegation_budget_state.{column} must bind a datetime "
-                f"object, not an isoformat() string (got {type(by_column[column])!r})"
+        assert len(apply_calls) == 1
+        params = apply_calls[0].args[1:]
+        for slot in (7, 8):
+            assert isinstance(params[slot], datetime), (
+                "the budget-state apply must bind a datetime object, not an "
+                f"isoformat() string (got {type(params[slot])!r})"
             )
 
-    def test_budget_state_upsert_preserves_existing_first_event_at_as_datetime(
-        self,
-    ) -> None:
-        """A second event for the same tenant/tier/period keeps the ORIGINAL
-        ``first_event_at`` -- read back from the DB as a real ``datetime``
-        (asyncpg's native TIMESTAMPTZ codec), not re-stringified via
-        ``str(existing.get("first_event_at") or event_iso)``.
+    def test_budget_state_apply_is_one_statement_with_no_read_back(self) -> None:
+        """OMN-20613: the writer no longer SELECTs the period row and writes the
+        sum back. The first-event and last-event bookkeeping happens in the
+        database (LEAST / GREATEST), proven on real Postgres by
+        ``test_omn20613_budget_state_atomic_real_postgres``.
         """
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
-        original_first_event_at = datetime(2026, 8, 1, tzinfo=UTC)
-        mock_db.execute = _scripted_execute(
-            [
-                [
-                    {
-                        "tenant_id": _TENANT,
-                        "cost_tier_name": "cheap_cloud",
-                        "budget_period": original_first_event_at.strftime("%Y-%m"),
-                        "consumed_usd": 0,
-                        "overage_usd": 0,
-                        "delegation_count": 1,
-                        "last_correlation_id": "some-other-correlation-id",
-                        "first_event_at": original_first_event_at,
-                    }
-                ],
-                None,
-            ]
-        )
         runner._db = mock_db  # type: ignore[assignment]
-
         stub_cost = ModelTierCost(
             cost_type=EnumTierCostType.BUDGETED,
             rate_per_1k_usd=0.01,
@@ -640,10 +597,8 @@ class TestBudgetStateMaterializationWriterParity:
                 )
             )
 
-        insert_call = mock_db.execute.await_args_list[-1]
-        by_column = _param_by_column(insert_call.args)
-        assert by_column["first_event_at"] == original_first_event_at
-        assert isinstance(by_column["first_event_at"], datetime), (
-            "a re-read existing first_event_at must stay a datetime object, "
-            f"not str()-ified (got {type(by_column['first_event_at'])!r})"
-        )
+        statements = [str(c.args[0]) for c in mock_db.execute.await_args_list]
+        assert len(statements) == 1
+        assert "SELECT *" not in statements[0]
+        assert "LEAST(s.first_event_at" in statements[0]
+        assert "GREATEST(s.last_event_at" in statements[0]

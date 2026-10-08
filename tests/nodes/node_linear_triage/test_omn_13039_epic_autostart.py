@@ -130,7 +130,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_started == 1, (
             f"Expected epics_started=1 but got {result.epics_started}. "
@@ -156,7 +158,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_started == 1
         client.save_issue.assert_any_call(issue_id="epic-2", state="In Progress")
@@ -179,7 +183,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_started == 0
         # save_issue may be called for other phases but never with state="In Progress"
@@ -208,7 +214,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_started == 0
         for c in client.save_issue.call_args_list:
@@ -234,7 +242,9 @@ class TestEpicAutoStartRatchet:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         result = await handler.handle(
-            ModelLinearTriageStartCommand(dry_run=True, flag_only=False)
+            ModelLinearTriageStartCommand(
+                scope="backlog", dry_run=True, flag_only=False
+            )
         )
 
         assert result.epics_started == 0, "dry_run must not mutate epics_started count"
@@ -268,7 +278,7 @@ class TestEpicAutoStartRatchet:
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
         # flag_only=True is the default
-        result = await handler.handle(ModelLinearTriageStartCommand())
+        result = await handler.handle(ModelLinearTriageStartCommand(scope="backlog"))
 
         assert result.epics_started == 0
         client.save_issue.assert_not_called()
@@ -292,7 +302,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         # The epic_completion phase (Phase 5b) handles Done; Phase 5c must only In Progress
         # Verify that the auto-start ratchet action is MARK_IN_PROGRESS not MARK_DONE_EPIC
@@ -330,7 +342,9 @@ class TestEpicAutoStartRatchet:
         gh = _stub_github_empty()
 
         handler = HandlerLinearTriage(client=client, github_client=gh)
-        result = await handler.handle(ModelLinearTriageStartCommand(flag_only=False))
+        result = await handler.handle(
+            ModelLinearTriageStartCommand(scope="backlog", flag_only=False)
+        )
 
         assert result.epics_started == 2, (
             f"Expected 2 epics started, got {result.epics_started}"

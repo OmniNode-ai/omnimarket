@@ -47,6 +47,13 @@ class ModelDodAcceptanceSummary(BaseModel):
             "in contract order."
         ),
     )
+    unbound_criteria: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "OMN-20070: declared acceptance criterion ids that no dod_evidence item "
+            "(declared or derived) binds through binds_ac, in contract order."
+        ),
+    )
 
     @property
     def basis(self) -> EnumDodAcceptanceBasis:

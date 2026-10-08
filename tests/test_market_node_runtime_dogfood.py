@@ -81,6 +81,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_dev_seed_effect",
 }
 
+# Node directories that hold migrations and no contract.yaml yet. Each entry
+# expires itself: a directory that gains a contract.yaml, or disappears, fails
+# the inventory until the entry is removed.
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
 # so a node that disappears together with its entry point still fails here.
@@ -142,9 +147,16 @@ def _inventory_violations(inventory: _Inventory) -> list[str]:
     for node, target in sorted(inventory.entry_points.items()):
         if target.split(":", 1)[0] != f"omnimarket.nodes.{node}":
             violations.append(f"{node}: entry point targets {target}")
+    for node in sorted(MIGRATION_ONLY_NODE_DIRS - dirs):
+        violations.append(f"{node}: listed as migration-only but not on disk")
     for node in sorted(dirs):
         name = inventory.contract_names.get(node)
-        if name is None:
+        if node in MIGRATION_ONLY_NODE_DIRS:
+            if name is not None:
+                violations.append(
+                    f"{node}: listed as migration-only but has a contract"
+                )
+        elif name is None:
             violations.append(f"{node}: node directory has no contract.yaml")
         elif name not in {node, node.removeprefix("node_")}:
             violations.append(f"{node}: contract.yaml names {name!r}")
@@ -223,6 +235,18 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
     assert _inventory_violations(mutate(_real_inventory())) != []
 
 
+def test_migration_only_dir_fails_once_it_gains_a_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No directory is migration-only on this head, so the self-expiring entry
+    # is exercised against a directory that does have a contract: listing it
+    # must be reported.
+    node = "node_similarity_compute"
+    monkeypatch.setitem(globals(), "MIGRATION_ONLY_NODE_DIRS", {node})
+    violations = _inventory_violations(_real_inventory())
+    assert f"{node}: listed as migration-only but has a contract" in violations
+
+
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
     summary = report["summary"]
@@ -258,7 +282,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # orchestrator, like the landing reducer, so it is experimental with no
     # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
     # by the submit CLI and has no handler_routing either: 9 -> 10.
-    assert summary["skipped"] == 10
+    # node_prune_binding_effect is called in process by the two prune effects,
+    # so it is experimental with no handler_routing: 10 -> 11.
+    # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
+    assert summary["skipped"] == 12
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

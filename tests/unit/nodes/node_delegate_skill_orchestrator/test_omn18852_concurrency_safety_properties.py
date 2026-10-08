@@ -15,9 +15,11 @@ the node, and these tests are the statement of what makes it safe.
 
 Three properties, each independently sufficient to break if violated:
 
-1. **One command topic plus runtime ticks.** Commands carry independent
-   delivery identities. The reaper and worker arbitrate through an insert-only
-   terminal slot, so a tick may race a worker without replacing its terminal.
+1. **One command topic plus runtime ticks and restart recovery.** Commands
+   carry independent delivery identities. The reaper, the restart-recovery
+   handler and the worker arbitrate through an insert-only terminal slot, so a
+   tick or a recovered inner terminal may race a worker without replacing its
+   terminal, and recovery never waits while holding a slot.
 2. **No cross-record state.** The handler keeps a frozen budget and a port.
    Nothing is keyed by correlation, so two records in flight cannot interfere.
 3. **No slot deadlock.** The handler awaits the delegation reply inline while
@@ -70,17 +72,23 @@ def _subscribe_topics(path: Path) -> list[str]:
 
 @pytest.mark.unit
 def test_the_parallelised_node_routes_commands_and_ticks_separately() -> None:
-    """The only competing event is the reaper tick, guarded by the command slot."""
+    """Competing events are the reaper tick and restart recovery, both slot-guarded."""
     contract = _contract(_DELEGATE_SKILL)
     assert _subscribe_topics(_DELEGATE_SKILL) == [
         "onex.cmd.omnimarket.delegate-skill.v1",
         "onex.intent.platform.runtime-tick.v1",
+        "onex.evt.omnibase-infra.delegation-completed.v1",
+        "onex.evt.omnibase-infra.delegation-failed.v1",
     ]
     assert {
         entry["topic"]: entry["operation"] for entry in contract["input_subscriptions"]
     } == {
         "onex.cmd.omnimarket.delegate-skill.v1": "delegate-skill.orchestrate",
         "onex.intent.platform.runtime-tick.v1": "delegate-skill.reap_scheduled_run",
+        "onex.evt.omnibase-infra.delegation-completed.v1": (
+            "delegate-skill.recover_completed"
+        ),
+        "onex.evt.omnibase-infra.delegation-failed.v1": "delegate-skill.recover_failed",
     }
     routes = {
         entry["operation"]: entry for entry in contract["handler_routing"]["handlers"]
@@ -93,6 +101,11 @@ def test_the_parallelised_node_routes_commands_and_ticks_separately() -> None:
         routes["delegate-skill.reap_scheduled_run"]["event_type"]
         == "platform.runtime-tick"
     )
+    for operation in (
+        "delegate-skill.recover_completed",
+        "delegate-skill.recover_failed",
+    ):
+        assert routes[operation]["handler"]["name"] == "HandlerDelegationRecovery"
 
 
 @pytest.mark.unit

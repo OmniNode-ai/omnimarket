@@ -34,6 +34,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     validate_actual_cost_provenance,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 HANDLER = HandlerProjectionDelegation()
 
@@ -45,11 +49,13 @@ class TestFailedMeteredTerminalCostUsd:
         tokens and NO premium counterfactual must persist cost_usd > 0 — the
         measured metered cost — not the terminal's hardcoded/zeroed cost_usd."""
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         # Mirrors the live row: cheap_cloud (metered, 0.002/1k), glm-5.2, FAILED
         # quality gate, escalation_count=1, served 103/1777 tokens, but the
         # durable terminal carried cost_usd=0.0 and no counterfactual (failure
         # path banks no saving).
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-failed-metered-13408",
             task_type="reasoning",
             delegated_to="https://api.z.ai/api/coding/paas/v4/chat/completions",
@@ -80,7 +86,9 @@ class TestFailedMeteredTerminalCostUsd:
         """A FAILED terminal on a free_local tier is honestly 0 cost — but the
         zero is PROVEN by the tier cost model (free_local), not a silent passthrough."""
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-failed-local-13408",
             task_type="reasoning",
             delegated_to="local-qwen",
@@ -109,9 +117,11 @@ class TestFailedMeteredTerminalCostUsd:
         projection must NOT re-add escalation_history — that would double-count the
         terminal tier, whose own entry is in that history. (OMN-13535 invariant.)"""
         db = InmemoryDatabaseAdapter()
+        seed_tenant_registry(db)
         # _emit_terminal computed cost_usd = final(0.00376) + prior(0.0012) = 0.00496,
         # and the terminal tier's own attempt is also present in escalation_history.
         event = ModelTaskDelegatedEvent(
+            tenant_id=PROJECTION_TENANT_SLUG,
             correlation_id="corr-failed-authoritative-13408",
             task_type="reasoning",
             delegated_to="cloud-glm",

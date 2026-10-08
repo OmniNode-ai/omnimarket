@@ -17,6 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_prune_binding import ModelPruneBinding
 from omnimarket.topic_archive.models import EnumArchiveEncryption
 
 #: The operator's floor (OPERATOR-CONSENT 2026-09-25T18:27:30Z): rows 30 days
@@ -152,7 +153,7 @@ class ModelConsumerFlowPruneResult(BaseModel):
 
     verdict: EnumConsumerFlowPruneVerdict
     cutoff_day: dt.date = Field(description="Rows on this UTC day and later are kept.")
-    sink_location: str
+    sink_location: str | None = None
     days: list[ModelConsumerFlowDayResult] = Field(default_factory=list)
     detail: str = ""
 
@@ -186,8 +187,7 @@ class ModelConsumerFlowPruneConfig(BaseModel):
 
     table: Literal["omninode_internal.consumer_flow_windows"]
     retention_days: int = Field(ge=RETENTION_FLOOR_DAYS)
-    dsn_env: str
+    binding: ModelPruneBinding = Field(default_factory=ModelPruneBinding)
     max_rows_per_object: int = Field(ge=1)
     delete_batch_size: int = Field(ge=1)
-    local_dir_env: str
     schedule: ModelConsumerFlowPruneScheduleConfig

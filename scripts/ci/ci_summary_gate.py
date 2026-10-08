@@ -121,9 +121,10 @@ classification — see ``tests/unit/scripts/ci/test_ci_summary_gate.py``'s
 ``EXEMPT_CONTEXTS`` and its completeness test
 (``test_every_pr_triggered_job_is_classified``), which enumerates every job
 reachable from ``on.pull_request`` across ``.github/workflows/*.yml`` and
-proves STRICT | SKIPPABLE | EXTERNAL | EXEMPT covers it — a new, unclassified
-workflow job fails that test until it is triaged into one of the four
-buckets.
+proves STRICT | SKIPPABLE | EXTERNAL | EXEMPT covers it, apart from the two
+retained OCC validator workflows whose contexts OMN-20073 S6 explicitly
+retires. The test pins that exact uncovered census; a new, unclassified
+workflow job fails until it is triaged.
 
 COVERAGE HONESTY — what ``CI Summary`` does not see even with L4
 ------------------------------------------------------------------
@@ -219,14 +220,6 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
     "contract-topic-graph",  # unconditional (OMN-14582/14640), no needs/if: — strict
     "Merge Reason-Code Gate",  # merge-reason-code-gate — no needs/if: (strict per OMN-14765)
-    # OMN-15427 (port of the OMN-15214 canary / OMN-15221 omniclaude port):
-    # every OCC evidence citation in the PR body must be MERGED/durable before
-    # this product PR may merge. Unconditional in ci.yml (no needs/if:), so a
-    # skipped/cancelled conclusion is anomalous and fails closed here — the
-    # strict slot IS the enforcement (detection alone is rule-5 noncompliance).
-    # omnimarket#1953 cited a CLOSED-unmerged companion (OCC#5487) and no
-    # omnimarket CI surface caught it; this row is what makes that RED.
-    "OCC Companion Merged Gate (OMN-15214)",
     # OMN-15483: the consumer-independent merge-hold enforcement point. The
     # merge NODE honoring the hold marker binds one consumer; the foreground
     # Codex controller that performed every merge in OMN-15483's incident
@@ -350,6 +343,7 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
     "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
     "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+    "Generated Event Chains (walker paths)",  # if: docs_only != 'true'
     # OMN-19684: merge-test-durations combines every full-suite shard's
     # recorded durations into the one cache entry the next run's balancer
     # reads. Its own `if:` is
@@ -422,7 +416,7 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
 # ``tests-gate`` already applies per-upstream (OMN-15315). Every gate outside
 # this tier must still be exactly ``success`` on a docs-only diff, which is what
 # keeps the contract/doc/evidence gates (``Contract Compliance Check``, the
-# sweeps, ``Leaked Literals Gate``, the OCC gates) running -- the half of the
+# sweeps, ``Leaked Literals Gate``) running -- the half of the
 # operator ruling that is not about saving minutes.
 DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
@@ -481,8 +475,7 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # receipt exits 1, real committed receipt exits 0). Pinned by
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
-    # OMN-20073: repo-owned evidence is enforced beside OCC during cutover.
-    # Retiring the OCC contexts requires OR.2 queue support and pilot proof.
+    # OMN-20073 S6: repo-owned evidence gates PR admission without OCC contexts.
     "repo-evidence / dod-verify",
     # OMN-18434: git-env-scrub.yml, standalone and unconditional on
     # pull_request, so it carries no paths filter and is always present. A test
@@ -524,6 +517,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "No Faked Boundary Gate",
     # OMN-20173: enforce the standalone endpoint validator before merge.
     "No Coding Plan Endpoint",
+    # OMN-20073 S6: branch protection no longer requires these two, but they
+    # test omnimarket's own OCC companion emitter and its schema compatibility
+    # against a pinned onex_change_control checkout. Neither reads a PR's
+    # companion, so CI Summary keeps enforcing them until the emitter itself is
+    # retired (plan S7 to S9).
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
@@ -542,7 +540,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Stale TODO Gate",
     "URL Authority Gate",
     "call / validate-docs",
-    "call-reject-skip-token / occ-preflight / eligibility",
+    # OMN-20073: the scan's reusable no longer nests the change-control
+    # preflight (omniclaude#2540), so `call-reject-skip-token / occ-preflight /
+    # eligibility` has no producer. S6 also retires the standalone preflight.
     "call-reject-skip-token / scan / reject-skip-gate-token",
     "contract-validation",
     # OMN-19451 (delegation-health-check.yml): the delegation-health check on
@@ -585,7 +585,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "node-drift-gate",
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",
-    "occ-preflight / eligibility",
     "pr-title / check-title",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
@@ -597,7 +596,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "state-coverage-gate",
     "subscriber-dispatcher-resolution",
     "validate",
-    "verify / verify",
     # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
     # OMN-14631 workspace content-parity gate, calling an omnibase_infra
     # composite ACTION pinned by commit. It proves this repository's built
@@ -663,7 +661,7 @@ EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 # to re-run it: a PR-body PATCH fires a second `pull_request` run of a workflow
 # whose `types:` include `edited`, GitHub cancels the in-flight first run under
 # the same concurrency group, and the replacement posts its own check-run
-# seconds later. Five of this repository's own producers carry `edited` in
+# seconds later. This repository's body-reading producers carry `edited` in
 # their `pull_request` `types:` (see `drop_superseded_skips`), so the door is
 # the same one OMN-18062 came through.
 #
@@ -715,10 +713,11 @@ EXTERNAL_FAILURE_SUPERSESSION_GRACE_S: int = 1200
 #: same unmerged companion is SKIPPED rather than run, so its row is a statement
 #: about its DEPENDENCY, never about this head. Its rerun concluded `success` 38
 #: seconds after `CI Summary` had already recorded FAILURE on the stale skip.
-#: This repository is exposed to exactly that shape:
-#: `call-reject-skip-token / scan / reject-skip-gate-token` is in
-#: :data:`EXPECTED_EXTERNAL_CONTEXTS` and its job `needs:` the occ-preflight
-#: gate that is also there.
+#: This repository was exposed to exactly that shape while
+#: `call-reject-skip-token / scan / reject-skip-gate-token`'s job `needs:`-ed
+#: a nested occ-preflight gate; the pinned reusable dropped that edge under
+#: OMN-20073 (omniclaude#2540), and any other producer that `needs:` a failed
+#: gate keeps the same exposure.
 #:
 #: THIS DOES NOT REOPEN THE SKIP-AS-PASS VECTOR (OMN-15057 / OMN-14854). That
 #: vector is `skipped` read as SUCCESS. Here it is read as NO VERDICT YET: the
@@ -1249,8 +1248,7 @@ def drop_superseded_skips(
     (OCC autobind stamps, union-resolves) pays a re-push cycle. This repo is
     exposed through the same door: ``call-reject-skip.yml``,
     ``pr-title-check.yml``, ``main-target-guard.yml``, ``non-dev-base-guard.yml``
-    and ``call-occ-preflight.yml`` all carry ``edited`` in their
-    ``pull_request`` ``types:``.
+    all carry ``edited`` in their ``pull_request`` ``types:``.
 
     A ``skipped`` row is evidence about a WORKFLOW RUN — a job's ``if:`` was
     false for that run's event — not about the head. When a non-skipped row for
@@ -1293,17 +1291,11 @@ def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
     which is what lets a rerun clear a transient red instead of a red wedging
     the gate forever.
 
-    ``severity`` SECOND, and deliberately ahead of ``id`` -- this is where
-    omnimarket differs from the sibling copies in omnibase_core and
-    omnibase_infra, which resolve on ``(started_at, id)`` alone. Those repos do
-    not assert a context that ~52 independent caller workflows all mint against
-    one SHA; this one does, twice over (``occ-preflight / eligibility`` and its
-    ``call-reject-skip-token`` alias are both in
-    :data:`EXPECTED_EXTERNAL_CONTEXTS`). Those producers post within the same
-    second, so ``started_at`` ties routinely and a tie is NOT a rerun history.
-    Resolving such a tie by id would pick one caller arbitrarily and could hide
-    a red sibling behind a green one -- the OMN-15112 ANY-vs-ALL exposure. The
-    more-blocking row wins instead, exactly as before this change.
+    ``severity`` SECOND, and deliberately ahead of ``id``: when producers
+    post within the same second, ``started_at`` ties are not a rerun history.
+    The more-blocking row wins so id ordering cannot hide a simultaneous red
+    behind a green row. This preserves the existing fail-closed tie policy
+    after OMN-20073 retires the multiply-produced OCC preflight context.
 
     ``id`` LAST, and it is the only thing this change adds to the ordering.
     Before OMN-16332 a tie on ``(started_at, severity)`` was resolved by
@@ -1557,9 +1549,8 @@ def verdict_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
 #: WHY AN EVENT CLASS AND NOT A PER-CONTEXT EVENT MAP. The sibling change in
 #: omnibase_core declares the minting events per entry, which is sound there:
 #: three entries, each a single unconditional job whose workflow triggers
-#: settle the question. Here they do not. `occ-preflight / eligibility` is
-#: produced by a job name that appears in seven workflow files, and several
-#: asserted contexts sit behind job-level `if:` conditions, so a workflow's
+#: settle the question. Here several asserted contexts sit behind job-level
+#: `if:` conditions, so a workflow's
 #: trigger list does NOT determine whether a context can appear. A per-entry
 #: map would be prose no test could honestly verify, and a wrong entry either
 #: wedges the branch again or silently drops a context from enforcement.
@@ -1594,11 +1585,11 @@ def external_layer_applies(event: str | None) -> bool:
 
 
 def expected_external_contexts(event: str | None) -> tuple[str, ...]:
-    """Keep existing queue enforcement until OR.2 supports caller evidence there.
+    """Require repo evidence on PRs; OR.2 queue evidence support is pending.
 
     The pinned repo-evidence reusable currently refuses merge_group, and its
     caller does not trigger on that event. Only that explicit event keeps the
-    previous required set; missing or unknown events require repo evidence.
+    other non-OCC contexts; missing or unknown events require repo evidence.
     """
 
     if event == "merge_group":

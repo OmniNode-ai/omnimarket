@@ -414,6 +414,10 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-19793: delegation_eval_results declares `cursor_column:
         # projection_cursor` from its first commit.
         "node_projection_delegation_eval::delegation_eval_results#0",
+        # OMN-20007: metering_summary declares `cursor_column: window_start`
+        # from its first commit. It is a member column but not a BIGSERIAL:
+        # unique per tenant and baseline model only, a limit its own tests pin.
+        "node_projection_metering_summary::metering_summary#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -430,7 +434,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 69 as of OMN-19978: usage_by_model_day declares its BIGSERIAL cursor in the
 # same change as the exposure, so the measured backlog remains unchanged.
 # 70 as of OMN-19793: delegation_eval_results does the same.
-_AC3_TOTAL_EXPOSURES = 70
+# 71 as of OMN-20007: metering_summary declares its cursor in the same change
+# as the exposure, so the measured backlog remains unchanged.
+_AC3_TOTAL_EXPOSURES = 71
 _AC3_MEASURED_GAP = 55
 
 

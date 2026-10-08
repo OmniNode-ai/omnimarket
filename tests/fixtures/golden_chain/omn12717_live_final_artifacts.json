@@ -1,0 +1,20 @@
+[
+  {
+    "run_id": "2052b083-6a31-4bae-bcd2-84e5516ae3d7",
+    "recorded_at": "2026-10-06T07:44:12.961761Z",
+    "task_type": "test",
+    "prompt": "Write self-contained runnable pytest unit tests for this OmniNode infra function. Include the function and tests in one Python artifact and mark the tests with @pytest.mark.unit. Cover ready, whitespace, case, and blank input. Fact table: def normalize_unit_state(state: str) -> str: return state.strip().lower()",
+    "model": "Qwen3.8-27B",
+    "finish_reason": "absent",
+    "content": "```python\nimport pytest\n\n\ndef normalize_unit_state(state: str) -> str:\n    return state.strip().lower()\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_ready():\n    assert normalize_unit_state(\"Ready\") == \"ready\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_whitespace():\n    assert normalize_unit_state(\"  ready  \") == \"ready\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_case():\n    assert normalize_unit_state(\"READY\") == \"ready\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_blank_input():\n    assert normalize_unit_state(\"\") == \"\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_mixed_case_and_whitespace():\n    assert normalize_unit_state(\"  Ready  \") == \"ready\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_all_whitespace():\n    assert normalize_unit_state(\"   \") == \"\"\n\n\n@pytest.mark.unit\ndef test_normalize_unit_state_already_normalized():\n    assert normalize_unit_state(\"ready\") == \"ready\"\n```"
+  },
+  {
+    "run_id": "33587333-9c4a-4892-ae70-58e0dff8fe63",
+    "recorded_at": "2026-10-06T07:44:52.966406Z",
+    "task_type": "code_generation",
+    "prompt": "Generate a complete self-contained Python artifact for a generic non-OmniNode application: define normalize_status(value: str) -> str returning value.strip().lower(), and include runnable pytest tests for normal, blank, whitespace, and mixed case inputs. No dependencies except pytest. Use @pytest.mark.unit on tests. Fact table: input Ready -> ready; input blank -> blank; input space padded READY -> ready.",
+    "model": "Qwen3.8-27B",
+    "finish_reason": "absent",
+    "content": "```python\nimport pytest\n\ndef normalize_status(value: str) -> str:\n    \"\"\"\n    Normalize a status string by stripping whitespace and converting to lowercase.\n    \n    Args:\n        value: The input status string to normalize.\n        \n    Returns:\n        The normalized status string.\n    \"\"\"\n    return value.strip().lower()\n\n@pytest.mark.unit\ndef test_normalize_status_normal():\n    \"\"\"Test with a normal input string.\"\"\"\n    assert normalize_status(\"Ready\") == \"ready\"\n\n@pytest.mark.unit\ndef test_normalize_status_blank():\n    \"\"\"Test with a blank input string.\"\"\"\n    assert normalize_status(\"\") == \"\"\n\n@pytest.mark.unit\ndef test_normalize_status_whitespace():\n    \"\"\"Test with a whitespace-only input string.\"\"\"\n    assert normalize_status(\"   \") == \"\"\n\n@pytest.mark.unit\ndef test_normalize_status_mixed_case():\n    \"\"\"Test with a mixed case input string.\"\"\"\n    assert normalize_status(\"HeAdEr\") == \"header\"\n\n@pytest.mark.unit\ndef test_normalize_status_space_padded():\n    \"\"\"Test with space padded input as per fact table.\"\"\"\n    assert normalize_status(\"  READY  \") == \"ready\"\n```"
+  }
+]

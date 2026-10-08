@@ -122,12 +122,12 @@ async def _seed(conn: asyncpg.Connection) -> None:
         INSERT INTO delegation_events (
             correlation_id, session_id, tenant_id, task_type, delegated_to,
             model_name, quality_gate_passed, cost_usd, cost_savings_usd,
-            tokens_input, tokens_output, timestamp, created_at
+            tokens_input, tokens_output, timestamp, created_at, cost_measurement_source
         ) VALUES
           ($1, $1, $2, 'code_review', 'local', 'qwen2.5-coder', TRUE,
-           0.010000, 0.990000, 100, 200, $5, $5),
+           0.010000, 0.990000, 100, 200, $5, $5, 'metered'),
           ($3, $3, $4, 'escalation', 'local', 'gemini-2.5-flash', FALSE,
-           0.020000, 0.330000, 10, 20, $5, $5)
+           0.020000, 0.330000, 10, 20, $5, $5, 'metered')
         """,
         RUN_A,
         TENANT_A,
@@ -141,9 +141,9 @@ async def _seed(conn: asyncpg.Connection) -> None:
         INSERT INTO savings_estimates (
             event_timestamp, session_id, model_local, model_cloud_baseline,
             local_cost_usd, cloud_cost_usd, savings_usd, tenant_id,
-            task_type, prompt_tokens, completion_tokens
+            task_type, prompt_tokens, completion_tokens, usage_source
         ) VALUES ($1, $2, 'qwen2.5-coder', 'claude-opus-4.1',
-                  $3, $4, $5, $6, 'code_review', 100, 200)
+                  $3, $4, $5, $6, 'code_review', 100, 200, 'measured')
         """,
         _WHEN,
         RUN_A,
@@ -203,7 +203,8 @@ async def test_tenant_id_is_appended_without_disturbing_the_column_contract(
         )
     ]
     assert columns, f"positive control: {view} exists and has columns"
-    assert columns[-1] == "tenant_id", columns
+    # 094 may append provenance counts, but cannot move any existing column.
+    assert columns[16 if view == OVERVIEW else -1] == "tenant_id", columns
     assert columns.count("tenant_id") == 1
 
 
@@ -429,9 +430,9 @@ async def test_the_house_tenant_is_one_group_not_two(
         INSERT INTO delegation_events (
             correlation_id, session_id, tenant_id, task_type, delegated_to,
             model_name, quality_gate_passed, cost_usd, cost_savings_usd,
-            tokens_input, tokens_output, timestamp, created_at
+            tokens_input, tokens_output, timestamp, created_at, cost_measurement_source
         ) VALUES ($1, $1, $2, 'code_review', 'local', 'qwen2.5-coder', TRUE,
-                  0.010000, 0.120000, 7, 8, $3, $3)
+                  0.010000, 0.120000, 7, 8, $3, $3, 'metered')
         """,
         RUN_HOUSE,
         HOUSE_UUID,
@@ -441,9 +442,9 @@ async def test_the_house_tenant_is_one_group_not_two(
         """
         INSERT INTO savings_estimates (
             event_timestamp, session_id, model_local, model_cloud_baseline,
-            local_cost_usd, cloud_cost_usd, savings_usd, tenant_id
+            local_cost_usd, cloud_cost_usd, savings_usd, tenant_id, usage_source
         ) VALUES ($1, $2, 'qwen2.5-coder', 'claude-opus-4.1',
-                  0.010000, 0.130000, 0.120000, $3)
+                  0.010000, 0.130000, 0.120000, $3, 'measured')
         """,
         _WHEN,
         RUN_HOUSE,

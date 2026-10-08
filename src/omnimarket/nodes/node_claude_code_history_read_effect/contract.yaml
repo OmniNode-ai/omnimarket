@@ -1,0 +1,139 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_code_history_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-19979. Read a developer's own Claude Code history, on an explicit opt-in
+  only, into typed prompt records for the transcript-based savings estimate.
+
+  WHY THIS NODE EXISTS. Nothing in the platform read Claude Code history for a
+  counterfactual. The transcript parser that did lived outside the node graph
+  and wrote SQLite; this node is that parser ported, returning
+  ModelClaudeCodePromptRecord rows that node_savings_estimate_compute prices.
+
+  OPT-IN OR NOTHING. A request without opt_in true is refused with status
+  refused_no_opt_in before the source is opened: no file is listed and no line
+  is read. History is the developer's own and is never read by default.
+
+  WHAT A RECORD CARRIES. One record per user prompt: the session, the prompt's
+  transcript uuid, its time, the first model that answered, and the usage of
+  the distinct assistant messages up to the next prompt. Claude Code repeats a
+  message's usage on every content-block line, so each message id is counted
+  once. Synthetic assistant lines are skipped. The prompt's text never leaves
+  the reader; only its length does.
+
+  THE SOURCE IS INJECTED. The handler reads through
+  ProtocolClaudeCodeHistorySource; the default reads *.jsonl under source_root
+  on the local filesystem, and tests inject recorded lines.
+
+input_model: omnimarket.nodes.node_claude_code_history_read_effect.models.model_history_read.ModelClaudeCodeHistoryReadRequest
+output_model: omnimarket.nodes.node_claude_code_history_read_effect.models.model_history_read.ModelClaudeCodeHistoryReadResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: read_history
+      handler:
+        name: HandlerClaudeCodeHistoryRead
+        module: omnimarket.nodes.node_claude_code_history_read_effect.handlers.handler_claude_code_history_read
+      event_model:
+        name: ModelClaudeCodeHistoryReadRequest
+        module: omnimarket.nodes.node_claude_code_history_read_effect.models.model_history_read
+
+handler:
+  module: omnimarket.nodes.node_claude_code_history_read_effect.handlers.handler_claude_code_history_read
+  class: HandlerClaudeCodeHistoryRead
+  input_model: omnimarket.nodes.node_claude_code_history_read_effect.models.model_history_read.ModelClaudeCodeHistoryReadRequest
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+
+io_operations:
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 60
+    validation_enabled: true
+
+inputs:
+  opt_in:
+    type: bool
+    required: true
+    description: "Must be true; anything else is refused before the source is opened"
+  source_root:
+    type: string
+    required: true
+    description: "Root holding the Claude Code project directories, e.g. ~/.claude/projects"
+  project_filter:
+    type: string
+    required: false
+    description: "Only session files whose path contains this substring"
+  since:
+    type: datetime
+    required: false
+    description: "Inclusive lower bound on a prompt's time"
+  until:
+    type: datetime
+    required: false
+    description: "Exclusive upper bound on a prompt's time"
+
+outputs:
+  status:
+    type: string
+    description: "read | refused_no_opt_in | source_missing"
+  records:
+    type: list[object]
+    description: "ModelClaudeCodePromptRecord, ordered by time, session and prompt id"
+  files_read:
+    type: int
+  lines_skipped:
+    type: int
+    description: "Lines that were not JSON objects"
+
+golden_path:
+  - Refuse a request without opt_in before touching the source
+  - Read every session file under source_root through the injected source
+  - Fold each session's lines into one record per user prompt
+  - Count each assistant message id's usage once
+  - Publish the records on the completed event
+
+dod_evidence:
+  - test: tests/test_golden_chain_savings_estimate_omn19979.py::test_history_to_estimate_rows_golden_chain
+    description: Recorded history reads into records and prices into estimated rows
+  - test: tests/nodes/node_claude_code_history_read_effect/test_handler_history_read.py::test_refused_without_opt_in_and_source_untouched
+    description: No opt-in, no read
+
+terminal_event: onex.evt.omnimarket.claude-code-history-read-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.claude-code-history-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.claude-code-history-read-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Effect node — opt-in read of local Claude Code history into typed prompt records"
+  author: "OmniNode Platform Team"
+  created: "2026-10-07"
+  tags:
+    - "effect"
+    - "savings"
+    - "estimate"
+    - "claude-code"
+    - "read-only"
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.claude-code-history-read-requested.v1
+
+# Explicit SINK declaration (contract topic graph closure). The records are
+# composed into a savings estimate request by the caller.
+externally_consumed_topics:
+  - onex.evt.omnimarket.claude-code-history-read-completed.v1

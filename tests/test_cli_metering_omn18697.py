@@ -35,8 +35,12 @@ from omnimarket.nodes.node_metering_summary_compute import (
     ModelMeteringWindow,
 )
 from omnimarket.nodes.node_projection_metering_summary.baseline import resolve_baseline
+from omnimarket.projection.sqlite_metering_summary import refresh_metering_summary
 
 pytestmark = pytest.mark.unit
+
+_BASELINE = "claude-opus-4-6"
+_UNPRICED = "no-such-model-in-the-manifest"
 
 _DDL = """
 CREATE TABLE delegation_events (
@@ -97,16 +101,23 @@ def db(tmp_path: Path) -> Path:
     conn.commit()
     conn.close()
     # OMN-17427: metering keys its summary on the install's own minted identity.
-    mint_local_tenant_identity(db_path=path)
+    tenant = str(mint_local_tenant_identity(db_path=path).tenant_uuid)
+    # OMN-19977: the rows the end of each `onex delegate` refreshes; the CLI
+    # only reads them. Today's row is named so `--window today` has one even
+    # when the runs above fall on yesterday's UTC date.
+    for baseline in (_BASELINE, _UNPRICED):
+        refresh_metering_summary(
+            path, tenant, baseline, now, days=frozenset({now.date()})
+        )
     return path
 
 
 def _run(db: Path, *args: str) -> str:
     if "--baseline" not in args:
-        args = ("--baseline", "claude-opus-4-6", *args)
+        args = ("--baseline", _BASELINE, *args)
     result = CliRunner().invoke(metering_command, ["--db", str(db), *args])
     assert result.exit_code == 0, result.output
-    return result.output
+    return result.stdout
 
 
 class TestRecordsSurviveTheProcess:

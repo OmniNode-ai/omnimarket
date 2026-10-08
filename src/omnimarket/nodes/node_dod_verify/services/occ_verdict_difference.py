@@ -119,6 +119,19 @@ def _ticket_verdict(head: object, control_first_line: str) -> ModelNewPathVerdic
     bound_checks = [check for check in checks if check.get("binds_ac")]
     if head.get("status") != "verified":
         error_message = head.get("error_message")
+        # OMN-20070: the unbound-criterion refusal, never a failed check that
+        # happens to sit beside an unbound criterion.
+        unbound_criteria = head.get("acceptance_unbound_criteria")
+        if (
+            isinstance(unbound_criteria, list)
+            and unbound_criteria
+            and isinstance(error_message, str)
+            and error_message.startswith("NO_ACCEPTANCE_CHECKS")
+        ):
+            return ModelNewPathVerdict(
+                admitted=False,
+                reason=EnumOccVerdictDifferenceReason.INCOMPLETE_CRITERION_COVERAGE.value,
+            )
         if isinstance(error_message, str) and error_message.startswith(
             ("NO_ACCEPTANCE_CHECKS", "NO_PROBATIVE_EVIDENCE")
         ):
