@@ -63,6 +63,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3", "AC4"]
