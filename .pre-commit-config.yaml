@@ -1336,6 +1336,15 @@ repos:
 
   - repo: local
     hooks:
+      # OMN-18963: SYNC with the strict lint job in ci.yml.
+      - id: ci-summary-event-scope
+        name: CI Summary external producer trigger parity (OMN-18963)
+        language: system
+        entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/ci_summary_gate\.py|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
       # SYNC with ci.yml's typed decision shadow calibration gate.
       - id: typed-decision-shadow-calibration
         name: Typed decision shadow calibration (OMN-19136)
