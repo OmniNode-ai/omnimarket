@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import shutil
 import subprocess
@@ -46,8 +47,24 @@ from omnimarket.nodes.node_dev_seed_effect.models.model_dev_seed_request import 
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     DelegationProjectionRunner,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    HandlerProjectionDelegation,
+)
+from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
+    HandlerProjectionRead,
+)
+from omnimarket.nodes.node_projection_read_effect.models import (
+    ModelProjectionReadRequest,
+)
+from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.table_reader import TableRowSource
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    PROJECTION_TENANT_UUID,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -56,7 +73,7 @@ _MIGRATIONS_DIR = (
     _ROOT / "src" / "omnimarket" / "nodes" / "node_projection_delegation" / "migrations"
 )
 _DOCKER = shutil.which("docker")
-_TENANT = "omninode"
+_TENANT = PROJECTION_TENANT_SLUG
 
 
 _ROLES_SQL = """
@@ -101,17 +118,6 @@ class _Postgres:
             f"postgresql://{auth}@{self.host}:{self.port}/{self.database}"
             f"?options={options}"
         )
-
-
-def _payload(correlation_id: str, **extra: object) -> dict[str, Any]:
-    return {
-        "status": "completed",
-        "correlation_id": correlation_id,
-        "task_type": "research",
-        "tenant_id": "omninode",
-        "metrics": {"cost_usd": 0.0},
-        **extra,
-    }
 
 
 async def _accepts_sql(pg: _Postgres) -> bool:
@@ -197,11 +203,25 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
         await admin.execute(_ROLES_SQL)
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
+        registry_migration = (
+            _MIGRATIONS_DIR.parents[1]
+            / "node_projection_tenant_registry"
+            / "migrations"
+            / "0000_create_tenant_registry_mirror.sql"
+        )
+        await admin.execute(registry_migration.read_text(encoding="utf-8"))
+        await admin.execute(
+            "INSERT INTO tenant_registry_mirror "
+            "(tenant_slug, tenant_uuid, status) VALUES ($1, $2, 'active')",
+            _TENANT,
+            PROJECTION_TENANT_UUID,
+        )
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
             await admin.execute(
-                migration.read_text(encoding="utf-8").replace(
-                    "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
-                )
+                migration.read_text(encoding="utf-8")
+                .replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+                .replace("omninode_internal.", f"{schema}.")
+                .replace("public.", f"{schema}.")
             )
         yield admin, schema
     finally:
@@ -354,14 +374,109 @@ async def test_seed_wire_messages_land_labelled_through_the_runner_seam(
         _provisioned(postgres) as (admin, schema),
         _runner(postgres, schema) as runner,
     ):
-        for n, (_key, value) in enumerate(messages):
-            data = unwrap_envelope(value)
-            assert data is not None
-            corr = str(data["correlation_id"])
-            await runner._project_delegate_skill_terminal(
-                data, MessageMeta(partition=0, offset=n, fallback_id=corr)
+        counts = []
+        for seed_run in range(2):
+            for n, (_key, value) in enumerate(messages):
+                data = unwrap_envelope(value)
+                assert data is not None
+                corr = str(data["correlation_id"])
+                assert await runner._project_delegate_skill_terminal(
+                    data,
+                    MessageMeta(
+                        partition=0,
+                        offset=seed_run * len(messages) + n,
+                        fallback_id=corr,
+                    ),
+                )
+            counts.append(
+                await admin.fetchval("SELECT COUNT(*) FROM delegation_events")
             )
+        assert counts == [len(messages), len(messages)]
         sources = await admin.fetch(
             "SELECT data_source, COUNT(*) AS n FROM delegation_events GROUP BY data_source"
         )
+        # Read through the same node and table adapter the dashboard uses.
+        topics = {
+            topic: cfg.model_copy(update={"relation_schema": schema})
+            for topic, cfg in build_projection_topic_map().items()
+            if cfg.table in {"delegation_events", "projection_delegation_summary"}
+            and cfg.bus_backed
+        }
+        source = TableRowSource.for_database_url(postgres.dsn(schema))
+        read = HandlerProjectionRead(topic_map=topics, row_source=source)
+        try:
+            for topic, cfg in topics.items():
+                result = await read.handle(
+                    ModelProjectionReadRequest(
+                        topic=topic, tenant_id=str(PROJECTION_TENANT_UUID)
+                    )
+                )
+                assert result.ok, result.response
+                assert result.row_count > 0
+                if cfg.table == "delegation_events":
+                    assert result.row_count == len(messages)
+                    assert {r.get("data_source") for r in result.rows} == {"fixture"}
+                else:
+                    assert result.rows[0]["fixtureDelegations"] == len(messages)
+                    assert result.rows[0]["totalSavingsUsd"] == 0
+        finally:
+            await source.close()
     assert {r["data_source"]: r["n"] for r in sources} == {"fixture": len(messages)}
+
+
+@pytest.mark.asyncio
+async def test_kernel_seed_replay_reaches_labelled_postgres_exposure(
+    postgres: _Postgres,
+) -> None:
+    """Use the deployed sync handler; kernel dispatch does not pass tags."""
+
+    class _NoBrokerPublisher:
+        def publish(self, *args: object, **kwargs: object) -> bool:
+            return True
+
+    messages = HandlerDevSeed().wire_messages(ModelDevSeedRequest(tenant_id=_TENANT))
+    async with _provisioned(postgres) as (admin, schema):
+        db = PostgresSyncProjectionAdapter(postgres.dsn(schema), schema=schema)
+        handler = HandlerProjectionDelegation(publisher=_NoBrokerPublisher())
+        counts = []
+        for _ in range(2):
+            for _key, value in messages:
+                envelope = json.loads(value)
+                result = await asyncio.to_thread(
+                    handler.handle,
+                    {
+                        **envelope["payload"],
+                        "_db": db,
+                        "_event_type": "delegate-skill-completed",
+                        "_topic": "onex.evt.omnimarket.delegate-skill-completed.v1",
+                        "_tenant_id": _TENANT,
+                        "_envelope_timestamp": envelope["envelope_timestamp"],
+                    },
+                )
+                assert result["rows_upserted"] == 1
+            counts.append(
+                await admin.fetchval("SELECT COUNT(*) FROM delegation_events")
+            )
+        assert counts == [len(messages), len(messages)]
+        assert await admin.fetchval(
+            "SELECT COUNT(*) FROM delegation_events WHERE data_source = 'fixture'"
+        ) == len(messages)
+        source = TableRowSource.for_database_url(postgres.dsn(schema))
+        topics = {
+            topic: cfg.model_copy(update={"relation_schema": schema})
+            for topic, cfg in build_projection_topic_map().items()
+            if cfg.table == "delegation_events" and cfg.bus_backed
+        }
+        read = HandlerProjectionRead(topic_map=topics, row_source=source)
+        try:
+            for topic in topics:
+                page = await read.handle(
+                    ModelProjectionReadRequest(
+                        topic=topic, tenant_id=str(PROJECTION_TENANT_UUID)
+                    )
+                )
+                assert page.ok, page.response
+                assert page.row_count == len(messages)
+                assert {row["data_source"] for row in page.rows} == {"fixture"}
+        finally:
+            await source.close()

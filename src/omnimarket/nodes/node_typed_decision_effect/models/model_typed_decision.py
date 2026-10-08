@@ -13,8 +13,10 @@ produce no answer.
 
 from __future__ import annotations
 
+import math
 import re
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -39,6 +41,7 @@ class EnumTypedDecisionDecider(StrEnum):
     INCUMBENT_ABSTAINED = "incumbent_abstained"
     INCUMBENT_REFUSED = "incumbent_refused"
     INCUMBENT_BACKEND_ERROR = "incumbent_backend_error"
+    INCUMBENT_SHADOW = "incumbent_shadow"
 
 
 class EnumTypedDecisionReason(StrEnum):
@@ -188,10 +191,153 @@ class ModelTypedDecisionResult(BaseModel):
         return self
 
 
+class ModelTypedDecisionShadowResult(ModelTypedDecisionResult):
+    """A new-topic receipt; the direct effect's existing wire shape stays intact."""
+
+    decided_by: Literal[EnumTypedDecisionDecider.INCUMBENT_SHADOW] = (
+        EnumTypedDecisionDecider.INCUMBENT_SHADOW
+    )
+    shadow_decided_by: EnumTypedDecisionDecider = Field(
+        ...,
+        description="The backend outcome observed without steering a shadow decision.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_shadow_outcome(self) -> ModelTypedDecisionShadowResult:
+        if self.shadow_decided_by is EnumTypedDecisionDecider.INCUMBENT_SHADOW:
+            raise ValueError("shadow_decided_by must name the observed backend outcome")
+        return self
+
+
+class ModelTypedDecisionCalibrationObservation(BaseModel):
+    """One independently adjudicated decision, never an incumbent-derived label."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID
+    probabilities: dict[str, float]
+    adjudicated_answer: str
+
+    @model_validator(mode="after")
+    def _validate_distribution(self) -> ModelTypedDecisionCalibrationObservation:
+        if len(self.probabilities) < 2 or any(
+            not math.isfinite(value) or not 0.0 <= value <= 1.0
+            for value in self.probabilities.values()
+        ):
+            raise ValueError(
+                "probabilities must be a finite distribution over two or more options"
+            )
+        if not math.isclose(sum(self.probabilities.values()), 1.0, abs_tol=1e-6):
+            raise ValueError("probabilities must sum to one")
+        if self.adjudicated_answer not in self.probabilities:
+            raise ValueError("adjudicated_answer must be an offered option")
+        return self
+
+
+class ModelTypedDecisionCalibrationRequest(BaseModel):
+    """A fixed cohort of distinct, adjudicated decisions for one option vocabulary."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    observations: tuple[ModelTypedDecisionCalibrationObservation, ...]
+
+    @model_validator(mode="after")
+    def _validate_cohort(self) -> ModelTypedDecisionCalibrationRequest:
+        if len({row.correlation_id for row in self.observations}) != len(
+            self.observations
+        ):
+            raise ValueError(
+                "calibration decisions must have unique correlation identifiers"
+            )
+        if self.observations:
+            options = set(self.observations[0].probabilities)
+            if any(set(row.probabilities) != options for row in self.observations):
+                raise ValueError(
+                    "all calibration decisions must offer the same options"
+                )
+        return self
+
+
+class ModelTypedDecisionReliabilityBin(BaseModel):
+    """One reliability diagram cell; empty cells carry no inferred measurements."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lower: float
+    upper: float
+    count: int
+    mean_probability: float | None
+    observed_frequency: float | None
+
+
+class ModelTypedDecisionCalibrationReport(BaseModel):
+    """Below the contract's sample floor, every calibration metric is absent."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sample_count: int = Field(..., ge=0)
+    minimum_samples: int = Field(..., ge=300)
+    reason: Literal["insufficient_samples"] | None = None
+    brier_score: float | None = Field(default=None, ge=0.0, le=2.0)
+    per_option_ece: dict[str, float] | None = None
+    reliability_diagram: (
+        dict[str, tuple[ModelTypedDecisionReliabilityBin, ...]] | None
+    ) = None
+
+    @model_validator(mode="after")
+    def _validate_sample_floor(self) -> ModelTypedDecisionCalibrationReport:
+        metrics = (self.brier_score, self.per_option_ece, self.reliability_diagram)
+        if self.sample_count < self.minimum_samples:
+            if (
+                any(value is not None for value in metrics)
+                or self.reason != "insufficient_samples"
+            ):
+                raise ValueError(
+                    "calibration metrics are refused below the sample floor"
+                )
+        elif any(value is None for value in metrics) or self.reason is not None:
+            raise ValueError("a sufficient cohort must carry every calibration metric")
+        return self
+
+
+class ModelTypedDecisionWorkflowRequest(BaseModel):
+    """Bus-addressable shadow decision or calibration report; no live-arm mode."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: Literal["typed_decision_shadow"] = "typed_decision_shadow"
+    decision: ModelTypedDecisionRequest | None = None
+    calibration: ModelTypedDecisionCalibrationRequest | None = None
+
+    @model_validator(mode="after")
+    def _validate_operation(self) -> ModelTypedDecisionWorkflowRequest:
+        if (self.decision is None) == (self.calibration is None):
+            raise ValueError("provide exactly one of decision or calibration")
+        if self.decision is not None and self.decision.incumbent_answer is None:
+            raise ValueError("a shadow decision requires the incumbent answer")
+        return self
+
+
+class ModelTypedDecisionWorkflowResult(BaseModel):
+    """The terminal event's shadow receipt or sample-gated calibration report."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    decision: ModelTypedDecisionShadowResult | None = None
+    calibration: ModelTypedDecisionCalibrationReport | None = None
+
+
 __all__: list[str] = [
     "EnumTypedDecisionDecider",
     "EnumTypedDecisionKind",
     "EnumTypedDecisionReason",
+    "ModelTypedDecisionCalibrationObservation",
+    "ModelTypedDecisionCalibrationReport",
+    "ModelTypedDecisionCalibrationRequest",
+    "ModelTypedDecisionReliabilityBin",
     "ModelTypedDecisionRequest",
     "ModelTypedDecisionResult",
+    "ModelTypedDecisionShadowResult",
+    "ModelTypedDecisionWorkflowRequest",
+    "ModelTypedDecisionWorkflowResult",
 ]

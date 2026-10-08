@@ -75,17 +75,17 @@ class HandlerProjectionCiAttemptOutcome:
 
     @staticmethod
     def _ordinals(pull_request: ModelCiAttemptPullRequest) -> dict[str, int]:
-        """Map each head commit to its 1-based position in commit order.
+        """Map each distinct head commit to its 1-based position in commit order.
 
         A commit repeated in the history keeps its FIRST position, so a force
         push that reintroduces an earlier commit does not renumber the
         attempts that already happened.
         """
         ordinals: dict[str, int] = {}
-        for index, sha in enumerate(pull_request.head_sha_history, start=1):
+        for sha in pull_request.head_sha_history:
             normalised = sha.strip().lower()
             if normalised and normalised not in ordinals:
-                ordinals[normalised] = index
+                ordinals[normalised] = len(ordinals) + 1
         return ordinals
 
     @staticmethod

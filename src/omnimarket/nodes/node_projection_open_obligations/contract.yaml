@@ -120,7 +120,17 @@ projection_api:
   topic: "onex.snapshot.projection.work.open-obligations.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   key_grain: "mutable"
   table: "open_obligations"
-  schema: "omninode_internal"
+  # OMN-19079. This field previously read "omninode_internal", and the exposure
+  # loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, so this contract
+  # was EXCLUDED at discovery on every projection-api boot and the exposure was
+  # absent from GET /projections. `public` is prohibited for application
+  # relations by OMN-15361, so this field records the DATABASE the read model
+  # lives in. The physical relation is omninode_internal.open_obligations inside
+  # that database, declared that way in db_io above, in the migration and in the
+  # handler's SQL; discovery resolves it from db_io for the table read path
+  # (OMN-20152). Same declaration node_projection_work_events and
+  # node_projection_runner_fleet carry for the same reason.
+  schema: "omnidash_analytics"
   columns:
     - "obligation_id"
     - "state"

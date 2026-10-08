@@ -67,6 +67,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationDeliverableEvidence,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
+    ModelDelegationRawResponse,
     ModelQualityGateInput,
 )
 
@@ -528,6 +529,7 @@ def _response_contract_evidence_for_attempt(
     deliverable_contract: ModelDeliverableContract,
     outbound_system_prompt: str | None,
     validated: bool,
+    raw_response: ModelDelegationRawResponse | None,
 ) -> ModelDelegationContractEvidence | None:
     """Record the response contract this attempt conveyed and graded (OMN-19201).
 
@@ -563,6 +565,7 @@ def _response_contract_evidence_for_attempt(
         output_shape=output_shape,
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
+        raw_response=raw_response,
     )
 
 
@@ -1231,6 +1234,9 @@ class LocalDelegationDispatchPort:
         # tiers that declare the same concrete backend for a task type made
         # escalation a functional no-op (identical backend+model re-attempted).
         excluded_backend_refs: set[str] = set()
+        # OMN-19215: a sibling hop must remember every exhausted quality
+        # rejection, including when the intervening sibling fails transport.
+        quality_rejected_model_ids: set[str] = set()
         # Cumulative metered spend banked across every attempted tier (OMN-13849):
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
@@ -1497,6 +1503,7 @@ class LocalDelegationDispatchPort:
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        excluded_model_ids=frozenset(quality_rejected_model_ids),
                         quota_state=self._quota_snapshot(quota_observations),
                     )
                 if transport_sibling is None and not byok_same_backend_retry:
@@ -2050,6 +2057,7 @@ class LocalDelegationDispatchPort:
                 continue
 
             excluded_backend_refs.add(backend.backend_id)
+            quality_rejected_model_ids.add(backend.model_id)
 
             # OMN-13640: same posture as the transport branch above — the tier
             # is only abandoned once the routing authority reports no untried
@@ -2068,7 +2076,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
-                    excluded_model_ids=frozenset({backend.model_id}),
+                    excluded_model_ids=frozenset(quality_rejected_model_ids),
                     quota_state=self._quota_snapshot(quota_observations),
                 )
             )
@@ -3126,6 +3134,7 @@ class LocalDelegationDispatchPort:
                 deliverable_contract=deliverable_contract,
                 outbound_system_prompt=outbound_system_prompt,
                 validated=gate_result.passed,
+                raw_response=result.raw_response,
             ),
         )
 

@@ -9,7 +9,7 @@ Usage:
 The file is either the remote-lane runner's record ({"topic", "spec", ...}) or
 a bare spec, validated as the canonical ModelLabJobSpec with nothing translated
 or defaulted by this CLI. Exits 0 when published, 65 when refused (nothing
-opened or sent), and 69 when the bus is unavailable.
+opened or sent), and 69 when the bus is unavailable or refuses the publish.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import click
+from omnibase_infra.errors import EventTopicAuthorizationError
 from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lane_bus import (
@@ -88,6 +89,9 @@ def submit_command(
         receipt = asyncio.run(publish())
     except LabRunBusError as exc:
         click.echo(f"bus: {exc}", err=True)
+        sys.exit(EXIT_BUS_UNAVAILABLE)
+    except EventTopicAuthorizationError as exc:
+        click.echo(f"bus: publish refused by the broker's ACLs: {exc}", err=True)
         sys.exit(EXIT_BUS_UNAVAILABLE)
     click.echo(receipt.model_dump_json())
 

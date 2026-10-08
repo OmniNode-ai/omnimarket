@@ -8378,6 +8378,7 @@
     },
     {
       "accessor_nodes": [
+        "node_branch_claim_check_effect",
         "node_projection_work_ledger",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8390,6 +8391,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
       ],
       "current_schema": [
@@ -8427,6 +8429,7 @@
       "partitioning": [],
       "producer": "node_projection_work_ledger",
       "readers": [
+        "node_branch_claim_check_effect",
         "node_work_ledger_emit_effect"
       ],
       "target_schema": "omninode_internal",
