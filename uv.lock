@@ -12,7 +12,7 @@ resolution-markers = [
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.67,<0.39.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.69,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
 
@@ -3067,7 +3067,7 @@ wheels = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.67"
+version = "0.38.69"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -3122,9 +3122,9 @@ dependencies = [
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/34/57/5c0c42bd8c109410ede835ef56e38b5d914e0605da71c740fd2d7b55294a/omnibase_infra-0.38.67.tar.gz", hash = "sha256:65970fe4937ab50073fac69ef20bd4e300545f4cdd3f1825f732512cdaefa5d6", size = 21284688, upload-time = "2026-10-07T03:15:59.087Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/d2/e86dcf6a89579fe33bab9b3b81c4abc7c0d0578171ff3074b3d8898bee33/omnibase_infra-0.38.69.tar.gz", hash = "sha256:aad6047b998a29b76d37f7783fde03a54d167ed8b76facd72f2df310604b5669", size = 21524151, upload-time = "2026-10-08T15:10:39.355Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/94/5357342fcc04bfbfa8aabda65415ea336c0f4f5dfb31974963aabb6f2449/omnibase_infra-0.38.67-py3-none-any.whl", hash = "sha256:169137d12c77e142f7ff76ce0ea1341019e363dd7debeeaffbaf9d7e663c80a3", size = 7508389, upload-time = "2026-10-07T03:15:56.304Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/49/ca2102bb5e2509fe7c3fe1542f812e927544cbb625c7ea9a49065549e59d/omnibase_infra-0.38.69-py3-none-any.whl", hash = "sha256:14baa7457dc57ad851a3b317faf935c70e0d67e488412ec94e7ba38443a2aab0", size = 7587648, upload-time = "2026-10-08T15:10:36.781Z" },
 ]
 
 [[package]]
@@ -3221,7 +3221,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.31,<0.48.0" },
-    { name = "omnibase-infra", specifier = ">=0.38.67,<0.39.0" },
+    { name = "omnibase-infra", specifier = ">=0.38.69,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
     { name = "packaging", specifier = ">=24.0" },
