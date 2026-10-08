@@ -574,20 +574,6 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-      # OMN-18332: the born-item/verification join also runs in the CI test shards.
-      - id: occ-born-binding-join
-        name: OCC born-item accepted and draft binding join (OMN-18332)
-        entry: uv run --frozen pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q
-        language: system
-        pass_filenames: false
-        files: >-
-          (?x)^(
-            src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/occ_(companion_emitter|evidence_stamp|ticket_bindings)\.py
-            |src/omnimarket/nodes/node_dod_verify/services/evidence_collector\.py
-            |tests/unit/occ/test_omn_18332_born_path_transcription\.py
-          )$
-        stages: [pre-commit]
-
       # OMN-14741: OCC emitter golden gate for the LIVE companion producer.
       # Runs the golden tests that drive the REAL OccCompanionEmitter output
       # (placeholder-clean check_values, yamlfmt-idempotent YAML, append-only
