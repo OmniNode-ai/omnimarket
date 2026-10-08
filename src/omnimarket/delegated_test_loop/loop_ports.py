@@ -68,6 +68,13 @@ from omnimarket.nodes.node_pytest_failure_digest_compute import (
 _DELEGATE_TIMEOUT_SECONDS = 900
 _HOST_BUSY_BACKOFF_SECONDS = 30
 
+#: OMN-20477: the loop's WRITE and REPAIR calls pin this backend by id.
+#: Unpinned ``test`` requests no longer select Qwen3.8-27B (it accepted 2 of 18
+#: single-shot tests on the 2026-10-03 judged matrix), and a caller pin
+#: bypasses ``use_for`` in the routing selector, so the model writes tests only
+#: here, where a focused run and a failure digest follow every attempt.
+LOOP_WRITER_BACKEND_ID = "local-coder"
+
 #: The first slice's delegate flags: the delegate orchestrator runs in this
 #: process and only the model call leaves the machine.
 IN_PROCESS_DELEGATE_FLAGS: tuple[str, ...] = (
@@ -177,6 +184,8 @@ class DelegatedTestLoopPorts:
             prompt.prompt,
             "--task-type",
             "test",
+            "--backend-id",
+            LOOP_WRITER_BACKEND_ID,
             "--response-contract",
             json.dumps(prompt.response_contract),
             *self._delegate_flags,
@@ -371,6 +380,7 @@ class DelegatedTestLoopPorts:
 
 __all__ = [
     "IN_PROCESS_DELEGATE_FLAGS",
+    "LOOP_WRITER_BACKEND_ID",
     "DelegatedTestLoopPorts",
     "deployed_lane_delegate_flags",
 ]

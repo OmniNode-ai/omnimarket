@@ -159,21 +159,25 @@ def test_local_tier_keeps_a_same_tier_sibling_for_code_generation() -> None:
 
 
 def test_prose_classes_kept_a_local_rung_after_reasoner_retirement() -> None:
-    """OMN-16442: ``test``, ``documentation`` and ``summarization`` were served
-    in the local tier ONLY by the retired ``local-reasoner``. Deleting that rung
-    without rehoming them would have demoted all three to the metered
-    cheap_cloud tier.
+    """OMN-16442: ``documentation`` and ``summarization`` were served in the
+    local tier ONLY by the retired ``local-reasoner``. Deleting that rung
+    without rehoming them would have demoted both to the metered cheap_cloud
+    tier.
 
-    All three declare ``local`` in their ``escalation_policy.tier_order``, so a
+    Both declare ``local`` in their ``escalation_policy.tier_order``, so a
     local declarant is not merely nice to have — the OMN-15630
     routing-completeness gate rejects a declared tier that serves none of a
     class's capabilities.
+
+    ``test`` was covered here until OMN-20477 removed its local declarant on
+    purpose (operator RULING 2026-10-08T22:58:17Z); it also dropped ``local``
+    from its tier_order.
     """
     config = _load_config()
 
     local_tier = next(tier for tier in config.tiers if tier.name == "local")
 
-    for task_type in ("test", "documentation", "summarization"):
+    for task_type in ("documentation", "summarization"):
         declarants = {
             model.backend_ref
             for model in local_tier.models
