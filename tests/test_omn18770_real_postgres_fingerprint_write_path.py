@@ -23,8 +23,9 @@ both of them are the ones that would silently ruin the ranked surface:
    the trace surface, and the operator's one debugging affordance would
    dead-end. No in-memory double has a ``GREATEST``.
 
-SKIPS (never ERRORs) without a reachable Postgres, and provisions its own
-uniquely-named schema so concurrent runs never collide.
+Uses CI's Postgres or the shared fixture's owned local server, and provisions
+its own uniquely-named schema so concurrent runs never collide. Snapshot
+transport is isolated here; the writer regression tests prove publication.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ import contextlib
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 from urllib.parse import quote_plus
 from uuid import uuid4
 
@@ -44,6 +46,8 @@ from omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handle
     RuntimeErrorFingerprintProjectionWriter,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.test_omn19514_ticket_id_projection_real_postgres import _Postgres
+from tests.test_omn19514_ticket_id_projection_real_postgres import postgres as postgres
 
 _MIGRATION_DIR = (
     Path(__file__).resolve().parents[1]
@@ -63,6 +67,24 @@ _SOURCE_TOPIC = "onex.evt.omnibase-infra.runtime-error.v1"  # onex-topic-allow: 
 
 
 _SECRET_ENV = ("INTEGRATION_POSTGRES_" + "PASSWORD", "POSTGRES_" + "PASSWORD")
+
+
+@pytest.fixture(autouse=True)
+def _writer_dependencies(postgres: _Postgres, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise real SQL without depending on credentials or a live publisher."""
+    for key, value in (
+        ("HOST", postgres.host),
+        ("PORT", str(postgres.port)),
+        ("DB", postgres.database),
+        ("USER", postgres.user),
+        ("PASSWORD", postgres.password),
+    ):
+        monkeypatch.setenv(f"INTEGRATION_POSTGRES_{key}", value)
+    monkeypatch.setattr(
+        RuntimeErrorFingerprintProjectionWriter,
+        "publish_snapshot_delta",
+        AsyncMock(return_value=True),
+    )
 
 
 def _resolve_secret() -> str:
@@ -88,16 +110,8 @@ def _base_dsn() -> str:
     return f"postgresql://{quote_plus(user)}:{cred}@{host}:{port}/{db}"
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
-    if not _resolve_secret():
-        pytest.skip(
-            "no server credential in the integration env -- skipping the "
-            "OMN-18770 real-Postgres fingerprint write-path proof"
-        )
-    try:
-        return await asyncpg.connect(_base_dsn())
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
-        pytest.skip(f"no reachable Postgres for the OMN-18770 write-path proof: {exc}")
+async def _connect() -> asyncpg.Connection:
+    return await asyncpg.connect(_base_dsn(), timeout=5)
 
 
 def _event(**overrides: object) -> dict[str, object]:
@@ -154,7 +168,7 @@ class _SchemaBoundWriter(RuntimeErrorFingerprintProjectionWriter):
 
 @contextlib.asynccontextmanager
 async def _throwaway_schema():  # type: ignore[no-untyped-def]
-    conn = await _connect_or_skip()
+    conn = await _connect()
     schema = f"omn18770_{uuid4().hex[:10]}"
     ddl = "\n".join(
         migration.read_text().replace("omninode_internal.", f"{schema}.")
@@ -185,6 +199,44 @@ async def _project(writer: _SchemaBoundWriter, payload: dict, offset: int) -> No
         )
     finally:
         await writer.db.close()
+
+
+@pytest.mark.integration
+def test_snapshot_retry_after_upsert_counts_the_runtime_error_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed publish leaves durable SQL state that a redelivery can reuse."""
+
+    async def _run() -> None:
+        async with _throwaway_schema() as (schema, conn):
+            writer = _SchemaBoundWriter(schema)
+            writer.bind_projection_database_url(_base_dsn())
+            publish = AsyncMock(side_effect=[False, True])
+            monkeypatch.setattr(writer, "publish_snapshot_delta", publish)
+            payload = _event()
+
+            with pytest.raises(RuntimeError, match="snapshot was not published"):
+                await _project(writer, payload, offset=1)
+            first = await conn.fetchrow(
+                f"SELECT occurrence_count, correlation_id, last_seen_at "
+                f"FROM {schema}.runtime_error_fingerprints"
+            )
+            assert first is not None
+            assert first["occurrence_count"] == 1
+            await _project(writer, payload, offset=1)
+            second = await conn.fetchrow(
+                f"SELECT occurrence_count, correlation_id, last_seen_at "
+                f"FROM {schema}.runtime_error_fingerprints"
+            )
+            assert second == first
+            assert publish.await_count == 2
+            assert publish.await_args is not None
+            assert (
+                publish.await_args.kwargs["row"]["correlation_id"]
+                == payload["correlation_id"]
+            )
+
+    asyncio.run(_run())
 
 
 @pytest.mark.integration
