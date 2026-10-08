@@ -14,6 +14,8 @@ requirements:
         statement: "AC1: a research terminal keeps real usage after escalation for gate, routing and inference failures, and a sibling handler_error preserves inference without a republish loop -- falsifier: uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k 'retains_real_usage_after_escalation or preserves_inference_without_a_republish_loop' -q in omnimarket"
       - id: "AC2"
         statement: "AC2: an escalation-exhaustion terminal whose final inference response is an error reuses the last banked served model, endpoint and tokens when the error carries zero tokens, and keeps its own usage when it carries some -- falsifier: uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k 'retains_real_usage_after_escalation and inference_error' -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: failed research gate terminals restore the last banked served model, endpoint and tokens when the current response reports zero tokens, without counting restored usage twice -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k zero_token -q"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The focused tests pass at the head and fail at the merge base, where boundary-failure terminals report zero usage."
@@ -21,6 +23,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2 hosted probe. The zero-token and metered inference-error exhaustion tests pass at the head and fail at the merge base, where the terminal reports zero tokens."
     command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k 'retains_real_usage_after_escalation and inference_error' -q"
+  - kind: "tests"
+    description: "AC3 hosted probe. The zero-token gate exhaustion and gate boundary failure tests preserve real banked usage without counting it twice."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k zero_token -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k 'retains_real_usage_after_escalation and inference_error' -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn13543-ac3-zero-token-gate-usage"
+    description: "AC3 hosted probe. The zero-token gate exhaustion and gate boundary failure tests preserve real banked usage without counting it twice."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py -k zero_token -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
