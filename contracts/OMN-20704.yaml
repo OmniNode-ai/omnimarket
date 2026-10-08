@@ -13,7 +13,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the route job and the action-ref fixture row both name the omnimarket route-runner-reusable.yml at 01a0d1b3e7d7ba1a09012f9af245ba29afa000b5 -- falsifier: uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py::test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit -q and uv run pytest tests/ci/test_sibling_pins_omn20001.py -q'
   - id: AC2
-    statement: 'AC2: the reusable route runner workflow contract still holds -- falsifier: uv run pytest over the committed route_runner_reusable OMN-16647 test'
+    statement: 'AC2: the ci.yml route job calls the omnimarket-hosted reusable at a full-sha pin and keeps its check name -- falsifier: uv run pytest tests/ci/test_route_job_hosted_in_omnimarket_omn20704.py -q'
 evidence_requirements:
 - kind: tests
   description: The workflow action-ref characterization test passes with the repinned route row.
@@ -22,8 +22,8 @@ evidence_requirements:
   description: The sibling pin tests pass with the repinned route row.
   command: uv run pytest tests/ci/test_sibling_pins_omn20001.py -q
 - kind: tests
-  description: The reusable route runner test passes.
-  command: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q
+  description: The route job hosting test passes.
+  command: uv run pytest tests/ci/test_route_job_hosted_in_omnimarket_omn20704.py -q
 emergency_bypass:
   enabled: false
   justification: ''
@@ -42,11 +42,11 @@ dod_evidence:
   binds_ac:
   - AC1
 - id: dod-omn-20704-ac2
-  description: The reusable route runner test passes.
+  description: The route job hosting test passes.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q
+    check_value: uv run pytest tests/ci/test_route_job_hosted_in_omnimarket_omn20704.py -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
