@@ -683,6 +683,8 @@ class ModelDodVerifyState(BaseModel):
     acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
     # OMN-17427: self-accepted bindings still awaiting acceptance by a second lane.
     acceptance_self_accepted_bindings: tuple[str, ...] = Field(default=())
+    acceptance_retired_bindings: tuple[str, ...] = Field(default=())
+    acceptance_refused_retirements: tuple[str, ...] = Field(default=())
     # OMN-20070: declared criteria no evidence item binds through binds_ac.
     acceptance_unbound_criteria: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)

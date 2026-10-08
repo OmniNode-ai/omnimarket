@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20157"
+title: "node_dod_verify retires superseded AC bindings with a typed, attributed reason"
+summary: "node_dod_verify counted every unaccepted draft AC binding, including bindings on superseded items, with no way to retire them. The supersedes_ac_binding item key now carries reason_kind, superseded_by, retired_by and retired_at. A well-formed retirement of a draft binding stops it blocking the verdict; a retirement of an accepted binding, an untyped legacy entry or an incomplete entry is refused and listed. Nothing is auto-accepted and a criterion bound only by retired bindings is still reported unbound."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac-binding-retirement"
+    statement: |-
+      A typed, attributed retirement of a draft AC binding removes it from the self-accepted and unbound-criteria counts, and every other shape is refused and listed without changing a verdict.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a retirement carrying reason_kind, a reason of at least 12 characters, retired_by and retired_at against a draft binding stops that binding blocking the verdict, and the same contract without the retirement still blocks -- falsifier: the retired draft still counts in self_accepted_bindings, or the negative control passes
+      - id: "AC2"
+        statement: |-
+          AC2: retiring a binding accepted by another lane or re-accepted by another item is refused with RETIREMENT_BINDING_ACCEPTED, and a legacy entry with only item, label and reason is refused as RETIREMENT_UNTYPED and changes nothing -- falsifier: an accepted binding is retired, or a legacy entry changes a verdict
+      - id: "AC3"
+        statement: |-
+          AC3: a criterion bound only by retired bindings is still reported unbound and still demotes the verdict, retired bindings are listed in acceptance_retired_bindings and refused ones in acceptance_refused_retirements, and the failing checks of a retired item still fail -- falsifier: a retired-only criterion counts as bound, a retirement is not listed, or a failing check of a retired item is skipped
+evidence_requirements:
+  - kind: "tests"
+    description: "The retirement conditions, refusals, verdict impact and visibility are exercised by the retirement test file."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_ac_binding_retirement.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20157-retirement"
+    description: "A typed retirement unblocks a draft binding, accepted and untyped retirements are refused, and retired-only criteria stay unbound."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_ac_binding_retirement.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3"]
