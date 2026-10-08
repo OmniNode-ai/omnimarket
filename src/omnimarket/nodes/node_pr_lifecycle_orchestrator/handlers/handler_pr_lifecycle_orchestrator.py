@@ -64,6 +64,7 @@ from omnimarket.merge_control.reason_code_classifier import (
     EnumMergeCheckReasonCode,
     dominant_reason_code,
 )
+from omnimarket.models.ci_red_triage import DEFAULT_GITHUB_OWNER
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
     ProtocolOccStampReadback,
     _UnverifiedOccStampReadback,
@@ -201,6 +202,8 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
     )
+    pr_numbers: tuple[int, ...] = ()
+
     max_parallel_polish: int = Field(
         default=20,
         ge=1,
@@ -337,6 +340,20 @@ class ModelPrLifecycleStartCommand(BaseModel):
             min_outage_fraction=self.outage_breaker_min_outage_fraction,
             min_window_observations=self.outage_breaker_min_window_observations,
         )
+
+    @field_validator("pr_numbers", mode="before")
+    @classmethod
+    def _coerce_pr_numbers(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(int(item.strip()) for item in value.split(",") if item.strip())
+        return value
+
+    @field_validator("pr_numbers")
+    @classmethod
+    def _positive_pr_numbers(cls, value: tuple[int, ...]) -> tuple[int, ...]:
+        if any(number <= 0 for number in value):
+            raise ValueError("pr_numbers must be positive")
+        return value
 
     @field_validator("repos", mode="before")
     @classmethod
@@ -672,7 +689,7 @@ _OCC_EVIDENCE_CHECK_NAMES = frozenset(
 # classifier exclusion (see the existing `_FLAKY_INFRA_CHECK_SUBSTRINGS` /
 # `_has_flaky_failure_evidence` path below for that case).
 _COSMETIC_NON_REQUIRED_CHECK_NAMES = frozenset({"Enable Auto-Merge"})
-_DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+_DEFAULT_GITHUB_OWNER = DEFAULT_GITHUB_OWNER
 
 
 def _normalize_repo_slug(value: str) -> str:
@@ -1652,6 +1669,7 @@ class HandlerPrLifecycleOrchestrator:
                 repos=repos_filter,
                 dry_run=command.dry_run,
                 max_parallel_fetches=command.inventory_max_parallel_fetches,
+                selected_pr_numbers=command.pr_numbers,
             )
             state.inventory_result = inv_result
             state.prs_inventoried = inv_result.total_collected
@@ -2195,6 +2213,7 @@ class HandlerPrLifecycleOrchestrator:
         repos: tuple[str, ...],
         dry_run: bool,
         max_parallel_fetches: int = 8,
+        selected_pr_numbers: tuple[int, ...] = (),
     ) -> InventoryResult:
         """Call the inventory handler with its real input-model signature.
 
@@ -2222,13 +2241,15 @@ class HandlerPrLifecycleOrchestrator:
             ModelPrInventoryInput,
         )
 
+        if selected_pr_numbers and len(repos) != 1:
+            raise ValueError("pr_numbers requires exactly one repo")
         if not repos:
             repos = self._enumerate_repos()
 
         all_prs: list[PrRecord] = []
         stuck_queue_prs: list[Any] = []
         for repo in repos:
-            pr_numbers = self._enumerate_open_pr_numbers(repo)
+            pr_numbers = selected_pr_numbers or self._enumerate_open_pr_numbers(repo)
             if not pr_numbers:
                 continue
 
