@@ -2,7 +2,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-19362
 title: Delegated test loop orchestrator node and its compact result
-summary: Owning ticket criteria for the existing loop and compact result. Executable probes cover AC1-AC5 and AC7. AC6 requires the original T1 model path and design-review verdict in the PR; its historical citation is not reverified on this lab host. The original T8 receipts are absent here, so replay proof below uses a newly recorded fake-child loop receipt. No Done claim or rollout authorization is made.
+summary: Owning ticket criteria for the existing loop and compact result. Executable probes cover AC1-AC5 and AC7. AC6 requires the original T1 model path and design-review verdict in the PR; its historical citation is not reverified on this lab host. The original T8 receipts are absent here, so replay proof below uses a newly recorded fake-child loop receipt. No Done claim or rollout authorization is made. This pull request binds only AC5, the compact result it adds; AC1-AC4 and AC7 behaviour is already on dev at the merge base and is run here as unbound head evidence.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -34,41 +34,33 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn19362-three-call-bound
-  description: All failed runs dispatch exactly three delegates.
+  description: All failed runs dispatch exactly three delegates. This behaviour is already on dev at the merge base and this pull request does not change it, so this item does not bind or discharge AC1 here.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_attempt_bound_is_three -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC1
 - id: dod-omn19362-no-progress
-  description: Consecutive identical failure fingerprints stop after two delegates.
+  description: Consecutive identical failure fingerprints stop after two delegates. This behaviour is already on dev at the merge base and this pull request does not change it, so this item does not bind or discharge AC2 here.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_two_identical_fingerprints_in_a_row_stop_with_no_progress -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC2
 - id: dod-omn19362-infra-refusal
-  description: Missing or empty junit is never accepted at fixed, prefix or mutation, even with exit code zero; the infrastructure terminal replays.
+  description: Missing or empty junit is never accepted at fixed, prefix or mutation, even with exit code zero; the infrastructure terminal replays. This behaviour is already on dev at the merge base and this pull request does not change it, so this item does not bind or discharge AC3 here.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_infra_error_is_never_accepted tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_missing_junit_is_never_accepted -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC3
 - id: dod-omn19362-receipt-replay
-  description: A recorded, serialized fake-child receipt lists all children and replays to the same status. The historical T8 artifact is not verified by this probe.
+  description: A recorded, serialized fake-child receipt lists all children and replays to the same status. The historical T8 artifact is not verified by this probe. This behaviour is already on dev at the merge base and this pull request does not change it, so this item does not bind or discharge AC4 here.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC4
 - id: dod-omn19362-compact-result
   description: Oversized ASCII, Unicode and escaped diagnostics fit both JSON serializers; full receipt fields and replay are retained. Oversized immutable metadata is refused after receipt persistence.
   source: manual
@@ -79,11 +71,9 @@ dod_evidence:
   binds_ac:
   - AC5
 - id: dod-omn19362-no-plugin
-  description: All node Python sources contain no Plugin class declaration or envelope type.
+  description: All node Python sources contain no Plugin class declaration or envelope type. This behaviour is already on dev at the merge base and this pull request does not change it, so this item does not bind or discharge AC7 here.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_node_declares_no_plugin_class_and_no_envelope -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC7
