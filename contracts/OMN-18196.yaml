@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18196"
+title: "A confirmed missing credential stamps credential_source none"
+summary: "When key resolution raises SecretResolutionError for a confirmed missing or empty binding, the inference effect stamps credential_source none and returns the error response without calling the provider. ModelCloudDelegationReceipt exposes route_provider, accepts provider as the legacy spelling, and refuses conflicting or blank values."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-confirmed-missing-credential-source-none"
+    statement: "A confirmed missing or empty credential binding stamps credential_source none without calling the provider, and cloud delegation receipts validate route_provider and its legacy provider spelling. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: when key resolution raises SecretResolutionError for a confirmed missing or empty binding, the inference effect stamps credential_source none and returns the error response without calling the provider; ModelCloudDelegationReceipt exposes route_provider, accepting provider as the legacy spelling and refusing conflicting or blank values -- falsifier: uv run pytest tests/unit/delegation/test_omn18196_credential_source_stamp.py tests/unit/cloud/test_transport_cloud_delegation.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The credential source stamp and cloud delegation transport tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn18196_credential_source_stamp.py tests/unit/cloud/test_transport_cloud_delegation.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18196-ac1-confirmed-missing-credential-source-none"
+    description: "AC1 hosted probe. The credential source stamp and cloud delegation transport tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18196_credential_source_stamp.py tests/unit/cloud/test_transport_cloud_delegation.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
