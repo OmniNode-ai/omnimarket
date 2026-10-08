@@ -83,7 +83,12 @@ class EnumPrLandingCompanionDeclineCode(StrEnum):
                          window because the window's change-control run is in
                          flight or the window is armed and green; it binds on
                          the first rebuild after that run settles (OMN-20042).
-    UNCLASSIFIED         a reason this seam does not recognise. It is typed and
+    NOTHING_TO_BIND      the companion branch carried no commit past the OCC
+                         default branch, so GitHub refused to open a pull
+                         request for it ("No commits between"): what this
+                         command would write is already on the default branch,
+                         typically because the companion already merged.
+    UNCLASSIFIED        a reason this seam does not recognise. It is typed and
                          visible, never dropped; a recorded line that lands here
                          fails the mapping's corpus test.
     """
@@ -103,6 +108,7 @@ class EnumPrLandingCompanionDeclineCode(StrEnum):
     LEASE_HELD = "LEASE_HELD"
     TICKET_LEASE_HELD = "TICKET_LEASE_HELD"
     WINDOW_IN_FLIGHT = "WINDOW_IN_FLIGHT"
+    NOTHING_TO_BIND = "NOTHING_TO_BIND"
     UNCLASSIFIED = "UNCLASSIFIED"
 
 

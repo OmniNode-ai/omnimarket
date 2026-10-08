@@ -14,6 +14,8 @@ requirements:
         statement: "AC1: the delegate-skill node contract resolves the canonical wire models and the deleted shim modules fail to import -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q in omnimarket"
       - id: "AC2"
         statement: "AC2: no module under src/ or tests/ imports the removed delegate-skill shim modules -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_removed_shim_imports_omn17122.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: platform backend UUIDs hash the backend reference, so two local rungs sharing a model id get distinct selected_backend_id values -- falsifier: uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The node contract tests pass at the head."
@@ -39,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_removed_shim_imports_omn17122.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn17122-ac3-distinct-backend-uuids"
+    description: "AC3 hosted probe. Backend UUIDs for rungs sharing a model id are distinct, repeated requests are stable, and tenant-qualified UUIDs are unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

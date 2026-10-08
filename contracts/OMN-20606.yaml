@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20606"
+title: "A fallback delegation names the delegation it falls back from"
+summary: "A delegation issued after a failed one had a new correlation id and nothing naming the failed parent, and the in-process evidence terminal (the only terminal that reaches the bus on that path) carried no caller lane or ticket. The request metadata now carries parent_correlation_id, lineage_kind and parent_failure_cause; a pure fold and both projection writers store them in delegation_events (migration 0055); the delegate-skill response tolerates the keys before declaring them; and the in-process evidence terminal carries the caller lane, ticket and lineage."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-lineage"
+    statement: |-
+      A delegation_events row must name the delegation it falls back or escalates from, the kind of relation and the parent's failure cause when its request named them, and must name none of them for a malformed or partial lineage.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the delegation projection fold returns parent_correlation_id, lineage_kind and parent_failure_cause for a terminal that carries them and refuses a malformed value by name -- falsifier: uv run pytest tests/unit/projection -k lineage -q in omnimarket, red against the current dev
+      - id: "AC2"
+        statement: |-
+          AC2: the in-process evidence terminal carries the request's caller_lane, ticket_id and lineage keys -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -k evidence_carries_caller -q in omnimarket, red against the current dev
+evidence_requirements:
+  - kind: "tests"
+    description: "The lineage resolve, terminal model, fold and writer tests pass."
+    command: "uv run pytest tests/unit/projection/test_delegation_lineage_omn20606.py -q"
+  - kind: "tests"
+    description: "The handler and in-process port carry caller, ticket and lineage onto the evidence terminal."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_skill_attribution_omn20606.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20606-ac1-lineage-fold-and-writer"
+    description: "A whole lineage resolves, folds to three columns and is stored; a partial or malformed one is refused by name and stores none; a lineage-less re-emit keeps stored lineage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_delegation_lineage_omn20606.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20606-ac2-in-process-evidence"
+    description: "The in-process evidence terminal and its local row carry the caller lane, ticket and lineage the handler hands the port, and only those keys."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_skill_attribution_omn20606.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

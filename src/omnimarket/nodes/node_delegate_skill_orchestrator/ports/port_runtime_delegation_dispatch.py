@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -119,7 +119,12 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
+        # OMN-20606: accepted and unused. This port publishes the request to a
+        # deployed lane, whose handler stamps the caller onto its own terminal;
+        # only the in-process port writes an evidence terminal of its own.
+        del attribution
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than
@@ -177,20 +182,30 @@ class RuntimeDelegationDispatchPort:
                 "quality_gate_passed": False,
             }
 
-        with dispatch_stage("subscribe"):
-            unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        try:
+            with dispatch_stage("subscribe"):
+                unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        except TimeoutError as exc:
+            return {
+                "status": "timeout",
+                "error_message": f"delegation timed out at stage=subscribe: {exc}",
+            }
+        timeout_stage = "publish"
         try:
             with dispatch_stage("publish"):
                 await self._publish_request(request)
             timeout_seconds = float(self._config.wait_timeout_seconds)
+            timeout_stage = "terminal_wait"
             with dispatch_stage("terminal_wait"):
                 terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
-        except TimeoutError:
+        except TimeoutError as exc:
             return {
                 "status": "timeout",
                 "error_message": (
                     f"timed out after {self._config.wait_timeout_seconds}s "
                     "at stage=terminal_wait waiting for delegation result"
+                    if timeout_stage == "terminal_wait"
+                    else f"delegation timed out at stage=publish: {exc}"
                 ),
             }
         finally:

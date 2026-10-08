@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -584,6 +585,20 @@ class ModelDodVerifyState(BaseModel):
         Field(default=None, exclude_if=lambda value: value is None)
     )
     contract_revision: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-20696: the contract the verdict was evaluated against. Omitted
+    # when unset so older consumers see the shape they saw before.
+    contract_source: EnumDodContractSource | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repository: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_commit_sha: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repo_path: str | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # OMN-18901. When the run began and when its verdict was sealed.

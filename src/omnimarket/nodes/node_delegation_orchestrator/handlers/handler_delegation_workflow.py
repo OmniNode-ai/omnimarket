@@ -793,6 +793,11 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # provider answered is matched first.
     if "provider http 401" in normalized or "provider http 403" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    # OMN-20712: the same rule for an unavailable provider. The call's URL can
+    # carry "401" in its port (127.0.0.1:44011) and read a 503 as a rejected
+    # credential through the generic marker below.
+    if "provider http 503" in normalized:
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -2877,10 +2882,13 @@ class HandlerDelegationWorkflow:
         prior_completion_tokens = workflow.cumulative_attempt_completion_tokens
         # A later routing/inference boundary failure produced no current usage.
         # Report the last real call, including free-tier calls, without pricing
-        # its already-banked usage twice. Gate failures keep the current response.
+        # its already-banked usage twice. Gate failures keep nonzero current usage.
         last_served = workflow.last_served_attempt
         last_route = workflow.last_served_routing_decision
-        if not leg.reports_recorded_inference and last_served is not None:
+        reuse_last_served = (
+            not leg.reports_recorded_inference or prompt_tokens + completion_tokens == 0
+        )
+        if reuse_last_served and last_served is not None:
             model_used = last_served.model_used
             endpoint_url = last_route.endpoint_url if last_route is not None else "none"
             prompt_tokens = last_served.prompt_tokens
@@ -2919,7 +2927,7 @@ class HandlerDelegationWorkflow:
         # inference the terminal cannot support.
         if leg.routing_decision_present:
             routed_backend_ref, routed_manifest_version = _route_identity(workflow)
-            if not leg.reports_recorded_inference and last_served is not None:
+            if reuse_last_served and last_served is not None:
                 routed_backend_ref = last_served.backend_ref
             unrouted_reason = None
         else:
@@ -3469,39 +3477,7 @@ class HandlerDelegationWorkflow:
                 backend_ref=_route_identity(workflow)[0],
                 pricing_manifest_version=_route_identity(workflow)[1],
             )
-            # A returned transport error can serve no tokens, just like a
-            # boundary failure. Keep the last real call's usage and identity,
-            # while leaving this failed call's verdict and history intact.
-            last_served = workflow.last_served_attempt
-            last_route = workflow.last_served_routing_decision
-            if terminal_inputs.total_tokens == 0 and last_served is not None:
-                terminal_inputs = replace(
-                    terminal_inputs,
-                    model_used=last_served.model_used,
-                    model_name=last_served.model_used,
-                    endpoint_url=(
-                        last_route.endpoint_url if last_route is not None else "none"
-                    ),
-                    prompt_tokens=last_served.prompt_tokens,
-                    completion_tokens=last_served.completion_tokens,
-                    total_tokens=last_served.prompt_tokens
-                    + last_served.completion_tokens,
-                    cost_tier_name=last_served.tier_name,
-                    backend_ref=last_served.backend_ref,
-                    # The builder prices the reported attempt once; remove its
-                    # already-banked contribution to preserve cumulative totals.
-                    prior_attempt_cost_usd=(
-                        terminal_inputs.prior_attempt_cost_usd - last_served.cost_usd
-                    ),
-                    prior_attempt_prompt_tokens=(
-                        terminal_inputs.prior_attempt_prompt_tokens
-                        - last_served.prompt_tokens
-                    ),
-                    prior_attempt_completion_tokens=(
-                        terminal_inputs.prior_attempt_completion_tokens
-                        - last_served.completion_tokens
-                    ),
-                )
+            terminal_inputs = self._retain_last_served_usage(workflow, terminal_inputs)
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
@@ -5118,6 +5094,36 @@ class HandlerDelegationWorkflow:
             return [delegation_result]
         return [delegation_result, v2_terminal]
 
+    @staticmethod
+    def _retain_last_served_usage(
+        workflow: DelegationWorkflowState,
+        inputs: TerminalEmissionInputs,
+    ) -> TerminalEmissionInputs:
+        """Keep banked usage when a failed final attempt reported no tokens."""
+        last_served = workflow.last_served_attempt
+        last_route = workflow.last_served_routing_decision
+        if inputs.completed or inputs.total_tokens > 0 or last_served is None:
+            return inputs
+        return replace(
+            inputs,
+            model_used=last_served.model_used,
+            model_name=last_served.model_used,
+            endpoint_url=last_route.endpoint_url if last_route is not None else "none",
+            prompt_tokens=last_served.prompt_tokens,
+            completion_tokens=last_served.completion_tokens,
+            total_tokens=last_served.prompt_tokens + last_served.completion_tokens,
+            cost_tier_name=last_served.tier_name,
+            backend_ref=last_served.backend_ref,
+            # The builder prices this attempt once; remove its banked contribution.
+            prior_attempt_cost_usd=inputs.prior_attempt_cost_usd - last_served.cost_usd,
+            prior_attempt_prompt_tokens=(
+                inputs.prior_attempt_prompt_tokens - last_served.prompt_tokens
+            ),
+            prior_attempt_completion_tokens=(
+                inputs.prior_attempt_completion_tokens - last_served.completion_tokens
+            ),
+        )
+
     def _gate_terminal_inputs(
         self,
         workflow: DelegationWorkflowState,
@@ -5203,7 +5209,7 @@ class HandlerDelegationWorkflow:
             completed=completed,
             response_contract_declared=workflow.effective_response_contract is not None,
         )
-        return TerminalEmissionInputs(
+        terminal_inputs = TerminalEmissionInputs(
             completed=completed,
             correlation_id=result.correlation_id,
             task_type=workflow.request.task_type,
@@ -5278,6 +5284,7 @@ class HandlerDelegationWorkflow:
             backend_ref=_route_identity(workflow)[0],
             pricing_manifest_version=_route_identity(workflow)[1],
         )
+        return self._retain_last_served_usage(workflow, terminal_inputs)
 
     def handle_agent_task_lifecycle(
         self,

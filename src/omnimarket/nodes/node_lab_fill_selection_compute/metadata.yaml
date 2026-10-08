@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_selection_compute
+version: 0.1.0
+description: Deterministically select lab-fill work using ownership, handoffs and
+  input baselines, and mark approved work done from completion facts.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_fill_selection_compute: omnimarket.nodes.node_lab_fill_selection_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- lab
+- in_process
+pack: operator_tooling
+display_name: Lab Fill Selection Compute
+node_role: compute
