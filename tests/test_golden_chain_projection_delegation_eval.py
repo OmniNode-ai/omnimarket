@@ -366,8 +366,10 @@ def test_run_completed_writes_verdict_and_results_rows() -> None:
     verdicts = store.tables["delegation_eval_item_verdicts"]
     results = store.tables["delegation_eval_results"]
     assert len(verdicts) == 5
-    # Two classes; strata "all" plus accepted and refused; two arms each.
-    assert len(results) == 2 * 3 * 2
+    # Two classes; strata "all" plus accepted and refused; two arms each. Only
+    # summarization has a class rubric, so it alone adds a rubric arm (OMN-20166).
+    assert len(results) == 2 * 3 * 2 + 3
+    assert {key[2] for key in results if key[4] == "rubric"} == {"summarization"}
     assert applied["rows_upserted"] == len(verdicts) + len(results)
     recorded_all = {
         key[2]: row
