@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20541"
+title: "The work-ledger projection stores ledger_seq, and a gap check reports the first missing seq"
+summary: "work_ledger_rows gains a ledger_seq column filled from the row event's envelope, so the database ledger has a total order assigned by the judge under the ledger lock. node_work_ledger_seq_gap_effect reads it and reports the first missing seq, the missing ranges, duplicate seqs and the contiguous prefix, so a gap check on work_ledger_rows can replace the markdown-file parity witness. History is not backfilled here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-projection-stores-seq"
+    statement: |-
+      The projection persists the ledger_seq the emitter assigns, and never rewrites a stored one.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: An event carrying ledger_seq projects with that seq; an event without it projects with ledger_seq null; a row first projected without a seq gains it when the sequenced event arrives; a stored seq is never overwritten; the seq index is not unique, so a duplicate seq can never stall the consumer -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k ledger_seq -q
+  - id: "req-gap-check"
+    statement: |-
+      A node reports the first missing ledger_seq in work_ledger_rows, over the whole ledger or a UTC day.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: Over seqs 1,2,4,5,7 the gap check reports first_missing_seq 3, missing_count 2 and contiguous_through 2; a duplicate seq or a missing tail makes the report not exact; the CLI exits 0 when exact, 1 when not and 2 on a database error with the DSN redacted -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_seq_gap_effect -q
+      - id: "AC3"
+        statement: |-
+          AC3: On the lab, a UTC day of rows projected with ledger_seq reads exact, and after one row is deleted the gap check names that row's seq as first_missing_seq -- falsifier: the gap check over the day reads exact=no before the deletion, or names any other seq after it
+evidence_requirements:
+  - kind: "tests"
+    description: "The projection stores and keeps ledger_seq, and the gap check reports gaps, duplicates and tail loss."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_writer.py tests/unit/nodes/node_work_ledger_seq_gap_effect/test_work_ledger_seq_gap.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20541-projection-seq"
+    description: "The projection writer stores ledger_seq and only fills a null one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_writer.py tests/unit/nodes/node_projection_work_ledger/test_work_ledger_fold.py -k ledger_seq -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20541-gap-check"
+    description: "The gap check reports the first missing seq, duplicates and tail loss, with the documented exit codes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_seq_gap_effect/test_work_ledger_seq_gap.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
