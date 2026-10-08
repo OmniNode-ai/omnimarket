@@ -92,8 +92,13 @@ tiers:
           # task_class_contracts.v1.yaml code_review.routing_availability
           - refactor
           - validator_generation
-          # OMN-16442: restored — see the block comment above.
-          - test
+          # OMN-20477: `test` REMOVED from unpinned selection (operator RULING
+          # 2026-10-08T22:58:17Z): Qwen3.8-27B accepted 2 of 18 single-shot
+          # tests on the 2026-10-03 judged matrix (interval 3-33), under the
+          # plan's 0.50 suppression floor at n 18. It writes tests only inside
+          # the run-the-tests-and-repair loop, which pins this backend by id
+          # (delegated_test_loop/loop_ports.py); a pin bypasses use_for. The
+          # OMN-16442 restoration above is superseded for this class.
         # OMN-13599: AI-PC local-coder is the preferred local code backend when
         # its Tailscale hostname overlay is present. Without a threshold, the
         # fast-path selector can prefer later local models that also declare
