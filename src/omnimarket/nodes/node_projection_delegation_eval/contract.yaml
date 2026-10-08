@@ -120,6 +120,10 @@ projection_api:
         - observed_at
         - projection_cursor
       order_by: "observed_at DESC, projection_cursor DESC"
+      # OMN-19787: the dashboard reads the latest eval run. Without `since`,
+      # select the top rows by observed_at DESC over the whole set;
+      # `since` still walks the cursor.
+      page_selection: "order_by"
       cursor_column: projection_cursor
       freshness_column: observed_at
       # Served from the bus: the writer publishes one keyed row delta per

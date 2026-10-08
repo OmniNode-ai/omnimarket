@@ -92,6 +92,7 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     DATA_SOURCES,
+    envelope_data_source,
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
@@ -769,7 +770,9 @@ class HandlerProjectionDelegation:
             or _is_delegate_skill_terminal_payload(payload)
         ):
             terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
-            result = self.project_delegate_skill_terminal(terminal, db_raw)
+            result = self.project_delegate_skill_terminal(
+                terminal, db_raw, data_source=envelope_data_source(input_data)
+            )
             return result.model_dump(mode="json")
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
             payload = _canonical_result_to_task_delegated_payload(payload)

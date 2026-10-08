@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Execution outcome for a ticket that produced an evidence bundle."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class EnumExecutionOutcome(StrEnum):
+    """Overall outcome of a ticket execution.
+
+    SUCCESS — all acceptance criteria passed.
+    FAILURE — one or more acceptance criteria failed.
+    PARTIAL — some criteria passed; execution halted early.
+    TIMEOUT — execution exceeded the maximum allowed duration.
+    SKIPPED — execution was not attempted (e.g. blocked by gate).
+    """
+
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    PARTIAL = "PARTIAL"
+    TIMEOUT = "TIMEOUT"
+    SKIPPED = "SKIPPED"
+
+
+__all__ = ["EnumExecutionOutcome"]

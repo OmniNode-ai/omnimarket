@@ -35,6 +35,7 @@ class HandlerProjectionUsageByModelDay:
             input_tokens=event.prompt_tokens,
             output_tokens=event.completion_tokens,
             cost_usd=Decimal(str(event.estimated_cost_usd)),
+            usage_source=event.usage_source,
             occurred_at=occurred_at,
         )
 
