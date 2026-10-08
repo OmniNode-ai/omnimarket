@@ -7,10 +7,11 @@ difference is enforced as the stricter path's verdict: earlier caller steps
 already enforce the new path's own refusal, and OCC's context stays required.
 This check decides only whether the difference itself is allowed.
 
-OMN-20074, operator ruling 2026-10-08T09:57:41Z: a missing head whose
-caller-supplied contract-home marker names another product repository refuses
-with ``contract_in_another_repo``. The onex_change_control-only case stays
-unclassified pending an operator answer.
+OMN-20074, operator RULING 2026-10-08T14:59:17Z extends RULING
+2026-10-08T09:57:41Z: contract_in_another_repo (expected difference) also covers
+a PR whose ticket has its only other contract in onex_change_control. A missing
+head whose caller-supplied contract-home marker names any repository, including
+onex_change_control, refuses with ``contract_in_another_repo``.
 
 A PR labelled as a negative control is meant to be refused. Its refusal passes
 whatever OCC said, because every negative control must be rejected by the new
@@ -52,8 +53,6 @@ EXPECTED_DIFFERENCES: Final[Mapping[str, tuple[str, str, bool]]] = {
     "unclassified": ("any", "any", False),
     "accepted_negative_control": ("any", "admit", False),
 }
-
-CHANGE_CONTROL_REPOSITORY: Final[str] = "onex_change_control"
 
 # Plain EnumOccEligibilityReason wire strings keep parsing total for unknown
 # values without coupling the verifier to omnibase_core's enum version.
@@ -171,10 +170,9 @@ def _ticket_verdict(head: object, control_first_line: str) -> ModelNewPathVerdic
     return ModelNewPathVerdict(admitted=True)
 
 
-def _contract_home_is_another_repo(line: str) -> bool:
-    """Strip whitespace and an optional owner; compare bare names case-sensitively."""
-    repository = line.strip().split("/", 1)[-1]
-    return bool(repository) and repository != CHANGE_CONTROL_REPOSITORY
+def _contract_home_repository(line: str) -> str:
+    """Strip whitespace and an optional owner; return the bare repository name."""
+    return line.strip().split("/", 1)[-1]
 
 
 def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdict:
@@ -182,9 +180,12 @@ def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdi
 
     OMN-20074, ruling 2026-10-08T09:57:41Z: when head is None, the first
     non-empty line of contract-home-<ticket>.txt may name another repository
-    holding contracts/<ticket>.yaml, yielding contract_in_another_repo. An
-    absent, empty, or unreadable marker leaves the refusal unclassified; the
-    onex_change_control-only case stays unclassified pending an operator answer.
+    holding contracts/<ticket>.yaml, yielding contract_in_another_repo. Operator
+    RULING 2026-10-08T14:59:17Z extends RULING 2026-10-08T09:57:41Z:
+    contract_in_another_repo (expected difference) also covers a PR whose ticket
+    has its only other contract in onex_change_control. A marker naming
+    onex_change_control also yields contract_in_another_repo. An absent, empty,
+    or unreadable marker leaves the refusal unclassified.
     A present head ignores the marker. Missing or empty controls have no passed
     first line. An empty ticket list refuses without a reason.
     """
@@ -209,7 +210,7 @@ def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdi
             contract_home = next(
                 (line for line in contract_home_lines if line.strip()), ""
             )
-            if _contract_home_is_another_repo(contract_home):
+            if _contract_home_repository(contract_home):
                 return ModelNewPathVerdict(
                     admitted=False,
                     reason=EnumOccVerdictDifferenceReason.CONTRACT_IN_ANOTHER_REPO.value,

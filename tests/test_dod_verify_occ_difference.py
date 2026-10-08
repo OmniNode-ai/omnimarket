@@ -330,12 +330,67 @@ def test_omnibase_core_1907_shape_is_contract_in_another_repo(
         "onex_change_control\n",
         "OmniNode-ai/onex_change_control\n",
         "\n  OmniNode-ai/onex_change_control  \nOmniNode-ai/omnimarket\n",
-        "",
-        "\n \n",
-        None,
     ],
 )
-def test_contract_home_unruled_or_absent_stays_unclassified(
+def test_onex_change_control_only_contract_is_contract_in_another_repo(
+    tmp_path: Path, marker: str
+) -> None:
+    """omniclaude#2591 has no head or base control and an OCC-only contract."""
+    (tmp_path / "contract-home-OMN-18983.txt").write_text(marker, encoding="utf-8")
+    new = load_new_verdict(tmp_path, ["OMN-18983"])
+    assert new.admitted is False
+    assert new.reason == "contract_in_another_repo"
+    result = classify(ModelOccVerdict(admitted=True), new, negative_control=False)
+    assert result.passed is True
+    assert result.outcome == "expected_difference"
+    assert result.reason_code == "contract_in_another_repo"
+
+
+def test_omnibase_infra_4725_shape_is_contract_in_another_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The caller stops before writing a head when the contract is in OCC."""
+    (tmp_path / "contract-home-OMN-16106.txt").write_text(
+        "OmniNode-ai/onex_change_control\n", encoding="utf-8"
+    )
+    tickets_file = tmp_path / "tickets.txt"
+    tickets_file.write_text("OMN-16106\n", encoding="utf-8")
+    occ_file = tmp_path / "occ.json"
+    occ_file.write_text('{"conclusion": "success"}', encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "occ-difference",
+            "--dod-dir",
+            str(tmp_path),
+            "--tickets-file",
+            str(tickets_file),
+            "--occ-check-run",
+            str(occ_file),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    printed = json.loads(captured.out)
+    assert printed["passed"] is True
+    assert printed["outcome"] == "expected_difference"
+    assert printed["reason_code"] == "contract_in_another_repo"
+    assert printed["old_admitted"] is True
+    assert printed["new_admitted"] is False
+    assert printed["old_reason"] is None
+    assert printed["new_reason"] == "contract_in_another_repo"
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("marker", ["", "\n \n", None])
+def test_contract_home_absent_or_empty_stays_unclassified(
     tmp_path: Path, marker: str | None
 ) -> None:
     if marker is not None:

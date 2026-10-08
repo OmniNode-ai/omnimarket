@@ -2,18 +2,18 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20074"
 title: "node_dod_verify names contract_in_another_repo as an expected OCC difference"
-summary: "Operator ruling 2026-10-08T09:57:41Z makes a cross-repo ticket whose contract exists only in another product repository an expected OCC difference when the new path refuses and OCC admits. omnibase_core#1907 cites OMN-20704, whose contract is in omnimarket, and stops before writing a head verdict. A caller-supplied contract-home marker lets node_dod_verify name contract_in_another_repo. The onex_change_control-only case stays unclassified pending an operator answer."
+summary: "Operator ruling 2026-10-08T09:57:41Z makes a cross-repo ticket whose contract exists only in another product repository an expected OCC difference when the new path refuses and OCC admits. omnibase_core#1907 cites OMN-20704, whose contract is in omnimarket, and stops before writing a head verdict. A caller-supplied contract-home marker lets node_dod_verify name contract_in_another_repo. Operator RULING 2026-10-08T14:59:17Z extends RULING 2026-10-08T09:57:41Z: contract_in_another_repo (expected difference) also covers a PR whose ticket has its only other contract in onex_change_control. A marker naming onex_change_control also yields contract_in_another_repo."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-contract-in-another-repo"
     statement: |-
-      Classify a missing or unreadable head with a caller-supplied marker naming another product repository as contract_in_another_repo, preserving existing head verdicts and leaving the onex_change_control-only case unclassified.
+      Classify a missing or unreadable head with a caller-supplied marker naming any repository, including onex_change_control, as contract_in_another_repo, preserving existing head verdicts. Operator RULING 2026-10-08T14:59:17Z extends RULING 2026-10-08T09:57:41Z: contract_in_another_repo (expected difference) also covers a PR whose ticket has its only other contract in onex_change_control.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: omnibase_core#1907's shape (OMN-20704, no head or base control, contract-home-OMN-20704.txt naming OmniNode-ai/omnimarket, OCC success) prints passed true, outcome expected_difference, and reason_code contract_in_another_repo; absent, empty, unreadable, or onex_change_control markers leave reason unset, and a verified head with passed control still admits -- falsifier: #1907's shape still prints unclassified_difference
+          AC1: omnibase_core#1907's shape (OMN-20704, no head or base control, contract-home-OMN-20704.txt naming OmniNode-ai/omnimarket, OCC success) prints passed true, outcome expected_difference, and reason_code contract_in_another_repo; a marker naming onex_change_control also prints that expected difference per operator ruling 2026-10-08T14:59:17Z; absent, empty, or unreadable markers leave reason unset, and a verified head with passed control still admits -- falsifier: #1907's shape or an onex_change_control marker still prints unclassified_difference
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
