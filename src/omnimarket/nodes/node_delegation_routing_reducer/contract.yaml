@@ -34,7 +34,10 @@ input_model:
 output_model:
   name: "ModelRoutingDecision"
   module: "omnimarket.nodes.node_delegation_routing_reducer.models"
-  description: "Routing output with selected model, endpoint, cost tier."
+  description: >
+    Routing output with selected model, endpoint, cost tier, and a stable backend
+    UUID derived from the backend reference (tenant-qualified for overlay routes),
+    so separate backends serving the same model have distinct identities.
 event_bus:
   version:
     major: 1

@@ -488,6 +488,9 @@ jobs:
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
+      # OMN-18932: keep the release bar paired with its pre-commit hook.
+      - name: D1 output-only release acceptance (OMN-18932)
+        run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.

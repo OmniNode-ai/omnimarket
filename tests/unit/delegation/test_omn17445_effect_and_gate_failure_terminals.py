@@ -1097,6 +1097,8 @@ async def test_the_escalation_ladder_still_rides_inference_response_v1() -> None
         "inference_error",
         "metered_inference_error",
         "gate_failure",
+        "zero_token_exhausted",
+        "zero_token_gate_failure",
     ],
 )
 @pytest.mark.parametrize(
@@ -1240,18 +1242,19 @@ async def test_research_terminal_retains_real_usage_after_escalation(
                     201,
                 )
         else:
+            zero_tokens = final_outcome.startswith("zero_token_")
             await handler.handle(
                 _make_inference_response(cid).model_copy(
                     update={
                         "model_used": "final-model",
-                        "prompt_tokens": 102,
+                        "prompt_tokens": 0 if zero_tokens else 102,
                         "content": "### ANSWER\nEvidence from [1] supports the finding because the experiment reproduced it.",
-                        "completion_tokens": 202,
-                        "total_tokens": 304,
+                        "completion_tokens": 0 if zero_tokens else 202,
+                        "total_tokens": 0 if zero_tokens else 304,
                     }
                 )
             )
-            if final_outcome == "gate_failure":
+            if final_outcome in {"gate_failure", "zero_token_gate_failure"}:
                 events = await handler.handle(
                     _boundary_terminal(cid, origin_topic=_GATE_REQUEST_TOPIC)
                 )
@@ -1265,13 +1268,20 @@ async def test_research_terminal_retains_real_usage_after_escalation(
                         fallback_recommended=True,
                     )
                 )
-            last_model, prompt_tokens, completion_tokens = "final-model", 102, 202
-            expected_cost += recompute_actual_cost_and_savings(
-                tier_name=tiers[-1],
-                prompt_tokens=102,
-                completion_tokens=202,
-                premium_counterfactual=None,
-            ).cash_cost_usd
+            if zero_tokens:
+                last_model, prompt_tokens, completion_tokens = (
+                    "served-model-1",
+                    101,
+                    201,
+                )
+            else:
+                last_model, prompt_tokens, completion_tokens = "final-model", 102, 202
+                expected_cost += recompute_actual_cost_and_savings(
+                    tier_name=tiers[-1],
+                    prompt_tokens=102,
+                    completion_tokens=202,
+                    premium_counterfactual=None,
+                ).cash_cost_usd
 
     terminals = [event for event in events if isinstance(event, ModelDelegationResult)]
     assert len(terminals) == 1
@@ -1291,6 +1301,14 @@ async def test_research_terminal_retains_real_usage_after_escalation(
         assert terminal.failure_reason == "connection refused"
         assert terminal.escalation_history[-1]["model_used"] == "final-model"
         assert terminal.escalation_history[-1]["prompt_tokens"] == 0
+    if final_outcome.startswith("zero_token_"):
+        assert terminal.endpoint_url == "https://served-1.invalid/v1/chat/completions"
+        if final_outcome == "zero_token_exhausted":
+            assert terminal.terminal_failure_reason == "max_escalations_reached"
+            assert terminal.quality_score == 0.8
+            assert terminal.required_quality_bar == 0.85
+            assert terminal.escalation_history[-1]["model_used"] == "final-model"
+            assert terminal.escalation_history[-1]["prompt_tokens"] == 0
     assert terminal.cumulative_attempt_cost == pytest.approx(expected_cost)
     assert terminal.cumulative_input_tokens == 201 + (
         102 if last_model == "final-model" else 0
