@@ -204,6 +204,80 @@ class _AcceptingPort:
         }
 
 
+@pytest.mark.parametrize("stage", ["inference", "quality_gate"])
+async def test_stage_deadline_names_the_innermost_stage_after_cleanup(
+    stage: DispatchStage,
+) -> None:
+    class DeadlinePort:
+        async def dispatch(self, **_kwargs: Any) -> dict[str, object]:
+            try:
+                with dispatch_stage("dispatch"), dispatch_stage(stage):
+                    raise TimeoutError("stage deadline expired")
+            finally:
+                with dispatch_stage("terminal_cleanup"):
+                    await asyncio.sleep(0)
+
+    request = _request()
+    terminal = await HandlerDelegateSkill(dispatch_port=DeadlinePort()).handle(request)
+
+    assert terminal.status == "timeout"
+    assert terminal.correlation_id == request.correlation_id
+    assert terminal.terminal_failure_cause == "timeout"
+    assert f"stage={stage}" in terminal.error_message
+    assert "stage=terminal_cleanup" not in terminal.error_message
+    assert current_dispatch_progress.get() is None
+
+
+async def test_runtime_cleanup_deadline_names_cleanup() -> None:
+    class CleanupDeadlineBus(_BlockingBus):
+        async def subscribe(
+            self, *_args: object, **_kwargs: object
+        ) -> Callable[[], Awaitable[None]]:
+            async def unsubscribe() -> None:
+                raise TimeoutError("unsubscribe deadline expired")
+
+            return unsubscribe
+
+    config = load_runtime_delegation_dispatch_config().model_copy(
+        update={"wait_timeout_seconds": 1}
+    )
+    terminal = await asyncio.wait_for(
+        HandlerDelegateSkill(
+            dispatch_port=RuntimeDelegationDispatchPort(
+                event_bus=CleanupDeadlineBus("terminal_wait"), config=config
+            )
+        ).handle(_request()),
+        timeout=5,
+    )
+
+    assert terminal.status == "timeout"
+    assert "stage=terminal_cleanup" in terminal.error_message
+    assert current_dispatch_progress.get() is None
+
+
+async def test_recovered_deadline_does_not_mask_a_later_budget_cancellation() -> None:
+    class RecoveringPort:
+        async def dispatch(self, **_kwargs: Any) -> dict[str, object]:
+            try:
+                with dispatch_stage("inference"):
+                    raise TimeoutError("recovered inference deadline")
+            except TimeoutError:
+                pass
+            with dispatch_stage("quality_gate"):
+                await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    terminal = await asyncio.wait_for(
+        HandlerDelegateSkill(dispatch_port=RecoveringPort()).handle(_request()),
+        timeout=5,
+    )
+
+    assert terminal.status == "timeout"
+    assert "stage=quality_gate" in terminal.error_message
+    assert "stage=inference" not in terminal.error_message
+    assert current_dispatch_progress.get() is None
+
+
 async def test_accepting_dispatch_preserves_the_answer_and_resets_progress() -> None:
     request = _request()
     terminal = await HandlerDelegateSkill(dispatch_port=_AcceptingPort()).handle(
