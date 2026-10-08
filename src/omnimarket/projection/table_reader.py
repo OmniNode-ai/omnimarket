@@ -1093,9 +1093,29 @@ class TableRowSource:
             # Both reads inside the one ``try``: a refusal from either names
             # this exposure failed, and the page still renders every other.
             try:
-                rows = await self.rows(
-                    cfg, order_spec=cfg.order_by_spec, tenant_id=scoped
-                )
+                if any(reader.read_all_rows for reader in cfg.backend_readers):
+                    # Current inventories must include every key, not only the
+                    # newest retained window. Use the existing bounded cursor
+                    # walk instead of a second unbounded SQL read path.
+                    assert cfg.cursor_column is not None
+                    rows = []
+                    since = None
+                    while True:
+                        chunk = await self.rows(
+                            cfg,
+                            order_spec=((cfg.cursor_column, "ASC", None),),
+                            tenant_id=scoped,
+                            since=since,
+                            selection="walk",
+                        )
+                        rows.extend(chunk)
+                        if len(chunk) < cfg.limit * RETAINED_WINDOW_FACTOR:
+                            break
+                        since = str(chunk[-1][cfg.cursor_column])
+                else:
+                    rows = await self.rows(
+                        cfg, order_spec=cfg.order_by_spec, tenant_id=scoped
+                    )
                 latest = await self.latest_event_at(
                     cfg, tenant_id=scoped, window_rows=rows
                 )
@@ -1198,8 +1218,10 @@ class TableRowSource:
         }
 
     def health(self, topic_map: dict[str, ProjectionTableConfig]) -> dict[str, object]:
+        served = sorted(t for t, c in topic_map.items() if c.bus_backed)
         return {
             "status": "ok",
             "backing": self.backing,
-            "served_topics": sorted(t for t, c in topic_map.items() if c.bus_backed),
+            "served_topics": served,
+            "bus_backed_topics": served,
         }

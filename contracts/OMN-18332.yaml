@@ -1,0 +1,76 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-18332
+title: The born-path companion producer transcribes accepted falsifier bindings, not just one of its two halves
+summary: The born-path companion emitter renders accepted acceptance-criterion bindings onto the downstream
+  evidence item, resolves them through the one shared reader that the compute-path producer also uses,
+  and renders identical bytes for a ticket that declared none. Focused tests drive the fresh and repair
+  paths through the evidence collector that the closer join consumes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-born-path-transcribes-bindings
+  statement: A companion contract minted on the born path carries the accepted acceptance-criterion bindings
+    exactly where the compute-path twin carries them, and an undeclared ticket claims nothing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1 — the born-path contract renderers accept bindings and emit them on the downstream
+      item, for a fresh contract and for the repair of an existing one. -- falsifier: a fresh or repaired
+      contract renders no binds_ac key for a ticket with accepted labels.'
+  - id: AC2
+    statement: 'AC2 — a ticket that declared no falsifiers renders bytes identical to the unwired output.
+      -- falsifier: wiring the read changes a contract for an undeclared ticket.'
+  - id: AC3
+    statement: 'AC3 — only accepted labels reach the closer join through the evidence collector, on the
+      fresh and repair paths, declared and undeclared. -- falsifier: a draft label is bound, or an undeclared
+      ticket claims an acceptance criterion.'
+  - id: AC4
+    statement: 'AC4 — both producers read bindings through one shared reader that fails closed without
+      a key, on an unresolvable issue, and on a transport failure. -- falsifier: a failed read yields
+      bindings.'
+evidence_requirements:
+- kind: tests
+  description: Born-path transcription tests, including the producer-to-verifier seam cases.
+  command: uv run pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-born-binding-ac1
+  description: 'AC1: fresh and repair contracts emit binds_ac and records.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q -k "TestBornPathContractCarriesBindings"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-born-binding-ac2
+  description: 'AC2: an undeclared ticket renders unchanged bytes.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q -k "TestUndeclaredTicketRendersTodaysBytes"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-born-binding-ac3
+  description: 'AC3: only accepted labels reach the closer join, fresh and repair.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q -k "TestBornBindingsReachVerifier"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-born-binding-ac4
+  description: 'AC4: one shared reader serves both producers and fails closed.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/occ/test_omn_18332_born_path_transcription.py -q -k "TestOneReaderServesBothProducers or TestSharedReaderFailsClosed"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4

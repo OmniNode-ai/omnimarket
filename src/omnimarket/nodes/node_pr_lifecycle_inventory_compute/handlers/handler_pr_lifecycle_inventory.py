@@ -24,8 +24,8 @@ from omnimarket.merge_control.reason_code_classifier import (
     ALL_LOG_SIGNATURES,
     EnumMergeCheckReasonCode,
     MergeCheckFacts,
-    classify,
-    classify_job,
+    classify_verdict,
+    facts_from_job,
     text_has_api_outage_signature,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
@@ -137,6 +137,8 @@ class _JobsApiResult(NamedTuple):
     job: dict[str, object] | None
     api_error: bool = False
     is_superseded: bool = False
+    identity_resolved: bool = False
+    same_sha_later_attempt_succeeded: bool = False
 
 
 class _CheckExecutionHistoryResult(NamedTuple):
@@ -552,6 +554,7 @@ class HandlerPrLifecycleInventory:
         """
         pr_data = self._gh_pr_view(repo, pr_number)
         current_head_sha = str(pr_data.get("headRefOid") or "") or None
+        head_sha_history = self._collect_head_sha_history(repo, pr_number)
         check_runs = self._collect_check_runs(
             repo, pr_number, current_head_sha=current_head_sha
         )
@@ -619,6 +622,7 @@ class HandlerPrLifecycleInventory:
             head_ref=head_ref_data if isinstance(head_ref_data, str) else "",
             base_ref=base_ref_data if isinstance(base_ref_data, str) else "",
             check_runs=tuple(check_runs),
+            head_sha_history=head_sha_history,
             check_execution_history_requested=include_check_execution_history,
             check_executions=check_execution_history.executions,
             check_execution_history_error=check_execution_history.error,
@@ -627,6 +631,48 @@ class HandlerPrLifecycleInventory:
             ci_passing=ci_passing,
             coderabbit_unresolved=self._collect_coderabbit_unresolved(repo, pr_number),
         )
+
+    def _collect_head_sha_history(self, repo: str, pr_number: int) -> tuple[str, ...]:
+        """Keep the code host's oldest-first commit order, never arrival order.
+
+        An unavailable or malformed history stays empty: assigning the current
+        head ordinal 1 would fabricate an ordinal for a multi-commit PR.
+        """
+        result = self._run_gh(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/pulls/{pr_number}/commits",
+                "--paginate",
+                "--slurp",
+            ]
+        )
+        if result.returncode != 0:
+            logger.warning("PR commit history unavailable for %s#%d", repo, pr_number)
+            return ()
+        try:
+            pages = json.loads(result.stdout)
+            if not isinstance(pages, list):
+                raise ValueError("commit history is not a list")
+            # --slurp wraps the paginated arrays; a single array is also
+            # accepted for adapters that already flatten pagination.
+            commits = (
+                [commit for page in pages for commit in page]
+                if pages and isinstance(pages[0], list)
+                else pages
+            )
+            history: dict[str, None] = {}
+            for commit in commits:
+                sha = commit.get("sha") if isinstance(commit, dict) else None
+                if not isinstance(sha, str) or not self._is_full_sha(sha):
+                    raise ValueError("commit history has an invalid SHA")
+                history.setdefault(sha, None)
+            return tuple(history)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.warning(
+                "PR commit history invalid for %s#%d: %s", repo, pr_number, exc
+            )
+            return ()
 
     def _collect_check_execution_history(
         self, repo: str, head_sha: str
@@ -936,21 +982,9 @@ class HandlerPrLifecycleInventory:
             raw: list[dict[str, object]] = json.loads(result.stdout)
             check_runs: list[ModelPrCheckRun] = []
             for item in raw:
-                flaky_evidence = self._collect_flaky_failure_evidence(item)
                 check_runs.append(
-                    ModelPrCheckRun(
-                        name=str(item.get("name", "")),
-                        status=self._normalize_check_status(item),
-                        conclusion=self._normalize_check_conclusion(item),
-                        event=self._normalize_check_event(item),
-                        link=str(item.get("link", "") or ""),
-                        flaky_failure_evidence=flaky_evidence,
-                        reason_code=self._classify_check_reason_code(
-                            repo,
-                            item,
-                            current_head_sha=current_head_sha,
-                            flaky_evidence=flaky_evidence,
-                        ),
+                    self._collect_check_run(
+                        repo, item, current_head_sha=current_head_sha
                     )
                 )
             return check_runs
@@ -958,56 +992,66 @@ class HandlerPrLifecycleInventory:
             logger.debug("Failed to parse check runs for PR #%d: %s", pr_number, exc)
             return []
 
-    def _classify_check_reason_code(
+    def _collect_check_run(
         self,
         repo: str,
         item: dict[str, object],
         *,
         current_head_sha: str | None,
-        flaky_evidence: tuple[str, ...],
-    ) -> EnumMergeCheckReasonCode | None:
-        """Classify a FAILED check into a typed merge-check reason code.
+    ) -> ModelPrCheckRun:
+        """Classify once and retain the same facts beside the verdict.
 
-        Reads the jobs-API attempt (``runs/<run_id>/jobs`` — latest attempt) to
-        recover the failed STEP name, run head SHA and attempt, then keys the
-        classifier on (failed step, run event, head vs current head, job
-        conclusion, already-collected infra log signatures). Fail-soft: any
-        unavailable/unparseable jobs-API response yields the classifier's
-        fail-closed result on whatever facts are present (never ``None`` masking
-        a real failure as green — a green check simply returns ``None`` early).
+        Missing jobs metadata still classifies fail-closed, but carries no
+        attempt identity. A fallback job can explain a stale rollup without
+        being evidence of the linked attempt's identity.
         """
         conclusion = self._normalize_check_conclusion(item)
-        if conclusion not in {"failure", "cancelled", "timed_out"}:
-            # Only failed checks are decision-critical; leave the rest unclassified.
-            return None
-
         event = self._normalize_check_event(item)
         link = str(item.get("link", "") or "")
-        fetch = self._fetch_jobs_api_job(repo, link)
-        if fetch.job is not None:
-            return classify_job(
-                fetch.job,
+        flaky_evidence = self._collect_flaky_failure_evidence(item)
+        identity: MergeCheckFacts | None = None
+        reason_code: EnumMergeCheckReasonCode | None = None
+        cause_affirmative: bool | None = None
+        if conclusion in {"failure", "cancelled", "timed_out"}:
+            fetch = self._fetch_jobs_api_job(repo, link)
+            facts = facts_from_job(
+                fetch.job or {"conclusion": conclusion},
                 run_event=event,
                 current_head_sha=current_head_sha,
                 required_context=True,
                 api_error=fetch.api_error,
                 is_superseded=fetch.is_superseded,
                 log_signatures=flaky_evidence,
+                same_sha_later_attempt_succeeded=fetch.same_sha_later_attempt_succeeded,
             )
-        # No jobs-API job resolved — classify on the gh-pr-checks facts we have
-        # (event / conclusion / infra evidence) plus the live-derived
-        # ``api_error`` (an OUTAGE on the metadata call itself, F-07). Fail-closed
-        # inside the classifier.
-        return classify(
-            MergeCheckFacts(
-                run_event=event,
-                current_head_sha=current_head_sha,
-                required_context=True,
-                api_error=fetch.api_error,
-                is_superseded=fetch.is_superseded,
-                job_conclusion=conclusion,
-                log_signatures=flaky_evidence,
-            )
+            verdict = classify_verdict(facts)
+            reason_code, cause_affirmative = verdict.code, verdict.affirmative
+            if (
+                fetch.identity_resolved
+                and facts.head_sha is not None
+                and self._is_full_sha(facts.head_sha)
+                and facts.run_id is not None
+                and facts.run_id.isdigit()
+                and int(facts.run_id) > 0
+                and facts.attempt is not None
+                and facts.attempt >= 1
+                and fetch.job is not None
+                and not isinstance(fetch.job.get("run_attempt"), bool)
+            ):
+                identity = facts
+        return ModelPrCheckRun(
+            name=str(item.get("name", "")),
+            status=self._normalize_check_status(item),
+            conclusion=conclusion,
+            event=event,
+            link=link,
+            flaky_failure_evidence=flaky_evidence,
+            reason_code=reason_code,
+            cause_affirmative=cause_affirmative,
+            head_sha=identity.head_sha if identity else None,
+            run_id=identity.run_id if identity else None,
+            run_attempt=identity.attempt if identity else None,
+            failed_step_name=identity.failed_step_name if identity else None,
         )
 
     def _fetch_jobs_api_job(self, repo: str, link: str) -> _JobsApiResult:
@@ -1042,7 +1086,13 @@ class HandlerPrLifecycleInventory:
         if "/job/" in link:
             job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
         result = self._run_gh(
-            ["gh", "api", f"repos/{repo}/actions/runs/{run_id}/jobs"],
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/actions/runs/{run_id}/jobs",
+                "--paginate",
+                "--slurp",
+            ],
             timeout=30,
         )
         if result.returncode != 0:
@@ -1063,20 +1113,58 @@ class HandlerPrLifecycleInventory:
             return _JobsApiResult(
                 None, api_error=text_has_api_outage_signature(result.stdout)
             )
-        jobs = payload.get("jobs") if isinstance(payload, dict) else None
-        if not isinstance(jobs, list) or not jobs:
+        pages = payload if isinstance(payload, list) else [payload]
+        if not pages or any(
+            not isinstance(page, dict) or not isinstance(page.get("jobs"), list)
+            for page in pages
+        ):
             return _JobsApiResult(None)
-        job_dicts = [j for j in jobs if isinstance(j, dict)]
+        job_dicts = [
+            job for page in pages for job in page["jobs"] if isinstance(job, dict)
+        ]
+        if not job_dicts:
+            return _JobsApiResult(None)
         is_superseded = False
         if job_id.isdigit():
             for j in job_dicts:
                 if str(j.get("id")) == job_id:
-                    return _JobsApiResult(j)
+                    return _JobsApiResult(
+                        j,
+                        identity_resolved=str(j.get("run_id")) == run_id,
+                        same_sha_later_attempt_succeeded=self._has_later_success(
+                            j, job_dicts
+                        ),
+                    )
             # The linked job is absent from the run's LATEST attempt. If a re-run
             # exists (max attempt > 1) the check row is from a superseded attempt
             # — refresh/supersede, do not fix (F-14/F-26). A single-attempt miss
             # is treated as a benign link/rollup mismatch, not supersession.
             is_superseded = self._max_run_attempt(job_dicts) > 1
+            if is_superseded:
+                # The latest-attempt endpoint omits the linked earlier job.
+                # Resolve that exact job before attributing the rescue: the
+                # latest job's identity is never substituted for the failure.
+                original = self._run_gh(
+                    ["gh", "api", f"repos/{repo}/actions/jobs/{job_id}"], timeout=30
+                )
+                if original.returncode == 0:
+                    try:
+                        job = json.loads(original.stdout)
+                    except json.JSONDecodeError:
+                        job = None
+                    if (
+                        isinstance(job, dict)
+                        and str(job.get("id")) == job_id
+                        and str(job.get("run_id")) == run_id
+                    ):
+                        return _JobsApiResult(
+                            job,
+                            is_superseded=True,
+                            identity_resolved=True,
+                            same_sha_later_attempt_succeeded=self._has_later_success(
+                                job, job_dicts
+                            ),
+                        )
         # Fall back to the first non-successful job (the failing one) of the
         # latest attempt.
         for j in job_dicts:
@@ -1089,6 +1177,27 @@ class HandlerPrLifecycleInventory:
                 return _JobsApiResult(j, is_superseded=is_superseded)
         return _JobsApiResult(
             job_dicts[0] if job_dicts else None, is_superseded=is_superseded
+        )
+
+    @staticmethod
+    def _has_later_success(
+        job: dict[str, object], jobs: list[dict[str, object]]
+    ) -> bool:
+        """Only a later attempt of this same run, head and job rescues it."""
+        attempt = job.get("run_attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+            return False
+        if not job.get("head_sha") or not job.get("run_id") or not job.get("name"):
+            return False
+        return any(
+            candidate.get("head_sha") == job["head_sha"]
+            and candidate.get("run_id") == job["run_id"]
+            and candidate.get("name") == job["name"]
+            and candidate.get("conclusion") == "success"
+            and isinstance(candidate_attempt := candidate.get("run_attempt"), int)
+            and not isinstance(candidate_attempt, bool)
+            and candidate_attempt > attempt
+            for candidate in jobs
         )
 
     @classmethod
