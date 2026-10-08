@@ -39,6 +39,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py::TestBusHandler -q -p no:cacheprovider"
+        check_value: "uv run pytest tests/test_omn19343_shadow_comparison.py -k TestBusHandler -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
