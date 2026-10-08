@@ -33,7 +33,7 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect -q -p no:randomly"
   - kind: "tests"
     description: "AC3: overlay resolution and unregistered inventory tests pass."
-    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_inventory_fails_on_a_missing_or_extra_node -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_inventory_fails_on_a_missing_or_extra_node -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
