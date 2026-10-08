@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: branch_claim_check_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_lanes: [compose-dev, onex-lab, onex-lab-k3s]
+descriptor:
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-claim-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.branch-claim-check-completed.v1
+input_model: omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_check_request.ModelBranchClaimCheckRequest
+output_model: omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_check_result.ModelBranchClaimCheckResult
+description: >
+  Answers the branch-claim question from work_ledger_rows on the lab and reports
+  a GitHub check on the PR head. Fails closed on unreadable or incomplete evidence.
+  The CI job never opens a database connection.
+handler:
+  module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+  class: HandlerBranchClaimCheck
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: pr_head_observed
+      topic: onex.evt.github.pr-status.v1
+      message_category: event
+      event_model: omnibase_infra.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation.ModelGitHubPrStateObservation
+      handler_module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+      handler:
+        name: HandlerBranchClaimCheck
+        module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+    - operation: branch_claim_check_requested
+      topic: onex.cmd.omnimarket.branch-claim-check-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_check_request.ModelBranchClaimCheckRequest
+      handler_module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+      handler:
+        name: HandlerBranchClaimCheck
+        module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+terminal_event: onex.evt.omnimarket.branch-claim-check-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.evt.github.pr-status.v1
+    - onex.cmd.omnimarket.branch-claim-check-requested.v1
+  publish_topics: [onex.evt.omnimarket.branch-claim-check-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.branch-claim-check-malformed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.branch-claim-check-completed.v1]
+branch_claim:
+  repositories: [OmniNode-ai/omniclaude]
+  check_name: "branch-claim / work-ledger"
+  outcome_marker_prefix: "branch-claim-outcome:"
+  read_window_hours: 48
+  staleness_hours: 12
+  max_pr_commits: 250
+  claim_transition_rows: [CLAIM, TERMINAL, RELEASE, HANDOVER, RECLAIM]
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    binding_ref: omninode_runtime_service
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+  parity_witness: {ledger_path_env: ONEX_LEDGER_PATH, archive_dir_name: archive}
+  max_lane_length: 64
+  short_sha_length: 12
+  max_finding_chars: 160
+  max_title_chars: 120
+  commits_per_page: 100
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+secrets:
+  ONEXBOT_OCC_APP_ID:
+    required: true
+    description: "Check runs need an App credential: GitHub App ID."
+  ONEXBOT_OCC_PRIVATE_KEY:
+    required: true
+    description: "Check runs need an App credential: GitHub App private key."
+golden_path:
+  - "PR ingress publishes a pull_request PENDING observation for one head"
+  - "Read the declared database window and measure claim-transition parity against the witness"
+  - "Replay database rows and resolve the final commit trailer identities"
+  - "Post one App-authenticated check on the observed head, including failures to decide"
+  - "Return the terminal evaluation for publication on terminal_event"
+dod_evidence:
+  - test: tests/test_omn20708_branch_claim_resolution.py::test_resolution_cases
+    description: "Canonical replay and trailer resolution cases"
+  - test: tests/test_omn20708_branch_claim_check_handler.py::test_database_claim_decides_holder
+    description: "AC1 database authority and row citation"
+  - test: tests/test_omn20708_branch_claim_check_handler.py::test_missing_transition_fails_closed
+    description: "AC3 missing claim-transition rows never read as unclaimed"
+  - test: tests/test_golden_chain_branch_claim_check.py::test_golden_chain
+    description: "Ingress payload reaches a check and a validated terminal result"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-20708, OMN-18263, OMN-19513]
