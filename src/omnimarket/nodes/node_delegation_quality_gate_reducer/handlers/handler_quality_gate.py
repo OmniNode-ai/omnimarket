@@ -2348,6 +2348,11 @@ def _evaluate_response_contract(
                 failure_reasons=(
                     "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match "
                     "the declared extraction evidence",
+                    # A refused extraction withholds the deliverable while the
+                    # gate grades raw content. Keep its label diagnostics too.
+                    *extract_deliverable(
+                        content, deliverable_contract
+                    ).contract_failure_reasons,
                 ),
                 fallback_recommended=True,
             )
