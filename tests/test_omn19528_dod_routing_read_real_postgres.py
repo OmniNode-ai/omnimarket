@@ -26,6 +26,8 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader, build_dod_overlay
+from tests.test_omn19514_ticket_id_projection_real_postgres import _Postgres
+from tests.test_omn19514_ticket_id_projection_real_postgres import postgres as postgres
 
 pytestmark = pytest.mark.integration
 
@@ -54,16 +56,19 @@ def _dsn() -> str:
 
 
 @pytest.fixture
-def schema() -> Iterator[str]:
-    psycopg2 = pytest.importorskip("psycopg2")
-    if not os.environ.get(
-        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+def schema(postgres: _Postgres, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """Use CI's database or the existing fixture's owned PostgreSQL 16 server."""
+    import psycopg2  # type: ignore[import-untyped]
+
+    for key, value in (
+        ("HOST", postgres.host),
+        ("PORT", str(postgres.port)),
+        ("DB", postgres.database),
+        ("USER", postgres.user),
+        ("PASSWORD", postgres.password),
     ):
-        pytest.skip("POSTGRES_PASSWORD not set -- skipping the OMN-19528 join test")
-    try:
-        conn = psycopg2.connect(_dsn(), connect_timeout=3)
-    except psycopg2.OperationalError as exc:  # pragma: no cover - infra
-        pytest.skip(f"no reachable Postgres for the OMN-19528 join test: {exc}")
+        monkeypatch.setenv(f"INTEGRATION_POSTGRES_{key}", value)
+    conn = psycopg2.connect(_dsn(), connect_timeout=3)
     conn.autocommit = True
     name = f"omn19528_{uuid4().hex[:12]}"
     try:
