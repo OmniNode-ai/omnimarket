@@ -285,7 +285,7 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC18"]
-  - id: "dod-omn17427-ac19-lane-scoped-contracts-main-profile"
+  - id: "dod-omn17427-ac19-lane-contracts-main-profile"
     description: "Every lane-scoped node contract is owned by the main runtime profile only."
     source: "manual"
     checks:
