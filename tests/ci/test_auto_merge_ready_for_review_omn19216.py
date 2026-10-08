@@ -25,6 +25,8 @@ _WORKFLOW = (
     Path(__file__).resolve().parents[2] / ".github" / "workflows" / "auto-merge.yml"
 )
 _GATE = re.compile(r"steps\.resolve\.outputs\.actor == '[^']+'")
+_HOLD_NOT_TRUE = "steps.hold_gate.outputs.hold != 'true'"
+_HOLD_FALSE = "steps.hold_gate.outputs.hold == 'false'"
 
 
 def _load() -> dict[Any, Any]:
@@ -56,7 +58,14 @@ def test_pull_request_trigger_includes_ready_for_review() -> None:
 
 def test_arming_stays_behind_the_allowed_author_gate() -> None:
     _, step = _enable_step()
-    assert _GATE.search(str(step.get("if", "")))
+    condition = str(step.get("if", ""))
+    if _GATE.search(condition):
+        return
+    # OMN-19032: arming on hold == 'false' is author-gated through the hold
+    # gate, which only runs (and only writes hold=false) for the allowed author.
+    assert _HOLD_FALSE in condition
+    hold_gate = next(s for s in _steps() if s.get("id") == "hold_gate")
+    assert _GATE.search(str(hold_gate.get("if", "")))
 
 
 def test_author_is_read_from_the_pr_not_the_sender() -> None:
@@ -73,7 +82,8 @@ def test_hold_gate_precedes_arming_when_present() -> None:
     ids = [s.get("id") for s in _steps()]
     idx, step = _enable_step()
     assert ids.index("hold_gate") < idx
-    assert "steps.hold_gate.outputs.hold != 'true'" in str(step.get("if", ""))
+    condition = str(step.get("if", ""))
+    assert _HOLD_NOT_TRUE in condition or _HOLD_FALSE in condition
 
 
 def test_already_armed_pr_is_not_armed_again() -> None:
