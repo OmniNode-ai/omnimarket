@@ -54,6 +54,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
     WorkLedgerFoldError,
     apply_ops,
@@ -82,7 +83,6 @@ BACKFILL_SOURCE = "onex-ledger-emit-backfill"
 RECEIPT_LANE = "work-ledger-parity"
 RECEIPT_ACTOR = "script:work-ledger-parity"
 
-_ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 _TYPE_CELL = re.compile(r"^\S+ \| (?P<type>[^|]*?)\s*(?:\||$)")
 
 _SELECT_ROWS = """
@@ -98,24 +98,13 @@ _SELECT_STATE = """
 """
 
 
-def split_rows(text: str) -> list[str]:
-    """Group a ledger's lines into rows: a stamp line plus its continuation lines."""
-    rows: list[list[str]] = []
-    for line in text.splitlines():
-        if _ROW_START.match(line):
-            rows.append([line])
-        elif rows and line.strip():
-            rows[-1].append(line)
-    return ["\n".join(r).strip() for r in rows]
-
-
 def _read_ledger_files(ledger: Path, archive_dir: Path | None) -> list[str]:
     paths = [ledger]
     if archive_dir is not None:
         paths = sorted(archive_dir.glob("ROLLING_WORK_LEDGER_*-split.md")) + paths
     rows: list[str] = []
     for path in paths:
-        rows.extend(split_rows(path.read_text(encoding="utf-8")))
+        rows.extend(split_ledger_rows(path.read_text(encoding="utf-8")))
     return rows
 
 

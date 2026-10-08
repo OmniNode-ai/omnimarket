@@ -396,12 +396,15 @@ def test_file_witness_absent_fails_closed(tmp_path, monkeypatch):
     assert "parity witness unreadable" in result.cause
 
 
-def test_parity_unemittable_transition_does_not_fail_gate():
+def test_a_transition_the_database_cannot_carry_fails_closed():
+    # HANDOVER is not an emitted row type, so the database replay can never see
+    # it; an answer computed without it would name the wrong holder.
     result = handler(witness=Witness([row("HANDOVER", extra="to=lane-b")])).handle(
         request()
     )
-    assert result.outcome.value == "unclaimed"
-    assert result.window_missing_claim_rows == 0
+    assert result.outcome.value == "did-not-run"
+    assert "missing from work_ledger_rows" in result.cause
+    assert result.window_missing_claim_rows == 1
 
 
 def test_real_commit_reader_paginates_with_app_auth(monkeypatch):

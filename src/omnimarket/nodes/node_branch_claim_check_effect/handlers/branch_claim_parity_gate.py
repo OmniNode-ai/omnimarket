@@ -1,20 +1,23 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Measure missing transitions with the projection's canonical parity fold."""
+"""Which claim-transition rows the database lacks, by the ledger's own row identity.
+
+A witness row is missing when its canonical identity,
+``model_ledger_row_event.work_ledger_row_id`` (the same content hash the emit
+path stamps and the parity check compares), is not among the database's row ids
+for the window. A transition row the emit path cannot carry at all is missing
+by the same test, and that is deliberate: the database replay cannot see it, so
+an answer computed without it is not an answer.
+"""
 
 from datetime import datetime
 
+from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.nodes.node_branch_claim_check_effect.handlers.branch_claim_resolution import (
     _row_class,
     _subjects,
 )
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
-    parse_stamp,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (
-    EnumParityMismatchKind,
-)
-from omnimarket.nodes.node_projection_work_ledger.parity import compare
 
 
 def missing_claim_rows(
@@ -27,22 +30,11 @@ def missing_claim_rows(
     transition_rows: tuple[str, ...],
 ) -> list[str]:
     """None selects all tickets for visibility; a ticket selects its gate."""
-    selected = [
+    return [
         row
         for row in witness_rows
         if _row_class(row) in transition_rows
         and (ticket is None or ticket in _subjects(row))
-        and since <= parse_stamp(row.split("|", 1)[0].strip()) <= until
-    ]
-    report = compare(
-        file_rows=selected,
-        projection_rows=dict.fromkeys(db_row_ids, ""),
-        projection_state={},
-        since=since,
-        until=until,
-    )
-    return [
-        mismatch.detail
-        for mismatch in report.mismatches
-        if mismatch.kind is EnumParityMismatchKind.ROW_MISSING_IN_PROJECTION
+        and since <= ledger_row_stamp(row) <= until
+        and work_ledger_row_id(row) not in db_row_ids
     ]

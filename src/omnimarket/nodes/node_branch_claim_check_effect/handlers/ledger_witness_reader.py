@@ -8,10 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.nodes.node_branch_claim_check_effect.models.model_branch_claim_policy import (
     ModelParityWitness,
 )
-from omnimarket.nodes.node_projection_work_ledger.parity import split_rows
 
 _ARCHIVE_DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})-split\.md$")
 
@@ -46,5 +46,5 @@ class FileLedgerWitness:
                     selected.append((match.group(1), path))
         rows: list[str] = []
         for path in [path for _, path in sorted(selected)] + [ledger]:
-            rows.extend(split_rows(path.read_text(encoding="utf-8")))
+            rows.extend(split_ledger_rows(path.read_text(encoding="utf-8")))
         return rows

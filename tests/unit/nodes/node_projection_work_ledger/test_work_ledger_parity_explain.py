@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (
     EnumParityLossClass,
 )
@@ -23,7 +24,6 @@ from omnimarket.nodes.node_projection_work_ledger.parity import (
     explain_missing,
     load_explain_evidence,
     main,
-    split_rows,
 )
 
 pytestmark = pytest.mark.unit
@@ -154,7 +154,7 @@ def test_explain_cli_adds_the_explain_object(
 ) -> None:
     ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
     ledger.write_text("# ledger\n" + "\n".join(ROWS) + "\n")
-    assert len(split_rows(ledger.read_text())) == 5
+    assert len(split_ledger_rows(ledger.read_text())) == 5
     export = tmp_path / "projection.json"
     export.write_text(
         json.dumps(

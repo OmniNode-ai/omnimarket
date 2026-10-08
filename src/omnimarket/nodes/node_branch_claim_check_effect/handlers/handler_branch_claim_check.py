@@ -16,6 +16,7 @@ from omnibase_infra.nodes.node_github_webhook_ingress_effect.models.model_github
 )
 from pydantic import BaseModel
 
+from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_branch_claim_check_effect.handlers.branch_claim_parity_gate import (
     missing_claim_rows,
@@ -50,9 +51,6 @@ from omnimarket.nodes.node_branch_claim_check_effect.models import (
     ModelBranchClaimCheckResult,
     ModelBranchClaimPolicy,
     load_branch_claim_policy,
-)
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
-    parse_stamp,
 )
 
 logger = logging.getLogger(__name__)
@@ -211,8 +209,7 @@ class HandlerBranchClaimCheck:
             )
             witness_rows = witness.read_rows()
             witness_newest = max(
-                (parse_stamp(row.split("|", 1)[0].strip()) for row in witness_rows),
-                default=None,
+                (ledger_row_stamp(row) for row in witness_rows), default=None
             )
             if (
                 newest is not None
