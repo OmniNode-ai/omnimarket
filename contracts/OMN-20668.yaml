@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20668"
+title: "Lab-fill planning decisions as a contract-declared compute node"
+summary: "Port the lab-fill workflow's pure decisions (host lane capacity, which read served the candidates, which candidates become lanes) to a compute node whose contract declares its bus topics, with a golden chain, an error chain and parity cases recorded from the workflow's own code. The effect leg, the lab cycle, the caller repoint and the old entry point's deletion remain separate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-plan-node"
+    statement: "The planning decisions are a contract.yaml, a compute node and handlers with the canonical handle(request) -> result signature, with command and terminal topics declared in the contract."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contract resolves, declares its subscribe and publish topics and a terminal event, and a golden chain executes capacity, candidate choice and dispatch planning in order through the contract's own handler and model bindings"
+  - id: "req-parity"
+    statement: "The node decides what the workflow decided on the same inputs."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every recorded case (capacity, candidate choice, dispatch planning) answers exactly what the workflow's pure block answered when run under node, and a deliberately broken rule fails the cases"
+  - id: "req-error-chain"
+    statement: "A request the planner cannot decide is refused and a bad reading is named; the node holds no project, operator, repository or host identity."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: invalid run configuration and policy values are refused, malformed readings and candidates are named in the result, and project and operator identities exist only as request fields"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: golden chain passes."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: parity cases pass."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_plan_parity.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: error chain passes."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_error_chain_lab_fill_plan_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20668-ac1-golden-chain"
+    description: "AC1: golden chain passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20668-ac2-parity"
+    description: "AC2: parity cases pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_plan_parity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20668-ac3-error-chain"
+    description: "AC3: error chain passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_error_chain_lab_fill_plan_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
