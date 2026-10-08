@@ -27,10 +27,10 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1: selection and freshness unit tests and golden chains pass."
-    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_approved_work_freshness.py tests/nodes/node_lab_fill_selection_compute/test_golden_chain_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py -q -p no:randomly"
   - kind: "tests"
     description: "AC2: disk hygiene unit tests and golden chain pass."
-    command: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_golden_chain_lab_disk_hygiene_effect.py tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_effect.py -q -p no:randomly"
   - kind: "tests"
     description: "AC3: overlay resolution and unregistered inventory tests pass."
     command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_overlay.py tests/nodes/node_lab_disk_hygiene_effect/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
@@ -44,7 +44,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_approved_work_freshness.py tests/nodes/node_lab_fill_selection_compute/test_golden_chain_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20712-ac2-disk-hygiene"
@@ -52,7 +52,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_golden_chain_lab_disk_hygiene_effect.py tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20712-ac3-overlays-inventory"
