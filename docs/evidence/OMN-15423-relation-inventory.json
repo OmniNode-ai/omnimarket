@@ -4372,6 +4372,7 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
+        "idx_dod_verify_runs_contract_subject",
         "idx_dod_verify_runs_cursor",
         "idx_dod_verify_runs_delegation_correlation_id",
         "idx_dod_verify_runs_goal_revision",
