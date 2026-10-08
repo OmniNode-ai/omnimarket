@@ -99,7 +99,11 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelProductClonePinSet,
     ModelProductCloneResolution,
 )
+from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
+    resolve_retirements,
+)
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
+    _canonical_label,
     derive_falsifier_items,
     is_accepted_binding,
     unique_derived_id,
@@ -3632,6 +3636,8 @@ class EvidenceCollector:
         # alongside the claim rather than removed from it, because "claimed but
         # not yet accepted" and "not claimed at all" are different facts and
         # the consumer's hold reason has to tell them apart.
+        # Contract markers may name only declared items, never derived falsifiers.
+        retired = resolve_retirements(dod_items[:declared_count]).pairs
         declared_by_id: dict[str, tuple[str, ...]] = {}
         drafts_by_id: dict[str, tuple[str, ...]] = {}
         for item in dod_items:
@@ -3643,8 +3649,13 @@ class EvidenceCollector:
                 continue
             if not isinstance(raw_binds, (list, tuple)):
                 continue
-            labels = tuple(str(label) for label in raw_binds if str(label).strip())
-            if labels:
+            labels = tuple(
+                str(label)
+                for label in raw_binds
+                if str(label).strip()
+                and (item_id, _canonical_label(str(label))) not in retired
+            )
+            if labels or any(target == item_id for target, _ in retired):
                 declared_by_id[item_id] = labels
                 drafts_by_id[item_id] = _draft_binding_labels(item, labels)
         if declared_by_id:
