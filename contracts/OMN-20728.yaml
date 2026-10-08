@@ -24,6 +24,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The catalogue names the install tenant, a read with it is served, and an install with no identity declares none."
     command: "uv run pytest tests/projection/test_api_server_local_mode.py -q -p no:randomly"
+  - kind: "tests"
+    description: "onex dashboard pins an omnidash bundle that reads the catalogue tenant (v1.1.5 or later)."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20728.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -37,3 +40,11 @@ dod_evidence:
         check_value: "uv run pytest tests/projection/test_api_server_local_mode.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20728-bundle-pin"
+    description: "onex dashboard pins the omnidash v1.1.5 bundle, the first that reads the tenant GET /projections declares and, with none declared, still refuses scoped panels."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20728.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
