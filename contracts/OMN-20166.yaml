@@ -12,23 +12,23 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: an eval run over labelled items of a rubric class writes rubric-arm result rows whose false-pass and false-refusal counts are the rubric verdicts scored against the labels, and a class without a rubric writes none -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k "rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows"
+          AC1: an eval run over labelled items of a rubric class writes rubric-arm result rows whose false-pass and false-refusal counts are the rubric verdicts scored against the labels, and a class without a rubric writes none -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k "rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows"
       - id: "AC2"
         statement: |-
-          AC2: an item of a rubric class with no recorded answer counts against the rubric line and is never dropped, and an unreadable class rubric contract fails the run -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k "rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run"
+          AC2: an item of a rubric class with no recorded answer counts against the rubric line and is never dropped, and an unreadable class rubric contract fails the run -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k "rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run"
       - id: "AC3"
         statement: |-
-          AC3: a class rubric version change is a new eval run id and a redelivery is the same id -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k rubric_arm_run_rubric_version_is_part_of_run_id
+          AC3: a class rubric version change is a new eval run id and a redelivery is the same id -- falsifier: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k rubric_arm_run_rubric_version_is_part_of_run_id
 evidence_requirements:
   - kind: "tests"
     description: "Rubric-arm rows are scored against labels; a class without a rubric has none."
-    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k \"rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows\""
+    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k \"rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows\""
   - kind: "tests"
     description: "A missing answer counts against the line; an unreadable contract fails the run."
-    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k \"rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run\""
+    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k \"rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run\""
   - kind: "tests"
     description: "The class rubric version is part of the eval run id."
-    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k rubric_arm_run_rubric_version_is_part_of_run_id"
+    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k rubric_arm_run_rubric_version_is_part_of_run_id"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -39,7 +39,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k \"rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows\""
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k \"rubric_arm_run_scores_rubric_verdicts_against_labels or rubric_arm_run_class_without_rubric_has_no_rubric_rows\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-eval-run-rubric-arm-ac2"
@@ -47,7 +47,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k \"rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run\""
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k \"rubric_arm_run_missing_answer_counts_against_line or rubric_arm_run_contract_unavailable_fails_run\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-eval-run-rubric-arm-ac3"
@@ -55,6 +55,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator -q -k rubric_arm_run_rubric_version_is_part_of_run_id"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_rubric_arm_run_omn20166.py -q -k rubric_arm_run_rubric_version_is_part_of_run_id"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
