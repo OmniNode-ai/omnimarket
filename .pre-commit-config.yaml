@@ -1360,6 +1360,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19032: paired with the explicit ci.yml lint-job regression step.
+      - id: non-dev-base-guard-regression
+        name: Feature-base auto-merge refusal regression (OMN-19032)
+        entry: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/(auto-merge|non-dev-base-guard|ci)\.yml|tests/unit/workflows/test_non_dev_base_guard_omn19032\.py|\.pre-commit-config\.yaml)$
+        stages: [pre-commit]
+
       # OMN-18932: the release bar is checked here and in ci.yml.
       - id: output-only-release-acceptance
         name: D1 output-only release acceptance (OMN-18932)
