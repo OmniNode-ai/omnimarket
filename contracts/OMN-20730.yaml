@@ -1,0 +1,68 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20730"
+title: "Red CI emits ci-run-failed and the lifecycle orchestrator triages it over the bus"
+summary: "node_pr_state_emit_effect emits onex.evt.omnimarket.ci-run-failed.v1 once per repo, PR, head and failing-check set for open, non-draft RED PRs. node_pr_lifecycle_triage_compute classifies the red with the landing controller rules. node_pr_lifecycle_orchestrator decides once per repo, head and check, claims one owner per cause, emits the decision on onex.evt.omnimarket.ci-red-triage-decided.v1 and a dry-run fix-only start while ci_red_triage.act is false. node_pr_lifecycle_state_reducer projects each decision into pr_lifecycle_ledger_entries."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ci-red-detect"
+    statement: |-
+      A red PR observed on the PR-state topic becomes a ci-run-failed event on the bus.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: An open, non-draft RED PR observed on onex.evt.omnimarket.pr-state-observed.v1 emits onex.evt.omnimarket.ci-run-failed.v1 for its repo, PR, head and failing-check set -- falsifier: a RED PR emits nothing, or a GREEN, draft or closed PR emits
+  - id: "req-ci-red-triage"
+    statement: |-
+      The orchestrator triages each ci-run-failed event, records the decision and starts at most one dry-run owner per cause while act is false.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: A ci-run-failed event is classified (shared_cause, pr_own, dev_head, runner), the orchestrator emits onex.evt.omnimarket.ci-red-triage-decided.v1 and a fix-only start with dry_run true while ci_red_triage.act is false, and the reducer projects the decision into pr_lifecycle_ledger_entries -- falsifier: no decision, a start with dry_run false while act is false, or a decision with no ledger row
+      - id: "AC3"
+        statement: |-
+          AC3: Three or more armed PRs red on one shared check get exactly one owner start for that cause -- falsifier: two PRs of one cause each get a start
+      - id: "AC4"
+        statement: |-
+          AC4: A repeated observation or a replayed event_id emits no second ci-run-failed event, decision or start -- falsifier: a duplicate or replay emits again
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the detector emits ci-run-failed for open, non-draft RED PRs and drops the rest."
+    command: "uv run pytest tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: classification, dry-run triage starts and the reducer projection."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_state_reducer/test_ci_red_projection.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3 and AC4: one owner start per shared cause, and duplicates and replays emit nothing."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20730-ac1-detect"
+    description: "AC1: the detector emits ci-run-failed for open, non-draft RED PRs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20730-ac2-triage"
+    description: "AC2: classification, dry-run triage starts and the reducer projection pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_state_reducer/test_ci_red_projection.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20730-ac3-ac4-owner-replay"
+    description: "AC3 and AC4: one owner start per shared cause, and duplicates and replays emit nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
