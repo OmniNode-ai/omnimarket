@@ -9,9 +9,7 @@ inventory ``omni_home/docs/reference/AI_LAB_HARDWARE.md``):
 * ``local-reasoner``  — .201:8001, the RTX 4090 slot physically removed for RMA
   (OMN-16407). ``curl .201:8001/v1/models`` -> exit 7
   "Couldn't connect to server".
-* ``local-coder-mlx`` — .200:8401, gone. The Mac Studio's MLX server now serves
-  ``Qwen3.8-27B-8bit`` on 127.0.0.1:8099, LOCALHOST-ONLY, so it is not
-  reachable from the .201 runtime and is deliberately NOT re-registered.
+* ``local-coder-mlx`` — .200:8401, gone. The workstation MLX service has also been removed.
 
 Deleting a tier member is only safe if it does not strand a task class. That is
 an INVARIANT of the routing contracts, not a property of this one edit, so it is
