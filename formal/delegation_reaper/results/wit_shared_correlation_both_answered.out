@@ -1,0 +1,166 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 81 and seed -5012710520334932906 with 4 workers on 32 cores with 23552MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /m/DelegationReaper.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module DelegationReaper
+Starting... (2026-10-02 13:59:19)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-02 13:59:20.
+Error: Invariant WitSharedCorrelationBothAnswered is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ now = 0
+/\ pc = [w1 |-> "idle", w2 |-> "idle", w3 |-> "idle", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "none", c2 |-> "none"]
+/\ claimRow = [c1 |-> FALSE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> -1, c2 |-> -1]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 2: <ClaimA line 110, col 3 to line 116, col 65 of module DelegationReaper>
+/\ now = 0
+/\ pc = [w1 |-> "mid", w2 |-> "idle", w3 |-> "idle", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "none", c2 |-> "none"]
+/\ claimRow = [c1 |-> FALSE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> -1]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 3: <ClaimB line 121, col 3 to line 126, col 65 of module DelegationReaper>
+/\ now = 0
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "idle", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "none"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> -1]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 4: <ClaimA line 110, col 3 to line 116, col 65 of module DelegationReaper>
+/\ now = 0
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "mid", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "none"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 5: <Tick line 92, col 3 to line 94, col 88 of module DelegationReaper>
+/\ now = 1
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "mid", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "none"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 6: <Tick line 92, col 3 to line 94, col 88 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "mid", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "none"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> FALSE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 7: <ClaimB line 121, col 3 to line 126, col 65 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "running", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"none", "none">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "c2"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> TRUE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 8: <ReapCas line 185, col 3 to line 187, col 87 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "running", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"none", "none">>, c2 |-> <<"no_terminal", "reaper">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "c2"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> TRUE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 9: <ReapCas line 185, col 3 to line 187, col 87 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "running", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"no_terminal", "reaper">>, c2 |-> <<"no_terminal", "reaper">>]
+/\ copied = [c1 |-> FALSE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "c2"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> TRUE]
+/\ pub = {}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 10: <ReapHeal line 206, col 3 to line 210, col 80 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "running", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"no_terminal", "reaper">>, c2 |-> <<"no_terminal", "reaper">>]
+/\ copied = [c1 |-> TRUE, c2 |-> FALSE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "c2"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> TRUE]
+/\ pub = {<<"c1", "no_terminal", "reaper">>}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+State 11: <ReapHeal line 206, col 3 to line 210, col 80 of module DelegationReaper>
+/\ now = 2
+/\ pc = [w1 |-> "running", w2 |-> "idle", w3 |-> "running", w4 |-> "idle"]
+/\ slot = [c1 |-> <<"no_terminal", "reaper">>, c2 |-> <<"no_terminal", "reaper">>]
+/\ copied = [c1 |-> TRUE, c2 |-> TRUE]
+/\ reapSeen = [c1 |-> FALSE, c2 |-> FALSE]
+/\ first = [c1 |-> "c1", c2 |-> "c2"]
+/\ claimRow = [c1 |-> TRUE, c2 |-> TRUE]
+/\ pub = {<<"c1", "no_terminal", "reaper">>, <<"c2", "no_terminal", "reaper">>}
+/\ kindOf = [w1 |-> "none", w2 |-> "none", w3 |-> "none", w4 |-> "none"]
+/\ reapT = [c1 |-> 0, c2 |-> 0]
+/\ evid = [c1 |-> {}, c2 |-> {}]
+
+154245 states generated, 43831 distinct states found, 22060 states left on queue.
+The depth of the complete state graph search is 12.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 11 and the 95th percentile is 5).
+Finished in 01s at (2026-10-02 13:59:20)

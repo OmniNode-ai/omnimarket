@@ -2877,10 +2877,13 @@ class HandlerDelegationWorkflow:
         prior_completion_tokens = workflow.cumulative_attempt_completion_tokens
         # A later routing/inference boundary failure produced no current usage.
         # Report the last real call, including free-tier calls, without pricing
-        # its already-banked usage twice. Gate failures keep the current response.
+        # its already-banked usage twice. Gate failures keep nonzero current usage.
         last_served = workflow.last_served_attempt
         last_route = workflow.last_served_routing_decision
-        if not leg.reports_recorded_inference and last_served is not None:
+        reuse_last_served = (
+            not leg.reports_recorded_inference or prompt_tokens + completion_tokens == 0
+        )
+        if reuse_last_served and last_served is not None:
             model_used = last_served.model_used
             endpoint_url = last_route.endpoint_url if last_route is not None else "none"
             prompt_tokens = last_served.prompt_tokens
@@ -2919,7 +2922,7 @@ class HandlerDelegationWorkflow:
         # inference the terminal cannot support.
         if leg.routing_decision_present:
             routed_backend_ref, routed_manifest_version = _route_identity(workflow)
-            if not leg.reports_recorded_inference and last_served is not None:
+            if reuse_last_served and last_served is not None:
                 routed_backend_ref = last_served.backend_ref
             unrouted_reason = None
         else:
@@ -3469,39 +3472,7 @@ class HandlerDelegationWorkflow:
                 backend_ref=_route_identity(workflow)[0],
                 pricing_manifest_version=_route_identity(workflow)[1],
             )
-            # A returned transport error can serve no tokens, just like a
-            # boundary failure. Keep the last real call's usage and identity,
-            # while leaving this failed call's verdict and history intact.
-            last_served = workflow.last_served_attempt
-            last_route = workflow.last_served_routing_decision
-            if terminal_inputs.total_tokens == 0 and last_served is not None:
-                terminal_inputs = replace(
-                    terminal_inputs,
-                    model_used=last_served.model_used,
-                    model_name=last_served.model_used,
-                    endpoint_url=(
-                        last_route.endpoint_url if last_route is not None else "none"
-                    ),
-                    prompt_tokens=last_served.prompt_tokens,
-                    completion_tokens=last_served.completion_tokens,
-                    total_tokens=last_served.prompt_tokens
-                    + last_served.completion_tokens,
-                    cost_tier_name=last_served.tier_name,
-                    backend_ref=last_served.backend_ref,
-                    # The builder prices the reported attempt once; remove its
-                    # already-banked contribution to preserve cumulative totals.
-                    prior_attempt_cost_usd=(
-                        terminal_inputs.prior_attempt_cost_usd - last_served.cost_usd
-                    ),
-                    prior_attempt_prompt_tokens=(
-                        terminal_inputs.prior_attempt_prompt_tokens
-                        - last_served.prompt_tokens
-                    ),
-                    prior_attempt_completion_tokens=(
-                        terminal_inputs.prior_attempt_completion_tokens
-                        - last_served.completion_tokens
-                    ),
-                )
+            terminal_inputs = self._retain_last_served_usage(workflow, terminal_inputs)
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
@@ -4551,7 +4522,10 @@ class HandlerDelegationWorkflow:
             f"{prefix}: actual_score={result.quality_score:.3f} "
             f"required_bar={required_bar_authority.required_bar:.3f} "
             f"score_vs_bar={'below_bar' if score_below_bar else 'at_or_above_bar'} "
-            f"authority_source={required_bar_authority.authority_source} "
+            # The terminal's conservative redactor matches "auth" anywhere.
+            # Keep the structured authority_source field; use a neutral label
+            # in prose so harmless gate diagnostics survive that redactor.
+            f"bar_source={required_bar_authority.authority_source} "
             f"score_source={required_bar_authority.score_source}"
         )
         # OMN-18295. When the score CLEARED the bar and the run failed anyway,
@@ -5115,6 +5089,36 @@ class HandlerDelegationWorkflow:
             return [delegation_result]
         return [delegation_result, v2_terminal]
 
+    @staticmethod
+    def _retain_last_served_usage(
+        workflow: DelegationWorkflowState,
+        inputs: TerminalEmissionInputs,
+    ) -> TerminalEmissionInputs:
+        """Keep banked usage when a failed final attempt reported no tokens."""
+        last_served = workflow.last_served_attempt
+        last_route = workflow.last_served_routing_decision
+        if inputs.completed or inputs.total_tokens > 0 or last_served is None:
+            return inputs
+        return replace(
+            inputs,
+            model_used=last_served.model_used,
+            model_name=last_served.model_used,
+            endpoint_url=last_route.endpoint_url if last_route is not None else "none",
+            prompt_tokens=last_served.prompt_tokens,
+            completion_tokens=last_served.completion_tokens,
+            total_tokens=last_served.prompt_tokens + last_served.completion_tokens,
+            cost_tier_name=last_served.tier_name,
+            backend_ref=last_served.backend_ref,
+            # The builder prices this attempt once; remove its banked contribution.
+            prior_attempt_cost_usd=inputs.prior_attempt_cost_usd - last_served.cost_usd,
+            prior_attempt_prompt_tokens=(
+                inputs.prior_attempt_prompt_tokens - last_served.prompt_tokens
+            ),
+            prior_attempt_completion_tokens=(
+                inputs.prior_attempt_completion_tokens - last_served.completion_tokens
+            ),
+        )
+
     def _gate_terminal_inputs(
         self,
         workflow: DelegationWorkflowState,
@@ -5200,7 +5204,7 @@ class HandlerDelegationWorkflow:
             completed=completed,
             response_contract_declared=workflow.effective_response_contract is not None,
         )
-        return TerminalEmissionInputs(
+        terminal_inputs = TerminalEmissionInputs(
             completed=completed,
             correlation_id=result.correlation_id,
             task_type=workflow.request.task_type,
@@ -5275,6 +5279,7 @@ class HandlerDelegationWorkflow:
             backend_ref=_route_identity(workflow)[0],
             pricing_manifest_version=_route_identity(workflow)[1],
         )
+        return self._retain_last_served_usage(workflow, terminal_inputs)
 
     def handle_agent_task_lifecycle(
         self,
@@ -5298,6 +5303,16 @@ class HandlerDelegationWorkflow:
         }:
             return []
 
+        # OMN-18928: lifecycle completion is not evidence of returned content.
+        # Decide before advancing the FSM so a missing artifact closes FAILED
+        # once, rather than manufacturing a perfect score from the status text.
+        missing_final_artifact = (
+            next_state is EnumDelegationState.COMPLETED
+            and lifecycle_event.artifact is None
+        )
+        if missing_final_artifact:
+            next_state = EnumDelegationState.FAILED
+
         if workflow.state != next_state:
             self._advance(workflow, next_state)
 
@@ -5312,6 +5327,11 @@ class HandlerDelegationWorkflow:
         )
         content = self._render_lifecycle_content(lifecycle_event)
         failure_reason = lifecycle_event.error or ""
+        if missing_final_artifact:
+            content = ""
+            failure_reason = (
+                failure_reason or "remote agent completed without a final artifact"
+            )
 
         completed = next_state is EnumDelegationState.COMPLETED
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
@@ -5330,11 +5350,13 @@ class HandlerDelegationWorkflow:
             quality_passed=completed,
             # OMN-18928 (K1): a remote agent that did not complete returned no
             # final content, so it carries no score and a not-applicable
-            # verdict. A completion keeps the lifecycle's own acceptance, which
-            # is what this path has always reported.
+            # verdict. Only an artifact-bearing completion keeps the
+            # lifecycle's own acceptance.
             quality_score=1.0 if completed else None,
-            operational_outcome=_a2a_operational_outcome(
-                lifecycle_event.lifecycle_type
+            operational_outcome=(
+                EnumDelegationOperationalOutcome.INFERENCE_FAILED
+                if missing_final_artifact
+                else _a2a_operational_outcome(lifecycle_event.lifecycle_type)
             ),
             content_verdict=(
                 EnumDelegationContentVerdict.USABLE
@@ -5352,7 +5374,12 @@ class HandlerDelegationWorkflow:
             cost_tier_name=workflow.current_tier_name or "",
             premium_counterfactual=None,
             escalation_count=0,
-            escalation_history=(),
+            # Historical grades remain evidence about answered attempts,
+            # independent of this lifecycle's unscored final response.
+            escalation_history=tuple(
+                attempt.model_dump(mode="json")
+                for attempt in workflow.escalation_history
+            ),
             terminal_failure_reason=None,
             routing_tiers_hash=None,
             escalation_config_hash=None,

@@ -40,6 +40,12 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+)
+
+_DEMO_TENANT_SLUG = "delegation-cost-demo"
+_DEMO_TENANT_UUID = "00000000-0000-4000-8000-000000020652"
 
 _DEFAULT_PROFILE_SET: dict[str, Any] = {
     "profiles": {
@@ -329,8 +335,19 @@ def _project_flow(
     JoinedProjectionProof,
 ]:
     db = InmemoryDatabaseAdapter()
+    db.upsert(
+        TENANT_REGISTRY_MIRROR_TABLE,
+        "tenant_slug",
+        {
+            "tenant_slug": _DEMO_TENANT_SLUG,
+            "tenant_uuid": _DEMO_TENANT_UUID,
+            "status": "active",
+            "source_event_id": "c0000000-0000-4000-8000-000000020652",
+        },
+    )
 
     delegation_event = ModelTaskDelegatedEvent(
+        tenant_id=_DEMO_TENANT_SLUG,
         correlation_id=correlation_id,
         session_id=session_id,
         task_type=task_type,

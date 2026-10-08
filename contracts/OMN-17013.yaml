@@ -8,10 +8,10 @@ interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-receipt-preserves-v2-terminal-identity"
-    statement: "The receipt path consumes v2 delegation terminals and keeps the producer's stable provider identity, accepted terminal attempt, actual quality-gate outcome and pricing manifest version."
+    statement: "The receipt path validates v2 delegation terminals against the released wire contracts before keeping the producer's stable provider identity, accepted terminal attempt, actual quality-gate outcome and pricing manifest version."
     acceptance:
       - id: "AC1"
-        statement: "AC1: a v2 terminal maps backend_ref to provider identity, preserves the accepted terminal attempt and actual gate outcome, and carries the producer pricing_manifest_version -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q in omnimarket"
+        statement: "AC1: a valid v2 terminal maps backend_ref to provider identity, preserves the accepted terminal attempt and actual gate outcome, and carries the producer pricing_manifest_version; malformed v2 terminals cannot win the receipt wait -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q in omnimarket"
       - id: "AC2"
         statement: "AC2: a sample receipt captured from a real Kafka deployed-lane delegation has a stable provider, a non-empty accepted terminal attempt with a passed gate, and a non-zero pricing_manifest_version; the typed consumer can replay it -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py -q in omnimarket. This replays a recorded capture, not a fresh runtime probe."
   - id: "req-receipt-identity-from-real-producer"
@@ -32,7 +32,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn17013-ac1-v2-terminal-identity-preserved"
-    description: "AC1 hosted bus regression, including rejected and accepted rungs and a producer manifest version distinct from the reader's version."
+    description: "AC1 hosted bus regression, including rejected and accepted rungs, a producer manifest version distinct from the reader's version, and malformed v2 terminals delivered before valid evidence."
     source: "manual"
     checks:
       - check_type: "test_passes"

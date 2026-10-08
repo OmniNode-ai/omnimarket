@@ -266,6 +266,7 @@ def _task_delegated_delivery(*, correlation_id: str) -> dict[str, Any]:
         # Deliberately a lie about the writer. `delegated_by` is caller-supplied
         # and this module asserts it never reaches `writer_identity`.
         "delegated_by": "an-application-actor-not-a-database-principal",
+        "tenant_id": _TENANT_SLUG,
         "quality_gate_passed": True,
         "cost_usd": 0.0,
         "cost_savings_usd": 0.12,

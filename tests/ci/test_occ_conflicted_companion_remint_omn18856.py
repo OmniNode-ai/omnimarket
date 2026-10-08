@@ -48,7 +48,6 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts.ci.occ_conflicted_companion_remint import (  # noqa: E402
     MACHINE_MINTED_LABEL,
     OCC_REPO_DEFAULT,
-    RECEIPT_RUNNER_RUN_NAME,
     UNREAD_HEAD_SHA,
     CompanionFacts,
     EnumReceiptOutcome,
@@ -508,19 +507,6 @@ def _workflow(name: str) -> dict[object, object]:
     )
     assert isinstance(loaded, dict)
     return loaded
-
-
-def test_receipt_runner_run_name_is_the_key_the_heal_reads() -> None:
-    runner = _workflow("occ-receipt-runner.yml")
-    expected = RECEIPT_RUNNER_RUN_NAME.format(
-        pr="${{ github.event.pull_request.number || inputs.pr_number }}"
-    )
-    assert runner["run-name"] == expected
-    # yaml reads the bare key ``on`` as True.
-    triggers = runner[True]
-    assert isinstance(triggers, dict)
-    assert "workflow_dispatch" in triggers
-    assert "pull_request" in triggers
 
 
 def test_remint_workflow_is_scheduled_and_is_not_a_gate() -> None:

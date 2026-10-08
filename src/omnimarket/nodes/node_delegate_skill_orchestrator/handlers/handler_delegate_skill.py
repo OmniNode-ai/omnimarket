@@ -1473,10 +1473,8 @@ def _request_reap_context(
         provenance=request.provenance,
         runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
         request=request,
+        # Grace is the whole recovery window after execution. Adding the
+        # caller's delivery margin again delays recovery beyond budget + grace.
         deadline_at=datetime.now(UTC)
-        + timedelta(
-            seconds=execution_seconds
-            + budget.terminal_delivery_margin_seconds
-            + config.grace_seconds
-        ),
+        + timedelta(seconds=execution_seconds + config.grace_seconds),
     )

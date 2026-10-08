@@ -366,6 +366,16 @@ checks:
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
+  - check_id: delegation.acceptance.gate.pytest_tests_present
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `pytest_tests_present` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
   - check_id: delegation.acceptance.gate.response_non_empty
     check_class: gate
     blocks:

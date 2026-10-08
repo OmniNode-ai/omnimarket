@@ -35,6 +35,8 @@ class ModelMeteringSummaryRow(BaseModel):
     spend_usd: str | None
     counterfactual_usd: str | None
     savings_usd: str | None
+    # savings_usd over runs_measured, to the millionth; null when savings_usd is.
+    savings_per_measured_run_usd: str | None
     summary_json: str
 
     @model_validator(mode="after")

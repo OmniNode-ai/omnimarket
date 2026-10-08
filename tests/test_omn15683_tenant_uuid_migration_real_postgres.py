@@ -113,11 +113,15 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # 0039 and is withheld from the same pre-conversion arrangement.
 # OMN-19970: 0050 re-creates projection_delegation_summary, which reads 0045's
 # operational_outcome column, so it depends on 0045 and is withheld with it.
+# OMN-20009: 0055 re-creates projection_delegation_model_routing, which reads
+# 0045's operational_outcome column and groups ON tenant_id, so it depends on
+# 0045 and is withheld with it.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
     {
         "0039_delegation_aggregate_views_per_tenant.sql",
         "0045_terminal_construction_outcome_metrics.sql",
         "0050_delegation_summary_excludes_fixture_savings.sql",
+        "0055_model_routing_local_call_share.sql",
     }
 )
 

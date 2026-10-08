@@ -19,6 +19,7 @@ receipt as durable close evidence. These tests prove the wiring:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     GitHubClientProtocol,
@@ -267,18 +269,39 @@ def _init_occ_repo(tmp_path: Path, receipts: dict[str, dict[str, object]]) -> Pa
     """
     repo = tmp_path / "onex_change_control"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     for rel_path, payload in receipts.items():
         target = repo / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(yaml.safe_dump(payload), encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=repo,
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
     subprocess.run(
         ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "receipts"],
         cwd=repo,
         check=True,
+        env=scrub_git_location_env(os.environ),
     )
     return repo
 
@@ -597,7 +620,9 @@ class TestHandleOccReceiptPath:
         )
 
         result = await handler.handle(
-            ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+            ModelLinearTriageStartCommand(
+                scope="backlog", flag_only=False, dry_run=False
+            )
         )
 
         assert result.marked_done == 1
@@ -618,7 +643,9 @@ class TestHandleOccReceiptPath:
         )
 
         result = await handler.handle(
-            ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+            ModelLinearTriageStartCommand(
+                scope="backlog", flag_only=False, dry_run=False
+            )
         )
 
         assert result.marked_done == 0
@@ -647,7 +674,9 @@ class TestHandleOccReceiptPath:
         )
 
         result = await handler.handle(
-            ModelLinearTriageStartCommand(flag_only=False, dry_run=True)
+            ModelLinearTriageStartCommand(
+                scope="backlog", flag_only=False, dry_run=True
+            )
         )
 
         assert result.marked_done == 0
@@ -672,7 +701,9 @@ class TestHandleOccReceiptPath:
         )
 
         result = await handler.handle(
-            ModelLinearTriageStartCommand(flag_only=False, dry_run=False)
+            ModelLinearTriageStartCommand(
+                scope="backlog", flag_only=False, dry_run=False
+            )
         )
 
         assert result.marked_done == 0

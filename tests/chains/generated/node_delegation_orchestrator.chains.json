@@ -40,7 +40,7 @@
       "kind": "error",
       "path_id": "error:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed",
       "terminal_fields": {
-        "failure_reason": "pre_filter_rejected: actual_score=0.200 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:test score_source=quality_gate_graded_score; failures=DELIVERABLE_EXTRACTION: ambiguous_unmarked_deliverable; refusal_detected",
+        "failure_reason": "pre_filter_rejected: actual_score=0.200 required_bar=0.800 score_vs_bar=below_bar bar_source=task_class:test score_source=quality_gate_graded_score; failures=DELIVERABLE_EXTRACTION: ambiguous_unmarked_deliverable; refusal_detected",
         "quality_passed": false,
         "routing_disposition": "routed",
         "terminal_failure_reason": "max_escalation_attempts_reached",

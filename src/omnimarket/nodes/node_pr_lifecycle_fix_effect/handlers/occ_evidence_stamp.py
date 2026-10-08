@@ -738,8 +738,10 @@ def behavior_proof_cwd(repo: str) -> str:
 
 _BEHAVIOR_PROOF_ITEM_HEAD_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
-    '    description: "PR #{pr_number} on {repo} — diff-derived behavior proof '
-    '(OMN-16434)."\n'
+    "    description: |-\n"
+    "      PR #{pr_number} on {repo} — diff-derived behavior proof (OMN-16434).\n"
+    "      Database requirement: explicitly provisioned by tests; ambient\n"
+    "      POSTGRES_* and DSN settings are unavailable.\n"
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "test_passes"\n'
@@ -747,8 +749,10 @@ _BEHAVIOR_PROOF_ITEM_HEAD_TEMPLATE = (
 
 _BEHAVIOR_PROOF_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
-    '    description: "PR #{pr_number} on {repo} — diff-derived behavior proof '
-    '(OMN-16434)."\n'
+    "    description: |-\n"
+    "      PR #{pr_number} on {repo} — diff-derived behavior proof (OMN-16434).\n"
+    "      Database requirement: explicitly provisioned by tests; ambient\n"
+    "      POSTGRES_* and DSN settings are unavailable.\n"
     '    source: "generated"\n'
     '    evidence_artifact: "supersedes_dod_evidence:{superseded_evidence_id}"\n'
     "    checks:\n"

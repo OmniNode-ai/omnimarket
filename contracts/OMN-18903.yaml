@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18903"
+title: "Keep ci_attempt_outcome attempt ordinals contiguous after repeated heads"
+summary: "HandlerProjectionCiAttemptOutcome assigns attempt ordinals to first-seen distinct head commits, so a repeated head history [a,b,a,c] yields ordinals 1,2,3 instead of 1,2,4."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-contiguous-attempt-ordinals"
+    statement: "Attempt ordinals count distinct head commits in first-seen order and stay contiguous when a head repeats."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the fold assigns contiguous ordinals for a repeated head history -- falsifier: uv run pytest tests/test_omn18903_ci_attempt_outcome_projection.py -q fails at the merge base with ordinals 1,2,4"
+      - id: "AC2"
+        statement: "AC2: the writer path persists three rows with ordinals 1,2,3 for the repeated head history -- falsifier: uv run pytest tests/test_golden_chain_projection_ci_attempt_outcome.py -q fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "Fold and golden-chain tests for the ordinal fix."
+    command: "uv run pytest tests/test_omn18903_ci_attempt_outcome_projection.py tests/test_golden_chain_projection_ci_attempt_outcome.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18903-fold-ordinals"
+    description: "The fold assigns contiguous ordinals to a repeated head history."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18903_ci_attempt_outcome_projection.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18903-writer-golden-chain"
+    description: "The golden chain persists ordinals 1,2,3 through the writer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_ci_attempt_outcome.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

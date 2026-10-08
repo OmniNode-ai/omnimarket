@@ -29,6 +29,7 @@ provisions its own throwaway schema so runs never collide.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -37,7 +38,14 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.merge_control.reason_code_classifier import EnumMergeCheckReasonCode
+from omnimarket.nodes.node_projection_ci_attempt_outcome.handlers import (
+    CiAttemptOutcomeProjectionWriter,
+)
+from omnimarket.nodes.node_projection_ci_attempt_outcome.handlers import (
+    handler_ci_attempt_outcome_writer as writer_module,
+)
 
 # The writer's real statement, read from the module rather than restated, so a
 # change to it is proven here instead of drifting away from a copy.
@@ -62,7 +70,7 @@ _REPO = "OmniNode-ai/omnimarket"
 _PR = 2726
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
+def _integration_dsn() -> str:
     secret = os.environ.get(
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     )
@@ -75,9 +83,12 @@ async def _connect_or_skip() -> asyncpg.Connection:
     port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
     user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
     db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
-    dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+    return f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+
+
+async def _connect_or_skip() -> asyncpg.Connection:
     try:
-        return await asyncpg.connect(dsn)
+        return await asyncpg.connect(_integration_dsn())
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover
         pytest.skip(f"no reachable Postgres for the write-path proof: {exc}")
 
@@ -121,16 +132,50 @@ async def _upsert(
 
 
 @pytest.mark.integration
-async def test_the_row_reads_back_with_typed_column_values() -> None:
+async def test_the_row_reads_back_with_typed_column_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The live row lands with correctly-typed columns, via the real statement."""
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
-        returned = await _upsert(conn, observed_at=_T0)
-        assert len(returned) == 1
+        monkeypatch.setattr(writer_module, "_UPSERT_ATTEMPT", _scoped(_UPSERT_ATTEMPT))
+        writer = CiAttemptOutcomeProjectionWriter()
+        writer._db = AsyncpgAdapter(dsn=_integration_dsn(), min_size=1, max_size=1)
+        heads = [_SHA, "b" * 40, "c" * 40]
+        event = {
+            "pr_states": [
+                {
+                    "repo": _REPO,
+                    "pr_number": _PR,
+                    "title": "fix(OMN-18903): attempt ordinals",
+                    "head_sha_history": [heads[0], heads[1], heads[0], heads[2]],
+                    "check_runs": [
+                        {
+                            "name": "verify",
+                            "head_sha": head,
+                            "run_attempt": 1,
+                            "reason_code": "process_gate_refused",
+                            "cause_affirmative": True,
+                            "conclusion": "failure",
+                        }
+                        for head in reversed(heads)
+                    ],
+                }
+            ],
+            "_envelope_timestamp": _T0.isoformat(),
+        }
+        # Exercise the synchronous runtime entry, including its per-message
+        # loop and real pooled adapter, rather than binding the SQL ourselves.
+        result = await asyncio.to_thread(writer.handle, event)
+        assert result["rows_upserted"] == 3
+        rows = await conn.fetch(
+            f"SELECT * FROM {_SCHEMA}.ci_attempt_outcome ORDER BY attempt_ordinal"
+        )
+        assert [row["head_sha"] for row in rows] == heads
+        assert [row["attempt_ordinal"] for row in rows] == [1, 2, 3]
 
-        row = await conn.fetchrow(f"SELECT * FROM {_SCHEMA}.ci_attempt_outcome")
-        assert row is not None
+        row = rows[0]
         # The types, which are the point: a double would have accepted
         # strings for all three of these.
         assert isinstance(row["observed_at"], datetime)

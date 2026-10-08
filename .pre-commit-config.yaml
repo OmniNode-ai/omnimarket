@@ -1360,6 +1360,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-18932: the release bar is checked here and in ci.yml.
+      - id: output-only-release-acceptance
+        name: D1 output-only release acceptance (OMN-18932)
+        entry: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/delegation/output_only_acceptance\.py|tests/unit/delegation/test_output_only_acceptance_omn18932\.py)$
+        stages: [pre-commit]
+
       # OMN-15630: routing-completeness invariant. For every task class declared
       # in task_class_contracts.v1.yaml, every tier in that class's OWN
       # escalation_policy.tier_order must be served by >=1 backend's use_for,
@@ -1383,6 +1392,17 @@ repos:
             |src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing\.py
             |tests/unit/delegation/test_routing_completeness_omn15630\.py
           )$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-19215: keep exhausted quality rejections excluded across sibling hops.
+      # SYNC with ci.yml step "Same-model sibling quality gate (OMN-19215)".
+      - id: same-model-sibling-quality-gate
+        name: Same-model sibling quality gate (OMN-19215)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
+        files: >-
+          ^(src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

@@ -404,6 +404,12 @@ class TestBuildProjectionTopicMap:
             # tenant. It is the exposure's declared `tenant_column`, so the
             # serving path refuses this topic without a resolved tenant.
             "tenant_id",
+            # OMN-20008: appended by migration 094. Runs whose stored
+            # token_provenance is estimated or unknown are left out of every
+            # measured monetary total, and these two counts are served beside
+            # it so the dashboard can say how many runs were excluded.
+            "estimated_run_count",
+            "unknown_run_count",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
@@ -995,8 +1001,11 @@ class TestOmn15800ExposureParity:
         # results (false-pass and false-refusal rates per class, stratum, arm).
         # 70 as of OMN-20007: +1 for the bus-backed, tenant-scoped metering
         # summary (fixed UTC day rows plus one all-time row per baseline).
+        # 71 as of OMN-19079: +1 for node_projection_open_obligations, whose
+        # `schema` recorded the relation's own schema (omninode_internal)
+        # instead of the database, so the loader excluded it at every boot.
         topic_map = real_topic_map
-        assert len(topic_map) == 70
+        assert len(topic_map) == 71
         assert "onex.snapshot.projection.metering-summary.v1" in topic_map
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map
@@ -1007,11 +1016,14 @@ class TestOmn15800ExposureParity:
         assert "onex.snapshot.projection.runner-fleet.v1" in topic_map
         assert "onex.snapshot.projection.topic-activity.v1" in topic_map
         assert "onex.snapshot.projection.board-probe-results.v1" in topic_map
-        # Still excluded for the identical reason, and deliberately left so:
-        # node_projection_open_obligations declares `schema: omninode_internal`
-        # too. Its conversion is not in OMN-17772's scope; recording it here
-        # keeps the remaining instance visible instead of forgotten.
-        assert "onex.snapshot.projection.work.open-obligations.v1" not in topic_map
+        # Formerly excluded for the same reason as work-events (its `schema`
+        # was omninode_internal, outside ALLOWED_SCHEMAS); OMN-19079 loads it.
+        open_obligations = topic_map[
+            "onex.snapshot.projection.work.open-obligations.v1"
+        ]
+        assert open_obligations.schema_name == "omnidash_analytics"
+        assert open_obligations.relation_schema == "omninode_internal"
+        assert open_obligations.table == "open_obligations"
 
     def test_all_four_evidence_pipeline_exposures_present(
         self, real_topic_map: dict[str, ProjectionTableConfig]
