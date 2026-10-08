@@ -71,6 +71,16 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_fill_selection_compute",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_disk_hygiene_effect",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.

@@ -8,19 +8,19 @@ verify path produces is what the already-merged projection accepts, field for
 field, and that it arrives on every terminal outcome rather than only on the
 happy one.
 
-**Why there is no capturing-publisher double here.** The ticket's falsifiers
-were written expecting the handler to hold a publisher and call it. It does
-not, and deliberately: for a definition-B handler the runtime publishes the
+The ticket's falsifiers were written expecting the handler to hold a
+publisher and call it. For a definition-B handler the runtime publishes the
 RETURNED MODEL, wrapping any returned ``BaseModel`` as an output event and
 routing it to the contract's declared terminal topic. The node already had a
 declared terminal and a declared publish topic, so it was already publishing
 -- it was publishing a payload the merged consumer had to reject, because
 ``ModelDodVerifyState`` carried no run window and the wire model requires one.
 
-That makes the real seam the SHAPE of the returned state, not a call to a
-publisher, and it is why these tests drive the actual objects on both sides of
-the topic instead of asserting against a mock. A test that watched a double
-receive a message would have passed just as happily against the broken shape.
+The shape tests drive the actual objects on both sides of the topic. The
+runtime tests also capture the actual publisher boundary after the contract's
+dispatch adapter, asserting the complete published payload against the returned
+state. A publisher fault must be logged and leave that verdict intact; the
+transport still raises so a lost event can be retried.
 
 Two ways to get this wrong were live options and both are refused by tests
 below: returning the completed-event model instead (which changes the
@@ -31,15 +31,32 @@ sweep flipping tickets), and letting a rehearsal become a durable row.
 from __future__ import annotations
 
 import inspect
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
 import yaml
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.models.model_publish_receipt import ModelPublishReceipt
+from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
+from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+    ProtocolHandleable,
+    _make_dispatch_callback,
+)
+from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
+from omnibase_infra.runtime.service_dispatch_result_applier import DispatchResultApplier
 from pydantic import ValidationError
 
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.handlers import handler_dod_verify as producer_mod
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -168,6 +185,138 @@ def _project(payload: dict[str, Any]) -> tuple[dict[str, Any], _RecordingDb]:
     writer._db = db  # type: ignore[assignment]
     report = writer.handle(dict(payload))
     return report, db
+
+
+class _CapturingBus:
+    """Capture the runtime's actual publish boundary, including fault attempts."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[tuple[str, ModelEventEnvelope[Any]]] = []
+
+    async def publish_envelope(
+        self, envelope: object, topic: str, *, key: bytes | None = None
+    ) -> None:
+        assert isinstance(envelope, ModelEventEnvelope)
+        self.calls.append((topic, envelope))
+        if self.fail:
+            raise RuntimeError("injected verdict publisher fault")
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes
+    ) -> ModelPublishReceipt | None:
+        raise AssertionError("runtime must publish the verdict envelope")
+
+    def get_consumer_groups(self) -> dict[tuple[str, str], str]:
+        return {}
+
+
+async def _dispatch_verification(
+    monkeypatch: pytest.MonkeyPatch, status: EnumDodVerifyStatus
+) -> ModelDispatchResult | None:
+    """Use the contract's event model and real handler, replacing only collection."""
+    unresolved = status is EnumDodVerifyStatus.UNRESOLVED
+    checks = (
+        [_check("lookup", EnumEvidenceCheckStatus.FAILED)]
+        if unresolved
+        else FAILED_CHECKS
+        if status is EnumDodVerifyStatus.FAILED
+        else VERIFIED_CHECKS
+    )
+    collector = SimpleNamespace(
+        collect=lambda *_args, **_kwargs: checks,
+        occ_refresh_outcome=None,
+        lookup_failure_cause=(
+            EnumDodVerifyUnresolvedCause.PR_LOOKUP_FAILED if unresolved else None
+        ),
+        lookup_failure_code="PR_LOOKUP_FAILED" if unresolved else None,
+        occ_ref_failure_cause=None,
+        occ_ref_failure_code=None,
+    )
+    monkeypatch.setattr(HandlerDodVerify, "_make_collector", lambda _self: collector)
+    event_model = _contract()["handler_routing"]["handlers"][0]["event_model"]
+    # Match runtime handler resolution: the adapter supports sync typed handlers.
+    callback = _make_dispatch_callback(
+        cast(ProtocolHandleable, HandlerDodVerify()),
+        ModelHandlerRef(**event_model),
+    )
+    command = _command().model_copy(
+        update={"execution_audience": EnumDodVerifyExecutionAudience.HOSTED}
+    )
+    return await callback(
+        ModelEventEnvelope[object](
+            payload=command.model_dump(mode="json"),
+            correlation_id=command.correlation_id,
+            source_tool="onex.run-node",
+            target_tool="node_dod_verify",
+        )
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        EnumDodVerifyStatus.VERIFIED,
+        EnumDodVerifyStatus.FAILED,
+        EnumDodVerifyStatus.UNRESOLVED,
+    ],
+)
+async def test_runtime_publishes_one_matching_verdict_on_every_terminal_status(
+    monkeypatch: pytest.MonkeyPatch, status: EnumDodVerifyStatus
+) -> None:
+    result = await _dispatch_verification(monkeypatch, status)
+    assert result is not None
+    assert len(result.output_events) == 1
+    state = result.output_events[0]
+    assert isinstance(state, ModelDodVerifyState)
+    assert state.status is status
+    bus = _CapturingBus()
+    contract = _contract()
+    await DispatchResultApplier(
+        event_bus=bus,
+        output_topic=contract["terminal_event"],
+        allowed_output_topics=contract["event_bus"]["publish_topics"],
+    ).apply(result)
+
+    assert len(bus.calls) == 1
+    topic, envelope = bus.calls[0]
+    assert topic == COMPLETED_TOPIC
+    payload = envelope.model_dump(mode="json")["payload"]
+    assert payload == state.model_dump(mode="json")
+    event = ModelDodVerdictWire.model_validate(payload)
+    assert event.status is status
+    assert event.unresolved_cause is state.unresolved_cause
+    for field in COUNT_FIELDS:
+        assert getattr(event, field) == getattr(state, field)
+
+
+@pytest.mark.asyncio
+async def test_runtime_publisher_fault_preserves_verdict_and_records_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    result = await _dispatch_verification(monkeypatch, EnumDodVerifyStatus.FAILED)
+    assert result is not None
+    state = result.output_events[0]
+    assert isinstance(state, ModelDodVerifyState)
+    before = state.model_dump(mode="json")
+    bus = _CapturingBus(fail=True)
+    with (
+        caplog.at_level(logging.WARNING),
+        pytest.raises(RuntimeError, match="injected verdict publisher fault"),
+    ):
+        await DispatchResultApplier(
+            event_bus=bus,
+            output_topic=_contract()["terminal_event"],
+        ).apply(result)
+
+    # Transport retries may propagate the fault; verification already returned.
+    assert result.output_events[0] is state
+    assert state.model_dump(mode="json") == before
+    assert len(bus.calls) == 1
+    assert "Failed to publish output event" in caplog.text
+    assert "injected verdict publisher fault" in caplog.text
+    assert str(state.correlation_id) in caplog.text
 
 
 # --------------------------------------------------------------------------
@@ -470,12 +619,16 @@ def test_a_state_without_a_run_window_cannot_be_built() -> None:
     which the table could not tell apart from a real run window.
     """
     with pytest.raises(ValidationError):
-        ModelDodVerifyState(correlation_id=uuid4(), ticket_id="OMN-18901")
+        ModelDodVerifyState.model_validate(
+            {"correlation_id": uuid4(), "ticket_id": "OMN-18901"}
+        )
     with pytest.raises(ValidationError):
-        ModelDodVerifyState(
-            correlation_id=uuid4(),
-            ticket_id="OMN-18901",
-            started_at=datetime.now(tz=UTC),
+        ModelDodVerifyState.model_validate(
+            {
+                "correlation_id": uuid4(),
+                "ticket_id": "OMN-18901",
+                "started_at": datetime.now(tz=UTC),
+            }
         )
 
 

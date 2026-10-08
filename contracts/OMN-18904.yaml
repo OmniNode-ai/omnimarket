@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18904"
+title: "PR inventory retains the CI attempt identity it recovers from the jobs interface"
+summary: "The PR lifecycle inventory handler carries head commit, run identifier, run attempt, failed step and affirmative verdict provenance beside its cause code, collects paginated PR commit order for the per-attempt projection, and resolves a later successful attempt of the same run, commit and job to the infrastructure verdict. Green checks and unavailable or malformed identities carry null identity."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-inventory-attempt-identity"
+    statement: |-
+      The inventory check record retains the resolved job facts and verdict provenance instead of discarding them after classification.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Inventory output for jobs-interface fixtures carries head commit, run identifier, run attempt, failed step and verdict provenance, and the three-head fixture drives the synchronous projection writer to three upserts with ordinals 1, 2, 3 -- falsifier: env -u PYTHONPATH uv run --frozen pytest tests/test_omn18904_inventory_attempt_identity.py -q fails
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused acceptance file for attempt identity retained by the PR inventory handler."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/test_omn18904_inventory_attempt_identity.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18904-attempt-identity"
+    description: "The inventory handler retains CI attempt identity and verdict provenance and feeds the per-attempt projection in commit order."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18904_inventory_attempt_identity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

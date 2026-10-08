@@ -183,7 +183,32 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("caller_lane", "callerLane"),
     )
 
-    @field_validator("ticket_id", "caller_lane", mode="before")
+    # OMN-20606: the delegation this one falls back or escalates from, the kind
+    # of relation, and why the parent failed (delegation_lineage.py). Declared
+    # here, on the consumer, as text decoded like ``caller_lane``: a malformed
+    # value is refused by the projection's lineage fold and never dead-letters
+    # the delegation's own row.
+    parent_correlation_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_correlation_id", "parentCorrelationId"),
+    )
+    lineage_kind: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("lineage_kind", "lineageKind"),
+    )
+    parent_failure_cause: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_failure_cause", "parentFailureCause"),
+    )
+
+    @field_validator(
+        "ticket_id",
+        "caller_lane",
+        "parent_correlation_id",
+        "lineage_kind",
+        "parent_failure_cause",
+        mode="before",
+    )
     @classmethod
     def _attribution_as_text(cls, value: object) -> str | None:
         if value is None or isinstance(value, str):

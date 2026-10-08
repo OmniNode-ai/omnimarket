@@ -23,6 +23,7 @@ import asyncpg
 import pytest
 
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer import (
+    _INSERT_UNKNOWN_TOPICS,
     _MARK_DISAPPEARED_ABSENT,
     _SELECT_DISAPPEARED,
     _UPSERT_TOPIC,
@@ -98,6 +99,76 @@ async def _upsert(
         1.0,
         "ACTIVE" if last_hour else "UNKNOWN",
     )
+
+
+@pytest.mark.integration
+async def test_real_postgres_inventory_preserves_measurements_and_seeds_nulls() -> None:
+    conn = await _connect_or_skip()
+    unknown_topic = "onex.evt.never-sampled.v1"
+    try:
+        await _setup(conn)
+        assert await _upsert(conn, topic=_TOPIC, sampled_at=_T0, last_hour=200)
+        rows = await conn.fetch(
+            _scoped(_INSERT_UNKNOWN_TOPICS), [_TOPIC, unknown_topic]
+        )
+        assert len(rows) == 1
+        assert rows[0]["topic"] == unknown_topic
+        assert rows[0]["activity_state"] == "UNKNOWN"
+        assert rows[0]["sampled_at"] is None
+        assert rows[0]["messages_last_hour"] is None
+        assert rows[0]["rate_per_second"] is None
+        assert (
+            await conn.fetch(_scoped(_INSERT_UNKNOWN_TOPICS), [_TOPIC, unknown_topic])
+            == []
+        )
+        assert (
+            await conn.fetchval(
+                f"SELECT messages_last_hour FROM {_SCHEMA}.topic_activity WHERE topic = $1",
+                _TOPIC,
+            )
+            == 200
+        )
+        # A later real sample replaces UNKNOWN through the existing upsert.
+        assert await _upsert(conn, topic=unknown_topic, sampled_at=_T0, last_hour=1)
+        # The complete panel walks beyond the reader's 2,000-row window.
+        await conn.fetch(
+            _scoped(_INSERT_UNKNOWN_TOPICS),
+            [f"onex.evt.inventory-{index}.v1" for index in range(2025)],
+        )
+        from omnimarket.projection.discovery import build_projection_topic_map
+        from omnimarket.projection.morning_page import build_morning_page
+        from omnimarket.projection.table_reader import TableRowSource
+
+        cfg = build_projection_topic_map()["onex.snapshot.projection.topic-activity.v1"]
+        cfg = cfg.model_copy(update={"relation_schema": _SCHEMA})
+        dsn = "postgresql://{}:{}@{}:{}/{}".format(
+            quote_plus(os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")),
+            quote_plus(os.environ.get("INTEGRATION_POSTGRES_PASSWORD", "")),
+            os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost"),
+            os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"),
+            os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra"),
+        )
+        source = TableRowSource.for_database_url(dsn)
+        try:
+            view = await source.page_view({cfg.topic: cfg}, tenant_id=None)
+            page = build_morning_page({cfg.topic: cfg}, view, service_name="test")
+            assert len(page.topic_activity.rows) == 2027
+            measured = next(
+                row for row in page.topic_activity.rows if row["topic"] == _TOPIC
+            )
+            assert measured["messages_last_hour"] == 200
+            assert (
+                sum(
+                    row["activity_state"] == "UNKNOWN"
+                    for row in page.topic_activity.rows
+                )
+                == 2025
+            )
+        finally:
+            await source.close()
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
 
 
 @pytest.mark.integration
@@ -203,6 +274,7 @@ async def test_real_postgres_writer_accepts_the_runtime_injected_keys(
     try:
         await _setup(conn)
         for name in (
+            "_INSERT_UNKNOWN_TOPICS",
             "_SELECT_PRIOR",
             "_UPSERT_TOPIC",
             "_SELECT_DISAPPEARED",

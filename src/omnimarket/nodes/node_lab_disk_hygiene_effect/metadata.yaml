@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_disk_hygiene_effect
+version: 0.1.0
+description: >
+  Docker hygiene on a lab host, census-aware: removes exited containers
+  that belong to no declared lane and to no compose project with a running container,
+  prunes unused images past an age bar, caps the build cache, and prunes anonymous
+  volumes. Called in process by a host scheduler; the census path comes from the
+  request or the deployment overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_disk_hygiene_effect: omnimarket.nodes.node_lab_disk_hygiene_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: destructive
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Lab Disk Hygiene Effect
+node_role: effect
