@@ -384,6 +384,14 @@ _DELEGATION_SUMMARY_VIEW_SQL = (
     "omnimarket.nodes.node_projection_delegation",
     "sqlite/delegation_summary_view.sql",
 )
+# OMN-20754: the counterparts of migration 0055's model-routing view and 0045's
+# quality-gate view, the relations the Overview's Run locally, Tier mix and
+# Quality rows read. Same home and pattern as the summary view.
+_DELEGATION_ROUTING_QUALITY_VIEWS_STEP = "omn20754_delegation_routing_quality_views"
+_DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
+    ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
+    ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -571,6 +579,14 @@ class SqliteDatabaseAdapter:
                     "created the delegation summary view",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_ROUTING_QUALITY_VIEWS_STEP):
+            pending.append(
+                (
+                    _DELEGATION_ROUTING_QUALITY_VIEWS_STEP,
+                    cls._create_delegation_routing_quality_views,
+                    "created the delegation model-routing and quality-gate views",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -638,6 +654,19 @@ class SqliteDatabaseAdapter:
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
         conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_routing_quality_views(conn: sqlite3.Connection) -> None:
+        """OMN-20754: give the store the model-routing and quality-gate relations.
+
+        Same shape as the summary step: each view is dropped first, and a later
+        revision is a new step, never an edit to this one.
+        """
+        package, _ = _DELEGATION_SUMMARY_VIEW_SQL
+        for view, resource in _DELEGATION_ROUTING_QUALITY_VIEWS_SQL:
+            ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
+            conn.execute(ddl)
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
