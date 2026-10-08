@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_model_comparison_runner
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: effect
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   EFFECT node that runs a side-by-side model comparison for a given task.
@@ -13,6 +13,11 @@ description: >
   counts, latency, cost, and a winner determination. Mirrors the logic of
   ComparisonRunner in onex-self-extending-agent/src/experiments/model_comparison/runner.py
   but operates through the ONEX contract/handler boundary.
+  With shadow_comparison, replays stored delegation prompts on exactly two
+  model arms, grades both with the local delegation grader, and reports a
+  paired pass-rate comparison with confidence intervals. Refuses insufficient
+  power before inference. Model order defines arms A and B. This offline
+  evaluation does not change delegation routing or choose a cost winner.
 
 handler_routing:
   routing_strategy: operation_match
@@ -58,6 +63,15 @@ inputs:
     required: false
     default: "fewest_attempts_then_cost"
     description: "Strategy used to pick the winner cell"
+  shadow_comparison:
+    type: object
+    required: false
+    description: >
+      Stored delegation prompts and a predeclared ModelComparisonMethod
+      (sample_size, confidence, power, margin, incomplete_run_treatment).
+      Requires exactly two model arms with distinct labels and an explicit
+      system_prompt (empty is allowed). Recorded responses are never replayed
+      as model answers. Inference is bounded to one prompt's two arms at once.
 
 outputs:
   task_description:
@@ -71,6 +85,13 @@ outputs:
     type: str | null
   winner_criteria:
     type: str
+  shadow_comparison:
+    type: object | null
+    description: >
+      Paired comparison verdict, required and observed n, pass and incomplete
+      counts per arm, pass-rate difference (B minus A), confidence interval and
+      exact McNemar p-value. Null for the original single-task comparison.
+      Shadow mode returns no cost winner and uses paired_pass_rate criteria.
 
 terminal_event: onex.evt.omnimarket.model-comparison-completed.v1
 
