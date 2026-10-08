@@ -23,6 +23,7 @@ infra assembler built from them.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -299,3 +300,94 @@ def test_sync_writer_names_the_key_columns_when_the_terminal_carries_a_key() -> 
 def test_sync_writer_names_no_key_column_for_a_keyless_terminal() -> None:
     row = _written_row(_terminal("A"))
     assert not set(_COHORT_COLUMNS) & set(row)
+
+
+@pytest.mark.parametrize(
+    ("dimension", "field"),
+    [
+        ("consumer_identity", "env"),
+        ("consumer_identity", "service"),
+        ("consumer_identity", "node_name"),
+        ("consumer_identity", "version"),
+        ("first_hop_identity", "backend"),
+        ("first_hop_identity", "model"),
+        ("first_hop_identity", "tier"),
+        ("first_hop_identity", "provider"),
+        ("provider_policy", "routing_tiers_sha256"),
+        ("provider_policy", "backend_config_sha256"),
+        ("provider_policy", "task_class_contracts_sha256"),
+        ("provider_policy", "overlay_sha256"),
+        ("retry_bounds", "per_tier"),
+        ("retry_bounds", "max_escalations"),
+    ],
+)
+def test_sync_writer_refuses_missing_nested_cohort_evidence(
+    dimension: str, field: str
+) -> None:
+    """A nonempty object is insufficient evidence for a complete cohort."""
+    key = _load("cohort_key_A.json")
+    del key[dimension][field]
+    row = _written_row(_terminal("A", key))
+    assert row["cohort_key"] is None
+    assert row["cohort_key_sha256"] is None
+    assert row["cohort_key_refusal"] == (
+        f"invalid cohort_key: {dimension}.{field} (missing)"
+    )
+
+
+@pytest.mark.parametrize("field", ["tier", "max_retries"])
+def test_sync_writer_refuses_missing_per_tier_retry_evidence(field: str) -> None:
+    key = _load("cohort_key_A.json")
+    del key["retry_bounds"]["per_tier"][0][field]
+    row = _written_row(_terminal("A", key))
+    assert row["cohort_key"] is None
+    assert row["cohort_key_sha256"] is None
+    assert "retry_bounds.per_tier." in row["cohort_key_refusal"]
+    assert row["cohort_key_refusal"].endswith(f".{field} (missing)")
+
+
+@pytest.mark.parametrize(
+    ("dimension", "field", "value"),
+    [
+        ("consumer_identity", "node_name", " "),
+        ("first_hop_identity", "backend", " "),
+        ("provider_policy", "backend_config_sha256", "not-a-hash"),
+        ("provider_policy", "overlay_sha256", "not-a-hash"),
+        ("retry_bounds", "max_escalations", -1),
+        ("retry_bounds", "max_escalations", True),
+    ],
+)
+def test_sync_writer_refuses_malformed_nested_cohort_evidence(
+    dimension: str, field: str, value: object
+) -> None:
+    key = _load("cohort_key_A.json")
+    key[dimension][field] = value
+    row = _written_row(_terminal("A", key))
+    assert row["cohort_key"] is None
+    assert row["cohort_key_sha256"] is None
+    assert row["cohort_key_refusal"].startswith(f"invalid cohort_key: {dimension}")
+
+
+def test_validating_nested_evidence_preserves_the_original_wire_key() -> None:
+    """Validation must not normalize the evidence before it is recorded."""
+    key = _load("cohort_key_A.json")
+    key["deadline_seconds"] = 240
+    key["retry_bounds"]["per_tier"].reverse()
+    row = _written_row(_terminal("A", key))
+    assert row["cohort_key"] == key
+    assert (
+        row["cohort_key_sha256"]
+        == hashlib.sha256(
+            json.dumps(key, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    )
+    assert row["cohort_key_refusal"] is None
+
+
+def test_projected_provider_policy_change_has_a_different_cohort_digest() -> None:
+    key = _load("cohort_key_A.json")
+    baseline = _written_row(_terminal("A", key))
+    key["provider_policy"]["backend_config_sha256"] = "a" * 64
+    candidate = _written_row(_terminal("A", key))
+    assert candidate["cohort_key_refusal"] is None
+    assert candidate["cohort_key_sha256"] != baseline["cohort_key_sha256"]
