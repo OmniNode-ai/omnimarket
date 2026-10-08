@@ -112,6 +112,38 @@ async def test_handler_budget_names_the_bus_stage_and_keeps_it_after_cleanup(
     assert current_dispatch_progress.get() is None
 
 
+@pytest.mark.parametrize("stage", ["subscribe", "publish"])
+async def test_runtime_bus_deadline_preserves_the_stage_after_unwinding(
+    stage: DispatchStage,
+) -> None:
+    class DeadlineBus(_BlockingBus):
+        async def publish(self, *_args: object, **_kwargs: object) -> None:
+            if stage == "publish":
+                raise TimeoutError("publisher deadline expired")
+
+        async def subscribe(
+            self, *args: object, **kwargs: object
+        ) -> Callable[[], Awaitable[None]]:
+            if stage == "subscribe":
+                raise TimeoutError("subscriber deadline expired")
+            return await super().subscribe(*args, **kwargs)
+
+    bus = DeadlineBus("terminal_wait")
+    handler = HandlerDelegateSkill(
+        dispatch_port=RuntimeDelegationDispatchPort(
+            event_bus=bus, config=load_runtime_delegation_dispatch_config()
+        )
+    )
+
+    terminal = await asyncio.wait_for(handler.handle(_request()), timeout=5)
+
+    assert terminal.status == "timeout"
+    assert f"stage={stage}" in terminal.error_message
+    assert "stage=terminal_cleanup" not in terminal.error_message
+    assert bus.unsubscribed == (0 if stage == "subscribe" else 3)
+    assert current_dispatch_progress.get() is None
+
+
 async def test_runtime_ports_own_wait_timeout_names_its_stage() -> None:
     config = load_runtime_delegation_dispatch_config().model_copy(
         update={"wait_timeout_seconds": 1}

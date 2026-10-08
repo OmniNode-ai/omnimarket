@@ -82,7 +82,12 @@ def test_no_other_lane_declares_a_delegation_or_fault_route(lane: str) -> None:
 def test_the_lane_declaration_is_packaged_from_its_one_checked_in_copy() -> None:
     project = tomllib.loads((_REPO / "pyproject.toml").read_text(encoding="utf-8"))
     forced = project["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
-    assert forced == {"config/ci_bus_lanes.yaml": _RESOURCE}
+    # This test owns the lane declaration's mapping, not the whole table.
+    # Asserting equality made every later force-include entry fail here, which
+    # is how the OMN-19917 dashboard pin broke it; the concern the name states
+    # is that the declaration is packaged from its one checked-in copy.
+    assert forced["config/ci_bus_lanes.yaml"] == _RESOURCE
+    assert list(forced).count("config/ci_bus_lanes.yaml") == 1
     assert not (_REPO / "src" / _RESOURCE).exists()
 
 

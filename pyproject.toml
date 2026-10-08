@@ -275,6 +275,8 @@ node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
+node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"
+node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
@@ -356,6 +358,7 @@ node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
 node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
+node_manifest_fetch_effect = "omnimarket.nodes.node_manifest_fetch_effect"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
@@ -1046,7 +1049,33 @@ packages = ["src/omnimarket"]
 # installed package resource (omnimarket/config/ci_bus_lanes.yaml), so the
 # one checked-in copy at the repository root ships inside the wheel. There is
 # deliberately no second copy under src/.
-force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml" }
+# OMN-19917 (plan task T2.9, decision D8 (a)): `onex dashboard` downloads a
+# prebuilt OmniDash bundle and refuses any copy whose sha256 is not the one
+# pinned below. The pin has to travel with the installed package, and the
+# wheel ships only `src/omnimarket`, so a pin read from the source tree would
+# verify nothing on a `uv tool install` copy. This maps the same file a human
+# edits to the resource the runtime reads, so there is exactly one source of
+# truth -- the mechanism `config/ci_bus_lanes.yaml` already uses above.
+force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml", "pyproject.toml" = "omnimarket/dashboard_bundle_pin.toml" }
+
+[tool.onex.dashboard_bundle]
+# The OmniDash static build `onex dashboard` serves. Published by
+# OmniNode-ai/omnidash's publish-dashboard-bundle.yml on a vX.Y.Z tag, which
+# packs `dist/` with a fixed member order, mtime and ownership so two builds of
+# one tree produce one digest.
+#
+# `sha256` is the security boundary and it lives HERE, in our own tree, on
+# purpose. The release also publishes `<asset>.sha256` beside the archive; that
+# file is NOT consulted, because anyone able to replace the bundle can replace
+# it too. The digest below was computed from the downloaded bytes.
+#
+# To move the pin: bump `version`, download the new asset, compute its sha256
+# locally, and paste it. A mismatch is refused, never repaired -- re-downloading
+# on mismatch would turn an attack into a cache miss.
+version = "v1.1.4"
+sha256 = "7a6b840c0ce1808a776e2371207f56d58118a2f628bc6dacbc9cc3104512a5d8"
+asset = "omnidash-bundle-v1.1.4.tar.gz"
+repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]

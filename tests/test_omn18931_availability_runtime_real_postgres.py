@@ -3,7 +3,8 @@
 """K4: real HTTP failures, typed terminals, registered runtime and Postgres.
 
 Run in-process on the lab so fault injection cannot spend or throttle a shared
-provider. The loopback server supplies HTTP responses; it replaces neither the
+provider. The existing native Postgres fixture owns a socket-only database.
+The loopback server supplies HTTP responses; it replaces neither the
 inference effect nor the orchestrator nor the projection writer. This proves
 the candidate seam, not E11's released-runtime/broker-offset closeout receipt.
 """
@@ -21,6 +22,7 @@ from importlib.resources import files
 from pathlib import Path
 from uuid import uuid4
 
+import asyncpg
 import pytest
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from omnibase_core.models.delegation.wire import (
@@ -58,6 +60,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _provisioned_runner,
+)
+from tests.test_omn18693_delegation_shadow_migration_real_postgres import (
+    _integration_postgres_dsn,
+)
+from tests.test_omn18693_delegation_shadow_migration_real_postgres import (
+    pg_socket_dir as pg_socket_dir,
 )
 
 pytestmark = pytest.mark.integration
@@ -117,10 +125,21 @@ def provider() -> Iterator[tuple[str, list[int]]]:
         assert not thread.is_alive()
 
 
+@pytest.mark.usefixtures("pg_socket_dir")
 async def test_same_route_failures_and_later_control_keep_separate_denominators(
     provider: tuple[str, list[int]],
     tmp_path: Path,
 ) -> None:
+    dsn = _integration_postgres_dsn()
+    connection = await asyncpg.connect(dsn)
+    try:
+        # The fresh cluster has no runtime roles for the live migrations yet.
+        await connection.execute(
+            "CREATE ROLE tenant_projection_writer NOLOGIN NOSUPERUSER NOBYPASSRLS"
+        )
+        await connection.execute("CREATE SCHEMA omninode_internal")
+    finally:
+        await connection.close()
     endpoint, calls = provider
     backend_id = uuid4()
     observations: list[ModelDelegationCohortObservation] = []
@@ -197,7 +216,11 @@ async def test_same_route_failures_and_later_control_keep_separate_denominators(
         "completed",
         "provider_unavailable",
     ]
-    async with _provisioned_runner() as (runner, connection, _schema):
+    async with _provisioned_runner(dsn=dsn) as (
+        runner,
+        connection,
+        _schema,
+    ):
         assert (await connection.fetchval("SHOW server_version_num")) >= "150000"
         for offset, terminal in enumerate(terminals):
             topic = (

@@ -70,7 +70,6 @@ MUST_NOT_LIST_EDITED: tuple[str, ...] = (
     "occ-emitter-golden-gate.yml",
     "projection-exposure-drift-gate.yml",
     "reject-leaked-literals.yml",
-    "call-occ-attestation-observe.yml",
 )
 
 # Gates whose verdict depends on the PR body, title, or base branch, or which

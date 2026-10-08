@@ -8,6 +8,9 @@ import hashlib
 import json
 from collections import defaultdict
 
+from omnimarket.nodes.node_delegation_eval_sample_compute.models.enum_delegation_eval_gate_outcome import (
+    EnumDelegationEvalGateOutcome,
+)
 from omnimarket.nodes.node_delegation_eval_sample_compute.models.enum_delegation_eval_import_rejection import (
     EnumDelegationEvalImportRejection,
 )
@@ -72,7 +75,8 @@ class HandlerDelegationEvalSample:
         self, request: ModelDelegationEvalSampleRequest
     ) -> ModelDelegationEvalManifest:
         config = request.sampling
-        quotas = {row.name: row.count for row in config.quotas}
+        ordered_quotas = tuple(sorted(config.quotas, key=lambda row: row.name))
+        quotas = {row.name: row.count for row in ordered_quotas}
         candidates: dict[ModelDelegationEvalKey, ModelDelegationEvalCandidate] = {}
         for candidate in request.candidates:
             key = _key(candidate)
@@ -81,7 +85,10 @@ class HandlerDelegationEvalSample:
             candidates[key] = candidate
 
         excluded: dict[ModelDelegationEvalKey, EnumDelegationEvalImportRejection] = {}
-        groups: dict[str, list[ModelDelegationEvalCandidate]] = defaultdict(list)
+        groups: dict[
+            tuple[str, EnumDelegationEvalGateOutcome, str],
+            list[ModelDelegationEvalCandidate],
+        ] = defaultdict(list)
         for key, candidate in candidates.items():
             # Tenant exclusion precedes holdout exclusion, including for imports.
             if candidate.tenant_id != request.house_tenant_id:
@@ -93,7 +100,16 @@ class HandlerDelegationEvalSample:
             ):
                 excluded[key] = EnumDelegationEvalImportRejection.HOLDOUT_BUCKET
             else:
-                groups[_stratum(candidate)].append(candidate)
+                # Display labels can collide when class or path contains '/'.
+                # Keep the fields separate so row order cannot choose a quota.
+                group = (
+                    candidate.task_class,
+                    candidate.gate_outcome,
+                    (candidate.deciding_path or "none")
+                    if candidate.task_class == "code_generation"
+                    else "",
+                )
+                groups[group].append(candidate)
 
         imports = set(request.imported_keys)
         rejected = tuple(
@@ -108,8 +124,11 @@ class HandlerDelegationEvalSample:
         )
         items: list[ModelDelegationEvalItem] = []
         shortfalls: list[ModelDelegationEvalShortfall] = []
-        for stratum, rows in sorted(groups.items()):
-            quota = quotas[rows[0].gate_outcome]
+        for (_, outcome, _), rows in sorted(groups.items()):
+            stratum = _stratum(rows[0])
+            # quotas is keyed by gate outcome (EnumDelegationEvalGateOutcome),
+            # which is the middle element of the group key, not task_class.
+            quota = quotas[outcome]
             ordered = sorted(rows, key=lambda row: _order(request.seed, _key(row)))
             imported = [row for row in ordered if _key(row) in imports]
             drawn = [row for row in ordered if _key(row) not in imports]
@@ -143,7 +162,7 @@ class HandlerDelegationEvalSample:
             "window_start": request.window_start,
             "window_end": request.window_end,
             "query_text": request.query_text,
-            "quotas": [row.model_dump(mode="json") for row in config.quotas],
+            "quotas": [row.model_dump(mode="json") for row in ordered_quotas],
             "item_keys": [item.key.model_dump(mode="json") for item in items],
         }
         manifest_id = hashlib.sha256(
@@ -155,7 +174,7 @@ class HandlerDelegationEvalSample:
             window_start=request.window_start,
             window_end=request.window_end,
             query_text=request.query_text,
-            quotas=config.quotas,
+            quotas=ordered_quotas,
             items=tuple(items),
             shortfalls=tuple(shortfalls),
             excluded_holdout_bucket=sum(
