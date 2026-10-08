@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19716"
+title: "Wire topic activity into the ONEX status page"
+summary: "The existing topic-activity projection is exposed on the status page. Health gains bus_backed_topics while keeping backing: table and served_topics. The status page at GET / and /morning gains a contract-declared topic_activity panel. The writer inserts broker-inventory topics that were never sampled as UNKNOWN rows with NULL counters, idempotently and without overwriting measured rows. The typed backend reader declares a read_all_rows option that uses the existing bounded cursor walk so coverage does not stop at 2000 rows."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-topic-activity-exposure"
+    statement: |-
+      Topic activity is readable from the status page and health. Live post-deployment readbacks (health field readback and a fresh event observed within 120 seconds) remain open on the ticket and are not claimed by this contract.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Health reports bus_backed_topics and the status page renders a topic_activity panel at GET / and /morning, with NULL shown as UNKNOWN, measured zero shown as zero and HTML escaped -- falsifier: uv run pytest tests/test_omn19716_topic_activity_exposure.py -q fails
+      - id: "AC2"
+        statement: |-
+          AC2: The writer inserts unsampled broker-inventory topics as UNKNOWN rows with NULL counters, idempotently, never overwriting measured rows, including on real PostgreSQL -- falsifier: uv run pytest tests/test_omn19716_topic_activity_writer.py tests/test_omn19716_topic_activity_real_postgres.py -q fails or skips
+evidence_requirements:
+  - kind: "tests"
+    description: "Health field, status page panel and complete-set cursor reading are covered by focused tests."
+    command: "uv run pytest tests/test_omn19716_topic_activity_exposure.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The writer's idempotent UNKNOWN-row insert is covered with a fake adapter and on real PostgreSQL."
+    command: "uv run pytest tests/test_omn19716_topic_activity_writer.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19716-exposure"
+    description: "Health and the status page expose the topic-activity projection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19716_topic_activity_exposure.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19716-writer"
+    description: "The writer inserts unsampled topics as UNKNOWN rows idempotently."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19716_topic_activity_writer.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

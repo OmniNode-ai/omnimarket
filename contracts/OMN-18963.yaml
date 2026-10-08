@@ -1,0 +1,54 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-18963
+title: CI Summary asserts only external contexts mintable on a push
+summary: CI Summary selects each external context by its producer's declared events and push branches, so a push asserts only the contexts that can exist there while pull requests keep the full tuple.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-push-context-parity
+  statement: On a push, CI Summary asserts every external context whose producer can run for that event and branch, and fails closed on missing or unknown event information.
+  acceptance:
+  - id: AC1
+    statement: 'AC1 - a push asserts the contexts its producers can mint and excludes pull-request-only contexts. -- falsifier: a test asserts the push set retains push producers, excludes pull-request-only contexts, and does not wait for main-only producers on a dev push.'
+  - id: AC2
+    statement: 'AC2 - pull requests keep the full tuple and unknown or absent events fail closed. -- falsifier: tests assert the pull-request tuple is unchanged and that an absent or unknown event asserts every context.'
+  - id: AC3
+    statement: 'AC3 - producer declarations match the live workflow YAML. -- falsifier: a test compares declared events and push branches with the workflow files, and a changed declaration is rejected.'
+evidence_requirements:
+- kind: tests
+  description: Event-scope resolution, fail-closed controls and producer-declaration parity.
+  command: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-push-scope-ac1
+  description: 'AC1: push scope acceptance checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -k "test_push_retains_push_producers_and_excludes_pr_only_contexts or test_dev_push_does_not_wait_for_main_only_producers"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-push-scope-ac2
+  description: 'AC2: pull-request tuple and fail-closed checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -k "test_pull_request_preserves_the_full_current_tuple or test_resolver_unknown_events_fail_closed"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-push-scope-ac3
+  description: 'AC3: producer declaration parity checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -k "test_declared_events_and_push_filters_match_live_producers or test_parity_rejects_a_changed_declaration"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

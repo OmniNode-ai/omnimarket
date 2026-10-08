@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer import (
     _MARK_DISAPPEARED_ABSENT,
     _UPSERT_TOPIC,
@@ -49,25 +50,43 @@ def _event(*, sampled_at: datetime = _T0, broker_topics: list[str] | None = None
     }
 
 
-class _Adapter:
+class _Adapter(AsyncpgAdapter):
     def __init__(
         self,
         *,
         prior_sampled_at: datetime | None = None,
         disappeared: list[str] | None = None,
         refuse_upsert: bool = False,
+        unseen_topics: list[str] | None = None,
     ) -> None:
+        super().__init__()
         self.prior_sampled_at = prior_sampled_at
         self.disappeared = disappeared or []
         self.refuse_upsert = refuse_upsert
+        self.unseen_topics = unseen_topics or []
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
 
     async def connect(self) -> None: ...
 
     async def close(self) -> None: ...
 
-    async def execute(self, query: str, *params: Any) -> list[dict[str, Any]]:
+    async def execute(
+        self, query: str, *params: Any, tenant: str | None = None
+    ) -> list[dict[str, Any]]:
+        del tenant
         self.calls.append((query, params))
+        if "UNNEST" in query:
+            return [
+                {
+                    "topic": topic,
+                    "sampled_at": None,
+                    "messages_last_hour": None,
+                    "rate_per_second": None,
+                    "activity_state": "UNKNOWN",
+                    "projection_cursor": index + 2,
+                }
+                for index, topic in enumerate(self.unseen_topics)
+            ]
         if "SELECT topic, sampled_at" in query:
             if self.prior_sampled_at is None:
                 return []
@@ -158,7 +177,7 @@ def test_stale_sample_does_not_overwrite_or_publish(
 ) -> None:
     adapter = _Adapter(prior_sampled_at=_T0 + timedelta(minutes=1))
     publisher = _Publisher()
-    writer._db = adapter  # type: ignore[assignment]
+    writer._db = adapter
     monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
     result = writer.handle(_event())
     assert result["rows_upserted"] == 0
@@ -171,7 +190,7 @@ def test_disappeared_topic_is_marked_absent_and_upserted(
 ) -> None:
     adapter = _Adapter(disappeared=["onex.evt.gone.v1"])
     publisher = _Publisher()
-    writer._db = adapter  # type: ignore[assignment]
+    writer._db = adapter
     monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
     result = writer.handle(_event())
     assert result["absent_topics"] == ["onex.evt.gone.v1"]
@@ -191,7 +210,7 @@ def test_disappeared_topic_is_marked_absent_and_upserted(
 def test_writer_publishes_every_accepted_row(
     writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    writer._db = _Adapter()  # type: ignore[assignment]
+    writer._db = _Adapter()
     publisher = _Publisher()
     monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
     result = writer.handle(_event())
@@ -210,7 +229,7 @@ def test_runtime_injected_keys_do_not_dead_letter_a_sample(
     routed to the malformed DLQ with extra_forbidden on _db, _event_type,
     _envelope_id and _envelope_timestamp.
     """
-    writer._db = _Adapter()  # type: ignore[assignment]
+    writer._db = _Adapter()
     publisher = _Publisher()
     monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
     injected = dict(_event())
@@ -230,9 +249,49 @@ def test_runtime_injected_keys_do_not_dead_letter_a_sample(
 def test_a_real_unknown_field_still_fails_validation(
     writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    writer._db = _Adapter()  # type: ignore[assignment]
+    writer._db = _Adapter()
     monkeypatch.setattr(writer, "publish_snapshot_delta", _Publisher())
     bad = dict(_event())
     bad["surprise"] = 1
     with pytest.raises(ValidationError):
         writer.handle(bad)
+
+
+def test_inventory_topics_without_samples_are_published_as_unknown(
+    writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    topic = "onex.evt.never-sampled.v1"
+    adapter = _Adapter(unseen_topics=[topic])
+    writer._db = adapter
+    publisher = _Publisher()
+    monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
+    event = _event(broker_topics=["onex.evt.active.v1", topic])
+    event.update(total_topic_count=2, empty_topic_count=1)
+    result = writer.handle(event)
+    assert result["rows_upserted"] == 2
+    unknown = next(
+        call["row"] for call in publisher.calls if call["row"]["topic"] == topic
+    )
+    assert unknown["activity_state"] == "UNKNOWN"
+    assert unknown["messages_last_hour"] is None
+    assert unknown["rate_per_second"] is None
+    assert unknown["sampled_at"] is None
+    inventory_calls = [
+        (query, params) for query, params in adapter.calls if "UNNEST" in query
+    ]
+    assert len(inventory_calls) == 1
+    query, params = inventory_calls[0]
+    assert params == (["onex.evt.active.v1", topic],)
+    assert "ON CONFLICT (topic) DO NOTHING" in query
+
+
+def test_incomplete_sample_part_does_not_seed_the_inventory(
+    writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter = _Adapter(unseen_topics=["onex.evt.never-sampled.v1"])
+    writer._db = adapter
+    monkeypatch.setattr(writer, "publish_snapshot_delta", _Publisher())
+    event = _event()
+    event.update(part_index=0, part_count=2)
+    assert writer.handle(event)["rows_upserted"] == 1
+    assert not any("UNNEST" in query for query, _ in adapter.calls)

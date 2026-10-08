@@ -24,7 +24,10 @@ fall back to, so the dashboard shows what the developer's runs wrote.
 **The tenant is this install's identity.** A tenant-scoped exposure is read for
 the identity ``onex local init`` minted. A request naming any other tenant is
 refused with ``422 tenant_conflict``; an install with no identity refuses
-scoped reads rather than serving them unscoped.
+scoped reads rather than serving them unscoped. ``GET /projections`` names that
+tenant (``tenant``, ``null`` with no identity) so the served page, which is built
+once for everyone and carries no tenant of its own, knows whom it reads as
+(OMN-20728).
 
 **The bind comes from ``dashboard.bind``.** The overlay key the plan names
 (``beta/plans/2026-09-28-local-mvp-plan.md``, overlay keys) is read from an
@@ -150,8 +153,13 @@ def create_dashboard_app(
 
     @app.get("/projections")
     async def projections() -> JSONResponse:
+        # The tenant this process serves, so the page can name it on a scoped
+        # read; null with no identity, and the page then refuses as before.
         return JSONResponse(
-            {"topics": [_catalogue_row(cfg) for cfg in topics.values()]}
+            {
+                "tenant": tenant,
+                "topics": [_catalogue_row(cfg) for cfg in topics.values()],
+            }
         )
 
     @app.get("/projection/{topic:path}")
