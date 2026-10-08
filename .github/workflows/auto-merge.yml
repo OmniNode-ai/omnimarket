@@ -326,8 +326,32 @@ jobs:
             echo "hold=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # OMN-19032: feature-base stacks must never be armed by this workflow.
+      # Read the base immediately before arming on every triggering path.
+      - name: Refuse feature-base auto-merge
+        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.resolve.outputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! base="$(gh pr view "$PR" --repo "$REPO" --json baseRefName --jq '.baseRefName')"; then
+            echo "::error::Could not read current PR base; refusing auto-merge."
+            exit 1
+          fi
+          case "$base" in
+            dev|main)
+              echo "PR #${PR} targets integration base '${base}'."
+              ;;
+            *)
+              echo "::error::PR #${PR} targets '${base}'; feature-base auto-merge is refused (OMN-19032)."
+              exit 1
+              ;;
+          esac
+
       - name: Enable auto-merge
-        if: steps.resolve.outputs.skip != 'true' && steps.resolve.outputs.actor == 'jonahgabriel' && steps.hold_gate.outputs.hold != 'true'  # onex-allow-raw-env OMN-10580 reason="CI actor gate for repo owner; not a hardcoded credential"
+        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false'
         env:
           # OMN-16081: CROSS_REPO_PAT, not GITHUB_TOKEN -- see header comment.
           # GITHUB_TOKEN-armed auto-merge completions are attributed to
