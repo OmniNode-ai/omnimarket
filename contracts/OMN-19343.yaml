@@ -14,6 +14,9 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: an empty sample, a sample below the power-analysed size, a method declaring less than the power-analysed size, or a sample below the declared size returns REFUSED before any rung or grader call, reports required_n as the maximum of the power-analysed and declared sizes and names it in the refusal reasons, reports observed_n as the supplied prompt count, and counts those prompts as incomplete in both arms -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py -q -p no:cacheprovider
+      - id: "AC2"
+        statement: |-
+          AC2: node_model_comparison_runner accepts an optional shadow_comparison request, replays stored prompts through both arms with one grader and returns the paired statistical result; an undersized or duplicate-pair request is refused before any inference call, absent answers count as incomplete, cancellation propagates, and an ambiguous request is rejected -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py::TestBusHandler -q -p no:cacheprovider
 evidence_requirements:
   - kind: "tests"
     description: "The shadow-comparison tests assert refusal for insufficient samples before any rung or grader call, with the required size and supplied prompt counts reported."
@@ -31,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19343_shadow_comparison.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-shadow-comparison-bus-handler-ac2"
+    description: "The bus handler tests assert stored prompts are replayed and compared, undersized and duplicate requests refuse before inference, absent answers count as incomplete, cancellation propagates and ambiguous requests are rejected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env -u PYTHONPATH uv run pytest tests/test_omn19343_shadow_comparison.py::TestBusHandler -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
