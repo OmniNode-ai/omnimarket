@@ -20,9 +20,22 @@ handler:
 handler_routing:
   handlers:
   - operation: pr_state_emit
+    topic: onex.cmd.omnimarket.pr-state-emit.v1
     handler:
       name: HandlerPrStateEmit
       module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
+  - operation: detect_ci_red
+    topic: onex.evt.omnimarket.pr-state-observed.v1
+    message_category: event
+    event_model:
+      name: ModelDetectCiRedRequest
+      module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red
+    handler:
+      name: HandlerDetectCiRed
+      module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red
+published_events:
+- event_type: CiRunFailedEvent
+  topic: onex.evt.omnimarket.ci-run-failed.v1
 input_model:
   name: ModelPrStateEmitRequest
   module: omnimarket.events.pr_state
@@ -49,10 +62,12 @@ terminal_event: onex.evt.omnimarket.pr-state-emit-completed.v1
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.pr-state-emit.v1
+  - onex.evt.omnimarket.pr-state-observed.v1
   publish_topics:
   - onex.evt.omnimarket.pr-state-observed.v1
   - onex.evt.omnimarket.pr-state-emit-completed.v1
   - onex.evt.omnimarket.pr-state-emit-failed.v1
+  - onex.evt.omnimarket.ci-run-failed.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.pr-state-emit-completed.v1
 - onex.evt.omnimarket.pr-state-emit-failed.v1
