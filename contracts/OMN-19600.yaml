@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19600"
+title: "Materialize refuses a target_root below a symlinked ancestor"
+summary: "HandlerDelegationOutputMaterialize refuses a target_root whose ancestor is a symlink, whether the target exists or not, before any target or artifact file is written, leaving the outside directory unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-symlinked-target-root-ancestor-refused"
+    statement: "A target_root below a symlinked ancestor is refused before any target or artifact file is written. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a target_root whose ancestor is a symlink is refused, whether the target exists or not, before any target or artifact file is written, and the outside directory is unchanged -- falsifier: uv run pytest tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The materialize refusal tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19600-ac1-symlinked-target-root-ancestor-refused"
+    description: "AC1 hosted probe. The materialize refusal tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
