@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Enum for sandbox constraint levels in ticket policy envelopes."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class EnumSandboxLevel(StrEnum):
+    """Sandbox constraint levels for ticket execution.
+
+    Controls what resources and permissions are available when executing
+    the ticket's work.
+    """
+
+    NONE = "NONE"
+    STANDARD = "STANDARD"
+    ENFORCED = "ENFORCED"
+    ISOLATED = "ISOLATED"
+
+
+__all__ = ["EnumSandboxLevel"]
