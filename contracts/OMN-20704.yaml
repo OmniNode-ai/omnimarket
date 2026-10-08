@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-20704
+title: The route job calls the reusable workflow hosted in omnimarket
+summary: The route job in ci.yml now calls route-runner-reusable.yml from omnimarket at the released commit 01a0d1b3e7d7ba1a09012f9af245ba29afa000b5 instead of omniclaude, and the workflow action-ref fixture row matches.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20704
+  statement: The route job must call the omnimarket-hosted reusable workflow at a full-sha pin, with the job id and check name unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the route job and the action-ref fixture row both name the omnimarket route-runner-reusable.yml at 01a0d1b3e7d7ba1a09012f9af245ba29afa000b5 -- falsifier: uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/ci/test_sibling_pins_omn20001.py -q'
+  - id: AC2
+    statement: 'AC2: the reusable route runner workflow contract still holds -- falsifier: uv run pytest over the committed route_runner_reusable OMN-16647 test'
+evidence_requirements:
+- kind: tests
+  description: The ratchet characterization and sibling pin tests pass with the repinned route row.
+  command: uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/ci/test_sibling_pins_omn20001.py -q
+- kind: tests
+  description: The reusable route runner test passes.
+  command: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-20704-ac1
+  description: The ratchet characterization and sibling pin tests pass with the repinned route row.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/ci/test_sibling_pins_omn20001.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-20704-ac2
+  description: The reusable route runner test passes.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
