@@ -67,10 +67,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
-    # OMN-19432: the typed-decision effect is unwired on purpose (no event_bus,
-    # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
-    # until a decision contract composes it.
-    "node_typed_decision_effect",
     # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
