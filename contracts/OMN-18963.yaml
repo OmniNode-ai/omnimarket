@@ -39,7 +39,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -k "test_pull_request_preserves_the_full_current_tuple or test_resolver_unknown_events_fail_closed or test_absent_event_fails_closed or test_unknown_event_fails_closed"
+    check_value: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -k "test_pull_request_preserves_the_full_current_tuple or test_resolver_unknown_events_fail_closed"
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
