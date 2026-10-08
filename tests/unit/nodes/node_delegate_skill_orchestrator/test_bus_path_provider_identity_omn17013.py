@@ -290,8 +290,25 @@ async def test_bus_receipt_binds_provider_accepted_attempt_gate_and_manifest_ver
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("outcome", ["completed", "failed_routed", "failed_unrouted"])
-async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
+@pytest.mark.parametrize(
+    ("outcome", "invalid_field"),
+    [
+        ("completed", None),
+        ("failed_routed", None),
+        ("failed_unrouted", None),
+        ("completed", "backend_url"),
+        ("completed", "pricing_absent"),
+        ("completed", "pricing_zero"),
+        ("completed", "routing_disposition_absent"),
+        ("completed", "routing_identity_absent"),
+        ("completed", "quality_comparison"),
+        ("completed", "evaluation_provider"),
+    ],
+)
+async def test_v2_bus_terminal_identity_reaches_receipt(
+    outcome: str,
+    invalid_field: str | None,
+) -> None:
     from datetime import UTC, datetime
 
     from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
@@ -400,6 +417,28 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
             event_type=topic,
             source_tool="receipt-v2-test",
         )
+        if invalid_field is not None:
+            # A malformed terminal must not win the wait just because it has
+            # the expected correlation id. The valid producer terminal follows
+            # it on the same bus, so the receipt must bind that valid evidence.
+            malformed = json.loads(envelope.model_dump_json())
+            payload = malformed["payload"]
+            if invalid_field == "backend_url":
+                payload["backend_ref"] = _ENDPOINT_URL
+            elif invalid_field == "pricing_absent":
+                del payload["pricing_manifest_version"]
+            elif invalid_field == "pricing_zero":
+                payload["pricing_manifest_version"] = 0
+            elif invalid_field == "routing_disposition_absent":
+                del payload["routing_disposition"]
+            elif invalid_field == "routing_identity_absent":
+                for field in ("routing_disposition", "terminal_outcome", "backend_ref"):
+                    del payload[field]
+            elif invalid_field == "quality_comparison":
+                payload["quality_bar_evaluation"]["score_vs_required_bar"] = "below_bar"
+            elif invalid_field == "evaluation_provider":
+                payload["quality_bar_evaluation"]["provider"] = _ENDPOINT_URL
+            await bus.publish(topic, None, json.dumps(malformed).encode(), None)
         await bus.publish(topic, None, envelope.model_dump_json().encode(), None)
 
     try:
@@ -438,16 +477,19 @@ async def test_v2_bus_terminal_identity_reaches_receipt(outcome: str) -> None:
         )
         assert response.attempts[-1].quality_gate_passed is True
         assert response.quality_score == 0.95
+        assert response.score_vs_required_bar == "at_or_above_bar"
     else:
         assert response.error_message == terminal.terminal_failure_reason
 
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize("rerouted", [False, True], ids=["first-route", "rerouted"])
 async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
     monkeypatch: pytest.MonkeyPatch,
+    rerouted: bool,
 ) -> None:
-    """Join the real producer and consumer, including a manifest change in flight."""
+    """Keep the winning route's identity after rejection and manifest changes."""
     from datetime import UTC, datetime
 
     from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
@@ -467,6 +509,9 @@ async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
     )
     from omnimarket.nodes.node_delegation_orchestrator.handlers import (
         handler_delegation_workflow as workflow_module,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+        ModelRoutingIntent,
     )
     from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
         ModelQualityGateResult,
@@ -492,6 +537,31 @@ async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
         )
         producer = workflow_module.HandlerDelegationWorkflow(workflows={})
         producer.handle_delegation_request(command.payload)
+        if rerouted:
+            monkeypatch.setattr(
+                workflow_module, "get_manifest_version_int", lambda: route_version - 1
+            )
+            producer.handle_routing_decision(
+                _make_routing_decision(
+                    correlation_id, backend_ref="local-coder"
+                ).model_copy(update={"tier_name": "local"})
+            )
+            producer.handle_inference_response(_make_success_response(correlation_id))
+            rejected_events = producer.handle_gate_result(
+                ModelQualityGateResult(
+                    correlation_id=correlation_id,
+                    passed=False,
+                    quality_score=0.1,
+                    failure_reasons=("assertions_missing",),
+                )
+            )
+            assert any(
+                isinstance(event, ModelRoutingIntent) for event in rejected_events
+            )
+            assert not any(
+                isinstance(event, ModelDelegationTerminalCompletedV2)
+                for event in rejected_events
+            )
         monkeypatch.setattr(
             workflow_module, "get_manifest_version_int", lambda: route_version
         )
@@ -553,7 +623,15 @@ async def test_producer_route_identity_and_pinned_manifest_reach_bus_receipt(
     assert "://" not in receipt.provider
     assert receipt.pricing_manifest_version == route_version
     assert receipt.quality_gate_passed is True
-    assert receipt.attempts_count == len(receipt.attempts) == 1
+    assert receipt.attempts_count == len(receipt.attempts) == (2 if rerouted else 1)
+    if rerouted:
+        rejected_attempt = receipt.attempts[0]
+        assert rejected_attempt.backend_id == "local-coder"
+        assert (
+            rejected_attempt.acceptance_decision
+            is EnumDelegationAcceptanceDecision.CLIMB
+        )
+        assert rejected_attempt.quality_gate_passed is False
     attempt = receipt.attempts[-1]
     assert attempt.backend_id == backend_ref
     assert attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT

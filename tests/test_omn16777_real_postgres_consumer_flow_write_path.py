@@ -42,6 +42,7 @@ SKIPS (never ERRORs) without a reachable Postgres, mirroring
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -52,18 +53,30 @@ from uuid import uuid4
 
 import asyncpg
 import pytest
+from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+    ModelDbTableDeclaration,
+)
+from omnibase_core.models.dispatch.model_message_delivery_context import (
+    ModelMessageDeliveryContext,
+)
+from omnibase_infra.runtime.auto_wiring import handler_wiring
+from omnibase_infra.topology import load_topology_profile
 
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner import (
     _INSERT_UNKNOWN,
     _SELECT_PRIOR_STATE,
     _SELECT_UPSTREAM,
     _UPSERT_FLOW,
     _UPSERT_PRODUCE,
+    ConsumerFlowProjectionWriter,
 )
 from omnimarket.nodes.node_projection_consumer_flow.models import (
     EnumConsumerFlowState,
     EnumUpstreamEvidence,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.runner import MessageMeta
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
@@ -189,6 +202,210 @@ async def _insert_window(
         state.value,
         end,
     )
+
+
+def _refusal_heartbeat(node_id: str, sequences: dict[str, int]) -> dict[str, object]:
+    """Keep the conflict keys fixed while varying each row's ordering input."""
+    end = _T0 + timedelta(seconds=60)
+    return {
+        "flow_window": {
+            "node_id": node_id,
+            "window_start": _T0.isoformat(),
+            "window_end": end.isoformat(),
+            "window_sequence": max(sequences.values()),
+            "consumer_deltas": [
+                {
+                    "consumer_group": group,
+                    "topic": _TOPIC,
+                    "node_id": node_id,
+                    "window_start": _T0.isoformat(),
+                    "window_end": end.isoformat(),
+                    "window_sequence": sequence,
+                    "messages_in": 10,
+                    "messages_out": 10,
+                    "messages_dlq": 0,
+                    "handler_errors": 0,
+                }
+                for group, sequence in sequences.items()
+            ],
+            "produce_deltas": [],
+        }
+    }
+
+
+async def _refusal_writer(conn: asyncpg.Connection) -> ConsumerFlowProjectionWriter:
+    writer = ConsumerFlowProjectionWriter()
+    writer._db = AsyncpgAdapter(
+        dsn=_dsn(await conn.fetchval("SELECT current_database()"))
+    )
+    # Bus publication has its own gate; these tests exercise the real DB writer.
+    writer._snapshot_exposure = None
+    return writer
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_writer_reports_success_stale_and_equal_sequence_outcomes() -> None:
+    """The unchanged SQL accepts equality and refuses only older same-node rows."""
+    async with _migrated_database() as conn:
+        writer = await _refusal_writer(conn)
+        node_id = str(uuid4())
+        meta = MessageMeta(
+            topic=_TOPIC, partition=0, offset=1, fallback_id="refusal-proof"
+        )
+        first = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 10}), meta
+        )
+        assert first["rows_upserted"] == 1
+        assert first["rows_refused_by_ordering_guard"] == 0
+
+        stale = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 9}), meta
+        )
+        assert stale["rows_upserted"] == 0
+        assert stale["flow_rows"] == []
+        assert stale["rows_refused_by_ordering_guard"] == 1
+        assert (
+            await conn.fetchval(
+                "SELECT ingest_sequence FROM omninode_internal.consumer_flow_windows"
+            )
+            == 10
+        )
+
+        equal = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 10}), meta
+        )
+        assert equal["rows_upserted"] == 1
+        assert equal["rows_refused_by_ordering_guard"] == 0
+
+        # A sequence gap attempts UNKNOWN inserts into the occupied conflict
+        # key. DO NOTHING there must not be counted as an ordering refusal.
+        gap = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 13}), meta
+        )
+        assert gap["rows_upserted"] == 1
+        assert gap["rows_refused_by_ordering_guard"] == 0
+
+        replacement = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(str(uuid4()), {_GROUP: 1}), meta
+        )
+        assert replacement["rows_upserted"] == 1
+        assert replacement["rows_refused_by_ordering_guard"] == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_writer_counts_every_refused_row_in_a_mixed_batch() -> None:
+    """Two refusals beside one accepted update cannot be represented by a bool."""
+    async with _migrated_database() as conn:
+        writer = await _refusal_writer(conn)
+        node_id = str(uuid4())
+        meta = MessageMeta(
+            topic=_TOPIC, partition=0, offset=1, fallback_id="refusal-proof"
+        )
+        groups = {f"{_GROUP}.{suffix}": 10 for suffix in ("a", "b", "c")}
+        first = await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, groups), meta
+        )
+        assert first["rows_upserted"] == 3
+        assert first["rows_refused_by_ordering_guard"] == 0
+        mixed = await writer._project_one_message(
+            _TOPIC,
+            _refusal_heartbeat(node_id, dict(zip(groups, (9, 9, 11), strict=True))),
+            meta,
+        )
+        assert mixed["rows_upserted"] == 1
+        assert mixed["rows_refused_by_ordering_guard"] == 2
+        assert mixed["flow_rows"][0]["ingest_sequence"] == 11
+        stored = await conn.fetch(
+            "SELECT ingest_sequence FROM omninode_internal.consumer_flow_windows "
+            "ORDER BY consumer_group"
+        )
+        assert [row["ingest_sequence"] for row in stored] == [10, 10, 11]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_writer_does_not_classify_an_empty_heartbeat_as_a_refusal() -> None:
+    async with _migrated_database() as conn:
+        writer = await _refusal_writer(conn)
+        result = await writer._project_one_message(
+            _TOPIC,
+            {},
+            MessageMeta(
+                topic=_TOPIC, partition=0, offset=1, fallback_id="refusal-proof"
+            ),
+        )
+        assert result == {
+            "rows_upserted": 0,
+            "flow_rows": [],
+            "rows_refused_by_ordering_guard": 0,
+        }
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_real_writer_refusal_is_info_but_empty_write_is_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Drive the installed consumer seam with actual Postgres writer results."""
+    async with _migrated_database() as conn:
+        writer = await _refusal_writer(conn)
+        node_id = str(uuid4())
+        meta = MessageMeta(
+            topic=_TOPIC, partition=0, offset=1, fallback_id="refusal-proof"
+        )
+        await writer._project_one_message(
+            _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 10}), meta
+        )
+        target = handler_wiring._resolve_projection_database_target(
+            tuple(
+                ModelDbTableDeclaration(**table)
+                for table in writer._contract["db_io"]["db_tables"]
+            ),
+            load_topology_profile("local"),
+        )
+        dsn = _dsn(await conn.fetchval("SELECT current_database()"))
+        monkeypatch.setattr(handler_wiring, "_resolve_binding_dsn", lambda *_: dsn)
+        # The runtime-injected adapter is unused by this pool-owning writer.
+        monkeypatch.setattr(
+            handler_wiring,
+            "_build_projection_db_adapter",
+            lambda *_: InmemoryDatabaseAdapter(),
+        )
+        callback = handler_wiring._make_projection_dispatch_callback(
+            writer, target, (_TOPIC,)
+        )
+        delivery = ModelMessageDeliveryContext(topic=_TOPIC, partition=0, offset=2)
+        logger_name = handler_wiring.__name__
+        with caplog.at_level(logging.INFO, logger=logger_name):
+            await callback(
+                {
+                    "topic": _TOPIC,
+                    "payload": _refusal_heartbeat(node_id, {_GROUP: 9}),
+                },
+                delivery=delivery,
+            )
+        records = [r for r in caplog.records if r.name == logger_name]
+        assert any(
+            r.levelno == logging.INFO
+            and "ordering guard" in r.getMessage()
+            and "rows_refused=1" in r.getMessage()
+            for r in records
+        )
+        assert not any(r.levelno >= logging.ERROR for r in records)
+
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger=logger_name):
+            await callback({"topic": _TOPIC, "payload": {}}, delivery=delivery)
+        records = [r for r in caplog.records if r.name == logger_name]
+        assert any(
+            r.levelno == logging.ERROR
+            and "wrote zero rows (no terminal emitted)" in r.getMessage()
+            and "ConsumerFlowProjectionWriter" in r.getMessage()
+            for r in records
+        )
+        assert not any("ordering guard" in r.getMessage() for r in records)
 
 
 @pytest.mark.integration

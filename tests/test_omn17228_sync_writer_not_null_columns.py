@@ -61,7 +61,12 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
     ModelTaskDelegatedEvent,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -86,6 +91,8 @@ class _RecordingAttestedAdapter:
         self.rows: list[dict[str, object]] = []
         self.insert_only: list[frozenset[str]] = []
         self._existing = existing or []
+        self.registry = InmemoryDatabaseAdapter()
+        seed_tenant_registry(self.registry)
 
     def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
         self.rows.append(dict(row))
@@ -128,6 +135,8 @@ class _RecordingAttestedAdapter:
         # returning the same row for them would hand the snapshot encoder a
         # payload missing the views' declared key columns, which fails for a
         # reason that has nothing to do with this test.
+        if table == "tenant_registry_mirror":
+            return self.registry.query(table, filters)
         if table != "delegation_events":
             return []
         return list(self._existing)
@@ -153,6 +162,7 @@ def _verdict() -> ModelQualityGateResult:
 
 def _terminal() -> ModelTaskDelegatedEvent:
     return ModelTaskDelegatedEvent(
+        tenant_id=PROJECTION_TENANT_SLUG,
         correlation_id=CORRELATION_ID,
         session_id="s1",
         task_type="code_review",

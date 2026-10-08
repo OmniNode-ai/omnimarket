@@ -14,7 +14,13 @@ from uuid import UUID
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
@@ -29,6 +35,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _CONFIG_KEY = "delegation_runtime_dispatch"
+_V2_TERMINAL_ADAPTER: TypeAdapter[
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+] = TypeAdapter(
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+)
 
 
 class ProtocolDelegationEventBus(Protocol):
@@ -162,20 +177,30 @@ class RuntimeDelegationDispatchPort:
                 "quality_gate_passed": False,
             }
 
-        with dispatch_stage("subscribe"):
-            unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        try:
+            with dispatch_stage("subscribe"):
+                unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        except TimeoutError as exc:
+            return {
+                "status": "timeout",
+                "error_message": f"delegation timed out at stage=subscribe: {exc}",
+            }
+        timeout_stage = "publish"
         try:
             with dispatch_stage("publish"):
                 await self._publish_request(request)
             timeout_seconds = float(self._config.wait_timeout_seconds)
+            timeout_stage = "terminal_wait"
             with dispatch_stage("terminal_wait"):
                 terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
-        except TimeoutError:
+        except TimeoutError as exc:
             return {
                 "status": "timeout",
                 "error_message": (
                     f"timed out after {self._config.wait_timeout_seconds}s "
                     "at stage=terminal_wait waiting for delegation result"
+                    if timeout_stage == "terminal_wait"
+                    else f"delegation timed out at stage=publish: {exc}"
                 ),
             }
         finally:
@@ -322,6 +347,23 @@ def _parse_delegation_terminal(
     if not isinstance(envelope_payload, dict):
         return None
 
+    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
+    wire_payload = envelope_payload.get("payload", envelope_payload)
+    if isinstance(wire_payload, dict) and (
+        topic.endswith(".v2")
+        or any(
+            field in wire_payload
+            for field in ("routing_disposition", "terminal_outcome", "backend_ref")
+        )
+    ):
+        # Validate before flattening: correlation alone cannot make a URL-shaped
+        # backend, absent pricing version or contradictory gate result evidence.
+        # The released wire contracts own these invariants (OMN-17013).
+        try:
+            _V2_TERMINAL_ADAPTER.validate_python(wire_payload)
+        except ValidationError:
+            return None
+
     terminal_payload = _flatten_terminal_payload(
         cast(dict[str, object], envelope_payload)
     )
@@ -340,7 +382,6 @@ def _parse_delegation_terminal(
     # both the full topic (legacy / test-simulated shape) and its derived
     # alias so either form classifies correctly; ``failure_reason`` remains
     # the final fallback for shapes that carry neither.
-    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
     failed_alias = _short_topic_alias(failed_topic)
     is_failed = (
         terminal_payload.get("terminal_outcome") == "failed"

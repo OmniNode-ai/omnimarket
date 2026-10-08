@@ -51,6 +51,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -66,6 +67,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationDeliverableEvidence,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
+    ModelDelegationRawResponse,
     ModelQualityGateInput,
 )
 
@@ -153,6 +155,7 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.model_usage_call_event import ModelUsageCallEvent
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     current_dispatch_progress,
     dispatch_stage,
@@ -220,6 +223,12 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import (
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
+    HandlerProjectionUsageByModelDay,
+)
+from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
+    apply_usage_call,
 )
 from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -520,6 +529,7 @@ def _response_contract_evidence_for_attempt(
     deliverable_contract: ModelDeliverableContract,
     outbound_system_prompt: str | None,
     validated: bool,
+    raw_response: ModelDelegationRawResponse | None,
 ) -> ModelDelegationContractEvidence | None:
     """Record the response contract this attempt conveyed and graded (OMN-19201).
 
@@ -555,6 +565,7 @@ def _response_contract_evidence_for_attempt(
         output_shape=output_shape,
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
+        raw_response=raw_response,
     )
 
 
@@ -1223,10 +1234,17 @@ class LocalDelegationDispatchPort:
         # tiers that declare the same concrete backend for a task type made
         # escalation a functional no-op (identical backend+model re-attempted).
         excluded_backend_refs: set[str] = set()
+        # OMN-19215: a sibling hop must remember every exhausted quality
+        # rejection, including when the intervening sibling fails transport.
+        quality_rejected_model_ids: set[str] = set()
         # Cumulative metered spend banked across every attempted tier (OMN-13849):
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
         cumulative_cost_usd = Decimal("0")
+        # OMN-20006: what each banked call consumed, on the model that served
+        # it, so the usage rows split the run's cost per model. Appended
+        # wherever cumulative_cost_usd is, so the two always agree.
+        attempt_usage: list[_AttemptUsage] = []
         attempts: list[dict[str, object]] = []
         escalation_count = 0
         # OMN-14220: best authored artifact seen across attempts (highest gate score,
@@ -1485,6 +1503,7 @@ class LocalDelegationDispatchPort:
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        excluded_model_ids=frozenset(quality_rejected_model_ids),
                         quota_state=self._quota_snapshot(quota_observations),
                     )
                 if transport_sibling is None and not byok_same_backend_retry:
@@ -1510,6 +1529,9 @@ class LocalDelegationDispatchPort:
                 # (typically zero) metered cost directly — mirrors the
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
+                attempt_usage.append(
+                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                )
                 attempts.append(
                     {
                         "tier": current_tier,
@@ -1624,6 +1646,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     # Transport failure: the gate never ran, so nothing was scored.
                     actual_score=None,
                     required_bar=None,
@@ -1688,6 +1711,11 @@ class LocalDelegationDispatchPort:
             # BEFORE deciding pass/fail so a rejected metered tier's spend is
             # counted even if we escalate away from it (OMN-13849).
             cumulative_cost_usd += result.actual_cost_usd
+            attempt_usage.append(
+                _AttemptUsage.of(
+                    result, model_id=result.served_model_id or backend.model_id
+                )
+            )
 
             attempt_tier = _routing_tier_name(backend)
 
@@ -1898,6 +1926,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=baseline_savings,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
                 )
@@ -2028,6 +2057,7 @@ class LocalDelegationDispatchPort:
                 continue
 
             excluded_backend_refs.add(backend.backend_id)
+            quality_rejected_model_ids.add(backend.model_id)
 
             # OMN-13640: same posture as the transport branch above — the tier
             # is only abandoned once the routing authority reports no untried
@@ -2046,7 +2076,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
-                    excluded_model_ids=frozenset({backend.model_id}),
+                    excluded_model_ids=frozenset(quality_rejected_model_ids),
                     quota_state=self._quota_snapshot(quota_observations),
                 )
             )
@@ -2118,6 +2148,7 @@ class LocalDelegationDispatchPort:
                     baseline_savings=None,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
                 )
@@ -3103,6 +3134,7 @@ class LocalDelegationDispatchPort:
                 deliverable_contract=deliverable_contract,
                 outbound_system_prompt=outbound_system_prompt,
                 validated=gate_result.passed,
+                raw_response=result.raw_response,
             ),
         )
 
@@ -3205,6 +3237,7 @@ class LocalDelegationDispatchPort:
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
         required_bar: float | None,
+        attempt_usage: Sequence[_AttemptUsage] = (),
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -3227,6 +3260,12 @@ class LocalDelegationDispatchPort:
         routed every local terminal through the text fallback, where a run
         whose rungs answered and were refused on quality could be recorded as
         a provider quota failure.
+
+        OMN-20006: ``attempt_usage`` is what each banked call consumed, in
+        order. It becomes one usage-by-model-day call per call that reached a
+        provider, on that call's own model and with its own usage source, so an
+        escalated run's cost splits per model and still sums to ``cost_usd``.
+        Empty (the default, for callers that project no usage) writes none.
         """
         payload: dict[str, object] = {
             "status": "completed" if quality_passed else "failed",
@@ -3395,6 +3434,14 @@ class LocalDelegationDispatchPort:
                     correlation_id,
                     exc_info=True,
                 )
+            # OMN-20006: the run's calls, each on its own model, folded into the
+            # usage-by-model-day tables the Usage page reads.
+            self._project_usage(
+                correlation_id=correlation_id,
+                tenant_id=tenant_id,
+                emitted_at=terminal.emitted_at,
+                attempt_usage=attempt_usage,
+            )
         except Exception:
             logger.warning(
                 "Failed to project local delegation evidence for correlation_id=%s",
@@ -3415,6 +3462,74 @@ class LocalDelegationDispatchPort:
         # local store. Idempotent downstream: the projection upserts on
         # correlation_id.
         self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _project_usage(
+        self,
+        *,
+        correlation_id: UUID,
+        tenant_id: str,
+        emitted_at: datetime,
+        attempt_usage: Sequence[_AttemptUsage],
+    ) -> None:
+        """Fold each call into the usage-by-model-day tables (OMN-20006).
+
+        One call per attempt that reached a provider, on the model that served
+        it, with its own cost and usage source: an escalated run's spend is
+        split per model, and an attempt whose cost was not measured is never
+        booked as measured because a later one was. A call that carried no
+        usage at all (refused before a provider answered) is not a usage call;
+        its banked cost is zero, so the per-model sum still equals the run's
+        cost. A single call keeps the run's correlation id as its key; several
+        take ``<correlation id>:<n>`` in attempt order.
+
+        Tokens follow the one definition ``onex metering`` reads: the deciding
+        attempt's (the last one banked, whose tokens the delegation row
+        records). Every earlier attempt's call carries 0 tokens, so the window's
+        usage tokens equal metering's token totals (AC1). The columns are NOT
+        NULL, so 0 here means "not counted under that definition", not a
+        measured zero. Counting escalated-from attempts' tokens belongs in the
+        metering summary, so the CLI and the page move together.
+
+        Dated by the terminal's own emitted_at, so its UTC day is the
+        delegation row's. Each call has its own guard: a failed usage write
+        must neither break the response nor take the call-metrics row, or
+        another attempt's usage, down with it.
+        """
+        deciding = len(attempt_usage) - 1
+        calls = [
+            (index == deciding, usage)
+            for index, usage in enumerate(attempt_usage)
+            if usage.carries_usage
+        ]
+        for ordinal, (is_deciding, usage) in enumerate(calls, start=1):
+            call_id = (
+                str(correlation_id)
+                if len(calls) == 1
+                else f"{correlation_id}:{ordinal}"
+            )
+            try:
+                usage_event = ModelUsageCallEvent(
+                    call_id=call_id,
+                    model_name=usage.model_id,
+                    tenant_id=tenant_id,
+                    prompt_tokens=usage.tokens_in if is_deciding else 0,
+                    completion_tokens=usage.tokens_out if is_deciding else 0,
+                    estimated_cost_usd=float(usage.cost_usd),
+                    usage_source=usage.usage_source,
+                    timestamp=emitted_at,
+                )
+                apply_usage_call(
+                    HandlerProjectionUsageByModelDay().handle(usage_event),
+                    self._evidence_db,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to project local usage-by-model-day for "
+                    "correlation_id=%s call_id=%s",
+                    correlation_id,
+                    call_id,
+                    exc_info=True,
+                )
 
     def _refresh_metering_summary(
         self, *, correlation_id: UUID, tenant_id: str, terminal_at: datetime
@@ -3493,6 +3608,41 @@ def _local_terminal_topic(*, success: bool) -> str | None:
         logger.warning("delegate-skill terminal topic unresolved from %s", contract)
         return None
     return str(topic)
+
+
+@dataclass(frozen=True, slots=True)
+class _AttemptUsage:
+    """What one banked effect call consumed, on the model that served it."""
+
+    model_id: str
+    tokens_in: int
+    tokens_out: int
+    cost_usd: Decimal
+    usage_source: EnumUsageSource
+    answered: bool
+
+    @classmethod
+    def of(
+        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+    ) -> _AttemptUsage:
+        return cls(
+            model_id=model_id,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cost_usd=result.actual_cost_usd,
+            usage_source=result.usage_source,
+            answered=result.success,
+        )
+
+    @property
+    def carries_usage(self) -> bool:
+        """A provider answered, or the call still recorded tokens or cost."""
+        return (
+            self.answered
+            or self.cost_usd != 0
+            or self.tokens_in != 0
+            or self.tokens_out != 0
+        )
 
 
 class _AttemptOutcome:

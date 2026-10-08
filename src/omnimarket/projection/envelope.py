@@ -191,7 +191,7 @@ DATA_SOURCE_TAG: Final[str] = "data_source"
 
 
 def envelope_data_source(data: Mapping[str, Any]) -> str:
-    """Return ``fixture`` only when the producer tagged this envelope as a fixture.
+    """Return ``fixture`` only when the producer recorded that exact marker.
 
     OMN-19970. The seed labels its events with
     ``ModelEventEnvelope.metadata.tags["data_source"] = "fixture"``. Tags are
@@ -199,12 +199,15 @@ def envelope_data_source(data: Mapping[str, Any]) -> str:
     changes. On the RUNNER seam :func:`unwrap_envelope` hands the whole wire
     message back under ``_envelope``, which is where this reads it.
 
-    Anything other than the exact ``fixture`` tag -- no envelope, no metadata,
-    no tag, another value -- reads as ``real``. That is the safe direction: a
-    malformed tag must never hide a real delegation from a measured sum.
-    The runtime KERNEL seam injects named keys only and carries no tags today,
-    so rows written there read ``real`` (spec amendment 1, out of scope).
+    With no exact ``fixture`` marker on either the payload or the envelope,
+    the event reads as ``real``. An absent or malformed marker must never hide
+    a real delegation from a measured sum.
+    The runtime KERNEL seam dispatches the payload without envelope tags. The
+    seed therefore also carries the exact marker on its payload. Read it before
+    parsing the terminal model, which ignores projection-owned metadata.
     """
+    if data.get(DATA_SOURCE_TAG) == DATA_SOURCE_FIXTURE:
+        return DATA_SOURCE_FIXTURE
     envelope = data.get("_envelope")
     if not isinstance(envelope, Mapping):
         return DATA_SOURCE_REAL

@@ -1,0 +1,58 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-12717
+title: Require useful delegation artifacts for test and code-generation routes
+summary: A pytest unit marker can pass the test quality gate even when the output
+  defines no collectable tests. Add pytest_tests_present to the test task-class deterministic
+  contract.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-pytest-artifact-present
+  statement: Test-generation outputs must include runnable pytest tests and @pytest.mark.unit
+    when the task contract requires it.
+  acceptance:
+  - id: AC1
+    statement: Test-generation outputs must include runnable pytest tests and @pytest.mark.unit
+      when the task contract requires it.
+- id: req-pytest-attribute-resolves
+  statement: A test artifact that reads a pytest attribute the installed pytest does
+    not define must be refused by the quality gate.
+  acceptance:
+  - id: AC2
+    statement: A test artifact that reads a pytest attribute the installed pytest does
+      not define must be refused by the quality gate.
+evidence_requirements:
+- kind: tests
+  description: Pure AST check accepts module-level test_ functions or test_ methods
+    in Test classes without __init__; ignores nested helpers and string literals.
+  command: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_quality_gate_code_artifact_omn12717.py
+    -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-pytest-artifact-presence
+  description: Add pytest_tests_present to the test task-class deterministic contract.
+    Preserve existing empty-content and finish_reason=length refusals.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_quality_gate_code_artifact_omn12717.py
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-pytest-attribute-resolves
+  description: Refuse a test artifact that reads a missing pytest attribute such as
+    pytest.mark_unit; pytest.mark.<anything> is unaffected.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_pytest_attribute_resolves_omn12717.py
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

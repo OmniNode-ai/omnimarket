@@ -397,14 +397,24 @@ def has_leading_reasoning_trace(segmentation: ModelReasoningSegmentation) -> boo
     """Whether the segmented text opened with a reasoning trace (OMN-18278).
 
     True when a leading preamble resolved in front of an answer, or when the
-    text is declared reasoning with no answer resolved behind it. Either way
-    the raw provider text carries a trace that the deterministic
-    ``no_leading_reasoning_trace`` floor must see and refuse, even though
-    extraction can still hand the caller a clean deliverable.
+    text is declared reasoning with no answer resolved behind it. An unclosed
+    declared opener also counts: extraction must not hide it behind a marker
+    or a schema-conforming object before the residual-tag floor can see it.
+    The gate must see the raw provider text and refuse it at the deterministic
+    leading-trace or residual-tag floor, even when extraction found a clean
+    deliverable.
     """
+    policy = resolve_reasoning_preamble_policy()
     return (
         bool(segmentation.preamble)
         or segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+        or (
+            policy is not None
+            and any(
+                segmentation.answer.lstrip().startswith(f"<{closing[2:]}")
+                for closing in policy.closing_trace_tags
+            )
+        )
     )
 
 

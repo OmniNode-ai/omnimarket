@@ -1,0 +1,149 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_savings_estimate_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-19979. Pure estimate of what historical Claude Code prompts would have
+  saved through the delegate: prompt records, a pinned baseline and the
+  delegate's route in; rows typed ESTIMATED out.
+
+  ESTIMATED IS NOT MEASURED. Every output row carries basis estimated and
+  money fields named estimated_*. The rows are published on their own terminal
+  event, which no measured-savings node subscribes to, and the measured
+  metering fold refuses them by type. An estimate is shown beside the measured
+  savings figure and never added to it.
+
+  ONE DEFINITION. The baseline counterfactual is node_metering_summary_compute's
+  counterfactual_cost_usd over the same pinned ModelCounterfactualBaseline that
+  Overview folds under, and the delegate cost is the routing registry's typed
+  tier cost through omnimarket.pricing.compute_tier_cost_usd. This node adds no
+  price arithmetic of its own.
+
+  THE BASELINE IS OVERVIEW'S. baseline_model is the string Overview's metering
+  rows are keyed by; every row carries it verbatim, so the estimate's baseline
+  column and Overview's baseline cannot differ. An unresolved baseline gives
+  rows with no baseline cost and no saving, never zero.
+
+  DIVERGENCES FROM THE TRANSCRIPT TOOL'S METHOD, named. (1) Usage is counted
+  once per assistant message id; the earlier parser summed every content-block
+  line and overstated tokens. (2) Cache-creation and cache-read tokens are
+  carried on each row but not priced: the pricing manifest has no cache rates,
+  and metering prices uncached input and output only. (3) The baseline is the
+  configured Overview baseline, not each prompt's own answering model, so the
+  estimate and Overview state savings against one model; the answering model
+  rides on the row as source_model. (4) Prompts with no answering model or no
+  usage are counted and given no row, never a zero row. (5) Prompt text is never
+  carried. (6) Prices come only from the canonical pricing manifest and the
+  routing tier registry, never from constants.
+
+input_model: omnimarket.nodes.node_savings_estimate_compute.models.model_savings_estimate_request.ModelSavingsEstimateRequest
+output_model: omnimarket.nodes.node_savings_estimate_compute.models.model_savings_estimate_request.ModelSavingsEstimateResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: estimate
+      handler:
+        name: HandlerSavingsEstimate
+        module: omnimarket.nodes.node_savings_estimate_compute.handlers.handler_savings_estimate
+      event_model:
+        name: ModelSavingsEstimateRequest
+        module: omnimarket.nodes.node_savings_estimate_compute.models.model_savings_estimate_request
+
+handler:
+  module: omnimarket.nodes.node_savings_estimate_compute.handlers.handler_savings_estimate
+  class: HandlerSavingsEstimate
+  input_model: omnimarket.nodes.node_savings_estimate_compute.models.model_savings_estimate_request.ModelSavingsEstimateRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  records:
+    type: list[object]
+    required: true
+    description: "ModelClaudeCodePromptRecord rows from node_claude_code_history_read_effect"
+  baseline_model:
+    type: string
+    required: true
+    description: "The baseline string Overview's metering rows are keyed by"
+  baseline:
+    type: object
+    required: false
+    description: "The pinned baseline price; absent when the model is not in the manifest"
+  route:
+    type: object
+    required: true
+    description: "Delegate tier name, model and typed tier cost from the routing registry"
+
+outputs:
+  basis:
+    type: string
+    description: "Always estimated"
+  rows:
+    type: list[object]
+    description: "ModelSavingsEstimateRow, one per prompt with usage"
+  prompts_total:
+    type: int
+  prompts_estimated:
+    type: int
+  prompts_without_usage:
+    type: int
+  estimated_baseline_cost_usd:
+    type: string
+    description: "Decimal; null when the baseline is unresolved or no row exists"
+  estimated_delegate_cost_usd:
+    type: string
+  estimated_savings_usd:
+    type: string
+    description: "Decimal; null when the baseline is unresolved or no row exists"
+
+golden_path:
+  - Receive prompt records, Overview's baseline string, its pinned price and the delegate route
+  - Count prompts without usage and give them no row
+  - Price each prompt at the baseline through counterfactual_cost_usd
+  - Price each prompt on the delegate route through compute_tier_cost_usd
+  - Emit rows typed estimated on the estimate terminal, never on a measured topic
+
+dod_evidence:
+  - test: tests/test_golden_chain_savings_estimate_omn19979.py::test_overview_measured_total_excludes_the_estimate
+    description: AC1 -- one measured run and one estimated row; Overview's measured total is the measured run's alone
+  - test: tests/test_golden_chain_savings_estimate_omn19979.py::test_csv_baseline_column_equals_overview_baseline
+    description: AC2 -- the CSV baseline column equals Overview's baseline string
+  - test: tests/test_golden_chain_savings_estimate_omn19979.py::test_no_measured_node_subscribes_to_the_estimate_topic
+    description: No measured-savings node consumes the estimate terminal
+
+terminal_event: onex.evt.omnimarket.savings-estimate-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.savings-estimate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.savings-estimate-computed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node — estimated savings over historical prompts, typed ESTIMATED"
+  author: "OmniNode Platform Team"
+  created: "2026-10-07"
+  tags:
+    - "compute"
+    - "savings"
+    - "estimate"
+    - "deterministic"
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.savings-estimate-requested.v1
+
+# Explicit SINK declaration (contract topic graph closure). Rendered by the
+# estimate shim; deliberately consumed by no measured-savings projection.
+externally_consumed_topics:
+  - onex.evt.omnimarket.savings-estimate-computed.v1

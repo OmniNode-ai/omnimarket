@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_linear_triage.
 
-Scans all non-completed Linear tickets, verifies status against actual GitHub
-PR state, auto-marks merged tickets done, and flags stale tickets for review.
+Assesses the declared sprint project against GitHub PR state, reports close
+candidates, and gates live Done writes on an acceptance-bound PASS dod_verify.
 
 Requires:
-  LINEAR_API_KEY — Linear personal API key
+  LINEAR_API_KEY and GITHUB_TOKEN — keys in the declared secret store
+  project_id or LINEAR_ACTIVE_SPRINT_PROJECT_ID — current sprint project UUID
 
 Usage:
-    python -m omnimarket.nodes.node_linear_triage
-    python -m omnimarket.nodes.node_linear_triage --dry-run
+    python -m omnimarket.nodes.node_linear_triage --project-id <sprint-uuid>
+    python -m omnimarket.nodes.node_linear_triage --project-id <sprint-uuid> --local-secrets --dry-run
     python -m omnimarket.nodes.node_linear_triage --threshold-days 7
     python -m omnimarket.nodes.node_linear_triage --team "Omninode" --dry-run
     python -m omnimarket.nodes.node_linear_triage --timeout 120
@@ -24,6 +25,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     HandlerLinearTriage,
@@ -59,6 +61,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Scan Linear tickets and reconcile against GitHub PR state."
     )
+    parser.add_argument("--scope", choices=("sprint", "backlog"), default="sprint")
+    parser.add_argument("--project-id", default="", help="Current sprint project UUID.")
+    secrets = parser.add_mutually_exclusive_group()
+    secrets.add_argument("--secret-resolver-config-path", default="")
+    secrets.add_argument(
+        "--local-secrets",
+        action="store_true",
+        help="Select the packaged explicit env mapping for exported Linear/GitHub keys.",
+    )
     parser.add_argument(
         "--threshold-days",
         type=int,
@@ -88,6 +99,13 @@ def main() -> None:
     args = parser.parse_args()
 
     command = ModelLinearTriageStartCommand(
+        scope=args.scope,
+        project_id=args.project_id,
+        secret_resolver_config_path=(
+            str(Path(__file__).with_name("local_secret_resolver.yaml"))
+            if args.local_secrets
+            else args.secret_resolver_config_path
+        ),
         threshold_days=args.threshold_days,
         dry_run=args.dry_run,
         team=args.team,

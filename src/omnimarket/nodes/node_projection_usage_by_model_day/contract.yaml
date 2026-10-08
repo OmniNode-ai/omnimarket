@@ -95,6 +95,11 @@ projection_api:
     - input_tokens
     - output_tokens
     - cost_usd
+    # OMN-20006: the cost of the calls whose cost was measured (NULL when none
+    # was), and how many calls were not measured. The Usage page shows these;
+    # cost_usd still sums every call.
+    - measured_cost_usd
+    - unmeasured_call_count
     - call_count
     - updated_at
     - projection_cursor
@@ -104,18 +109,11 @@ projection_api:
   limit: 500
   bus_backed: true
   key_columns: [tenant_id, usage_day, model_id]
-  # OMN-17199 -- the reader end. This exposure is `bus_backed: true` and no
-  # dashboard widget or typed backend reader renders it yet: OMN-19978 delivers
-  # the projection and its snapshot topic, not a rendering surface. The opt-out
-  # says so here instead of failing the exposure-reader gate on every
-  # omnibase_infra PR since the projection landed (omnimarket#3073). When a
-  # per-tenant usage surface reads it, delete both keys -- the gate fails on an
-  # opt-out left standing over a live reader.
-  consumers: none
-  consumers_reason: >-
-    Per-tenant model usage aggregates (tokens and cost per model per UTC day)
-    with no rendering surface built yet; the projection and its snapshot topic
-    ship first (OMN-19978) and a reader is a separate deliverable. Declared
-    here so the opt-out is visible rather than a silent gate failure.
+  # OMN-20006: a read is scoped to the reading tenant by the server, so the page
+  # never receives, or filters out, another tenant's rows.
+  tenant_column: tenant_id
+  # OMN-17199: the reader is the omnidash Usage page's usage-by-model-day
+  # component (OMN-20006), declared in omnidash's component registry, so the
+  # reasoned `consumers: none` opt-out is deleted rather than left standing.
 metadata:
   transport_type: kafka

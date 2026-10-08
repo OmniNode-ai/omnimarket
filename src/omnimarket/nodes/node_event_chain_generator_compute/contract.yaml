@@ -1,0 +1,90 @@
+---
+name: node_event_chain_generator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Generation step of the golden-chain validation layer. Reduces the contract
+  walker's report for one orchestrator workflow to its owner-level paths
+  (golden and error), drives each path through a fixture driver that runs the
+  real orchestrator handler on an in-memory bus, and records one chain
+  expectation per path: the emitted event types, the workflow state after
+  every step and the terminal payload facts. The gate operation compares the
+  live walker paths and a fresh drive of each path with the committed
+  expectations and fails on a path with no chain, a chain with no path, or a
+  chain whose drive no longer matches. The node performs no I/O; the driver
+  is supplied by the caller.
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.event-chain-generator.v1
+
+terminal_event: onex.evt.omnimarket.event-chain-generator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.event-chain-generator.v1
+  publish_topics:
+    - onex.evt.omnimarket.event-chain-generator-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.event-chain-generator-completed.v1
+
+handler:
+  module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
+  class: HandlerEventChainGenerator
+  input_model: omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation.ModelChainGateRequest
+  output_model: omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation.ModelChainGateResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: obligations
+      handler:
+        name: HandlerEventChainGenerator
+        module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
+    - operation: generate
+      handler:
+        name: HandlerEventChainGenerator
+        module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
+    - operation: gate
+      handler:
+        name: HandlerEventChainGenerator
+        module: omnimarket.nodes.node_event_chain_generator_compute.handlers.handler_event_chain_generator
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  workflow_owner:
+    type: str
+    required: true
+  obligations:
+    type: array
+    required: true
+    items:
+      schema_ref: omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation.ModelChainObligation
+  committed:
+    type: object
+    required: false
+    schema_ref: omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation.ModelChainExpectationSet
+  generated:
+    type: object
+    required: true
+    schema_ref: omnimarket.nodes.node_event_chain_generator_compute.models.model_chain_generation.ModelChainExpectationSet
+
+outputs:
+  passed:
+    type: bool
+  missing_chain_path_ids:
+    type: array
+  stale_chain_path_ids:
+    type: array
+  undriven_path_ids:
+    type: array
+  mismatches:
+    type: array
