@@ -37,7 +37,7 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 _TENANT = "0af28cd0-0654-42e0-a050-358ee8240940"
 _SUMMARY = "onex.snapshot.projection.delegation.summary.v1"
 # On a fresh local store nothing creates this relation; on Postgres it is a view.
-_UNSERVABLE = "onex.snapshot.projection.delegation.model-routing.v1"
+_UNSERVABLE = "onex.snapshot.projection.delegation.token-usage.v1"
 
 
 def _fresh_install_store(tmp_path: Path) -> Path:
