@@ -27,6 +27,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
+from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -375,6 +376,14 @@ CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
+# OMN-20709: the SQLite counterpart of node_projection_delegation migration
+# 0050's projection_delegation_summary view. It lives with the node that owns
+# delegation_events and the Postgres view; the file explains the differences.
+_DELEGATION_SUMMARY_VIEW_STEP = "omn20709_delegation_summary_view"
+_DELEGATION_SUMMARY_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_delegation",
+    "sqlite/delegation_summary_view.sql",
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -554,6 +563,14 @@ class SqliteDatabaseAdapter:
                     "added the usage-by-model-day columns and cursor triggers",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SUMMARY_VIEW_STEP,
+                    cls._create_delegation_summary_view,
+                    "created the delegation summary view",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -609,6 +626,18 @@ class SqliteDatabaseAdapter:
         conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
         for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @staticmethod
+    def _create_delegation_summary_view(conn: sqlite3.Connection) -> None:
+        """OMN-20709: give the store the summary relation the exposure reads.
+
+        Dropped first so a store that somehow holds an older definition takes
+        this one; a later revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SUMMARY_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
+        conn.execute(ddl)
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
