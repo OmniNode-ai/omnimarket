@@ -59,8 +59,13 @@ def _fresh_install_store(tmp_path: Path) -> Path:
     return path
 
 
+# Built once: discovering every contract's exposures takes seconds, and every
+# test here serves the same real, contract-declared map.
+_TOPICS = build_projection_topic_map()
+
+
 def _client(tmp_path: Path, *, probe: bool = True) -> TestClient:
-    topics = build_projection_topic_map()
+    topics = _TOPICS
     source = SqliteTableRowSource(_fresh_install_store(tmp_path))
     return TestClient(
         create_dashboard_app(

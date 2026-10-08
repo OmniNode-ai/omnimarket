@@ -72,8 +72,13 @@ def _store(tmp_path: Path, *rows: dict[str, Any]) -> Path:
     return path
 
 
+# Built once: discovering every contract's exposures takes seconds, and each
+# test reads the same declared summary exposure.
+_TOPICS = build_projection_topic_map()
+
+
 def _read(path: Path, tenant: str = _TENANT) -> tuple[int, dict[str, Any]]:
-    topics = build_projection_topic_map()
+    topics = _TOPICS
     handler = HandlerProjectionRead(
         topic_map=topics, row_source=SqliteTableRowSource(path)
     )
