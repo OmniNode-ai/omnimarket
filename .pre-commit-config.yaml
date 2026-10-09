@@ -438,7 +438,7 @@ repos:
       # config/test_file_durations.json. These tests pin the planner's exact-once
       # assignment, the record's balance over the real tree and the ci.yml wiring.
       # The CI twin is the "Prove the shard plans partition the collected files"
-      # step of the integration-guard job, which checks the plan against a real
+      # step of the typecheck job, which checks the plan against a real
       # `pytest --collect-only`.
       - id: test-shard-plan
         name: Full-suite test shard plan stays balanced and exact-once (OMN-19684)
