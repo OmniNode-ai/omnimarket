@@ -114,6 +114,8 @@ class LocalShellLabWorkExecutor:
                 host=host_name,
                 repo=request.repo,
                 commit_sha=request.commit_sha,
+                lane=request.lane,
+                kind=request.kind,
                 status=status,
                 exit_code=exit_code,
                 log_path=str(log) if log.exists() else "",

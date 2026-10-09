@@ -91,6 +91,12 @@ def work_ledger_group(ctx: click.Context) -> None:
     envvar="ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL",
     help="Operator identity in the issuer records, supplied by the ledger host.",
 )
+@click.option(
+    "--signing-key-file",
+    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Operator Ed25519 private key in PEM form; signs mirrored lab terminals.",
+)
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -101,6 +107,7 @@ def serve_command(
     append_command: str,
     principal_records: Path | None,
     operator_principal: str | None,
+    signing_key_file: Path | None,
 ) -> None:
     """Serve commands using the local append command on the ledger host."""
     try:
@@ -127,6 +134,16 @@ def serve_command(
         raise click.UsageError(
             "--operator-principal must have an issuer public key record"
         )
+    mirror_key = None
+    if signing_key_file is not None:
+        try:
+            mirror_key = load_work_ledger_signing_key(signing_key_file)
+        except (OSError, ValueError, TypeError) as exc:
+            raise click.ClickException("cannot read an Ed25519 signing key") from exc
+        if mirror_key.public_key() != public_keys[operator_principal]:
+            raise click.UsageError(
+                "--signing-key-file does not match the operator principal's public key"
+            )
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -167,7 +184,12 @@ def serve_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            host = WorkLedgerAppendHost(opened, handler)
+            host = WorkLedgerAppendHost(
+                opened,
+                handler,
+                mirror_principal=operator_principal if mirror_key else None,
+                mirror_signing_key=mirror_key,
+            )
             await host.start()
             try:
                 await stop.wait()

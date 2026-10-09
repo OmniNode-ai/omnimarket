@@ -1,0 +1,33 @@
+# Public test overlay of node_morning_friction_sweep_orchestrator: synthetic briefs, paths and bounds.
+briefs: briefs.md
+values:
+  state_path: reports/friction-state.json
+  report_path: reports/@@date@@-friction.md
+  ledger_path: tracking/LEDGER.md
+  kb_prefix: $KB/
+  kb_branch: automation/friction-@@date@@
+  watermark_tool: tools/watermark.py
+  watermark_schema_version: '2'
+  peer_claim_minutes: '90'
+  pr_watcher_max_age_minutes: '8'
+  worktree_ticket: friction-@@date@@
+  linear_comments_max_age_hours: '48'
+  occurrence_comment_ceiling: '3'
+  checkpoints_max_age_hours: '48'
+  ci_lookback_max_age_hours: '48'
+  guard_logs_max_age_hours: '48'
+texts:
+  adjudication_dry: DRY RUN, no ticket mutation.
+  adjudication_live: LIVE, ticket mutation authorized.
+  report_dry: DRY report.
+  report_live: LIVE report.
+phase_stems:
+- stem-scan
+- stem-report
+ci_repos:
+- repo_a
+- repo_b
+premise_control_lanes:
+- control-lane-a
+- control-lane-b
+- control-lane-c

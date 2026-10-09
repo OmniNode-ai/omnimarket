@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
@@ -118,6 +118,29 @@ class ModelDelegationRoutingRule(BaseModel):
     shadow_policy_id: UUID = Field(
         ..., description="Shadow policy UUID for A/B evaluation."
     )
+
+
+# OMN-20287: consumer-first for the harness backend keys (plan step 7 of the
+# delegation canonical workflow). A later release declares ``kind``,
+# ``harness``, ``surface`` and ``tenant_scope`` as real fields; until then this
+# consumer accepts and drops exactly those keys, so a producer that emits them
+# is decoded by this release instead of refused at the decode boundary. Every
+# other unknown key is still refused. No shipped config emits them before the
+# fields are declared.
+_FORTHCOMING_BACKEND_KEYS: frozenset[str] = frozenset(
+    {"kind", "harness", "surface", "tenant_scope"}
+)
+
+
+def _without_forthcoming_backend_keys(data: Any) -> Any:
+    """Drop the forthcoming harness backend keys from a raw payload, and nothing else."""
+    if not isinstance(data, dict) or _FORTHCOMING_BACKEND_KEYS.isdisjoint(data):
+        return data
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in _FORTHCOMING_BACKEND_KEYS
+    }
 
 
 class ModelDelegationBackendConfig(BaseModel):
@@ -250,6 +273,12 @@ class ModelDelegationBackendConfig(BaseModel):
             "backend, never by reading a vendor's documentation."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_forthcoming_backend_keys(cls, data: Any) -> Any:
+        """OMN-20287: accept and drop the harness backend keys a later release declares."""
+        return _without_forthcoming_backend_keys(data)
 
     @model_validator(mode="after")
     def _validate_secret_ref_fields(self) -> ModelDelegationBackendConfig:

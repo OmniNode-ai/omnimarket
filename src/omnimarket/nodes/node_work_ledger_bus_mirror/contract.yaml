@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-20278: hosted only by work-ledger serve. No shared-runtime event_bus
+# attachment: the ledger host owns both the mirror group and the append lock.
+# Deployment and live readback remain pending; the externally hosted append
+# and lab work contracts use the same experimental lifecycle.
+name: node_work_ledger_bus_mirror
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: Pure mapping of a lab work terminal to one STATUS append request.
+input_model:
+  name: ModelWorkLedgerBusMirrorRequest
+  module: omnimarket.models.model_work_ledger_bus_mirror_request
+output_model:
+  name: ModelWorkLedgerAppendRequest
+  module: omnimarket.models.work_ledger_append.model_work_ledger_append
+handler:
+  module: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror
+  class: HandlerWorkLedgerBusMirror
+  input_model: omnimarket.models.model_work_ledger_bus_mirror_request.ModelWorkLedgerBusMirrorRequest
+  output_model: omnimarket.models.work_ledger_append.model_work_ledger_append.ModelWorkLedgerAppendRequest
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror:HandlerWorkLedgerBusMirror
+  handlers:
+    - operation: mirror_lab_work_receipt
+      handler:
+        name: HandlerWorkLedgerBusMirror
+        module: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+  terminal_events:
+    success: onex.cmd.omnimarket.work-ledger-append-requested.v1
+    failure: onex.evt.omnimarket.work-ledger-append-failed.v1
+subscriptions:
+  topics:
+    - onex.evt.omnimarket.lab-work-unit-completed.v1
+    - onex.evt.omnimarket.lab-work-unit-failed.v1
+metadata:
+  transport_type: kafka
+  description: Mapping hosted by the ledger serve process
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20278]
