@@ -35,8 +35,10 @@ test until it is removed from the list in the same change.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 from omnibase_core.container import ModelONEXContainer
 from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -59,7 +61,10 @@ from omnibase_infra.topology import load_topology_profile
 
 pytestmark = pytest.mark.unit
 
-_NODES = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_NODES = _REPO_ROOT / "src" / "omnimarket" / "nodes"
+_THIS_TEST = "tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py"
+_PRECOMMIT_HOOK_ID = "node-auto-wiring-in-process"
 
 # A DSN no handler can reach: port 9 is the discard port. Construction must not
 # need a live database; a handler that connects at construction fails here, as
@@ -140,6 +145,56 @@ def _shrink_only(actual: dict[str, str], listed: dict[str, str], what: str) -> N
     assert not fixed, (
         f"listed as known but now pass; remove them from the list in this change: {fixed}"
     )
+
+
+def _gate_step_problems(workflow_path: str, *, before_build: bool) -> list[str]:
+    """Problems with the workflow steps that run this test as a blocking gate."""
+    workflow: Any = yaml.safe_load((_REPO_ROOT / workflow_path).read_text())
+    problems: list[str] = []
+    found = False
+    for job in (workflow.get("jobs") or {}).values():
+        steps = job.get("steps") or []
+        runs = [str(step.get("run", "")) for step in steps]
+        gates = [i for i, run in enumerate(runs) if _THIS_TEST in run]
+        if not gates:
+            continue
+        found = True
+        for i in gates:
+            step = steps[i]
+            if step.get("continue-on-error") in (True, "true"):
+                problems.append(
+                    f"{workflow_path}: {step.get('name')!r} is continue-on-error"
+                )
+            if step.get("if") is not None:
+                problems.append(f"{workflow_path}: {step.get('name')!r} is conditional")
+        if before_build:
+            builds = [i for i, run in enumerate(runs) if "uv build" in run]
+            if builds and min(gates) > min(builds):
+                problems.append(f"{workflow_path}: the gate runs after uv build")
+    if not found:
+        problems.append(f"{workflow_path}: no step runs {_THIS_TEST}")
+    return problems
+
+
+def test_the_gate_runs_on_every_pull_request_commit_and_release() -> None:
+    problems = _gate_step_problems(".github/workflows/ci.yml", before_build=False)
+    for release in (
+        ".github/workflows/release.yml",
+        ".github/workflows/release-cut.yml",
+    ):
+        problems += _gate_step_problems(release, before_build=True)
+    config: Any = yaml.safe_load((_REPO_ROOT / ".pre-commit-config.yaml").read_text())
+    hooks = [
+        hook
+        for repo in config.get("repos") or []
+        for hook in repo.get("hooks") or []
+        if hook.get("id") == _PRECOMMIT_HOOK_ID
+    ]
+    if not any(_THIS_TEST in str(hook.get("entry", "")) for hook in hooks):
+        problems.append(
+            f".pre-commit-config.yaml: no {_PRECOMMIT_HOOK_ID} hook runs {_THIS_TEST}"
+        )
+    assert not problems, "\n".join(problems)
 
 
 def test_limits_are_read_from_the_dispatch_route_model() -> None:

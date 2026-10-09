@@ -141,7 +141,7 @@ requirements:
     acceptance:
       - id: "AC24"
         statement: |-
-          AC24: the gate reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
+          AC24: the gate runs as a blocking step in the ci.yml lint job, the node-auto-wiring-in-process pre-commit hook and before uv build in release.yml and release-cut.yml, reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -373,6 +373,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_limits_are_read_from_the_dispatch_route_model tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_every_derived_dispatch_identifier_fits_the_runtime_limits -q"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_the_gate_runs_on_every_pull_request_commit_and_release tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_limits_are_read_from_the_dispatch_route_model tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py::test_every_derived_dispatch_identifier_fits_the_runtime_limits -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC24"]
