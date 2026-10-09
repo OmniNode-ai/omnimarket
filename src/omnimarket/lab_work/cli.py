@@ -8,7 +8,8 @@ capacity, and place and send one unit over the bus (OMN-20105).
     onex lab-work run --repo OmniNode-ai/omnimarket --sha <pushed sha> \
         --lane <lane> --kafka-bootstrap <broker> -- uv run pytest tests/unit -q
 
-``run`` exits with the command's own exit code when it ran, 75 when every
+``serve`` exits 71 when its worker holds one unit past two of its limits. ``run``
+exits with the command's own exit code when it ran, 75 when every
 advertising pool host is over the bar (or lacks a needed tool), 69 when no pool
 host advertised at all, and 70 when the unit was refused or could not be run. It never runs the command on
 the calling host unless that host is a serving pool member placed like any
@@ -21,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import signal
 import sys
 import uuid
@@ -60,6 +62,9 @@ EXIT_NO_HOST = 75
 #: bar) because the instruction differs: a serve process is down, or the interim ssh path is needed.
 EXIT_NO_ADVERTISEMENT = 69
 EXIT_NOT_RUN = 70
+#: ``serve`` found its worker holding one unit past two of that unit's limits: the process is
+#: alive and still advertising, and it has stopped doing work.
+EXIT_STUCK_WORKER = 71
 
 _bus_options = [
     click.option(
@@ -86,6 +91,29 @@ def _with_bus_options(func: click.decorators.FC) -> click.decorators.FC:
     for option in reversed(_bus_options):
         func = option(func)
     return func
+
+
+def _hard_exit(code: int) -> None:
+    """Leave now. A wedged worker thread would otherwise block the interpreter's own
+    shutdown, and the supervisor restarts the process only once it has exited."""
+    logging.shutdown()
+    os._exit(code)
+
+
+async def serve_until_stopped(
+    host: LabWorkHost, stop: asyncio.Event, max_commands: int
+) -> int:
+    """Serve until told to stop; leave the process non-zero when the host's worker is stuck."""
+    while not stop.is_set():
+        if host.stuck.is_set():
+            await host.stop()
+            _hard_exit(EXIT_STUCK_WORKER)
+            return EXIT_STUCK_WORKER
+        if max_commands and host.processed >= max_commands:
+            return 0
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=1.0)
+    return 0
 
 
 @click.group("lab-work")
@@ -178,11 +206,7 @@ def serve_command(
             )
             await host.start()
             try:
-                while not stop.is_set():
-                    if max_commands and host.processed >= max_commands:
-                        break
-                    with contextlib.suppress(TimeoutError):
-                        await asyncio.wait_for(stop.wait(), timeout=1.0)
+                await serve_until_stopped(host, stop, max_commands)
             finally:
                 await host.stop()
 
@@ -373,8 +397,10 @@ __all__ = [
     "EXIT_NOT_RUN",
     "EXIT_NO_ADVERTISEMENT",
     "EXIT_NO_HOST",
+    "EXIT_STUCK_WORKER",
     "hosts_command",
     "lab_work_group",
     "run_command",
     "serve_command",
+    "serve_until_stopped",
 ]

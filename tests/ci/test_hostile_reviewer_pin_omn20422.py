@@ -25,9 +25,11 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# The dev tip of omniintelligence that carries #1014 (key rename) and #1016
-# (unparseable reply = failed vote; json_schema constraint on the second voter).
-PARSE_FIX_SHA = "33a29cdfba6f14be6f94c3c77a05e29f345c692b"
+# The dev tip of omniintelligence that carries #1014 (key rename), #1016
+# (unparseable reply = failed vote; json_schema constraint on the second voter)
+# and #1020 (a finding whose own text says there is no defect is dropped and
+# recorded instead of blocking).
+PARSE_FIX_SHA = "30f37eca07b692d7889692edfe99686c87612315"
 RETIRED_KEY = "gpt-oss-review"
 RETIRED_ENV = "LLM_GPT_OSS_REVIEW_URL"
 

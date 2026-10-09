@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20799"
+title: "a stuck lab-work worker logs progress and exits non-zero after two limits"
+summary: "LabWorkHost tracks the unit each worker holds against that unit's own limit, logs progress, and after two limits sets a stuck flag; onex lab-work serve exits 71."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "A lab-work worker that holds one unit past two limits logs progress and exits non-zero while the advertiser stays alive."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A lab-work worker that holds one unit past two limits logs progress and exits non-zero while the advertiser stays alive."
+  - id: "req-ac2"
+    statement: "The serve command exits 71 for a stuck worker."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: The serve command exits 71 for a stuck worker."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: A lab-work worker that holds one unit past two limits logs progress and exits non-zero while the advertiser stays alive."
+    command: 'uv run pytest tests/unit/lab_work/test_lab_work_serve_stuck_worker.py -q -p no:randomly'
+  - kind: "tests"
+    description: "AC2: The serve command exits 71 for a stuck worker."
+    command: 'uv run pytest tests/unit/lab_work/test_lab_work_serve_stuck_worker.py -k exits_serve_loop_non_zero -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20799-ac1"
+    description: "AC1: A lab-work worker that holds one unit past two limits logs progress and exits non-zero while the advertiser stays alive."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/lab_work/test_lab_work_serve_stuck_worker.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20799-ac2"
+    description: "AC2: The serve command exits 71 for a stuck worker."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/lab_work/test_lab_work_serve_stuck_worker.py -k exits_serve_loop_non_zero -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
