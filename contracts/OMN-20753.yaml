@@ -34,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20753-bundle-pin-1-1-7"
+    description: "onex dashboard pins omnidash v1.1.7 or later, the first bundle whose Runs reads a run's status and cost from the local store."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20753.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

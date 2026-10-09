@@ -19,3 +19,4 @@ display_name: "Projection: Delegation"
 node_role: "effect"
 dependencies:
   - "aiokafka>=0.10.0"
+  - "omnibase-infra>=0.38.68,<0.39.0"
