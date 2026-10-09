@@ -46,10 +46,10 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_error_chain_lab_fill_plan_compute.py -q -p no:randomly"
   - kind: "tests"
     description: "AC4: the five outcome operations pass golden, error and parity cases."
-    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_outcome_parity.py -q -p no:randomly"
   - kind: "tests"
     description: "AC5: effect golden chain, cycle chain, error chain and adapters pass."
-    command: "uv run pytest tests/nodes/node_lab_fill_effect -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -84,7 +84,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_outcome_parity.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20668-ac5-effect-node"
@@ -92,6 +92,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_effect -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]

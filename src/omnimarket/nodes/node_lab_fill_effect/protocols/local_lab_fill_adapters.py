@@ -261,7 +261,9 @@ def _graphql(query: str, timeout_s: float = 20.0) -> dict[str, object]:
         headers={"Authorization": key, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as response:
+        with urllib.request.urlopen(  # no-contract-check: Linear port boundary
+            req, timeout=timeout_s
+        ) as response:
             result = json.load(response)
     except (OSError, ValueError, urllib.error.URLError) as exc:
         raise LabFillPortError(f"Linear unreadable: {type(exc).__name__}") from exc
