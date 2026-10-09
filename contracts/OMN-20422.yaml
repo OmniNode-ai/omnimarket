@@ -28,6 +28,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: the shadow-review tick keeps the pre-registered scope and never posts -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q
+  - id: "req-reviewer-pin-self-negating-drop"
+    statement: |-
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 30f37eca07b692d7889692edfe99686c87612315, the dev tip that drops a reviewer finding whose own text says there is no defect before the quorum and records it as dropped with a reason.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the omniintelligence clone is pinned to 30f37eca07b692d7889692edfe99686c87612315 -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The workflow voter tests pass at the head."
@@ -38,6 +45,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The shadow-review node tests pass at the head."
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
+  - kind: "tests"
+    description: "The workflow clones omniintelligence at 30f37eca at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -67,3 +77,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_shadow_review_effect/test_shadow_review_selection.py tests/nodes/node_shadow_review_effect/test_shadow_review_handler.py tests/nodes/node_shadow_review_effect/test_golden_chain_shadow_review.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-reviewer-pin-self-negating-drop-ac4"
+    description: "The workflow clones omniintelligence at 30f37eca, the dev tip that drops a self-negating reviewer finding before the quorum."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
