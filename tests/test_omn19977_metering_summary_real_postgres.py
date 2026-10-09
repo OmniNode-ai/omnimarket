@@ -40,6 +40,7 @@ _MIGRATIONS = tuple(
     for name in (
         "0000_create_metering_summary.sql",
         "0002_metering_summary_savings_per_measured_run.sql",
+        "0003_metering_summary_compression_and_cache_hit.sql",
     )
 )
 _SCHEMA = "omn19977_metering_summary_write_path_test"
