@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_skill_exec_decision_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
