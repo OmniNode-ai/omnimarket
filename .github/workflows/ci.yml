@@ -810,6 +810,21 @@ jobs:
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
 
+      # OMN-19684: the full-suite shards run only the files `merge_test_durations.py
+      # plan` assigns them. This job already syncs the tree and finishes in about
+      # 100 s, so it also collects the whole tree once (86 s on a hosted runner),
+      # off the shards' critical path, and fails when the 20 plans are not an
+      # exact partition of the test files pytest collects: a file the planner's
+      # discovery missed would otherwise run in no shard and nothing else would
+      # notice. 20 is detect_test_paths._full_suite's split count; the partition
+      # property does not depend on it (tests/unit/test_ci_shard_plan_omn19684.py).
+      # It is not the integration-guard job: that job already runs 313-509 s and
+      # would become the slowest job of the run once the shards drop below it.
+      - name: Collect the whole tree once (OMN-19684)
+        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
+      - name: Prove the shard plans partition the collected files (OMN-19684)
+        run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
+
   # ---------------------------------------------------------------------------
   # Detect Changes — emits matrix for test job (OMN-10759)
   # ---------------------------------------------------------------------------
@@ -1524,19 +1539,6 @@ jobs:
         run: |
           uv run python scripts/ci/check_integration_skips.py \
             --junit integration-guard.xml
-
-      # OMN-19684: the full-suite shards run only the files `merge_test_durations.py
-      # plan` assigns them. This job already syncs the tree and collects it for
-      # the integration marker, so it also collects the whole tree once, off the
-      # shards' critical path, and fails when the 20 plans are not an exact
-      # partition of the test files pytest collects: a file the planner's
-      # discovery missed would otherwise run in no shard and nothing else would
-      # notice. 20 is detect_test_paths._full_suite's split count; the partition
-      # property does not depend on it (tests/unit/test_ci_shard_plan_omn19684.py).
-      - name: Collect the whole tree once (OMN-19684)
-        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
-      - name: Prove the shard plans partition the collected files (OMN-19684)
-        run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
 
       - name: Upload integration-guard results
         if: always()

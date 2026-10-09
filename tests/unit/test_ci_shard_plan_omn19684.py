@@ -264,8 +264,8 @@ def _workflow() -> dict[str, Any]:
     return document
 
 
-def test_integration_guard_proves_the_plan_partitions_the_collected_tree() -> None:
-    steps = _workflow()["jobs"]["integration-guard"]["steps"]
+def test_typecheck_job_proves_the_plan_partitions_the_collected_tree() -> None:
+    steps = _workflow()["jobs"]["typecheck"]["steps"]
     runs = [str(step.get("run", "")) for step in steps]
     collect = next(i for i, run in enumerate(runs) if "--collect-only" in run)
     verify = next(
@@ -285,8 +285,7 @@ def test_verified_split_count_is_the_full_suite_split_count() -> None:
     full = detect_test_paths._full_suite(EnumFullSuiteReason.MAIN_BRANCH)
     assert full.split_count == FULL_SUITE_SPLITS
     runs = [
-        str(step.get("run", ""))
-        for step in _workflow()["jobs"]["integration-guard"]["steps"]
+        str(step.get("run", "")) for step in _workflow()["jobs"]["typecheck"]["steps"]
     ]
     verify = next(run for run in runs if "merge_test_durations.py verify" in run)
     assert f"--splits {FULL_SUITE_SPLITS} " in verify

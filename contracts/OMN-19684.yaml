@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19684"
 title: "omnimarket full-suite test shards are planned from committed per-file durations"
-summary: "The 20 full-suite shards run only the test files scripts/ci/merge_test_durations.py plans for them from the committed config/test_file_durations.json, so each shard collects only its own files, and the integration-guard job proves the 20 plans partition the files pytest collects. The live shard spread is measured on first-attempt PR runs after merge."
+summary: "The 20 full-suite shards run only the test files scripts/ci/merge_test_durations.py plans for them from the committed config/test_file_durations.json, so each shard collects only its own files, and the typecheck job proves the 20 plans partition the files pytest collects. The live shard spread is measured on first-attempt PR runs after merge."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
