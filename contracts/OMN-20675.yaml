@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20675"
+title: "The DoD closeout sweep's decisions run as an omnimarket compute node"
+summary: "node_dod_closeout_sweep_compute ports the deterministic decisions of the dod-closeout-sweep workflow (the same-date idempotency precheck, live sprint resolution, the four-exclusion scope classification and chunk plan, the flip predicate with its primary blocker, and the counts, blocking-check-class histogram, report text and TERMINAL cells) as a contract-declared COMPUTE node dispatched over the bus. The Linear, GitHub and ledger reads and writes, repointing the workflow and deleting the old workflow file are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dod-closeout-sweep-decision-node"
+    statement: |-
+      The closeout sweep's deterministic decisions run in node_dod_closeout_sweep_compute and hold the rules the workflow states.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: precheck, resolve_sprint and plan_scope reproduce the workflow's stated rules (a CLAIM under 180 minutes old with no TERMINAL is a live peer, anything unresolved is a run, a boundary date is broken by completedAt and zero or several survivors are refused, a ticket is a candidate only when all four exclusions clear) -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_golden_chain_dod_closeout_sweep_compute.py, which fails when the peer window, the completedAt tiebreak or an exclusion is changed
+      - id: "AC2"
+        statement: |-
+          AC2: flip_decision holds on any unmet conjunct and names the primary blocker, and report derives its counts and histograms from the per-ticket results, with a rendered report and its TERMINAL cells accepted by precheck as a delivered pass -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_golden_chain_dod_closeout_sweep_compute.py::test_the_rendered_report_and_cells_are_what_the_precheck_accepts_as_delivered and the flip_decision cases beside it
+      - id: "AC3"
+        statement: |-
+          AC3: The node is dispatched through its contract on the RuntimeLocal in-memory bus and an invalid or inconsistent request is refused with no result -- falsifier: tests/nodes/node_dod_closeout_sweep_compute/test_golden_chain_dod_closeout_sweep_compute.py::test_error_chain_over_the_bus_fails_without_a_result
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden-chain, error-chain and rule tests for the DoD closeout sweep compute node."
+    command: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20675-closeout-sweep-decision"
+    description: "node_dod_closeout_sweep_compute holds the workflow's decision rules and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_golden_chain_dod_closeout_sweep_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3"]

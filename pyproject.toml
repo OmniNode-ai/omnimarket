@@ -279,6 +279,7 @@ node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
 node_linear_comments_decision_compute = "omnimarket.nodes.node_linear_comments_decision_compute"
 node_handshake_policy_gate_compute = "omnimarket.nodes.node_handshake_policy_gate_compute"
+node_dod_closeout_sweep_compute = "omnimarket.nodes.node_dod_closeout_sweep_compute"
 node_hourly_tick_decision_compute = "omnimarket.nodes.node_hourly_tick_decision_compute"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
