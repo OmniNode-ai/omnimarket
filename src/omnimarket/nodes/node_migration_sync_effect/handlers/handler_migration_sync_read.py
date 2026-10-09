@@ -34,14 +34,14 @@ def read_file_bytes(path: Path) -> bytes:
 
 
 def _nodes_dir(request: ModelMigrationSyncReadRequest) -> Path | None:
-    """The omnimarket nodes directory: explicit source, then omni_home, then the package."""
+    """The omnimarket nodes directory: explicit source, then registry_root, then the package."""
     if request.omnimarket_src:
         candidate = Path(request.omnimarket_src) / "src" / "omnimarket" / "nodes"
         if candidate.is_dir():
             return candidate
-    if request.omni_home:
+    if request.registry_root:
         candidate = (
-            Path(request.omni_home) / "omnimarket" / "src" / "omnimarket" / "nodes"
+            Path(request.registry_root) / "omnimarket" / "src" / "omnimarket" / "nodes"
         )
         if candidate.is_dir():
             return candidate

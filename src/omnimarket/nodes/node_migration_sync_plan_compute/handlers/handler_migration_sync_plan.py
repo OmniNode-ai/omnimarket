@@ -77,7 +77,7 @@ class HandlerMigrationSyncPlan:
         if not inventory.resolved:
             err(f"{PREFIX} ERROR: could not resolve omnimarket source tree.")
             err(
-                "  Set OMNIMARKET_SRC=<omnimarket repo root>, or OMNI_HOME=<omni_home>, "
+                "  Set OMNIMARKET_SRC=<omnimarket repo root>, or OMNI_HOME=<registry root>, "
                 "or pip install omnimarket."
             )
             if check and request.skip_unresolvable:

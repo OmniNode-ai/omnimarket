@@ -5,7 +5,9 @@
 Every case in ``fixtures/parity_cases.json`` was recorded by running the old
 ``sync-node-migrations.sh`` (the omnibase_infra copy) over a synthetic source tree,
 vendored tree and manifest, under ``LC_ALL=C``. It holds the script's stdout, stderr,
-interleaved output, exit code and the vendored tree it left behind. The chain below
+interleaved output, exit code and the vendored tree it left behind. One recorded
+message is reworded: the script's placeholder for the registry root in its
+unresolvable-source hint is written ``<registry root>``. The chain below
 is run over the same trees, with the three nodes' requests and results handed
 between them as JSON the way the bus hands them.
 """
@@ -60,7 +62,7 @@ def run_chain(case: dict[str, Any], root: Path) -> dict[str, Any]:
     explicit = case["resolve"] == "explicit"
     read_request = ModelMigrationSyncReadRequest(
         omnimarket_src=str(root) if explicit else "",
-        omni_home="",
+        registry_root="",
         allow_installed_package=False,
         dest_root=str(dest),
         manifest_path=str(manifest),

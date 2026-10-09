@@ -28,20 +28,20 @@ class ModelMigrationSyncReadRequest(BaseModel):
     """Where to read from: the omnimarket source, the vendored tree and the manifest.
 
     The omnimarket source resolves in the old script's order: ``omnimarket_src``
-    (a repository root), then ``omni_home`` / omnimarket, then the installed
-    package. The caller reads its own environment and passes the values; the node
+    (a repository root), then ``registry_root`` / omnimarket (the old script's
+    OMNI_HOME), then the installed package. The caller reads its own environment and passes the values; the node
     reads none. ``allow_installed_package`` false removes the last resort.
     """
 
     model_config = _FROZEN
 
     omnimarket_src: str = ""
-    omni_home: str = ""
+    registry_root: str = ""
     allow_installed_package: bool = True
     dest_root: str
     manifest_path: str
 
-    @field_validator("omnimarket_src", "omni_home", "dest_root", "manifest_path")
+    @field_validator("omnimarket_src", "registry_root", "dest_root", "manifest_path")
     @classmethod
     def _absolute_path(cls, value: str) -> str:
         return _absolute(value)

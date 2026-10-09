@@ -40,7 +40,7 @@ def _read(tmp_path: Path, **override: object) -> ModelMigrationSyncInventory:
 
 
 @pytest.mark.parametrize(
-    "field", ["dest_root", "manifest_path", "omnimarket_src", "omni_home"]
+    "field", ["dest_root", "manifest_path", "omnimarket_src", "registry_root"]
 )
 def test_relative_paths_are_refused(field: str) -> None:
     fields = {"dest_root": "/d", "manifest_path": "/m", field: "relative/path"}
@@ -61,7 +61,7 @@ def test_an_unresolvable_source_is_a_typed_unresolved_inventory(tmp_path: Path) 
     assert inventory.failure == ""
 
 
-def test_resolution_order_is_explicit_then_omni_home(tmp_path: Path) -> None:
+def test_resolution_order_is_explicit_then_registry_root(tmp_path: Path) -> None:
     explicit = tmp_path / "explicit" / "src" / "omnimarket" / "nodes"
     home = tmp_path / "home" / "omnimarket" / "src" / "omnimarket" / "nodes"
     explicit.mkdir(parents=True)
@@ -69,16 +69,16 @@ def test_resolution_order_is_explicit_then_omni_home(tmp_path: Path) -> None:
     both = _read(
         tmp_path,
         omnimarket_src=str(tmp_path / "explicit"),
-        omni_home=str(tmp_path / "home"),
+        registry_root=str(tmp_path / "home"),
     )
     assert both.nodes_dir == str(explicit)
-    only_home = _read(tmp_path, omnimarket_src="", omni_home=str(tmp_path / "home"))
+    only_home = _read(tmp_path, omnimarket_src="", registry_root=str(tmp_path / "home"))
     assert only_home.nodes_dir == str(home)
     # An explicit source with no nodes directory falls through, as the old script did.
     fallthrough = _read(
         tmp_path,
         omnimarket_src=str(tmp_path / "nowhere"),
-        omni_home=str(tmp_path / "home"),
+        registry_root=str(tmp_path / "home"),
     )
     assert fallthrough.nodes_dir == str(home)
 
