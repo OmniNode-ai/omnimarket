@@ -1,0 +1,45 @@
+{
+ "chain": "negative_refused_judge_reply",
+ "description": "A judge reply with a duplicated id, a missing id, an unknown id, an accept below quality 2, a reject with failure class none and a failure class outside the vocabulary is refused.",
+ "request": {
+  "operation": "check",
+  "batch_item_ids": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "f"
+  ],
+  "reply_text": "{\"judgments\": [{\"item_id\": \"a\", \"accept\": true, \"quality\": 3, \"failure_class\": \"none\", \"reason\": \"meets the task\"}, {\"item_id\": \"a\", \"accept\": true, \"quality\": 3, \"failure_class\": \"none\", \"reason\": \"meets the task\"}, {\"item_id\": \"b\", \"accept\": true, \"quality\": 1, \"failure_class\": \"none\", \"reason\": \"meets the task\"}, {\"item_id\": \"d\", \"accept\": false, \"quality\": 1, \"failure_class\": \"none\", \"reason\": \"meets the task\"}, {\"item_id\": \"e\", \"accept\": true, \"quality\": 3, \"failure_class\": \"none\", \"reason\": \"meets the task\"}, {\"item_id\": \"f\", \"accept\": false, \"quality\": 1, \"failure_class\": \"made_up_class\", \"reason\": \"meets the task\"}]}"
+ },
+ "expected": {
+  "operation": "check",
+  "status": "failed",
+  "issues": [
+   {
+    "code": "duplicate_item",
+    "item_id": "a"
+   },
+   {
+    "code": "unknown_item",
+    "item_id": "e"
+   },
+   {
+    "code": "accept_quality_too_low",
+    "item_id": "b"
+   },
+   {
+    "code": "missing_item",
+    "item_id": "c"
+   },
+   {
+    "code": "reject_without_failure_class",
+    "item_id": "d"
+   },
+   {
+    "code": "bad_failure_class",
+    "item_id": "f"
+   }
+  ]
+ }
+}
