@@ -13,12 +13,16 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import uuid
 from collections.abc import Awaitable, Callable
 from importlib import resources
+from pathlib import Path
 from typing import Protocol
 
 import yaml
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
@@ -53,6 +57,14 @@ def load_work_ledger_mirror_topics() -> tuple[str, ...]:
         .read_text()
     )
     return tuple(contract["subscriptions"]["topics"])
+
+
+def load_work_ledger_signing_key(path: Path) -> Ed25519PrivateKey:
+    """Read an issuer-provisioned key locally; only signatures go on the bus."""
+    key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("signing key must be Ed25519")
+    return key
 
 
 class ModelWorkLedgerAppendTopics(BaseModel):
@@ -321,9 +333,13 @@ class WorkLedgerAppendCaller:
         bus: ProtocolLabRunBus,
         *,
         topics: ModelWorkLedgerAppendTopics | None = None,
+        principal: str | None = None,
+        signing_key: Ed25519PrivateKey | None = None,
     ) -> None:
         self._bus = bus
         self._topics = topics or load_work_ledger_append_topics()
+        self._principal = principal
+        self._signing_key = signing_key
         self._group = (
             f"{derive_service_group_id('work_ledger_append_client', service=GROUP_SERVICE)}"
             f".{uuid.uuid4().hex[:12]}"
@@ -332,6 +348,21 @@ class WorkLedgerAppendCaller:
             uuid.UUID, asyncio.Future[tuple[str, dict[str, object]]]
         ] = {}
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
+
+    @classmethod
+    def from_signing_environment(cls, bus: ProtocolLabRunBus) -> WorkLedgerAppendCaller:
+        """Wire existing node callers to the same signing identity as the CLI."""
+        principal = os.environ.get("ONEX_WORK_LEDGER_PRINCIPAL")
+        path = os.environ.get("ONEX_WORK_LEDGER_SIGNING_KEY_FILE")
+        if not principal or not path:
+            raise ValueError(
+                "set ONEX_WORK_LEDGER_PRINCIPAL and ONEX_WORK_LEDGER_SIGNING_KEY_FILE"
+            )
+        try:
+            key = load_work_ledger_signing_key(Path(path))
+        except (OSError, ValueError, TypeError) as exc:
+            raise ValueError("cannot read an Ed25519 signing key") from exc
+        return cls(bus, principal=principal, signing_key=key)
 
     @property
     def topics(self) -> ModelWorkLedgerAppendTopics:
@@ -370,6 +401,10 @@ class WorkLedgerAppendCaller:
     async def append(
         self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float = 60.0
     ) -> ModelWorkLedgerAppendReceipt:
+        if self._signing_key is not None:
+            if self._principal is None:
+                raise ValueError("a signing key requires its issuer principal")
+            request = request.signed(self._principal, self._signing_key)
         await self.start()
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=request.model_dump(mode="json"),

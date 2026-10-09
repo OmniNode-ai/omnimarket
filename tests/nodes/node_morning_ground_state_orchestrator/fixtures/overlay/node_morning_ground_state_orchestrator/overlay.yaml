@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Public test overlay: placeholder values only, one per field the node reads.
+briefs: briefs.md
+phase_specs: phase_specs.json
+request_defaults:
+  plan_docs: [plans/example-plan.md]
+  must_do_doc: plans/example-must-do.md
+  off_rails_doc: ""
+  integration_repos: [repo_a, repo_b]
+  closure_probe_ticket: PROBE-1
+values:
+  GROUND_STATE_PATH: reports/@@date@@-ground-state.md
+  REBASELINE_PATH: reports/@@date@@-rebaseline.md
+  INTEGRATION_PATH: reports/@@date@@-integration.md
+  DROPPED_WORK_PATH: reports/@@date@@-dropped-work.md
+  GOAL_PATH: reports/GOAL.md
+  SNAPSHOT_PATH: reports/snapshots.json
+  DECISIONS_MD_PATH: reports/DECISIONS.md
+  DECISIONS_JSON_PATH: reports/decisions.json
+  LEDGER_PATH: tracking/LEDGER.md
+  WORKTREE_TICKET: EXAMPLE-1
+  KB_BRANCH: automation/example-@@date@@
+  DECISIONS_STALE_DAYS: "7"
+  PEER_CLAIM_MINUTES: "90"
+texts:
+  triage_note_path: tracking/LEDGER.md (this date's triage row)
+  kb_resolution_supplied: "report clone: use @@kb_internal_path@@."
+  kb_resolution_unset: "report clone: already resolved by the root step."
+  publish_key: "publish ? 'PUBLISH' : 'DRY'"
+  publish: PUBLISH mode.
+  dry: DRY mode.
+  goal_publish_marker: " PUBLISH ADDS"
+  goal_dry_suffix: " DRY: local copy alone suffices."
+  ledger_reconcile_command: ledger-reconcile-tool
