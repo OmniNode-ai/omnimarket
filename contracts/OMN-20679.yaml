@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20679"
@@ -30,11 +32,15 @@ dod_evidence:
     description: "The discovery node's contract, golden chain and error chain tests pass."
     source: "manual"
     checks:
-      - check_type: "command"
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn20679-ac1-deploy-surface"
     description: "The node's deploy surface is registered: entry point, console script, main runtime profile and shipped data files."
     source: "manual"
     checks:
-      - check_type: "command"
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q -k deploy_surface"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
