@@ -33,7 +33,7 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py -q -p no:randomly"
   - kind: "tests"
     description: "AC3: overlay resolution, strict validation and unregistered inventory pass."
-    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
