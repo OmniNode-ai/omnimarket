@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_onex_ledger_admission_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
