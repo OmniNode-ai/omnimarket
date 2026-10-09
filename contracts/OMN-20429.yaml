@@ -59,7 +59,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/golden_chains/delegation_acceptance_judge -q
+    check_value: uv run pytest tests/golden_chains/delegation_acceptance_judge/test_golden_chain_delegation_acceptance_judge.py -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4
