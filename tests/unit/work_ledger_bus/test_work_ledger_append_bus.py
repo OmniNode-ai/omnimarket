@@ -110,7 +110,12 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
                 host.topics.command,
                 "local.omnimarket.node_work_ledger_append_effect.consume.v1",
             )
-            groups = [group for _, group in bus.groups[1:]]
+            mirror_groups = [group for _, group in bus.groups[1:3]]
+            assert mirror_groups == [
+                "local.omnimarket.node_work_ledger_bus_mirror.consume.v1",
+                "local.omnimarket.node_work_ledger_bus_mirror.consume.v1",
+            ]
+            groups = [group for _, group in bus.groups[3:]]
             assert len(groups) == 2
             assert groups[0] == groups[1]
             assert groups[0].startswith(

@@ -21,6 +21,7 @@ from typing import Protocol
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.errors import ProjectionNotMaterializedError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
@@ -34,10 +35,24 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.nodes.node_work_ledger_bus_mirror import (
+    HandlerWorkLedgerBusMirror,
+    ModelWorkLedgerBusMirrorRequest,
+)
 
 logger = logging.getLogger(__name__)
 WORK_LEDGER_APPEND_NODE = "node_work_ledger_append_effect"
 GROUP_SERVICE = "omnimarket"
+WORK_LEDGER_MIRROR_NODE = "node_work_ledger_bus_mirror"
+
+
+def load_work_ledger_mirror_topics() -> tuple[str, ...]:
+    contract = yaml.safe_load(
+        resources.files(f"omnimarket.nodes.{WORK_LEDGER_MIRROR_NODE}")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    return tuple(contract["subscriptions"]["topics"])
 
 
 class ModelWorkLedgerAppendTopics(BaseModel):
@@ -93,9 +108,12 @@ class WorkLedgerAppendHost:
         self._bus = bus
         self._handler = handler
         self._topics = topics or load_work_ledger_append_topics()
-        self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
+        self._mirror = HandlerWorkLedgerBusMirror()
+        self._queue: asyncio.Queue[
+            tuple[ProtocolBusMessage, bool, asyncio.Future[None]]
+        ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
-        self._unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
         self.processed = 0
 
     @property
@@ -106,18 +124,31 @@ class WorkLedgerAppendHost:
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._worker())
-        self._unsubscribe = await _subscribe(
-            self._bus,
-            self._topics.command,
-            self._enqueue,
-            derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
-            "earliest",
+        self._unsubscribes.append(
+            await _subscribe(
+                self._bus,
+                self._topics.command,
+                self._enqueue,
+                derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
+                "earliest",
+            )
         )
+        group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
+        for topic in load_work_ledger_mirror_topics():
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._bus,
+                    topic,
+                    self._enqueue_mirror,
+                    group,
+                    "earliest",
+                )
+            )
 
     async def stop(self) -> None:
-        if self._unsubscribe is not None:
-            await self._unsubscribe()
-            self._unsubscribe = None
+        for unsubscribe in self._unsubscribes:
+            await unsubscribe()
+        self._unsubscribes.clear()
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -133,23 +164,45 @@ class WorkLedgerAppendHost:
         # command must be appended and answered first. Committing earlier is the
         # model's commit_first control, where a crash loses the command
         # (omnibase_internal tla/ledger_bus_append).
-        self._queue.put_nowait(message)
-        await self._queue.join()
+        await self._submit(message, mirror=False)
+
+    async def _enqueue_mirror(self, message: ProtocolBusMessage) -> None:
+        await self._submit(message, mirror=True)
+
+    async def _submit(self, message: ProtocolBusMessage, *, mirror: bool) -> None:
+        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._queue.put_nowait((message, mirror, done))
+        await done
 
     async def _worker(self) -> None:
         while True:
-            message = await self._queue.get()
+            message, mirror, done = await self._queue.get()
             try:
-                await self._process(message)
-            except (
-                Exception
-            ):  # fallback-ok: transport errors are logged so the next command can run
+                await self._process(message, mirror=mirror)
+            except Exception as exc:  # fallback-ok: callback fails for redelivery; worker serves the next request
                 logger.exception("work-ledger host: command processing failed")
+                if not done.done():
+                    # Kafka treats generic callback exceptions as bounded retry /
+                    # DLQ, which can advance past a valid unit still owed a row.
+                    # Use its existing persistence barrier for mirror failures.
+                    done.set_exception(
+                        ProjectionNotMaterializedError(
+                            f"lab work ledger row not materialized: {exc}",
+                            projection_type=WORK_LEDGER_MIRROR_NODE,
+                        )
+                        if mirror
+                        else exc
+                    )
+            else:
+                if not done.done():
+                    done.set_result(None)
             finally:
                 self.processed += 1
                 self._queue.task_done()
 
-    async def _process(self, message: ProtocolBusMessage) -> None:
+    async def _process(
+        self, message: ProtocolBusMessage, *, mirror: bool = False
+    ) -> None:
         try:
             raw = json.loads(message.value)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -165,9 +218,24 @@ class WorkLedgerAppendHost:
                     None, "", "command has no valid envelope_id"
                 )
                 return
-            request = ModelWorkLedgerAppendRequest.model_validate(
-                raw.get("payload", raw)
-            )
+            if mirror:
+                payload = raw.get("payload")
+                if not isinstance(payload, dict):
+                    await self._publish_failure(
+                        command_id, "", "lab terminal has no payload"
+                    )
+                    return
+                mapped = ModelWorkLedgerBusMirrorRequest.model_validate(
+                    {
+                        **payload,
+                        "envelope_timestamp": raw.get("envelope_timestamp"),
+                    }
+                )
+                request = self._mirror.handle(mapped)
+            else:
+                request = ModelWorkLedgerAppendRequest.model_validate(
+                    raw.get("payload", raw)
+                )
         except ValidationError as exc:
             await self._publish_failure(
                 command_id, "", f"not a ledger append request: {exc}"
@@ -181,6 +249,8 @@ class WorkLedgerAppendHost:
             await self._publish_failure(
                 command_id, str(request.request_id), f"{type(exc).__name__}: {exc}"
             )
+            if mirror:
+                raise
             return
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=receipt.model_dump(mode="json"),
@@ -193,6 +263,13 @@ class WorkLedgerAppendHost:
             str(request.request_id).encode("utf-8"),
             _bytes(envelope),
         )
+        if mirror and receipt.status not in {
+            EnumWorkLedgerAppendStatus.ACCEPTED,
+            EnumWorkLedgerAppendStatus.DUPLICATE,
+        }:
+            raise RuntimeError(
+                f"lab receipt append {receipt.status}: {receipt.message}"
+            )
         logger.info(
             "work-ledger host %s request %s status=%s exit=%s lines=%s",
             receipt.ledger_host,
