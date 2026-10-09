@@ -103,10 +103,9 @@ def _replay_to_daemon(path: str) -> list[dict[str, Any]]:
 
 
 def test_golden_chain_every_counted_item_reaches_the_daemon_once(
-    tmp_path_factory: pytest.TempPathFactory,
+    short_dir: Path,
 ) -> None:
-    path = str(tmp_path_factory.mktemp("g", numbered=True) / "e.sock")
-    seen = _replay_to_daemon(path)
+    seen = _replay_to_daemon(str(short_dir / "e.sock"))
     assert len(seen) == 4
     assert {r["event_type"] for r in seen} == {EVENT_TYPE}
     ids = [r["payload"]["event_id"] for r in seen]
@@ -114,12 +113,8 @@ def test_golden_chain_every_counted_item_reaches_the_daemon_once(
 
 
 def test_golden_chain_a_second_replay_delivers_the_same_event_ids(
-    tmp_path_factory: pytest.TempPathFactory,
+    short_dir: Path,
 ) -> None:
-    first = _replay_to_daemon(
-        str(tmp_path_factory.mktemp("g1", numbered=True) / "e.sock")
-    )
-    second = _replay_to_daemon(
-        str(tmp_path_factory.mktemp("g2", numbered=True) / "e.sock")
-    )
+    first = _replay_to_daemon(str(short_dir / "a.sock"))
+    second = _replay_to_daemon(str(short_dir / "b.sock"))
     assert first == second

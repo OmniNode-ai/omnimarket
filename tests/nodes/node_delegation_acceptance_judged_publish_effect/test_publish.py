@@ -98,9 +98,8 @@ class _FakeDaemon:
 
 
 @pytest.fixture
-def sock_path(tmp_path_factory: pytest.TempPathFactory) -> str:
-    # AF_UNIX paths are short; pytest's tmp_path can exceed the limit.
-    return str(tmp_path_factory.mktemp("s", numbered=True) / "e.sock")
+def sock_path(short_dir: Path) -> str:
+    return str(short_dir / "e.sock")
 
 
 def test_publish_with_the_emit_socket_absent_fails_and_names_the_socket(
@@ -137,9 +136,9 @@ def test_publish_with_the_socket_path_unset_resolves_the_default_and_names_it(
 
 
 def test_publish_with_a_stale_socket_file_fails_and_names_the_socket(
-    tmp_path: Path,
+    short_dir: Path,
 ) -> None:
-    stale = tmp_path / "stale.sock"
+    stale = short_dir / "stale.sock"
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(stale))
     server.close()  # the file stays; nothing listens
