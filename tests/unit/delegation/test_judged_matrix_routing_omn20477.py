@@ -19,6 +19,7 @@ that can differ between requests is the contracts' own declaration.
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ import pytest
 import yaml
 
 from omnimarket.delegated_test_loop import loop_ports
+from omnimarket.nodes.node_delegated_test_loop_orchestrator import ModelPrompt
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -41,9 +43,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
-_LOOPBACK = (
-    "http://127.0.0.1:18742/v1/chat/completions"  # url-authority-ok: test loopback
-)
+_LOOPBACK = "http://127.0.0.1:18742/v1/chat/completions"
 _LOCAL_CODER = "local-coder"
 # The cloud rungs carry complete endpoints in the shipped contract; only the
 # local rungs leave endpoint and model to the overlay.
@@ -75,12 +75,14 @@ def bound_ladder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
 
 
 def _request(task_type: str, backend_id: str | None = None) -> ModelDelegationRequest:
-    return ModelDelegationRequest(
-        correlation_id=uuid4(),
-        task_type=task_type,  # type: ignore[arg-type]
-        prompt="x" * 100,
-        emitted_at=datetime.now(tz=UTC),
-        backend_id=backend_id,
+    return ModelDelegationRequest.model_validate(
+        {
+            "correlation_id": uuid4(),
+            "task_type": task_type,
+            "prompt": "x" * 100,
+            "emitted_at": datetime.now(tz=UTC),
+            "backend_id": backend_id,
+        }
     )
 
 
@@ -134,7 +136,7 @@ def test_test_class_ladder_declares_no_local_tier() -> None:
 def test_the_repair_loop_pins_the_local_coder_on_every_delegate_call() -> None:
     captured: list[list[str]] = []
 
-    def run_delegate(argv: list[str]) -> object:
+    def run_delegate(argv: list[str]) -> subprocess.CompletedProcess[str]:
         captured.append(argv)
         raise RuntimeError("stop after capturing the argv")
 
@@ -144,9 +146,9 @@ def test_the_repair_loop_pins_the_local_coder_on_every_delegate_call() -> None:
         source_clone=Path("clone"),
         test_path="tests/test_x.py",
         run_focused=lambda _request: (_ for _ in ()).throw(AssertionError("unused")),
-        run_delegate=run_delegate,  # type: ignore[arg-type]
+        run_delegate=run_delegate,
     )
-    prompt = loop_ports.ModelPrompt(prompt="write it", response_contract={})
+    prompt = ModelPrompt(prompt="write it", response_contract={})
     with pytest.raises(RuntimeError, match="stop after capturing"):
         ports.delegate(prompt, 1)
     argv = captured[0]
