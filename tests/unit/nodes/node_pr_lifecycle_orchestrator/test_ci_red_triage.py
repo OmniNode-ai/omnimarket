@@ -96,8 +96,43 @@ class FakeFactsReader:
 
 
 @pytest.mark.asyncio
-async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
+async def test_shadow_mode_records_decision_and_starts_nothing() -> None:
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=False)
+    outputs = [await handler.handle(event(n, peers=True)) for n in (2606, 2607, 2608)]
+    emitted = [ev for output in outputs for ev in output.events]
+    starts = [ev for ev in emitted if isinstance(ev, ModelPrLifecycleStartCommand)]
+    decisions = [ev for ev in emitted if isinstance(ev, ModelCiRedTriageDecided)]
+    assert len(starts) == 0
+    assert len(decisions) == 3
+    assert [ev.action for ev in decisions] == [
+        EnumCiRedAction.START_CAUSE_OWNER,
+        EnumCiRedAction.START_CAUSE_OWNER,
+        EnumCiRedAction.START_CAUSE_OWNER,
+    ]
+    assert handler._owners == {}
+    assert all(ev.action_applied is False for ev in decisions)
+    run_id = decisions[0].orchestrator_run_id
+    assert run_id is not None
+    assert all(ev.orchestrator_run_id == run_id for ev in decisions)
+    assert "start=withheld:act=false" in decisions[0].evidence
+
+
+@pytest.mark.asyncio
+async def test_contract_defaults_to_shadow_mode_and_starts_nothing() -> None:
     handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
+    assert handler._act is False
+    output = await handler.handle(event())
+    assert not any(isinstance(ev, ModelPrLifecycleStartCommand) for ev in output.events)
+    assert len(output.events) == 1
+    decision = output.events[0]
+    assert isinstance(decision, ModelCiRedTriageDecided)
+    assert decision.action_applied is False
+    assert "start=withheld:act=false" in decision.evidence
+
+
+@pytest.mark.asyncio
+async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
     outputs = [await handler.handle(event(n, peers=True)) for n in (2606, 2607, 2608)]
     emitted = [ev for output in outputs for ev in output.events]
     starts = [ev for ev in emitted if isinstance(ev, ModelPrLifecycleStartCommand)]
@@ -117,7 +152,7 @@ async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
     )
     assert start.repos == "OmniNode-ai/omniclaude"
     assert start.pr_numbers == (2606, 2607, 2608)
-    assert start.dry_run is True
+    assert start.dry_run is False
     assert start.fix_only is True
     assert start.action_mode == "report_only"
     assert start.merge_queue_mutation_kill_switch is True
@@ -137,7 +172,7 @@ async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
 
 @pytest.mark.asyncio
 async def test_ac4_duplicate_emits_nothing() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
     first = await handler.handle(event().model_dump(mode="json"))
     second = await handler.handle(event())
     assert len(first.events) == 2
@@ -158,7 +193,7 @@ async def test_ac4_event_id_replay_skips_changed_or_failing_facts() -> None:
             )
 
     reader = ChangingFactsReader()
-    handler = HandlerCiRedTriage(facts_reader=reader)
+    handler = HandlerCiRedTriage(facts_reader=reader, act=True)
     # With readable base facts the deciding check is 'a'; unread facts would
     # select the peer cluster's 'b' and produce a different decision_key.
     red = event(checks=("a", "b")).model_copy(
@@ -188,7 +223,7 @@ async def test_ac4_event_id_replay_skips_changed_or_failing_facts() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("armed", [True, False])
 async def test_pr_own_and_unarmed(armed: bool) -> None:
-    output = await HandlerCiRedTriage(facts_reader=FakeFactsReader()).handle(
+    output = await HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True).handle(
         event(armed=armed)
     )
     decision = output.events[-1]
@@ -239,7 +274,7 @@ async def test_runner_and_dev_owner_starts(
 
 @pytest.mark.asyncio
 async def test_unarmed_observation_does_not_claim_owner() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
     unarmed = await handler.handle(event(2606, peers=True, armed=False))
     armed = await handler.handle(event(2607, peers=True))
     assert unarmed.events[-1].action == EnumCiRedAction.RECORD_ONLY
@@ -248,7 +283,7 @@ async def test_unarmed_observation_does_not_claim_owner() -> None:
 
 @pytest.mark.asyncio
 async def test_bounded_owner_and_decision_caches() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
     handler.MEMORY_LIMIT = 2
     for n in (1, 2, 1, 3):
         await handler.handle(event(n))
@@ -517,7 +552,7 @@ async def test_runtime_publishes_red_and_decision_then_reducer_projects() -> Non
     await applier.apply(normalized)
     assert bus.topics == [CI_RUN_FAILED_TOPIC_V1]
 
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
+    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
     output = await handler.handle(red.model_dump(mode="json"))
     normalized = _normalize_handler_result(
         output, envelope, None, EnumNodeKind.ORCHESTRATOR

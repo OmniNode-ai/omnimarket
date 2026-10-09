@@ -178,6 +178,7 @@ class HandlerCiRedTriage:
             owner_key = classification.owner_key
             run_id = None
             action_applied = False
+            start_evidence = ""
             if not event.armed:
                 action = EnumCiRedAction.RECORD_ONLY
             elif owner_key in self._owners:
@@ -187,24 +188,29 @@ class HandlerCiRedTriage:
             else:
                 action = OWNER_ACTIONS[classification.red_class]
                 run_id = "ci-red-" + hashlib.sha256(owner_key.encode()).hexdigest()[:16]
-                events.append(
-                    ModelPrLifecycleStartCommand(
-                        run_id=run_id,
-                        correlation_id=uuid5(
-                            NAMESPACE_URL, "onex:ci-red-owner:" + owner_key
-                        ),
-                        repos=slug,
-                        pr_numbers=classification.members
-                        if classification.red_class == EnumCiRedClass.SHARED_CAUSE
-                        else (event.pr_number,),
-                        fix_only=True,
-                        dry_run=not self._act,
+                if self._act:
+                    events.append(
+                        ModelPrLifecycleStartCommand(
+                            run_id=run_id,
+                            correlation_id=uuid5(
+                                NAMESPACE_URL, "onex:ci-red-owner:" + owner_key
+                            ),
+                            repos=slug,
+                            pr_numbers=classification.members
+                            if classification.red_class == EnumCiRedClass.SHARED_CAUSE
+                            else (event.pr_number,),
+                            fix_only=True,
+                            dry_run=not self._act,
+                        )
                     )
-                )
-                self._owners[owner_key] = run_id
-                while len(self._owners) > self.MEMORY_LIMIT:
-                    self._owners.popitem(last=False)
-                action_applied = True
+                    action_applied = True
+                    self._owners[owner_key] = run_id
+                    while len(self._owners) > self.MEMORY_LIMIT:
+                        self._owners.popitem(last=False)
+                else:
+                    # A dry-run lifecycle run reads GitHub on the operator login and cannot act;
+                    # shadow mode starts no run, so it claims no owner either.
+                    start_evidence = " start=withheld:act=false"
             unread = []
             missing = [
                 check
@@ -218,7 +224,7 @@ class HandlerCiRedTriage:
             evidence = (
                 f"class={classification.red_class} check={classification.check} action={action} "
                 f"owner_key={owner_key} members={classification.members} run_id={run_id} "
-                f"unread={'; '.join(unread) or 'none'}; {classification.reason}"
+                f"unread={'; '.join(unread) or 'none'}{start_evidence}; {classification.reason}"
             )
             events.append(
                 ModelCiRedTriageDecided(
