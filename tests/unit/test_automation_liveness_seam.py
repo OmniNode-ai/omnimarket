@@ -510,10 +510,8 @@ def test_automation_liveness_topics_format_every_topic_passes() -> None:
 
 @pytest.mark.unit
 def test_automation_liveness_topics_format_check_refuses_snake_producer() -> None:
-    # Positive control: the same check refuses the shape the pr-watcher topic has.
-    bad = ".".join(
-        ("onex", "evt", "omnibase_internal", "automation-run-observed", "v1")
-    )
+    # Positive control: a producer segment must use hyphens, not underscores.
+    bad = ".".join(("onex", "evt", "example_producer", "automation-run-observed", "v1"))
     assert not validate_topic_suffix(bad).is_valid
 
 
