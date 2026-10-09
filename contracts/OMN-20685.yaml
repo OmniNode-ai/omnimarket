@@ -13,6 +13,14 @@ summary: >
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-row-parity"
+    statement: |-
+      The hook refusal row compute node decides the same redacted, deduplicated ledger row as the recorder it ports.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: For every one of the 144 golden cases captured from the recorder, node_hook_refusal_row_compute returns the recorded guard, reason, detail, key and row -- falsifier: the golden and error chain tests fail when the handler is absent or any field differs
 evidence_requirements:
   - kind: tests
     description: "The node decides the same row as the recorder for every golden case, and its golden and error chains pass"
@@ -29,3 +37,4 @@ dod_evidence:
       - check_type: test_passes
         check_value: "uv run pytest tests/test_hook_refusal_row_compute.py tests/test_golden_chain_hook_refusal_row.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
