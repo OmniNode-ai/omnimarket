@@ -427,3 +427,26 @@ def test_request_refuses_a_missing_or_partial_overlay() -> None:
                 "overlay": {"substrate_probe_url": "OVERLAY_SUBSTRATE_PROBE_URL"},
             }
         )
+
+
+def test_discovery_node_deploy_surface_is_registered() -> None:
+    """What a runtime needs to attach the node: entry point, main profile, shipped data files."""
+    from importlib.metadata import entry_points
+
+    import yaml
+
+    registered = {ep.name: ep.value for ep in entry_points(group="onex.nodes")}
+    assert (
+        registered["node_architecture_discovery_orchestrator"]
+        == "omnimarket.nodes.node_architecture_discovery_orchestrator"
+    )
+    scripts = {ep.name: ep.value for ep in entry_points(group="console_scripts")}
+    assert scripts["onex-architecture-discovery"].endswith(
+        "handler_architecture_discovery_cli:main"
+    )
+    contract = yaml.safe_load((NODE / "contract.yaml").read_text())
+    assert contract["runtime_profiles"] == ["main"]
+    assert (NODE / "handlers/schemas.json").is_file()
+    wanted = {Path(p["prompt"]).name for p in contract["phases"]}
+    shipped = {t.name for t in (NODE / "handlers/prompts").glob("*.txt")}
+    assert wanted <= shipped

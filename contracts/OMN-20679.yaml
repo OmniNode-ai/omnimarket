@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20679"
+title: "architecture-work-discovery.js becomes a contract, a declarative node and a canonical handler over the bus"
+summary: "The architecture discovery tool is a contract.yaml, a declarative node and a definition-B handler in omnimarket, with its command and terminal topics declared in the contract and every phase run over the bus by the existing coding-agent invocation effect. This change moves the node from omnibase_internal; the callers in omnibase_internal are repointed and the internal copy deleted in a following change, which is what closes AC2."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-discovery-node-canonical"
+    statement: |-
+      Architecture discovery is a contract-declared node with a definition-B handler and typed models, its topics declared in contract.yaml, run over the event bus.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the tool is a contract.yaml, a declarative node and a handler with the canonical definition-B signature, and its topics are declared in the contract -- falsifier: uv run pytest tests passes with the node's handler file removed
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract declares its topics, every rendered phase prompt equals the old tool's, all six phases dispatch over in-memory bus adapters, and the error chains refuse."
+    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q"
+  - kind: "tests"
+    description: "The node's deploy surface is registered: entry point, console script, main runtime profile and shipped data files."
+    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q -k deploy_surface"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20679-ac1-node-tests"
+    description: "The discovery node's contract, golden chain and error chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q"
+  - id: "dod-omn20679-ac1-deploy-surface"
+    description: "The node's deploy surface is registered: entry point, console script, main runtime profile and shipped data files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q -k deploy_surface"
