@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20833"
+title: "Price omnimarket's cost surface and the omniclaude cost hook from the infra pricing manifest"
+summary: "omnimarket's cost_pricing.yaml no longer carries cloud prices; load_cost_pricing reads each cloud row's token prices from the omnibase_infra pricing manifest, refuses a cloud row with its own price, and loads a cloud model the manifest lacks as UNKNOWN. The three tests that pinned the retired $15 / $75 Opus rate now take their expectations from the manifest. AC1 (the omnibase_infra pin) and AC3 (the omniclaude hook) are carried by their own PRs."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac2"
+    statement: "omnimarket's cost surface prices every cloud model from the infra pricing manifest."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: omnimarket's cost surface prices every cloud model from the infra pricing manifest and `cost_pricing.yaml` carries no cloud price of its own -- falsifier: uv run pytest finds a cloud row in cost_pricing.yaml with a non-null price, or one model and token count priced through `calculate_inference_cost` and through the manifest disagree"
+  - id: "req-ac4"
+    statement: "A model the manifest does not carry stays unpriced on omnimarket's cost surface."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: A model the manifest does not carry stays unpriced on every switched surface -- falsifier: uv run pytest on a planted unknown id returns a non-null cost from omnimarket's cost surface or from the omniclaude hook"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC2: cost_pricing.yaml carries no cloud price, a cloud row with its own price is refused, and every cloud row prices at the manifest's rate."
+    command: 'uv run pytest tests/unit/cost/test_cost_pricing_from_manifest_omn20833.py -q -p no:randomly -k "no_cloud_price or equals_the_manifest or own_price"'
+  - kind: "tests"
+    description: "AC4: a cloud model absent from the manifest, and an unknown id, load with null prices and cannot be costed."
+    command: 'uv run pytest tests/unit/cost/test_cost_pricing_from_manifest_omn20833.py -q -p no:randomly -k "absent_from_the_manifest or never_given_another_rate"'
+  - kind: "tests"
+    description: "The three tests that pinned the retired Opus rate take their expectations from the manifest."
+    command: 'uv run pytest tests/test_actual_cost_recompute_omn13355.py tests/test_savings_estimates_from_source_omn12494.py -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20833-ac2"
+    description: "AC2: cost_pricing.yaml carries no cloud price, a cloud row with its own price is refused, and every cloud row prices at the manifest's rate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/cost/test_cost_pricing_from_manifest_omn20833.py -q -p no:randomly -k "no_cloud_price or equals_the_manifest or own_price"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20833-ac4-omnimarket"
+    description: "AC4: a cloud model absent from the manifest, and an unknown id, load with null prices and cannot be costed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/cost/test_cost_pricing_from_manifest_omn20833.py -q -p no:randomly -k "absent_from_the_manifest or never_given_another_rate"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20833-manifest-derived-expectations"
+    description: "The three tests that pinned the retired Opus rate take their expectations from the manifest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_actual_cost_recompute_omn13355.py tests/test_savings_estimates_from_source_omn12494.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
