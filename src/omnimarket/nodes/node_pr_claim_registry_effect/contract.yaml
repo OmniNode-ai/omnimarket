@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: pr_claim_registry_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: The cross-run mutual-exclusion lock for PR mutations. One claim
+  file per PR in the caller's claims directory; acquire, release, heartbeat,
+  cleanup and the reads over it. The caller names the directory, the time and
+  the instance id file; the handler reads no clock or environment.
+input_model: omnimarket.nodes.node_pr_claim_registry_effect.models.ModelPrClaimRegistryRequest
+output_model: omnimarket.nodes.node_pr_claim_registry_effect.models.ModelPrClaimRegistryResult
+handler:
+  module: omnimarket.nodes.node_pr_claim_registry_effect.handlers.handler_pr_claim_registry
+  class: HandlerPrClaimRegistry
+  input_model: omnimarket.nodes.node_pr_claim_registry_effect.models.ModelPrClaimRegistryRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerPrClaimRegistry
+      module: omnimarket.nodes.node_pr_claim_registry_effect.handlers.handler_pr_claim_registry
+    event_model:
+      name: ModelPrClaimRegistryRequest
+      module: omnimarket.nodes.node_pr_claim_registry_effect.models
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.pr-claim-registry-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.pr-claim-registry-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.pr-claim-registry-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pr-claim-registry-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.pr-claim-registry-completed.v1
+metadata:
+  transport_type: kafka
+inputs:
+  operation:
+    type: string
+    required: true
+    description: acquire, release, heartbeat, cleanup_stale_own_claims, list_active, has_active or get_claim.
+  claims_dir:
+    type: string
+    required: true
+    description: Directory holding the claim files.
+  now:
+    type: string
+    required: true
+    description: UTC time of the call.
+  instance_id_path:
+    type: string
+    required: false
+    description: File holding the stable instance id; required by acquire.
+  host:
+    type: string
+    required: false
+    description: Claiming host; resolved by the handler when empty.
+  pr_key:
+    type: string
+    required: false
+    description: Canonical PR key, lowercase org/repo#number.
+  run_id:
+    type: string
+    required: false
+    description: The run holding or taking the claim.
+  action:
+    type: string
+    required: false
+    description: What the claim is for.
+  lane_id:
+    type: string
+    required: false
+    description: Owning lane handle.
+  session_id:
+    type: string
+    required: false
+    description: Claiming session id.
+  dry_run:
+    type: boolean
+    required: false
+    description: No filesystem write when true.
+outputs:
+  succeeded:
+    type: boolean
+    description: Whether the operation took effect or found something.
+  messages:
+    type: array
+    description: Lines the registry reported, in order.
+  pr_keys:
+    type: array
+    description: cleanup_stale_own_claims, the keys deleted or that would be.
+  claims:
+    type: array
+    description: list_active, every active claim.
+  claim:
+    type: object
+    description: get_claim, the claim file when readable.
