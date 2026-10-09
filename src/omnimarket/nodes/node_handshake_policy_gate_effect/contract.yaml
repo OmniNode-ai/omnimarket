@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Handshake Policy Gate Effect (OMN-20671)
+#
+# The I/O half of the architecture handshake policy gate. The decisions (repo list, branch and
+# endpoints, what a read means and whether to retry, the report and exit code) are
+# node_handshake_policy_gate_compute's; this node reads GitHub (read-only), sleeps between
+# retries and hands back what the compute node decided.
+name: node_handshake_policy_gate_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  EFFECT (read-only): checks that every repo listed in repos.conf has its latest completed
+  check-handshake.yml run on the default branch succeeding. Reads the default branch and the run
+  page with the GitHub REST helper, retries transient reads on the compute node's schedule and
+  returns the printed report, the verdict, the exit code, the endpoints read and the sleeps taken.
+  The GitHub token is resolved at the effect boundary from the contract-declared secret.
+input_model:
+  name: ModelPolicyGateRunRequest
+  module: omnimarket.nodes.node_handshake_policy_gate_effect.models.model_handshake_policy_gate_run
+output_model:
+  name: ModelPolicyGateRunResult
+  module: omnimarket.nodes.node_handshake_policy_gate_effect.models.model_handshake_policy_gate_run
+handler:
+  module: omnimarket.nodes.node_handshake_policy_gate_effect.handlers.handler_handshake_policy_gate_run
+  class: HandlerHandshakePolicyGateRun
+  input_model: omnimarket.nodes.node_handshake_policy_gate_effect.models.model_handshake_policy_gate_run.ModelPolicyGateRunRequest
+  output_model: omnimarket.nodes.node_handshake_policy_gate_effect.models.model_handshake_policy_gate_run.ModelPolicyGateRunResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_handshake_policy_gate_effect.handlers.handler_handshake_policy_gate_run:HandlerHandshakePolicyGateRun
+  handlers:
+    - operation: run_handshake_policy_gate
+      handler:
+        name: HandlerHandshakePolicyGateRun
+        module: omnimarket.nodes.node_handshake_policy_gate_effect.handlers.handler_handshake_policy_gate_run
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+secrets:
+  GH_TOKEN:
+    description: "GitHub token that can read Actions runs on every repo in repos.conf."
+    required: true
+inputs:
+  repos_conf_text: {type: str, required: true, description: Contents of repos.conf.}
+  strict: {type: bool, required: false}
+  max_attempts_raw: {type: str, required: false}
+  base_delay_raw: {type: str, required: false}
+outputs:
+  stdout: {type: str}
+  stderr: {type: str}
+  exit_code: {type: int}
+  verdict: {type: str, enum: [passed, failed, warning]}
+  endpoints: {type: list}
+  sleeps: {type: list}
+terminal_event: onex.evt.omnimarket.handshake-policy-gate-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.handshake-policy-gate-run-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.handshake-policy-gate-run-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.handshake-policy-gate-run-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.handshake-policy-gate-run-completed.v1
+metadata:
+  transport_type: kafka
+  description: Handshake policy gate run (read-only GitHub reads)
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20671]
