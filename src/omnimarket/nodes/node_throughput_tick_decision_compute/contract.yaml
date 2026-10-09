@@ -14,7 +14,7 @@ description: >-
   floor, and escalated PRs with the cause lease or park that covers them. Reads no files,
   runs no process, has no clock (the caller supplies now), mutates nothing. Behaviour-preserving
   port of the controller, merges, floors and escalation findings of the retired
-  throughput_tick.py; the lab-headroom finding is not ported by this node yet.
+  throughput_tick.py, and the lab-headroom finding from the pool, marks and receipts a caller read.
 input_model:
   name: ModelThroughputTickRequest
   module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
@@ -52,6 +52,7 @@ inputs:
   ticks: {type: list, required: false, description: Newest complete controller tick lines, newest first, at most two.}
   ticks_error: {type: str, required: false}
   heartbeat_text: {type: str, required: false}
+  heartbeat_write_error: {type: str, required: false, description: "`<path>: <error>` when the tick heartbeat file could not be written."}
   state_json: {type: object, required: false}
   watcher_path: {type: str, required: false}
   watcher_state: {type: object, required: false}
@@ -61,6 +62,7 @@ inputs:
   policy_load_error: {type: str, required: false}
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
+  lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
 outputs:
   lines: {type: list}
   status_line: {type: str}

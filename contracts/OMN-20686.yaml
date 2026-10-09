@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20686"
 title: "The merge-throughput tick decisions run as an omnimarket compute node"
-summary: "node_throughput_tick_decision_compute ports the controller, merges, floors and escalation findings of the throughput tick (throughput_tick.py with the loops_check.py checks it calls) as a contract-declared COMPUTE node dispatched over the bus, with parity against the old code's captured output. The lab-headroom finding, the caller that reads the files and processes, repointing callers and deleting the old script are separate changes."
+summary: "node_throughput_tick_decision_compute ports the controller, merges, floors and escalation findings of the throughput tick (throughput_tick.py with the loops_check.py checks it calls) as a contract-declared COMPUTE node dispatched over the bus, with parity against the old code's captured output. The same node also decides the lab-headroom finding and the tick heartbeat finding from facts a caller read; the caller that reads the files and processes lives in the omni plugin's throughput_tick.py, and deleting the old checks is a separate change."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,6 +16,13 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and a malformed request is refused with no result -- falsifier: the same test file, test_golden_chain_over_the_bus_matches_a_captured_case and test_error_chain_over_the_bus_fails_without_a_result
+  - id: "req-throughput-tick-lab-headroom"
+    statement: |-
+      The throughput tick's lab-headroom finding and its heartbeat-write finding run in the same node, from the pool, marks, receipts and live placement markers a caller read, and match the retired script's whole output.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: For every captured case of the retired script's output the node returns the same finding lines, status line and exit code from the request the repointed tick built from the same fixtures -- falsifier: tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py against tests/fixtures/throughput_tick_cli_parity.json, which fails on any differing line
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
@@ -33,3 +40,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_golden_chain_throughput_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20686-throughput-tick-lab-headroom"
+    description: "node_throughput_tick_decision_compute matches the retired script's lab-headroom and heartbeat findings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
