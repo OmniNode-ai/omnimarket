@@ -23,6 +23,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: For every captured case of the retired script's output the node returns the same finding lines, status line and exit code from the request the repointed tick built from the same fixtures -- falsifier: tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py against tests/fixtures/throughput_tick_cli_parity.json, which fails on any differing line
+  - id: "req-onex-ledger-admission-node"
+    statement: |-
+      The admission decision of the retired onex_ledger.py wrapper (budget usage error, refused TERMINAL rows, missing omnibase_internal clone, run or timeout) runs in node_onex_ledger_admission_compute, with no clock, no file reads and no process calls, and matches the old wrapper.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: For every captured case the node returns the wrapper's exit code and message from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py against tests/fixtures/onex_ledger_admission_parity.json, which fails on any differing case
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
@@ -48,3 +55,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20686-onex-ledger-admission"
+    description: "node_onex_ledger_admission_compute matches the captured admission decisions of the retired onex_ledger.py wrapper and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_onex_ledger_admission_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
