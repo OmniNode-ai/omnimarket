@@ -141,3 +141,48 @@ class TestEvaluate:
         )
         assert result.passed
         assert result.covering_tests == [target_rel]
+
+
+@pytest.mark.unit
+class TestPureFoldCarveOut:
+    """OMN-20474: a node whose contract declares a pure fold owns no write path."""
+
+    _HANDLER = "src/omnimarket/nodes/node_projection_fake/handlers/handler_fold.py"
+
+    def _repo(self, tmp_path: Path, contract_text: str | None) -> Path:
+        if contract_text is not None:
+            node = tmp_path / "src" / "omnimarket" / "nodes" / "node_projection_fake"
+            node.mkdir(parents=True)
+            (node / "contract.yaml").write_text(contract_text, encoding="utf-8")
+        return tmp_path
+
+    def test_pure_contract_without_db_io_passes(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path, "descriptor:\n  purity: pure\n")
+        assert evaluate([self._HANDLER], repo).passed
+
+    def test_declared_db_io_is_still_a_write_path(self, tmp_path: Path) -> None:
+        repo = self._repo(
+            tmp_path, "descriptor:\n  purity: pure\ndb_io:\n  db_tables: []\n"
+        )
+        assert not evaluate([self._HANDLER], repo).passed
+
+    def test_impure_contract_is_still_a_write_path(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path, "descriptor:\n  purity: impure\n")
+        assert not evaluate([self._HANDLER], repo).passed
+
+    def test_unreadable_or_missing_contract_fails_closed(self, tmp_path: Path) -> None:
+        assert not evaluate([self._HANDLER], self._repo(tmp_path, None)).passed
+        broken = tmp_path / "broken"
+        broken.mkdir()
+        assert not evaluate(
+            [self._HANDLER], self._repo(broken, "descriptor: [unclosed\n")
+        ).passed
+
+    def test_the_real_judged_acceptance_fold_is_exempt(self) -> None:
+        handler = (
+            "src/omnimarket/nodes/node_projection_delegation_judged_acceptance/"
+            "handlers/handler_projection_delegation_judged_acceptance.py"
+        )
+        repo_root = Path(__file__).resolve().parents[2]
+        assert is_write_path_target(handler)
+        assert evaluate([handler], repo_root).passed
