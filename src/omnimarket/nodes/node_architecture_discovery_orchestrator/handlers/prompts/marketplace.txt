@@ -1,0 +1,59 @@
+
+ROUTE: band=B4 score=15 dims=S2A2R3V3N1C2J2 dest=opus-lane model=opus effort=high
+{{common}}
+LANE: arch-discovery-marketplace. Run date: {{date}}. Read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md before you start.
+This is the most error-prone phase in the workflow. The failure mode is asserting that something
+runs, or does not run, from a static read. RULE 1's hard rule governs everything you write here.
+
+{{rules}}
+
+TASK: inventory the marketplace's built skills and nodes and give each an INTEGRATION STATUS verdict
+per RULE 1.
+
+STEP 1 — INVENTORY. In $OMNI_HOME/omnimarket, enumerate every node under
+src/omnimarket/nodes/*/contract.yaml. EXCLUDE any path under a worktree directory
+(.claude/worktrees/, omni_worktrees/) — those are stale copies and counting them double-counts the
+inventory. Enumerate the skills under $OMNI_HOME/omniclaude/plugins/onex/skills/ and their entries in
+$OMNI_HOME/omnibase_infra/src/omnibase_infra/cli/skill_mapping.yaml. Record the total count of each.
+
+STEP 2 — READ THE AUTHORITIES FIRST, before judging anything:
+  omnimarket/src/omnimarket/validators/contract_topic_graph.py — find_defects and the reachability
+    function. Confirm in the source that reachability is satisfied by a contract producer, an
+    external_producers entry, or runtime_dispatch.command_topic, and by nothing else. If the source
+    has changed since this brief was written, TRUST THE SOURCE and say so in the handoff.
+  omnimarket/src/omnimarket/validators/data/contract_topic_graph_orphan_classification.yaml — the
+    recorded ORPHANED_CONSUMER and ORPHANED_PRODUCER entries. This file is an INPUT, never an output:
+    you do not edit it, and a row in it is a recorded classification, not proof about traffic.
+  omnibase_infra/src/omnibase_infra/cli/model_skill_mapping.py — confirm the event_bus default value
+    live. omnibase_infra/src/omnibase_infra/cli/skill_mapping.yaml — grep for ANY entry that
+    overrides event_bus, and report the count (if some entries do override it, S3 only fires for the
+    ones that do not).
+
+STEP 3 — CLASSIFY. Do not hand-audit 389 contracts one by one; drive it from the classification file
+plus targeted greps, then verify each candidate individually against its own contract.yaml and
+handler before you assert a verdict. For every artifact you assign BUILT-NOT-INTEGRATED or
+PARTIALLY-INTEGRATED, record: which signal fired (S1/S2/S3), the file:line proving it, the topic
+involved, and — for S2 — whether the topic is merely unconsumed or is never emitted by the handler
+at all (grep the handler for the topic constant; these are different findings and the report
+distinguishes them).
+
+STEP 4 — For each BUILT-NOT-INTEGRATED artifact, state in ONE sentence what integration would take:
+the missing declaration (an external_producers entry, a runtime_dispatch.command_topic, a handler
+emit), and which file it goes in. This sentence becomes the executable-work row downstream, so it
+must name a file that exists.
+
+STEP 5 — HANDOFF. Mint a scratch path (lane_scratch.py --label "arch-discovery marketplace" --suffix .json):
+{ "run_date": "{{date}}",
+  "inventory": {"nodes": <n>, "skills": <n>, "skill_mapping_entries": <n>,
+                "event_bus_overrides_found": <n>, "worktree_paths_excluded": <n>},
+  "authorities_read": [ {"path":"...","line":"<n>","fact_confirmed":"..."} ],
+  "unreadable_sources": [ {"source":"...","command":"...","error":"..."} ],
+  "artifacts": [ {"name":"node_...|skill:...","kind":"node|skill",
+                  "contract_path":"...","handler_path":"...",
+                  "verdict":"INTEGRATED|BUILT-NOT-INTEGRATED|PARTIALLY-INTEGRATED|UNKNOWN",
+                  "signals":[ {"signal":"S1|S2|S3","topic":"...","citation":"path:line",
+                               "s2_kind":"unconsumed|never-emitted|null"} ],
+                  "integration_delta":"<one sentence naming the file and the missing declaration>",
+                  "unknown_reason":"<failing command, or null>"} ] }
+Return handoff_path as the ABSOLUTE path.
+Ledger rows (CLAIM then TERMINAL). Return per schema (item_count = artifacts classified).
