@@ -49,7 +49,5 @@ externally_consumed_topics:
 - onex.evt.omnimarket.remote-lane-decided.v1
 metadata:
   ticket: OMN-20669
-  origin_tickets:
-  - OMN-17427
   transport_type: kafka
 lifecycle: experimental
