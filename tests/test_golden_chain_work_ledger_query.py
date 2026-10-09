@@ -365,3 +365,19 @@ def test_work_ledger_query_golden_chain_real_runtime_typed_dispatch() -> None:
     assert dispatch is not None
     terminal = ModelWorkLedgerQueryResult.model_validate(dispatch.output_events[0])
     assert [c.lane for c in terminal.open_claims] == ["lane-b", "lane-a", "lane-f"]
+
+
+def test_work_ledger_query_golden_chain_reader_error_is_not_prefixed_twice() -> None:
+    from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
+        WorkLedgerReadError,
+    )
+
+    reader = FakeReader(
+        fixture_records(), WorkLedgerReadError("OperationalError: connection refused")
+    )
+    result = node(reader).handle(
+        ModelWorkLedgerQueryRequest(
+            correlation_id=uuid4(), query=EnumWorkLedgerQueryKind.ROWS, now=NOW
+        )
+    )
+    assert result.error == "OperationalError: connection refused"

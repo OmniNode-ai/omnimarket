@@ -29,6 +29,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
     ProtocolWorkLedgerQueryReader,
+    WorkLedgerReadError,
     load_work_ledger_query_source,
 )
 
@@ -88,7 +89,12 @@ class HandlerWorkLedgerQuery:
                 close = getattr(self._reader, "close", None)
                 if close is not None:
                     close()
-            return base.model_copy(update={"error": f"{type(exc).__name__}: {exc}"})
+            error = (
+                str(exc)
+                if isinstance(exc, WorkLedgerReadError)
+                else f"{type(exc).__name__}: {exc}"
+            )
+            return base.model_copy(update={"error": error})
         parity = replay.window_parity(days, replay.parse_rows(receipts))
         if capped and parity.status is EnumWorkLedgerParityStatus.EXACT:
             parity = ModelWorkLedgerParity(

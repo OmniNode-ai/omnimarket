@@ -38,6 +38,10 @@ def load_work_ledger_query_source(contract_path: Path) -> ModelWorkLedgerQuerySo
     return ModelWorkLedgerQuerySource.model_validate(source)
 
 
+class WorkLedgerReadError(RuntimeError):
+    """A failed database read, its message already redacted and type-prefixed."""
+
+
 class ProtocolWorkLedgerQueryReader(Protocol):
     """Read rows, daily parity receipts and projection freshness."""
 
@@ -94,7 +98,9 @@ class PostgresWorkLedgerQueryReader:
         except Exception as exc:
             with contextlib.suppress(Exception):
                 self.close()
-            raise RuntimeError(format_database_error(exc, self._source)) from None
+            raise WorkLedgerReadError(
+                format_database_error(exc, self._source)
+            ) from None
 
     @staticmethod
     def _records(rows: list[tuple[Any, ...]]) -> tuple[ModelWorkLedgerRowRecord, ...]:
