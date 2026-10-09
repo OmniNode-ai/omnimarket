@@ -8,8 +8,8 @@
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
 # HandlerLlmCliSubprocess / adapter_codex_reviewer) with two different LAB
 # models (OMN-17492, operator rulings 2026-09-25): qwen3-review (Qwen3.8-27B
-# on .201:8000) and gpt-oss-review (gpt-oss-120b on the .200 Mac Studio,
-# :8130). Private diffs go only to lab models, never to a third-party cloud
+# on .201:8000) and gpt-oss-review (Qwen3.6-35B-A3B on the .200 Mac Studio,
+# :8131 via LLM_GPT_OSS_REVIEW_URL, OMN-20422). Private diffs go only to lab models, never to a third-party cloud
 # reviewer (OPERATOR-CONSENT, rolling ledger row 4842). qwen3-review-b is
 # no longer a voter: it named the same .201:8000 model as qwen3-review, so
 # their "agreement" was one model agreeing with itself. .200 is always on
@@ -93,6 +93,18 @@ jobs:
     # either.
     timeout-minutes: 60
 
+    # Lab-endpoint environment, job-level so the preflight and the review step
+    # read the SAME values (the preflight resolves URLs exactly as the reviewer
+    # does: os.environ.get(config.env_var, config.default_url)).
+    # LLM_ENDPOINT_CIDR_ALLOWLIST: the transport fail-closes if it is unset (there
+    # is no code default). It moved here from the two step-level env blocks
+    # (OMN-20422) so the job carries one annotated line per address, not two.
+    # LLM_GPT_OSS_REVIEW_URL: OMN-20422, RULING 2026-10-09T04:15:56Z. The
+    # gpt-oss-review key now names the Studio's Qwen3.6-35B-A3B on :8131; the
+    # registry default :8130 stays Qwen3.8-27B for delegation.
+    env:
+      LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200"
+      LLM_GPT_OSS_REVIEW_URL: "http://192.168.86.200:8131"  # onex-allow-internal-ip OMN-20422 reason="gpt-oss-review resolves its URL from this env var: the second voter is Qwen3.6-35B-A3B on the Studio's :8131"
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -229,11 +241,8 @@ jobs:
           # is absent. The old assumption that the runner env provided it
           # (Infisical / shell profile) never held on this fleet.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # Added alongside LOCAL_LLM_SHARED_SECRET for env parity with the review
-          # step (OMN-14176). This preflight uses a raw TCP probe so it does not
-          # invoke the LLM transport's CIDR check, but keeping the two LLM-contact
-          # env blocks identical avoids drift. The model host is within this subnet.
-          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200"
+          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_GPT_OSS_REVIEW_URL come from the
+          # job-level env block above (OMN-20422), not from this step.
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
           # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
@@ -501,12 +510,8 @@ jobs:
           # on this fleet — that gap is why every review DEGRADED with "all models
           # failed" despite a reachable endpoint.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # The omniintelligence LLM HTTP transport's _parse_cidr_allowlist RAISES
-          # if LLM_ENDPOINT_CIDR_ALLOWLIST is unset — there is NO code default (the
-          # docstring's LAN-subnet default is aspirational only). Without this the
-          # reviewer fail-closes on the CIDR gate → verdict=degraded even after the
-          # endpoint_url fix + the secret. The model host is within this subnet.
-          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200; transport fail-closes if unset"
+          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_GPT_OSS_REVIEW_URL come from the
+          # job-level env block above (OMN-20422), not from this step.
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
@@ -520,7 +525,7 @@ jobs:
           # command substitution, and the command's exit code is still preserved via
           # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
           # Two different lab models (OMN-17492): qwen3-review (Qwen3.8-27B,
-          # .201:8000) + gpt-oss-review (gpt-oss-120b, .200:8130). Both must
+          # .201:8000) + gpt-oss-review (Qwen3.6-35B-A3B, .200:8131). Both must
           # answer for a verdict (OMN-14176 made >=2 the exit-0 condition);
           # one is no quorum, and the enforce step below fails the job.
           #
