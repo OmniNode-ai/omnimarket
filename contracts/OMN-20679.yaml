@@ -19,10 +19,10 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The contract declares its topics, every rendered phase prompt equals the old tool's, all six phases dispatch over in-memory bus adapters, and the error chains refuse."
-    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q"
+    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py -q"
   - kind: "tests"
     description: "The node's deploy surface is registered: entry point, console script, main runtime profile and shipped data files."
-    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q -k deploy_surface"
+    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py -q -k deploy_surface"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -33,7 +33,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20679-ac1-deploy-surface"
@@ -41,6 +41,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q -k deploy_surface"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py -q -k deploy_surface"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
