@@ -618,6 +618,37 @@ class _ReconcilePass:
         except (ValueError, AttributeError):
             return ""
 
+    def passed_through(self, clone: Path, observed: str, start: str, now: str) -> bool:
+        """Whether ``observed`` is a HEAD the clone held during this run.
+
+        True when it lies on the fast-forward from ``start`` to ``now``: ``start``
+        is an ancestor of it (or it), and it is an ancestor of ``now`` (or it).
+        A commit the clone never held, such as one left by a delegate that
+        installed nothing, is not on that path.
+        """
+        if not (observed and start and now):
+            return False
+
+        def ancestor(older: str, newer: str) -> bool:
+            if older == newer:
+                return True
+            return (
+                self.command(
+                    [
+                        "git",
+                        "-C",
+                        str(clone),
+                        "merge-base",
+                        "--is-ancestor",
+                        older,
+                        newer,
+                    ]
+                ).returncode
+                == 0
+            )
+
+        return ancestor(start, observed) and ancestor(observed, now)
+
     def venvs(self, governed: list[str]) -> Path | None:
         venv = Path(self.request.dispatch_venv or self.root / ".onex-dispatch-venv")
         sp = self.site_packages(venv)
@@ -637,6 +668,13 @@ class _ReconcilePass:
             pins = {}
         before = {name: self.version(sp, name) for name in governed}
         before_commit = self.commit(sp)
+        market = self.root / "omnimarket"
+        # The clone-sync timer fast-forwards the clone while the delegate runs, so
+        # the head the delegate installed from can be any commit the clone passed
+        # through during the run, not the head read afterwards.
+        head_at_start = (
+            self.git(market, "rev-parse", "HEAD") if (market / ".git").is_dir() else ""
+        )
         delegate = Path(
             self.request.venv_delegate or self.scripts / "reconcile-workspace-venvs.sh"
         )
@@ -666,14 +704,15 @@ class _ReconcilePass:
                     self.movement(
                         f"venv:{name}", before[name], self.version(sp, name), pins[name]
                     )
-            market = self.root / "omnimarket"
             if (market / ".git").is_dir():
-                self.movement(
-                    "venv:omnimarket",
-                    before_commit,
-                    self.commit(sp),
-                    self.git(market, "rev-parse", "HEAD"),
+                observed = self.commit(sp)
+                head_now = self.git(market, "rev-parse", "HEAD")
+                target = (
+                    observed
+                    if self.passed_through(market, observed, head_at_start, head_now)
+                    else head_now
                 )
+                self.movement("venv:omnimarket", before_commit, observed, target)
         gate = self.root / "omnibase_infra/.venv"
         gate_sp = self.site_packages(gate)
         if gate_sp:

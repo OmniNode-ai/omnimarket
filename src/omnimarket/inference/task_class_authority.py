@@ -21,11 +21,13 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.inference.request_instruction import (
     instruction_text,
     is_negated,
     opening_sentence,
 )
+from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
 
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
@@ -780,6 +782,23 @@ class ModelSizeBandThresholds(BaseModel):
     steps: ModelBandEdges
 
 
+class ModelTaskClassEscalationPolicy(BaseModel):
+    """How far and in what tier order a task class escalates (OMN-20287 types it).
+
+    ``tier_order`` is the class's own ladder, a deployment's routing choice, so
+    it is marked as a deployment fact.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    max_escalations: int | None = None
+    tier_order: tuple[str, ...] | None = Field(
+        default=None,
+        description="The closed, ordered set of routing tiers this class may use.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_ORDER),
+    )
+
+
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
 
@@ -804,6 +823,7 @@ class ModelTaskClassAuthorityEntry(BaseModel):
             "class routes."
         ),
     )
+    escalation_policy: ModelTaskClassEscalationPolicy | None = None
 
 
 class ModelTaskClassAuthority(BaseModel):
@@ -812,6 +832,16 @@ class ModelTaskClassAuthority(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
     task_classes: dict[str, ModelTaskClassAuthorityEntry] = Field(min_length=1)
+    default_task_model_ref: str | None = Field(
+        default=None,
+        description="The model a task with no per-type override resolves to.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.MODEL_NAME),
+    )
+    task_model_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-task-type model id overrides.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.MODEL_NAME),
+    )
     quality_rules: dict[str, ModelQualityRule] = Field(default_factory=dict)
     reasoning_preamble: ModelReasoningPreamblePolicy | None = Field(
         default=None,

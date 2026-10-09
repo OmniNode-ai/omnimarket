@@ -433,6 +433,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19684: the full-suite shards run only the test files
+      # scripts/ci/merge_test_durations.py plans for them from the committed
+      # config/test_file_durations.json. These tests pin the planner's exact-once
+      # assignment, the record's balance over the real tree and the ci.yml wiring.
+      # The CI twin is the "Prove the shard plans partition the collected files"
+      # step of the integration-guard job, which checks the plan against a real
+      # `pytest --collect-only`.
+      - id: test-shard-plan
+        name: Full-suite test shard plan stays balanced and exact-once (OMN-19684)
+        language: system
+        entry: uv run pytest tests/unit/test_ci_shard_plan_omn19684.py tests/unit/test_ci_workflow_shape_durations_merge.py -q --no-cov
+        files: ^(\.github/workflows/ci\.yml|scripts/ci/merge_test_durations\.py|config/test_file_durations\.json|tests/unit/test_ci_shard_plan_omn19684\.py|tests/unit/test_ci_workflow_shape_durations_merge\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
       # than one real message category leaves the off-category topics permanently
       # unroutable — handler_wiring stamps ONE category per entry and
@@ -809,6 +824,19 @@ repos:
         entry: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
         pass_filenames: false
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
+        stages: [pre-commit]
+
+      # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
+      # ref, provider, tier or per-class order) in the packaged routing configs.
+      # Routing decisions belong in a deployment overlay. Same entry point as
+      # the `Deployment Fact Gate` CI job; here the commit being made is judged
+      # against HEAD, which is the shrink-only baseline.
+      - id: deployment-fact-gate
+        name: No new deployment fact in packaged routing configs
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/nodes/node_deployment_fact_gate_effect/.*)$
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
