@@ -9,6 +9,7 @@ others still run, as the old script's per-file ``cp`` and ``rm -f`` did.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import stat
@@ -22,11 +23,42 @@ from ..models import (
     ModelMigrationSyncFailure,
 )
 
+_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
-def _copy_no_follow(source: str | Path, target: Path) -> None:
-    """Copy ``source`` to ``target``, refusing to open a symlink at ``target``."""
+
+def _open_parent_no_follow(root: str, parts: tuple[str, ...], create: bool) -> int:
+    """Open the directory holding ``parts[-1]``, never following a symlink.
+
+    Each component is opened relative to the descriptor of the one before it with
+    ``O_NOFOLLOW``, so a component swapped for a symlink after any earlier check
+    fails the open instead of redirecting the write outside ``root``.
+    """
+    if create:
+        os.makedirs(root, exist_ok=True)
+    fd = os.open(root, _DIR_FLAGS)
+    try:
+        for part in parts[:-1]:
+            if create:
+                with contextlib.suppress(FileExistsError):
+                    os.mkdir(part, dir_fd=fd)
+            child = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _copy_no_follow(source: str | Path, name: str, dir_fd: int) -> None:
+    """Copy ``source`` to ``name`` under ``dir_fd``, refusing a symlink there."""
     mode = stat.S_IMODE(os.stat(source).st_mode)
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    fd = os.open(
+        name,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+        mode,
+        dir_fd=dir_fd,
+    )
     with os.fdopen(fd, "wb") as out, open(source, "rb") as src:
         os.fchmod(out.fileno(), mode)
         shutil.copyfileobj(src, out)
@@ -54,19 +86,25 @@ class HandlerMigrationSyncApply:
             if os.path.commonpath([root, os.path.realpath(target)]) != root:
                 fail(action, f"resolves outside the vendored root {root}")
                 continue
+            parts = Path(action.relative_path).parts
             try:
-                if action.kind == "copy":
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    # Re-check after mkdir and refuse a final-component symlink: the
-                    # path may have changed since the check above.
-                    if os.path.commonpath(
-                        [root, os.path.realpath(target.parent)]
-                    ) != root or os.path.islink(target):
-                        fail(action, f"resolves outside the vendored root {root}")
-                        continue
-                    _copy_no_follow(action.source_path, target)
-                else:
-                    target.unlink(missing_ok=True)
+                try:
+                    dir_fd = _open_parent_no_follow(
+                        root, parts, create=action.kind == "copy"
+                    )
+                except FileNotFoundError:
+                    if action.kind == "copy":
+                        raise
+                    applied.append(action)  # nothing to remove below a missing dir
+                    continue
+                try:
+                    if action.kind == "copy":
+                        _copy_no_follow(action.source_path, parts[-1], dir_fd)
+                    else:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(parts[-1], dir_fd=dir_fd)
+                finally:
+                    os.close(dir_fd)
             except OSError as exc:
                 fail(action, str(exc))
                 continue
