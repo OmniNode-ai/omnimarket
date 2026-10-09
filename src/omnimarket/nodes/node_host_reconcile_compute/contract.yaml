@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: host_reconcile_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileEvaluateRequest
+output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileDecisions
+handler:
+  module: omnimarket.nodes.node_host_reconcile_compute.handlers.handler_host_reconcile_compute
+  class: HandlerHostReconcileCompute
+  input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileEvaluateRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostReconcileCompute
+      module: omnimarket.nodes.node_host_reconcile_compute.handlers.handler_host_reconcile_compute
+    event_model:
+      name: ModelHostReconcileEvaluateRequest
+      module: omnimarket.models.model_host_reconcile
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.host-reconcile-evaluated.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-reconcile-evaluate.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-reconcile-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-reconcile-evaluate.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.host-reconcile-evaluated.v1
+metadata:
+  transport_type: kafka
+inputs:
+  facts:
+    type: list[object]
+    required: true
+    description: Observed host surfaces in recording order.
+outputs:
+  surfaces:
+    type: list[object]
+    description: Content verdicts in recording order.

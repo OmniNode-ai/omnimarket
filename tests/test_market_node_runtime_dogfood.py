@@ -71,6 +71,9 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # The host-reconcile effect is likewise run from the command line by a host
+    # timer; it subscribes to no topic and has no onex.nodes entry point.
+    "node_host_reconcile_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -86,10 +89,19 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # overlay, so it has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_morning_ground_state_orchestrator",
+    # OMN-20674: hosted from the operator tooling repository, whose copy is
+    # still registered; its briefs, paths and lanes arrive through a deployment
+    # overlay, so it has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_morning_friction_sweep_orchestrator",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
+    # OMN-19985: the local secret store runs from `onex secret set` / `onex
+    # secret delete`; it returns credential events for the CLI shim to fold and
+    # subscribes to no topic, so it has no onex.nodes entry point.
+    "node_local_secret_store_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry

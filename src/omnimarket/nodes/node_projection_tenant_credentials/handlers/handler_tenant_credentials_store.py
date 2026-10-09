@@ -49,6 +49,7 @@ class ProtocolCredentialStore(
 
 
 _SECRET_SHAPED_KEYS = ("value", "key_value", "secret", "api_key")
+_REGISTERED_OPTIONAL_COLUMNS = ("fingerprint", "set_at")
 _NOW = "NOW()"
 
 
@@ -86,15 +87,22 @@ def apply_credential_registered(
                 f"{leak_key!r} -- refusing to project"
             )
     tenant = str(tenant_id)
+    row: dict[str, object] = {
+        "api_key_ref": str(api_key_ref),
+        "tenant_id": tenant,
+        "name": str(name),
+        "provider": str(provider),
+    }
+    # A locally set key carries its fingerprint and set time; an event without
+    # them (a hosted producer) never erases one already stored -- the runner's
+    # COALESCE does the same on Postgres.
+    for column in _REGISTERED_OPTIONAL_COLUMNS:
+        if data.get(column) is not None:
+            row[column] = str(data[column])
     db.upsert_returning(
         CREDENTIALS_TABLE,
         "api_key_ref",
-        {
-            "api_key_ref": str(api_key_ref),
-            "tenant_id": tenant,
-            "name": str(name),
-            "provider": str(provider),
-        },
+        row,
         tenant=tenant,
         insert_only_columns=frozenset({"created_at"}),
         sql_expression_columns={"created_at": _NOW},

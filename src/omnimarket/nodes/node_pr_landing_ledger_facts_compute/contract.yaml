@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingLedgerFactsCompute
+#
+# The ledger half of one landing-controller tick's facts as a pure definition-B compute:
+#
+#   handle(ModelLandingLedgerRows) -> ModelLandingLedgerFacts
+#
+# From ledger rows already parsed (the read of the ledger files is an effect, not this node) it derives
+# the fixer kill switch, the lanes that own a shared red cause, the fix PRs an open cause CLAIM
+# declares, the cause releases, the lab proof PASS readbacks and the live repo drain lane. The live
+# controller keeps deriving its own copy; the two are compared on the recorded ledger before any caller
+# moves. No clock (the tick's time is in the request), no I/O, no model.
+name: "node_pr_landing_ledger_facts_compute"
+contract_name: "node_pr_landing_ledger_facts_compute"
+node_name: "node_pr_landing_ledger_facts_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B derivation of the landing controller's row-only ledger facts:
+  fixer_hold, cause_owners, cause_releases, cause_fixes, lab_passes and
+  drain_lane, from the tick's ledger rows and clock. Deterministic in the row
+  order the ledger gives. Per-PR owners, holds and merge-order waits are not
+  derived here.
+input_model:
+  name: "ModelLandingLedgerRows"
+  module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts"
+  description: "The tick's clock, the window's parsed ledger rows, and older rows read only for lab PASS readbacks."
+output_model:
+  name: "ModelLandingLedgerFacts"
+  module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts"
+  description: "The row-only ledger facts of one tick."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts"
+  class: "HandlerPrLandingLedgerFacts"
+  input_model: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts.ModelLandingLedgerRows"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts:HandlerPrLandingLedgerFacts"
+  handlers:
+    - operation: "derive_landing_ledger_facts"
+      handler:
+        name: "HandlerPrLandingLedgerFacts"
+        module: "omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts"
+# Addressable the way the other directly-invoked compute nodes are; the topics are
+# declared here and no caller publishes the command until the controller switches.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-ledger-facts-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-ledger-facts-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-ledger-facts-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Row-only ledger facts of one landing tick."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - ledger
+    - pure

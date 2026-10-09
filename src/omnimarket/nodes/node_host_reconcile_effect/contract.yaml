@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_typed_decision_effect: no subscription and no
+# onex.nodes entry point, invoked by `python -m` on the host it reconciles.
+# `experimental` is the drift gate's marker for an intentionally unregistered
+# node; the topic graph sees it as an externally triggered ingress root.
+name: host_reconcile_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileCommand
+output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileRunResult
+handler:
+  # Invoked by __main__.py on a host timer, which supplies the
+  # effect boundaries. No handler_routing: this handler is not boot-resolvable
+  # or dispatched by the runtime. Run with:
+  # python -m omnimarket.nodes.node_host_reconcile_effect --omni-home <workspace>
+  module: omnimarket.nodes.node_host_reconcile_effect.handlers.handler_host_reconcile_effect
+  class: HandlerHostReconcileEffect
+  input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 3900000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.host-reconcile-run-completed.v1
+# Publish only. The node reads the host's own filesystem, so a host timer runs
+# it with python -m on the host it reconciles; a runtime container
+# must never dispatch it, which is why it subscribes to no topic and is declared an
+# externally triggered ingress root.
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.cmd.omnimarket.slack-publish.v1
+  - onex.evt.omnimarket.host-reconcile-run-completed.v1
+runtime_dispatch:
+  external_trigger: true
+externally_consumed_topics:
+- onex.evt.omnimarket.host-reconcile-run-completed.v1
+metadata:
+  # The receipt is a consumed contract read by the workspace onex wrapper.
+  receipt_schema: onex.workspace.reconcile.v1  # schema id, not a Kafka topic
+  transport_type: kafka
+  execution_locus: host-local
+inputs:
+  workspace_root:
+    type: str
+    required: true
+    description: The canonical workspace root on this host.
+outputs:
+  surfaces:
+    type: list[object]
+    description: Content verdicts in recording order.

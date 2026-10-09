@@ -7882,6 +7882,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
       "readers": [
+        "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
       ],
       "target_schema": "public",

@@ -427,6 +427,10 @@ projection_api:
         # OMN-19448: the deciding terminal's stop reason (migration 0053).
         - finish_reason
         - truncated
+        # OMN-19448: requested model and measured terminal timings (migration 0058).
+        - requested_model
+        - queue_wait_ms
+        - execution_ms
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model

@@ -112,6 +112,9 @@ class TestCredentialRegistered:
             "omninode",
             "my-openrouter-key",
             "openrouter",
+            # OMN-19985: fingerprint and set_at; a hosted event sends neither.
+            None,
+            None,
         )
 
     @pytest.mark.asyncio
@@ -318,6 +321,9 @@ class TestHandleDefBEntrypoint:
             "omninode",
             "my-openrouter-key",
             "openrouter",
+            # OMN-19985: fingerprint and set_at; a hosted event sends neither.
+            None,
+            None,
         )
 
     def test_handle_defaults_topic_to_the_first_subscribed_topic(

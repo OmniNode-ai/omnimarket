@@ -207,7 +207,7 @@ dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.68,<0.39.0",
+    "omnibase-infra>=0.38.69,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -268,20 +268,27 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
 node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
 node_lab_fill_effect = "omnimarket.nodes.node_lab_fill_effect"
 node_migration_sync_plan_compute = "omnimarket.nodes.node_migration_sync_plan_compute"
 node_migration_sync_effect = "omnimarket.nodes.node_migration_sync_effect"
+node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
+node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
 node_linear_comments_decision_compute = "omnimarket.nodes.node_linear_comments_decision_compute"
 node_handshake_policy_gate_compute = "omnimarket.nodes.node_handshake_policy_gate_compute"
+node_dod_closeout_sweep_compute = "omnimarket.nodes.node_dod_closeout_sweep_compute"
 node_hourly_tick_decision_compute = "omnimarket.nodes.node_hourly_tick_decision_compute"
+node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
+node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
+node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
@@ -333,6 +340,8 @@ node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
 node_delegation_acceptance_judge_request_compute = "omnimarket.nodes.node_delegation_acceptance_judge_request_compute"
+node_delegation_acceptance_judged_publish_effect = "omnimarket.nodes.node_delegation_acceptance_judged_publish_effect"
+node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delegation_acceptance_judged_replay_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
@@ -341,6 +350,7 @@ node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_outpu
 node_delegation_hook_followup_compute = "omnimarket.nodes.node_delegation_hook_followup_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_delegate_fanout_effect = "omnimarket.nodes.node_delegate_fanout_effect"
+node_shadow_review_effect = "omnimarket.nodes.node_shadow_review_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
@@ -526,6 +536,7 @@ node_ticket_research_enrichment_compute = "omnimarket.nodes.node_ticket_research
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets"
 node_release = "omnimarket.nodes.node_release"
+node_reject_skip_token_compute = "omnimarket.nodes.node_reject_skip_token_compute"
 node_recall_compute = "omnimarket.nodes.node_recall_compute"
 node_redeploy_orchestrator = "omnimarket.nodes.node_redeploy_orchestrator"
 node_runtime_closeout_orchestrator = "omnimarket.nodes.node_runtime_closeout_orchestrator"
@@ -544,6 +555,7 @@ node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_pr_landing_github_effect = "omnimarket.nodes.node_pr_landing_github_effect"
 node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_decision_compute = "omnimarket.nodes.node_pr_landing_decision_compute"
+node_pr_landing_ledger_facts_compute = "omnimarket.nodes.node_pr_landing_ledger_facts_compute"
 node_pr_landing_tick_compute = "omnimarket.nodes.node_pr_landing_tick_compute"
 node_pr_landing_tick_observe_compute = "omnimarket.nodes.node_pr_landing_tick_observe_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
@@ -1040,7 +1052,7 @@ override-dependencies = [
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
     # 0.38.61 declares omnibase-compat==0.5.7 and omnibase-spi==0.23.5; the
     # core floor above admits it, so this bump cascades nothing.
-    "omnibase-infra>=0.38.68,<0.39.0",
+    "omnibase-infra>=0.38.69,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
