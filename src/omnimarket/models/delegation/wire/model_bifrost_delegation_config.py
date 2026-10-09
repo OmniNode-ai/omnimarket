@@ -313,6 +313,9 @@ class ModelDelegationBackendConfig(BaseModel):
     harness: EnumDelegationHarness | None = Field(
         default=None,
         description="OMN-20287: the harness a ``kind: harness`` backend runs. None for an endpoint.",
+        # The harness names the vendor CLI the backend runs: a deployment's
+        # choice, refused in a packaged config like any provider.
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.PROVIDER),
     )
     surface: EnumDelegationBackendSurface = Field(
         default=EnumDelegationBackendSurface.ANY,
