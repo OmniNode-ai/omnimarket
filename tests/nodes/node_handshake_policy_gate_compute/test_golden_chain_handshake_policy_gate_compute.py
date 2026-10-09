@@ -25,15 +25,15 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_handshake_policy_gate_compute as node_package
-from omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate import (
-    HandlerHandshakePolicyGate,
-)
-from omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate import (
+from omnimarket.models.model_handshake_policy_gate import (
     EnumPolicyGateVerdict,
     EnumReadOutcome,
     EnumRepoGateStatus,
     ModelPolicyGateDecisionRequest,
     ModelPolicyGateDecisionResult,
+)
+from omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate import (
+    HandlerHandshakePolicyGate,
 )
 from tests.runtime_local_compat import RuntimeLocal
 

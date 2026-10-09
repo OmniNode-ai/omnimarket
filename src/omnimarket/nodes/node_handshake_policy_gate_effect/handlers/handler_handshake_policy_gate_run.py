@@ -11,15 +11,15 @@ equal the script's on the captured cases (tests/fixtures/handshake_policy_gate_p
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate import (
-    HandlerHandshakePolicyGate,
-)
-from omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate import (
+from omnimarket.models.model_handshake_policy_gate import (
     EnumPolicyGateDecisionKind,
     EnumReadOutcome,
     ModelPolicyGateDecisionRequest,
     ModelPolicyGateDecisionResult,
     ModelRepoGateStatus,
+)
+from omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate import (
+    HandlerHandshakePolicyGate,
 )
 from omnimarket.nodes.node_handshake_policy_gate_effect.models.model_handshake_policy_gate_run import (
     ModelPolicyGateRunRequest,

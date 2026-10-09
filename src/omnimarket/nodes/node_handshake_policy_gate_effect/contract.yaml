@@ -39,6 +39,7 @@ handler_routing:
 descriptor:
   node_archetype: effect
   purity: impure
+  runtime_profiles: [effects]
   idempotent: true
   timeout_ms: 600000
 secrets:

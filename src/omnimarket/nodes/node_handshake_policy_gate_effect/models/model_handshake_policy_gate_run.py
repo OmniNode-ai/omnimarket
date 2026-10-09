@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate import (
+from omnimarket.models.model_handshake_policy_gate import (
     EnumPolicyGateVerdict,
 )
 

@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 import omnimarket.nodes.node_handshake_policy_gate_effect as node_package
 from omnimarket.github_api import GitHubApiError
-from omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate import (
+from omnimarket.models.model_handshake_policy_gate import (
     EnumPolicyGateVerdict,
 )
 from omnimarket.nodes.node_handshake_policy_gate_effect.__main__ import main
