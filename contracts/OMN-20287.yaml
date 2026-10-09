@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: a backend carrying the four forthcoming keys decodes equal to one without them, and any other unknown key is refused -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q in omnimarket"
+  - id: "req-deployment-fact-gate"
+    statement: "The deployment-fact fields of the packaged routing configs (backends, endpoints, model names, secret refs, providers, routing tiers and per-class orders in bifrost_delegation.yaml, routing_tiers.yaml and task_class_contracts.v1.yaml) carry the deployment_fact marker on their typed models, and node_deployment_fact_gate_effect, wired as the deployment-fact-gate pre-commit hook and the Deployment Fact Gate CI job, refuses a non-neutral value in a marked field and an undeclared key that the base revision did not carry, the base revision being the shrink-only baseline."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: the omnimarket#3624 config additions are refused, the packaged configs pass against themselves, and a removed fact, an extra occurrence, a reordered class ladder or a new vendor backend is refused -- falsifier: uv run pytest tests/unit/nodes/node_deployment_fact_gate_effect -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
@@ -42,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20287-ac5-deployment-fact-gate"
+    description: "AC5 hosted probe. The gate tests pass at the head and fail at the merge base, where the node and the markers do not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_deployment_fact_gate_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

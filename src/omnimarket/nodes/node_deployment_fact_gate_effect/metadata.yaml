@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_deployment_fact_gate_effect
+version: "0.1.0"
+description: "refuses a new deployment fact in omnimarket's packaged routing configs, judged against a base revision"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_deployment_fact_gate_effect: "omnimarket.nodes.node_deployment_fact_gate_effect"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the gate runs from pre-commit and CI.
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "gate", "routing", "overlay"]
+display_name: "Deployment Fact Gate"
+node_role: "effect"

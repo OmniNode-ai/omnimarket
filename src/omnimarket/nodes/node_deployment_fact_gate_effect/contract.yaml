@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDeploymentFactGateEffect
+#
+# Refuses a new deployment fact in omnimarket's packaged routing configs (OMN-20287):
+#
+#   handle(ModelDeploymentFactGateRequest) -> ModelDeploymentFactGateResult
+#
+# Routing decisions belong in a deployment's overlay, not in the config this package
+# ships (operator rulings 2026-09-26T14:31:29Z and 2026-09-26T15:24:56Z). The fields that
+# record one carry the deployment-fact marker on their typed models
+# (omnimarket.models.delegation.model_deployment_fact_marker). The node reads
+# bifrost_delegation.yaml, routing_tiers.yaml and task_class_contracts.v1.yaml from the
+# tree and from a base revision through git (the effect), and refuses a non-neutral value
+# in a marked field that the base did not carry there, and a key the file's typed model
+# does not declare that the base did not carry. The base revision is the shrink-only
+# baseline. Run by the deployment-fact-gate pre-commit hook and the Deployment Fact Gate
+# CI job through the package entry point.
+name: "node_deployment_fact_gate_effect"
+contract_name: "node_deployment_fact_gate_effect"
+node_name: "node_deployment_fact_gate_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Refuses a new deployment fact (a backend, endpoint, model name, secret ref,
+  provider, routing tier or per-class order) and a new undeclared key in
+  omnimarket's packaged routing configs, judged against a base revision that
+  is the shrink-only baseline. Values in the declared neutral local-only
+  default set are never facts.
+input_model:
+  name: "ModelDeploymentFactGateRequest"
+  module: "omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate"
+  description: "The repository checkout and the base revision to judge it against."
+output_model:
+  name: "ModelDeploymentFactGateResult"
+  module: "omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate"
+  description: "New deployment facts, new undeclared keys, and the inventory of facts the tree still carries."
+handler:
+  module: "omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_deployment_fact_gate"
+  class: "HandlerDeploymentFactGate"
+  input_model: "omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate.ModelDeploymentFactGateRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_deployment_fact_gate:HandlerDeploymentFactGate"
+  handlers:
+    - operation: "judge_packaged_routing_configs"
+      handler:
+        name: "HandlerDeploymentFactGate"
+        module: "omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_deployment_fact_gate"
+# Addressable the way the other directly-invoked nodes are; the gate itself runs from the
+# pre-commit hook and the CI job, and no caller publishes the command yet.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.deployment-fact-gate-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.deployment-fact-gate-completed.v1"
+    failure: "onex.evt.omnimarket.deployment-fact-gate-failed.v1"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+metadata:
+  description: "Deployment-fact gate over the packaged routing configs."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - effect
+    - gate
+    - routing
+    - overlay
+    - OMN-20287
