@@ -1,0 +1,8 @@
+[
+  {"phase": "GroundState", "lanes": ["ground-state-report", "ground-state"], "artifact": "reports/@@date@@-ground-state.md", "conformance": "report for @@date@@ exists"},
+  {"phase": "Triage", "lanes": ["triage-adjudication", "triage"], "artifact": "tracking/LEDGER.md :: TERMINAL row for @@date@@", "conformance": "a TERMINAL row for @@date@@ exists"},
+  {"phase": "Reconcile", "lanes": ["plan-reconcile"], "artifact": "reports/@@date@@-rebaseline.md", "conformance": "rows table present"},
+  {"phase": "Integrate", "lanes": ["integration-plan"], "artifact": "reports/@@date@@-integration.md", "conformance": "window @@integrateSince@@"},
+  {"phase": "DroppedWork", "lanes": ["dropped-work"], "artifact": "reports/@@date@@-dropped-work.md", "conformance": "five sections"},
+  {"phase": "Goal", "lanes": ["session-goal"], "artifact": "reports/GOAL.md", "conformance": "header keys present. PUBLISH ADDS a published copy check."}
+]

@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20673"
+title: "Host the morning ground-state orchestrator with a deployment overlay"
+summary: "Host the morning operator orchestrator as an unregistered omnimarket node: contract with declared bus topics, golden chain, error chain, and a strict deployment overlay for every brief, report location and default. Registration hand-over, caller switch and retirement of the source copy remain separate steps."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-morning-node"
+    statement: "Host the morning orchestrator as a contract, a declarative node and a Definition-B handler whose topics are declared in the contract."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contract resolves, its handler runs a typed request to a typed terminal through a golden chain, the nine recorded decision scenarios of the original workflow reproduce, and every bus topic is declared in the contract"
+  - id: "req-error-chain"
+    statement: "Preserve the morning gates: invalid delegation evidence stops dependent phases, a dead precheck and a failed reconciler fail open."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the error chain refuses malformed delegation cells for every phase, releases no dependent phase after one, and records reconciler and precheck failures as terminal evidence"
+  - id: "req-overlay"
+    statement: "Keep the node free of private workspace, repository, ticket and tooling identity; the deployment supplies them through a strict overlay."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the overlay pointer wins over ordered roots, an absent or invalid overlay is a hard stop, request values override overlay defaults, and the node package names no private repository or path; the runtime inventory records the deferred registration"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: golden chain and decision parity pass."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: error chain and phase gateway pass."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: overlay resolution, strict validation and unregistered inventory pass."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20673-ac1-golden-chain"
+    description: "AC1: golden chain and decision parity pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20673-ac2-error-chain"
+    description: "AC2: error chain and phase gateway pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20673-ac3-overlay"
+    description: "AC3: strict overlay and deferred registration pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_morning_ground_state_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+description: >
+  Operator morning process: ledger reconciliation, guarded precheck, decisions
+  register, concurrent ground state and triage, reconciliation, integration,
+  unconditional dropped-work measurement and session goal. Phase execution
+  reuses the canonical delegation orchestrator and infra request-response
+  wiring. The deployment's briefs, report locations and defaults come from an
+  overlay; the node holds none of them.
+input_model:
+  name: ModelMorningGroundStateRequest
+  module: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state
+output_model:
+  name: ModelMorningGroundStateResult
+  module: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state
+handler:
+  module: omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state
+  class: HandlerMorningGroundState
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: morning_ground_state
+      handler:
+        name: HandlerMorningGroundState
+        module: omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state
+      input_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state.ModelMorningGroundStateRequest
+      output_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state.ModelMorningGroundStateResult
+terminal_event: onex.evt.omnimarket.morning-ground-state-completed.v1
+terminal_events:
+  success: onex.evt.omnimarket.morning-ground-state-completed.v1
+  failure: onex.evt.omnimarket.morning-ground-state-failed.v1
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 14400000
+  runtime_profiles: [main]
+env_dependencies:
+  ONEX_ENVIRONMENT: {required: true, description: Explicit runtime environment for canonical bus wiring.}
+  OMNIMARKET_MORNING_GROUND_STATE_OVERLAY: {required: false, description: Path to the deployment overlay.yaml; when unset the first node_morning_ground_state_orchestrator/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS is used, and a run with neither refuses to start.}
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.morning-ground-state-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.morning-ground-state-completed.v1
+    - onex.evt.omnimarket.morning-ground-state-failed.v1
+    - onex.cmd.omnibase-infra.delegation-request.v1
+  request_response:
+    instances:
+      - name: morning_phase
+        request_topic: onex.cmd.omnibase-infra.delegation-request.v1
+        reply_topics:
+          completed: onex.evt.omnibase-infra.delegation-completed.v1
+          failed: onex.evt.omnibase-infra.delegation-failed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 14400
+        consumer_group_mode: per_instance
+runtime_dispatch:
+  # The host scheduler (CLI dispatcher) is this node's producer; declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.morning-ground-state-start.v1
+
+# Explicit SINK declaration (contract topic graph closure): no node contract
+# subscribes to these; the host scheduler that started the run reads the terminal.
+externally_consumed_topics:
+  - onex.evt.omnimarket.morning-ground-state-completed.v1
+  - onex.evt.omnimarket.morning-ground-state-failed.v1
+
+metadata:
+  ticket: OMN-20673
+  phase_order: [LedgerReconcile, Precheck, DecisionsRegister, GroundState, Triage, Reconcile, Integrate, DroppedWork, Goal]
+  transport_type: kafka
