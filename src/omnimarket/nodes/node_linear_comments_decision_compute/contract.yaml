@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_linear_comments_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the hourly Linear-comments sweep (OMN-20680):
+  which collected comments get a draft and why not (author classification, already
+  answered, needs_reply), the drafting prompt, the citation check on a draft, whether a
+  delegated response was cut off, the closed held-reason classifier, the held tally with
+  the degraded flag, and the per-call metrics row. Behaviour-preserving port of the pure
+  block of the retired linear-comments-hourly workflow. Reads no files, calls no model,
+  mutates no state; a refusal is a typed validation error naming the missing field.
+input_model:
+  name: ModelLinearCommentsDecisionRequest
+  module: omnimarket.nodes.node_linear_comments_decision_compute.models.model_linear_comments_decision
+output_model:
+  name: ModelLinearCommentsDecisionResult
+  module: omnimarket.nodes.node_linear_comments_decision_compute.models.model_linear_comments_decision
+handler:
+  module: omnimarket.nodes.node_linear_comments_decision_compute.handlers.handler_linear_comments_decision
+  class: HandlerLinearCommentsDecision
+  input_model: omnimarket.nodes.node_linear_comments_decision_compute.models.model_linear_comments_decision.ModelLinearCommentsDecisionRequest
+  output_model: omnimarket.nodes.node_linear_comments_decision_compute.models.model_linear_comments_decision.ModelLinearCommentsDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_linear_comments_decision_compute.handlers.handler_linear_comments_decision:HandlerLinearCommentsDecision
+  handlers:
+    - operation: decide_linear_comments
+      handler:
+        name: HandlerLinearCommentsDecision
+        module: omnimarket.nodes.node_linear_comments_decision_compute.handlers.handler_linear_comments_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind:
+    type: str
+    required: true
+    enum: [decide_items, build_prompt, check_draft, detect_truncation, classify_held, tally, metrics_row]
+  items: {type: array, required: false, description: Collected comments, for decide_items.}
+  item: {type: object, required: false, description: One collected comment, for build_prompt and check_draft.}
+  facts: {type: str, required: false, description: Ground-truth facts table, for build_prompt and check_draft.}
+  draft: {type: object, required: false, description: The drafted reply, for check_draft.}
+  outcome: {type: object, required: false, description: Delegate finish_reason, truncated and response head and tail, for detect_truncation.}
+  held: {type: array, required: false, description: Held items, for classify_held and tally.}
+  needing_count: {type: int, required: false, description: Items that reached drafting, for tally.}
+  accepted_count: {type: int, required: false, description: Drafts accepted, for tally.}
+  receipt: {type: object, required: false, description: onex delegate receipt, for metrics_row.}
+outputs:
+  status: {type: str, enum: [decided]}
+  kind: {type: str}
+  decisions: {type: array}
+  selected_comment_ids: {type: array}
+  prompt: {type: str}
+  citation: {type: object}
+  truncation: {type: object}
+  held_classes: {type: array}
+  held_by_class: {type: object}
+  degraded: {type: bool}
+  metrics: {type: object}
+terminal_event: onex.evt.omnimarket.linear-comments-decision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.linear-comments-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.linear-comments-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.linear-comments-decision-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.linear-comments-decision-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Hourly Linear-comments sweep decisions
+  author: OmniNode Team
+  created: "2026-10-08"
+  related_tickets: [OMN-20680]

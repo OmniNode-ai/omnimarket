@@ -14,10 +14,16 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: an explicit link reaches the completed event and projection row, omission preserves the payload shape, and a malformed UUID is refused before the handler is constructed -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the DoD routing read joins delegation rows to verdicts on a real PostgreSQL 16 database (one passing and one failing verdict give rate 0.5, excluding another tenant, another task type, an unlinked verdict and a run without a verdict), and a configured but unreachable database fails instead of skipping -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The delegation-link tests pass at the head and the CLI flag does not exist at the merge base."
     command: "env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q"
+  - kind: "tests"
+    description: "The real-Postgres join test passes at the head against the existing PostgreSQL fixture, with no skip."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +37,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-routing-read-real-postgres-ac2"
+    description: "The real-Postgres test proves the DoD routing read joins delegation rows to verdicts with the expected rate and tenant, task type and link exclusions."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

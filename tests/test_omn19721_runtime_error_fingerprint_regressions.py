@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from omnibase_infra.runtime.auto_wiring.discovery import _parse_contract
@@ -167,7 +169,7 @@ def test_redelivering_one_event_id_counts_it_once(
 ) -> None:
     writer = RuntimeErrorFingerprintProjectionWriter()
     adapter = _IdempotentRecordingAdapter()
-    writer._db = adapter  # type: ignore[assignment]
+    monkeypatch.setattr(writer, "_db", adapter)
     monkeypatch.setattr(writer, "publish_snapshot_delta", _discard_snapshot)
 
     first = writer.handle(_bridge_payload())
@@ -178,6 +180,74 @@ def test_redelivering_one_event_id_counts_it_once(
     assert adapter.row is not None
     assert adapter.row["occurrence_count"] == 1
     assert [params[13] for params in adapter.upserts] == [_EVENT_ID, _EVENT_ID]
+
+
+def test_unavailable_snapshot_publish_refuses_success_then_retries_without_counting_twice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A persisted row alone cannot acknowledge the promised snapshot delta."""
+    writer = RuntimeErrorFingerprintProjectionWriter()
+    adapter = _IdempotentRecordingAdapter()
+    monkeypatch.setattr(writer, "_db", adapter)
+    monkeypatch.setattr(writer, "_ensure_producer", AsyncMock(return_value=None))
+
+    with pytest.raises(RuntimeError, match="snapshot was not published"):
+        writer.handle(_bridge_payload())
+    assert not adapter.connected
+    assert adapter.row is not None
+    assert adapter.row["occurrence_count"] == 1
+
+    producer = AsyncMock()
+    monkeypatch.setattr(writer, "_ensure_producer", AsyncMock(return_value=producer))
+    result = writer.handle(_bridge_payload())
+
+    assert result["rows_upserted"] == 1
+    assert result["fingerprint_rows"][0]["occurrence_count"] == 1
+    producer.send_and_wait.assert_awaited_once()
+    published = producer.send_and_wait.await_args
+    assert published is not None
+    assert published.args[0] == writer._contract["projection_api"]["topic"]
+    delta = json.loads(published.kwargs["value"])
+    assert (
+        published.kwargs["key"].decode() == result["fingerprint_rows"][0]["fingerprint"]
+    )
+    assert delta["row"] == result["fingerprint_rows"][0]
+    assert delta["source_event_id"] == _EVENT_ID
+    assert delta["row"]["correlation_id"] == _bridge_payload()["correlation_id"]
+    assert delta["row"]["last_seen_at"] == _EMITTED_AT.isoformat()
+
+
+def test_successive_runtime_errors_advance_the_correlated_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two writer calls publish one fingerprint with the latest trace and time."""
+    writer = RuntimeErrorFingerprintProjectionWriter()
+    monkeypatch.setattr(writer, "_db", _IdempotentRecordingAdapter())
+    producer = AsyncMock()
+    monkeypatch.setattr(writer, "_ensure_producer", AsyncMock(return_value=producer))
+    first = writer.handle({**_bridge_payload(), "_partition": 2, "_offset": 41})
+    newer = {
+        **_bridge_payload(),
+        "event_id": "33333333-3333-4333-8333-333333333333",
+        "correlation_id": "44444444-4444-4444-8444-444444444444",
+        "emitted_at": (_EMITTED_AT + timedelta(seconds=1)).isoformat(),
+        "_partition": 2,
+        "_offset": 42,
+    }
+    second = writer.handle(newer)
+    deltas = [
+        json.loads(call.kwargs["value"])
+        for call in producer.send_and_wait.await_args_list
+    ]
+    assert len(deltas) == 2
+    assert deltas[0]["row"] == first["fingerprint_rows"][0]
+    assert deltas[1]["row"] == second["fingerprint_rows"][0]
+    assert deltas[0]["key"] == deltas[1]["key"]
+    assert [delta["row"]["occurrence_count"] for delta in deltas] == [1, 2]
+    assert deltas[1]["row"]["last_seen_at"] > deltas[0]["row"]["last_seen_at"]
+    assert deltas[1]["row"]["correlation_id"] == newer["correlation_id"]
+    assert [delta["source_partition"] for delta in deltas] == [2, 2]
+    assert [delta["source_offset"] for delta in deltas] == [41, 42]
 
 
 def test_runtime_dispatch_resolves_only_the_writer() -> None:

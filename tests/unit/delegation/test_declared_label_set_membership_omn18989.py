@@ -445,3 +445,89 @@ async def test_declared_labels_survive_the_gate_and_terminal(
             assert GARBLED in attempt.error_message
     if shape != "invalid":
         assert response.attempts[-1].quality_gate_passed is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "shape", ["invalid", "valid", "invalid_then_valid", "valid_mismatched_evidence"]
+)
+def test_bus_gate_names_rejected_labels_before_terminal_composition(shape: str) -> None:
+    """The bus gate must retain the token when extraction withheld the answer."""
+    import hashlib
+    from uuid import uuid4
+
+    from omnibase_core.models.delegation.wire import (
+        ModelDelegationDeliverableEvidence,
+        ModelQualityGateInput,
+        ModelQualityGateIntent,
+    )
+
+    from omnimarket.delegation.deliverable_extraction import (
+        canonical_deliverable_contract_sha256,
+        extract_deliverable,
+        resolve_deliverable_contract,
+    )
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
+        HandlerQualityGateIntent,
+    )
+
+    invalid = json.dumps(
+        {"deployed_revision": GARBLED, "probe_generation_bound": LABELS[0]}
+    )
+    valid = json.dumps(
+        {"deployed_revision": LABELS[1], "probe_generation_bound": LABELS[0]}
+    )
+    answers = {
+        "invalid": [invalid],
+        "valid": [valid],
+        "invalid_then_valid": [invalid, valid],
+        "valid_mismatched_evidence": [valid],
+    }[shape]
+    contract = resolve_deliverable_contract(CLASSIFIER_CONTRACT)
+    handler = HandlerQualityGateIntent()
+    correlation_id = uuid4()
+    for answer in answers:
+        extraction = extract_deliverable(answer, contract)
+        # Production withholds an invalid deliverable but grades the raw text.
+        evidence_content = (
+            "" if shape == "valid_mismatched_evidence" else extraction.deliverable
+        )
+        result = handler.handle(
+            ModelQualityGateIntent(
+                payload=ModelQualityGateInput(
+                    correlation_id=correlation_id,
+                    task_type="document",
+                    llm_response_content=answer,
+                    response_contract=CLASSIFIER_CONTRACT,
+                    deliverable_evidence=ModelDelegationDeliverableEvidence(
+                        output_shape=contract.output_shape,
+                        contract_sha256=canonical_deliverable_contract_sha256(contract),
+                        deliverable_sha256=hashlib.sha256(
+                            evidence_content.encode()
+                        ).hexdigest(),
+                        deliverable_chars=len(evidence_content),
+                        preamble_chars=extraction.preamble_chars,
+                        raw_chars=extraction.raw_chars,
+                        deliverable_start=extraction.deliverable_start,
+                        deliverable_end=extraction.deliverable_end,
+                    ),
+                )
+            )
+        )
+        assert result.correlation_id == correlation_id
+        if answer == invalid:
+            assert result.passed is False
+            assert result.fail_category == "fail_deterministic"
+            assert any(
+                "SCHEMA_VIOLATION" in reason and GARBLED in reason
+                for reason in result.failure_reasons
+            ), result.failure_reasons
+        elif shape == "valid_mismatched_evidence":
+            assert result.passed is False
+            assert result.failure_reasons == (
+                "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match "
+                "the declared extraction evidence",
+            )
+        else:
+            assert result.passed is True
+            assert result.failure_reasons == ()

@@ -14,6 +14,8 @@ Usage:
 OCC retirement S5 (OMN-20072):
     ``occ-difference`` compares same-head receipt-gate and OCC verdict artifacts,
     printing JSON and exiting 0 only when the difference check passes.
+    The dod directory may include caller-supplied ``contract-home-<ticket>.txt``
+    markers naming where a contract absent from the PR head lives (OMN-20074).
 
 Receipt persistence (OMN-10046, OMN-12403):
     When ``ONEX_EVIDENCE_ROOT`` is set in the environment, the node writes a
@@ -172,6 +174,8 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         "acceptance_self_accepted_bindings": list(
             state.acceptance_self_accepted_bindings
         ),
+        "acceptance_retired_bindings": list(state.acceptance_retired_bindings),
+        "acceptance_refused_retirements": list(state.acceptance_refused_retirements),
     }
 
     def render(kept: int) -> str:

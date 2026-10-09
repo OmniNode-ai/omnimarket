@@ -40,8 +40,13 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_r
     DodVerdictProjectionWriter,
 )
 from tests.test_omn19514_dod_verdict_delegation_run_real_postgres import (
-    _connect_or_skip,
     _ConnectionDb,
+)
+from tests.test_omn19514_ticket_id_projection_real_postgres import (
+    _Postgres,
+)
+from tests.test_omn19514_ticket_id_projection_real_postgres import (
+    postgres as postgres,
 )
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
@@ -67,9 +72,10 @@ _PRODUCT_SHA = "0123456789abcdef0123456789abcdef01234567"
 @asynccontextmanager
 async def _migrated_writer(
     monkeypatch: pytest.MonkeyPatch,
+    dsn: str,
 ) -> AsyncIterator[tuple[DodVerdictProjectionWriter, asyncpg.Connection, str]]:
     """A throwaway schema carrying the real migrations, wired to the real writer."""
-    connection = await _connect_or_skip()
+    connection = await asyncpg.connect(dsn)
     schema = f"omn20696_{uuid4().hex[:12]}"
     original_table = writer_module.TABLE
     original_upsert = writer_module._UPSERT
@@ -173,8 +179,13 @@ async def _digest(connection: asyncpg.Connection, schema: str) -> tuple[int, str
 @pytest.mark.asyncio
 async def test_the_subject_reaches_its_typed_columns(
     monkeypatch: pytest.MonkeyPatch,
+    postgres: _Postgres,
 ) -> None:
-    async with _migrated_writer(monkeypatch) as (writer, connection, schema):
+    async with _migrated_writer(monkeypatch, postgres.dsn("public")) as (
+        writer,
+        connection,
+        schema,
+    ):
         await _write(writer, _event())
         row = await connection.fetchrow(
             f"SELECT contract_source, contract_repository, "
@@ -194,8 +205,13 @@ async def test_the_subject_reaches_its_typed_columns(
 @pytest.mark.asyncio
 async def test_dropping_the_rows_and_replaying_the_events_rebuilds_the_same_table(
     monkeypatch: pytest.MonkeyPatch,
+    postgres: _Postgres,
 ) -> None:
-    async with _migrated_writer(monkeypatch) as (writer, connection, schema):
+    async with _migrated_writer(monkeypatch, postgres.dsn("public")) as (
+        writer,
+        connection,
+        schema,
+    ):
         history = _history()
         for payload in history:
             await _write(writer, payload)
@@ -216,6 +232,7 @@ async def test_dropping_the_rows_and_replaying_the_events_rebuilds_the_same_tabl
 @pytest.mark.asyncio
 async def test_the_table_refuses_a_bound_source_without_its_commit(
     monkeypatch: pytest.MonkeyPatch,
+    postgres: _Postgres,
 ) -> None:
     insert = (
         "INSERT INTO {schema}.dod_verify_runs ("
@@ -229,7 +246,11 @@ async def test_the_table_refuses_a_bound_source_without_its_commit(
         "1, 0, 0, 'done', '', now(), 'product_repository', "
         "'OmniNode-ai/omnimarket', $2, 'contracts/OMN-20696.yaml')"
     )
-    async with _migrated_writer(monkeypatch) as (_writer, connection, schema):
+    async with _migrated_writer(monkeypatch, postgres.dsn("public")) as (
+        _writer,
+        connection,
+        schema,
+    ):
         with pytest.raises(asyncpg.CheckViolationError):
             await connection.execute(insert.format(schema=schema), uuid4(), None)
         # The same row WITH its commit is accepted, so the refusal above is

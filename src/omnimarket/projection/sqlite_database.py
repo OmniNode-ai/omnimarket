@@ -27,6 +27,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
+from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -102,6 +103,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "session_id",
     "task_type",
     "tenant_id",
+    "terminal_ok",
     "timestamp",
     "tokens_input",
     "tokens_output",
@@ -384,6 +386,22 @@ CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
+# OMN-20709: the SQLite counterpart of node_projection_delegation migration
+# 0050's projection_delegation_summary view. It lives with the node that owns
+# delegation_events and the Postgres view; the file explains the differences.
+_DELEGATION_SUMMARY_VIEW_STEP = "omn20709_delegation_summary_view"
+_DELEGATION_SUMMARY_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_delegation",
+    "sqlite/delegation_summary_view.sql",
+)
+# OMN-20754: the counterparts of migration 0055's model-routing view and 0045's
+# quality-gate view, the relations the Overview's Run locally, Tier mix and
+# Quality rows read. Same home and pattern as the summary view.
+_DELEGATION_ROUTING_QUALITY_VIEWS_STEP = "omn20754_delegation_routing_quality_views"
+_DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
+    ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
+    ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -568,6 +586,22 @@ class SqliteDatabaseAdapter:
                     "added the usage-by-model-day columns and cursor triggers",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SUMMARY_VIEW_STEP,
+                    cls._create_delegation_summary_view,
+                    "created the delegation summary view",
+                )
+            )
+        if not cls._store_step_recorded(conn, _DELEGATION_ROUTING_QUALITY_VIEWS_STEP):
+            pending.append(
+                (
+                    _DELEGATION_ROUTING_QUALITY_VIEWS_STEP,
+                    cls._create_delegation_routing_quality_views,
+                    "created the delegation model-routing and quality-gate views",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -623,6 +657,31 @@ class SqliteDatabaseAdapter:
         conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
         for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @staticmethod
+    def _create_delegation_summary_view(conn: sqlite3.Connection) -> None:
+        """OMN-20709: give the store the summary relation the exposure reads.
+
+        Dropped first so a store that somehow holds an older definition takes
+        this one; a later revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SUMMARY_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_routing_quality_views(conn: sqlite3.Connection) -> None:
+        """OMN-20754: give the store the model-routing and quality-gate relations.
+
+        Same shape as the summary step: each view is dropped first, and a later
+        revision is a new step, never an edit to this one.
+        """
+        package, _ = _DELEGATION_SUMMARY_VIEW_SQL
+        for view, resource in _DELEGATION_ROUTING_QUALITY_VIEWS_SQL:
+            ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
+            conn.execute(ddl)
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:

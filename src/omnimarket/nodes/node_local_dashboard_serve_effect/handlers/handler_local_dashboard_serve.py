@@ -104,8 +104,27 @@ def resolve_local_row_source() -> TableRowSource | SqliteTableRowSource:
     return SqliteTableRowSource(default_evidence_db_path())
 
 
-def _catalogue_row(cfg: ProjectionTableConfig) -> dict[str, Any]:
+def _catalogue_row(
+    cfg: ProjectionTableConfig, unservable: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """One catalogue entry, as this server can actually serve it.
+
+    ``unservable`` is the row source's own probe failure for this topic. An
+    exposure the contract declares ``ok`` is still listed ``degraded`` when the
+    local store cannot answer it (OMN-20709): advertising ``ok`` for a topic
+    whose read then answers 503 sends the page to fetch a panel that can never
+    load. The page reads ``backing`` as the authority, so a non-``bus`` value
+    there is what makes it show the panel as not served instead of reading it.
+    """
     status = cfg.status if cfg.bus_backed else "degraded"
+    backing = "bus" if cfg.bus_backed else "not_yet_bus_backed"
+    degraded_reason = cfg.degraded_reason or (
+        None if cfg.bus_backed else "not_yet_bus_backed"
+    )
+    if cfg.bus_backed and unservable is not None:
+        status = "degraded"
+        backing = "not_in_local_store"
+        degraded_reason = unservable.get("error") or "not_in_local_store"
     return {
         "topic": cfg.topic,
         "table": cfg.table,
@@ -116,9 +135,8 @@ def _catalogue_row(cfg: ProjectionTableConfig) -> dict[str, Any]:
         "limit": cfg.limit,
         "key_columns": list(cfg.key_columns),
         "bus_backed": cfg.bus_backed,
-        "backing": "bus" if cfg.bus_backed else "not_yet_bus_backed",
-        "degraded_reason": cfg.degraded_reason
-        or (None if cfg.bus_backed else "not_yet_bus_backed"),
+        "backing": backing,
+        "degraded_reason": degraded_reason,
         "served_from": "local_store",
         "tenant_column": cfg.tenant_column,
         "tenant_scoped": cfg.tenant_scoped,
@@ -138,8 +156,14 @@ def create_dashboard_app(
     tenant: str | None,
     topic_map: dict[str, ProjectionTableConfig] | None = None,
     pages: Path | None = None,
+    row_source: ProtocolProjectionRowSource | None = None,
 ) -> FastAPI:
     """The loopback app: the catalogue, reads dispatched to the read node, and the pages.
+
+    ``row_source``, when given, is probed on every catalogue read, and a topic
+    it cannot serve is listed ``degraded`` rather than ``ok`` (OMN-20709). It is
+    probed per request, not once at start, because the local writers create
+    tables after the server is already up.
 
     ``pages``, when given, is a directory of verified static files (the OmniDash
     bundle). Its routes are registered last, after every API route, so the
@@ -153,12 +177,21 @@ def create_dashboard_app(
 
     @app.get("/projections")
     async def projections() -> JSONResponse:
+        failures: dict[str, dict[str, str]] = {}
+        if row_source is not None:
+            _ready, report = await row_source.readiness(topics)
+            reported = report.get("failures")
+            if isinstance(reported, dict):
+                failures = reported
         # The tenant this process serves, so the page can name it on a scoped
         # read; null with no identity, and the page then refuses as before.
         return JSONResponse(
             {
                 "tenant": tenant,
-                "topics": [_catalogue_row(cfg) for cfg in topics.values()],
+                "topics": [
+                    _catalogue_row(cfg, failures.get(cfg.topic))
+                    for cfg in topics.values()
+                ],
             }
         )
 
@@ -305,6 +338,7 @@ class HandlerLocalDashboardServe:
             tenant=request.tenant_id,
             topic_map=topics,
             pages=pages,
+            row_source=source,
         )
         await self._serve(app, request.host, request.port)
         return ModelLocalDashboardServeResult(

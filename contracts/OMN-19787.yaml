@@ -16,6 +16,16 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: a read with since still walks the cursor and is not reordered by the latest-first selection -- falsifier: uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks
+  - id: "req-rubric-declared-answers"
+    statement: |-
+      The review and test class rubrics must decide an answer against what its prompt declares, and the lab run must re-measure named classes only.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: declared_format_met decides a single-word reply, a JSON field with declared alternatives and facts echoed exactly as given, and an unreadable Facts object never passes -- falsifier: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py -q -k "single_word or json_decision"
+      - id: "AC4"
+        statement: |-
+          AC4: lab_run run --task-class keeps only the named task classes -- falsifier: uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only
 evidence_requirements:
   - kind: "tests"
     description: "The first page of the exposure carries the newest run for every class."
@@ -23,6 +33,12 @@ evidence_requirements:
   - kind: "tests"
     description: "A since read still walks the cursor."
     command: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks"
+  - kind: "tests"
+    description: "The class rubric decides answers by what the prompt declares."
+    command: "uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py -q -k \"single_word or json_decision\""
+  - kind: "tests"
+    description: "The lab run keeps only the named task classes."
+    command: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -44,3 +60,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-rubric-declared-answers-ac3"
+    description: "The focused tests prove declared_format_met decides single-word, enumerated JSON and facts-echo answers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py -q -k \"single_word or json_decision\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-rubric-declared-answers-ac4"
+    description: "The focused test proves lab_run run --task-class keeps only the named classes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
