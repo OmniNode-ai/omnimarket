@@ -31,19 +31,11 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn16932-ac1-fast-forward-accepted"
-    description: "AC1: An install that lies on the fast-forward from the start head to the current head passes when the clone advances during the venv delegate."
+  - id: "dod-omn16932-start-head-install-judged"
+    description: "AC1 and AC2: an install on the fast-forward from the start head to the current head passes when the clone advances during the venv delegate, and a no-op delegate or an install off the clone history still fails. The AC2 guards run with the AC1 tests so the check fails before the fix."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_host_reconcile_effect.py -k \"clone_advancing_during_the_venv_delegate or install_from_a_head_the_clone_passed_through\" -q -p no:randomly"
+        check_value: "uv run pytest tests/test_host_reconcile_effect.py -k \"clone_advancing_during_the_venv_delegate or install_from_a_head_the_clone_passed_through or delegate_that_installs_nothing_still_fails or install_off_the_clone_history_still_fails\" -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
-  - id: "dod-omn16932-ac2-bad-install-rejected"
-    description: "AC2: A no-op delegate or an install off the clone history still fails when the clone advances."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_host_reconcile_effect.py -k \"delegate_that_installs_nothing_still_fails or install_off_the_clone_history_still_fails\" -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
+    binds_ac: ["AC1", "AC2"]
