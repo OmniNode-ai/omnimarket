@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20422"
+title: "The Hostile Reviewer's second voter is Qwen3.6-35B-A3B on the Studio's :8131"
+summary: "The hostile-review job sets LLM_GPT_OSS_REVIEW_URL at job level to the Studio's second llama-server on port 8131 (Qwen3.6-35B-A3B), so the gpt-oss-review voter is a different model from qwen3-review. LLM_ENDPOINT_CIDR_ALLOWLIST moves to the same job-level env block. The voter names and quorum rule are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-second-voter-8131"
+    statement: |-
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must carry a job-level env that points LLM_GPT_OSS_REVIEW_URL at port 8131 and holds LLM_ENDPOINT_CIDR_ALLOWLIST, and must still request both qwen3-review and gpt-oss-review.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the job-level env names LLM_GPT_OSS_REVIEW_URL on :8131 and a non-empty LLM_ENDPOINT_CIDR_ALLOWLIST, and both voter models are still requested -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The workflow voter tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-second-voter-8131-ac1"
+    description: "The hostile-review job env names the :8131 voter URL and the CIDR allowlist, and both models are requested."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

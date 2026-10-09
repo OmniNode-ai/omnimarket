@@ -121,6 +121,13 @@ requirements:
       - id: "AC21"
         statement: |-
           AC21: HandlerCiRedTriage with act false records each decision with action_applied false and evidence start=withheld:act=false and publishes no start command, and the contract default is act false -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode fails at the merge base
+  - id: "req-lane-scoped-contracts-main-profile"
+    statement: |-
+      Every node contract that declares runtime_lanes belongs to the main runtime profile only, because no compose lane's effects runtime declares ONEX_RUNTIME_LANE and a lane-scoped contract owned by effects fails closed on discovery, which holds omninode-runtime-effects Docker-unhealthy.
+    acceptance:
+      - id: "AC22"
+        statement: |-
+          AC22: node_branch_claim_check_effect declares runtime_profiles [main] and every contract declaring runtime_lanes is owned by main only -- falsifier: uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -176,6 +183,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A shadow-mode red-CI triage records its decision and publishes no start command."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
+  - kind: "tests"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    command: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -325,3 +335,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC21"]
+  - id: "dod-omn17427-ac22-lane-contracts-main-profile"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
