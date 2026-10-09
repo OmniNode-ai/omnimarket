@@ -1009,6 +1009,7 @@ class HandlerProjectionDelegation:
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        _stamp_routing_tier(row, reduction.attempt_history)
         # OMN-18889: how many up-tier re-dispatches this terminal took. The
         # terminal model has always carried it (inherited from the response
         # model) and the local port has always sent it; it was dropped here,
@@ -2125,6 +2126,38 @@ def _stamp_accepting_attempt(
             if text is not None:
                 row[key] = text
         return
+
+
+def _stamp_routing_tier(
+    row: dict[str, object],
+    attempts: Iterable[ModelDelegateSkillAttemptRecord],
+) -> None:
+    """Name the routing tier the run was served on (OMN-20755).
+
+    The tier the delegate's receipt reports as ``routing_tier``: the accepting
+    attempt's ``tier`` (the first rung whose gate passed with no failure class,
+    the same rung :func:`_stamp_accepting_attempt` reads), else the last rung
+    the run reached, because a run that was refused everywhere was still routed
+    there. A terminal with no attempts names no column, so a tier an earlier
+    terminal recorded for the same correlation is not overwritten.
+
+    Before this the delegate-skill terminal named no ``cost_tier_name`` at all,
+    so a local install stored NULL on every run and the Tier mix showed every
+    run as not tier-routed while each receipt named its tier.
+    """
+    ladder = list(attempts)
+    accepted = next(
+        (
+            attempt
+            for attempt in ladder
+            if attempt.quality_gate_passed and not (attempt.failure_class or "").strip()
+        ),
+        None,
+    )
+    serving = accepted if accepted is not None else (ladder[-1] if ladder else None)
+    tier = _blank_to_none(serving.tier) if serving is not None else None
+    if tier is not None:
+        row["cost_tier_name"] = tier
 
 
 def _stamp_declared_failure_cause(
