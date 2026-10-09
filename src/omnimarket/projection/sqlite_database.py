@@ -392,6 +392,17 @@ _DELEGATION_SUMMARY_VIEW_SQL = (
 # quality-gate view, the relations the Overview's Run locally, Tier mix and
 # Quality rows read. Same home and pattern as the summary view.
 _DELEGATION_ROUTING_QUALITY_VIEWS_STEP = "omn20754_delegation_routing_quality_views"
+# OMN-20226: metering_summary's three not-yet-measured fields. A store written
+# before them has the table without the columns, and CREATE TABLE IF NOT EXISTS
+# leaves it so; the read node then refuses the whole exposure
+# (projection_column_missing). They are added once, nullable with no default
+# like migration 0003, so a row written before them reads null, never a zero.
+_METERING_SUMMARY_MEASURES_STEP = "omn20226_metering_summary_measure_columns"
+_METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("compression_ratio", "TEXT"),
+    ("cache_hit_rate", "TEXT"),
+    ("runs_cache_answered", "INTEGER"),
+)
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
@@ -591,6 +602,14 @@ class SqliteDatabaseAdapter:
                     "created the delegation model-routing and quality-gate views",
                 )
             )
+        if not cls._store_step_recorded(conn, _METERING_SUMMARY_MEASURES_STEP):
+            pending.append(
+                (
+                    _METERING_SUMMARY_MEASURES_STEP,
+                    cls._add_metering_summary_measure_columns,
+                    "added the metering-summary compression and cache columns",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -646,6 +665,22 @@ class SqliteDatabaseAdapter:
         conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
         for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @classmethod
+    def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:
+        """OMN-20226: give a store written before them metering_summary's
+        compression and cache columns, run once per store as a store step.
+
+        The columns are read again here, under the step's write lock, so a fresh
+        store, whose table already has them, and two first opens that race both
+        add nothing twice.
+        """
+        existing = cls._existing_columns(conn, "metering_summary")
+        for column, declaration in _METERING_SUMMARY_ADDED_COLUMNS:
+            if column not in existing:
+                conn.execute(
+                    f"ALTER TABLE metering_summary ADD COLUMN {column} {declaration}"
+                )
 
     @staticmethod
     def _create_delegation_summary_view(conn: sqlite3.Connection) -> None:
