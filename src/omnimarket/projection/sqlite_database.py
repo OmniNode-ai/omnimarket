@@ -750,6 +750,16 @@ class SqliteDatabaseAdapter:
             return float(value)
         return value
 
+    def reconcile(self) -> None:
+        """Bring an existing store's tables and one-time steps up to date.
+
+        Readers open the store read-only and never run the store steps, so a
+        process that only reads (the local dashboard) calls this before it
+        serves. A store this process cannot write raises sqlite3.OperationalError
+        with SQLITE_READONLY; the caller decides whether to serve it as it is.
+        """
+        self._connect().close()
+
     def upsert(
         self,
         table: str,
@@ -886,9 +896,29 @@ class SqliteDatabaseAdapter:
             conn.close()
 
 
+def reconcile_existing_store(db_path: Path) -> None:
+    """Upgrade an existing local store before something only reads it (OMN-20226).
+
+    Readers open the store read-only and never run the one-time store steps, so
+    a store written by an earlier build would keep its old tables, and the read
+    node would refuse any exposure whose declared column they lack. No store yet
+    is left alone (nothing is created), and a store this process cannot write is
+    left as it is, which keeps the read node's honest refusal.
+    """
+    if not db_path.exists():
+        return
+    try:
+        SqliteDatabaseAdapter(db_path).reconcile()
+    except sqlite3.OperationalError as exc:
+        if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
+            raise
+        logger.warning("%s is read-only; reading it as it is", db_path)
+
+
 __all__ = [
     "SQLITE_SCHEMES",
     "SqliteDatabaseAdapter",
     "default_evidence_db_path",
+    "reconcile_existing_store",
     "sqlite_path_from_dsn",
 ]

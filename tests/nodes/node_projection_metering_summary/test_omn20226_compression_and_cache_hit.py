@@ -26,13 +26,21 @@ C8  the migration adds nullable columns with no DEFAULT, so rows written before
 C9  a local SQLite store written before these columns existed serves them as
     null as soon as it is opened, keeping its rows, rather than answering
     projection_column_missing until some later fold happens to add them;
-C10 opening that upgraded store again changes nothing: each column exists once.
+C10 opening that upgraded store again changes nothing: each column exists once;
+C11 the real ``onex dashboard`` startup (HandlerLocalDashboardServe with its own
+    store resolution) upgrades that store before serving, rather than relying on
+    some writer having opened it first;
+C12 a store the dashboard cannot write is served as it is: startup does not
+    crash, the exposure still refuses honestly, and the file is unchanged;
+C13 with no store yet, startup does not create one.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
 import sqlite3
+import stat
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -272,3 +280,66 @@ def test_c10_reopening_the_upgraded_store_changes_nothing(tmp_path: Path) -> Non
     for field in FIELDS:
         assert names.count(field) == 1, (field, names)
     assert count == 1
+
+
+def _startup_reply(monkeypatch: pytest.MonkeyPatch, db_path: Path, pages: Path) -> Any:
+    """GET metering-summary.v1 from the app ``onex dashboard`` would start."""
+    from omnimarket.nodes.node_local_dashboard_serve_effect.handlers import (
+        handler_local_dashboard_serve as dashboard,
+    )
+    from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
+        ModelLocalDashboardServeRequest,
+    )
+
+    monkeypatch.setattr(dashboard, "default_evidence_db_path", lambda: db_path)
+    replies: list[Any] = []
+
+    async def capture(app: Any, _host: str, _port: int) -> None:
+        replies.append(TestClient(app).get(f"/projection/{METERING}"))
+
+    asyncio.run(
+        dashboard.HandlerLocalDashboardServe(serve=capture, pages=pages).handle(
+            ModelLocalDashboardServeRequest(
+                host="127.0.0.1", port=8123, tenant_id=TENANT
+            )
+        )
+    )
+    [reply] = replies
+    return reply
+
+
+def test_c11_dashboard_startup_upgrades_an_old_store_before_serving(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "delegation.sqlite"
+    stored = _old_store(db_path)
+    reply = _startup_reply(monkeypatch, db_path, tmp_path)
+    assert reply.status_code == 200, reply.json()
+    [served] = reply.json()["rows"]
+    for field in FIELDS:
+        assert served[field] is None, (field, served[field])
+    assert served["runs_total"] == stored["runs_total"]
+
+
+def test_c12_a_store_the_dashboard_cannot_write_is_served_as_it_is(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "delegation.sqlite"
+    _old_store(db_path)
+    db_path.chmod(stat.S_IRUSR)
+    before = db_path.read_bytes()
+    try:
+        reply = _startup_reply(monkeypatch, db_path, tmp_path)
+    finally:
+        db_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    assert reply.status_code == 503
+    assert reply.json()["error"] == "projection_column_missing"
+    assert db_path.read_bytes() == before
+
+
+def test_c13_startup_with_no_store_creates_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "delegation.sqlite"
+    _startup_reply(monkeypatch, db_path, tmp_path)
+    assert not db_path.exists()
