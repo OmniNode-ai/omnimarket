@@ -15,7 +15,9 @@ one never answers, and the budget cancels the run.
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -71,11 +73,19 @@ KEY = "synthetic-cancel-evidence-key-asserted-absent-from-outputs"
 GEMMA = "google/gemma-4-31b-it:free"
 NEMOTRON = "nvidia/nemotron-3-super-120b-a12b:free"
 THROTTLE = f"{GEMMA} is temporarily rate-limited upstream"
-BUDGET_SECONDS = 2
+BUDGET_SECONDS = 12
 
 
 @pytest.fixture(autouse=True)
 def short_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Exercise a fresh interpreter even on Linux. Child doubles must survive
+    # the same spawn boundary production uses on macOS, without inheriting
+    # parent monkeypatches. Leave time for both retry children to import.
+    monkeypatch.setattr(
+        port_mod,
+        "_resolve_effect_process_context",
+        lambda: multiprocessing.get_context("spawn"),
+    )
     monkeypatch.setattr(
         handler_delegate_skill,
         "resolve_task_class_execution_budget",
@@ -129,6 +139,61 @@ def _throttled(endpoint_url: str) -> transport.ModelTransportResponse:
     raise AssertionError("a 429 must raise")
 
 
+def _throttle_then_hang_post(
+    *, endpoint_url: str, payload: dict[str, Any], **_: Any
+) -> transport.ModelTransportResponse:
+    if payload["model"] == GEMMA:
+        return _throttled(endpoint_url)
+    time.sleep(60)
+    raise AssertionError("the budget must end this call")
+
+
+@dataclass
+class _ReaimThenHangEffect:
+    """Install the provider double inside the real effect's spawned child."""
+
+    def __call__(self, request: Any) -> ModelLlmDelegationCallResult:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(effect, "_is_endpoint_healthy", lambda _: True)
+            patch.setattr(effect, "_get_served_model_ids", lambda _: None)
+            patch.setattr(
+                effect,
+                "resolve_api_key_with_source_loop_safe",
+                lambda *_args, **_kwargs: (
+                    SecretStr(KEY),
+                    EnumSecretSource.LOCAL_STORE,
+                ),
+            )
+            patch.setattr(
+                discovery,
+                "get_models_json",
+                FakeModels({"data": [{"id": GEMMA}, {"id": NEMOTRON}]}),
+            )
+            patch.setattr(transport, "post_chat_completion", _throttle_then_hang_post)
+            return effect.HandlerLlmDelegationCall()(request)
+
+
+@dataclass
+class _RetryThenHangEffect:
+    first_call_marker: Path
+
+    def __call__(self, request: Any) -> ModelLlmDelegationCallResult:
+        if not self.first_call_marker.exists():
+            self.first_call_marker.touch()
+            return ModelLlmDelegationCallResult(
+                request_id=request.request_id,
+                success=False,
+                failure_class="rate_limited",
+                error_message=THROTTLE,
+                http_status=429,
+                endpoint_healthy=True,
+                secret_source=EnumSecretSource.LOCAL_STORE,
+                secret_ref=request.secret_ref,
+            )
+        time.sleep(60)
+        raise AssertionError("the budget must end this call")
+
+
 def _request() -> ModelDelegateSkillRequest:
     return ModelDelegateSkillRequest(
         prompt="explain what a calendar app needs",
@@ -170,23 +235,8 @@ async def test_a_call_re_aimed_inside_the_effect_keeps_its_429_and_the_call_in_f
 ) -> None:
     """The 429 and the re-aimed model live in the effect's child process."""
     customer_ref, db_path = _customer_route(monkeypatch, tmp_path)
-    monkeypatch.setattr(
-        discovery,
-        "get_models_json",
-        FakeModels({"data": [{"id": GEMMA}, {"id": NEMOTRON}]}),
-    )
-
-    def post(
-        *, endpoint_url: str, payload: dict[str, Any], **_: Any
-    ) -> transport.ModelTransportResponse:
-        if payload["model"] == GEMMA:
-            return _throttled(endpoint_url)
-        time.sleep(60)  # the re-aimed model never answers; the budget ends it
-        raise AssertionError("the budget must end this call")
-
-    monkeypatch.setattr(transport, "post_chat_completion", post)
     port = port_mod.LocalDelegationDispatchPort(
-        effect_handler=effect.HandlerLlmDelegationCall(),
+        effect_handler=_ReaimThenHangEffect(),
         evidence_db_path=db_path,
         effect_process_boundary=True,
     )
@@ -214,24 +264,8 @@ async def test_a_retry_on_the_customer_route_keeps_the_earlier_rung(
     # by a file, not by state in this one.
     first_call_marker = tmp_path / "first-call-made"
 
-    def effect_handler(request: Any) -> ModelLlmDelegationCallResult:
-        if not first_call_marker.exists():
-            first_call_marker.touch()
-            return ModelLlmDelegationCallResult(
-                request_id=request.request_id,
-                success=False,
-                failure_class="rate_limited",
-                error_message=THROTTLE,
-                http_status=429,
-                endpoint_healthy=True,
-                secret_source=EnumSecretSource.LOCAL_STORE,
-                secret_ref=request.secret_ref,
-            )
-        time.sleep(60)  # the re-issued call never answers; the budget ends it
-        raise AssertionError("the budget must end this call")
-
     port = port_mod.LocalDelegationDispatchPort(
-        effect_handler=effect_handler,
+        effect_handler=_RetryThenHangEffect(first_call_marker),
         evidence_db_path=db_path,
         effect_process_boundary=True,
     )
