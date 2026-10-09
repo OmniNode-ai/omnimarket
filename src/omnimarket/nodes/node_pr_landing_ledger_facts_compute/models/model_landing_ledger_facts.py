@@ -16,21 +16,7 @@ from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
 )
-
-STAMP_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z$"
-
-
-class ModelLandingLedgerRow(BaseModel):
-    """One ledger row: the first line opens it, later lines of the same row follow after a newline."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    ts: str = Field(pattern=STAMP_PATTERN)
-    rtype: str = Field(
-        min_length=1, description="The row's canonical type, or '?' when unknown."
-    )
-    lane: str | None = None
-    text: str
+from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 
 
 class ModelLandingLedgerRows(BaseModel):
