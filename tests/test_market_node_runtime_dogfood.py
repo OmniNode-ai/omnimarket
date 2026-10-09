@@ -311,7 +311,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
     # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
     # the writer calls in process, so it has no handler_routing: 17 -> 18.
-    assert summary["skipped"] == 18
+    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
+    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    assert summary["skipped"] == 19
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
