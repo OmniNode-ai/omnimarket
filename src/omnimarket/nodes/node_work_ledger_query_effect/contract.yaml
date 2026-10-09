@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: work_ledger_query_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+# The main runtime declares ONEX_RUNTIME_LANE and carries OMNINODE_INTERNAL_DB_URL;
+# effects lacks the lane, so lane-scoped discovery fails closed there (OMN-19408).
+runtime_profiles: [main]
+runtime_lanes: [compose-dev, onex-lab, onex-lab-k3s]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-query-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-ledger-query-completed.v1
+input_model: omnimarket.models.work_ledger_query.model_work_ledger_query.ModelWorkLedgerQueryRequest
+output_model: omnimarket.models.work_ledger_query.model_work_ledger_query.ModelWorkLedgerQueryResult
+description: >
+  Answers reads of the work ledger from omninode_internal.work_ledger_rows on
+  the lab with the markdown ledger's own read rules (rows by window, kind,
+  lane, ticket, PR or term; open claims; holds in force; a lane's inbox; newest
+  row per lane; rulings and consents). Every answer carries freshness and the
+  window's parity status from the daily parity receipts. A database error is
+  an error answer, never an empty one.
+handler:
+  module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+  class: HandlerWorkLedgerQuery
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: work_ledger_query_requested
+      topic: onex.cmd.omnimarket.work-ledger-query-requested.v1
+      message_category: command
+      event_model: omnimarket.models.work_ledger_query.model_work_ledger_query.ModelWorkLedgerQueryRequest
+      handler_module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+      handler:
+        name: HandlerWorkLedgerQuery
+        module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+terminal_event: onex.evt.omnimarket.work-ledger-query-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.work-ledger-query-requested.v1]
+  publish_topics: [onex.evt.omnimarket.work-ledger-query-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.work-ledger-query-malformed.v1]
+work_ledger_query:
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    binding_ref: omninode_runtime_service
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    parity_receipt_lane: work-ledger-parity
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+golden_path:
+  - "Command arrives"
+  - "Read the window rows, receipts and freshness"
+  - "Replay the rows with the markdown read rules"
+  - "Return the typed answer on terminal_event"
+dod_evidence:
+  - test: tests/test_golden_chain_work_ledger_query.py::test_work_ledger_query_golden_chain
+    description: "Every query returns the rows the markdown read verbs return over the fixture"
+  - test: tests/test_golden_chain_work_ledger_query.py::test_work_ledger_query_golden_chain_real_runtime_typed_dispatch
+    description: "Command reaches the node through real runtime typed dispatch"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-20738, OMN-19513]
