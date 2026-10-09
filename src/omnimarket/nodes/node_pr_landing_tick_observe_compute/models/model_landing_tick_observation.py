@@ -11,10 +11,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
+from omnimarket.models.landing_decision import (
     ModelLandingDecision,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
 )
 

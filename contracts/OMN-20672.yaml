@@ -30,7 +30,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute/test_landing_tick_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
   - id: "dod-tick-observe"
@@ -38,6 +38,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_observe_compute -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_observe_compute/test_landing_tick_observe.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]

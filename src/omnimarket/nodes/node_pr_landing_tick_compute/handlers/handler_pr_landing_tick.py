@@ -25,17 +25,13 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any, Final
 
-from omnimarket.nodes.node_pr_landing_decision_compute import decide_landing
-from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
+from omnimarket.models.landing_decision import (
     EnumLandingActionKind,
     EnumLandingSuspension,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     ModelLandingDecision,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute import decide_landing
 
 FAIR_DEFER: Final[str] = EnumLandingSuspension.HOLD.value
 
