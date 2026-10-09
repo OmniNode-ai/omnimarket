@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of the merge-sweep effect node (OMN-20676)."""
 
-from .model_merge_sweep_effect import (
+from omnimarket.models.merge_sweep.model_merge_sweep_effect import (
     FULL_RESYNC_MAX_AGE_S,
     MAX_AGE_S,
     TICKS_READ,

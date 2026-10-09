@@ -37,6 +37,13 @@ requirements:
     acceptance:
       - id: "AC6"
         statement: "AC6: the entry points are package-form, the metadata passes the schema test, the contracts declare their topics and a stale or incomplete watcher state is refused with no reading -- falsifier: uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
+  - id: "req-merge-sweep-orchestrator"
+    statement: "One request to node_merge_sweep_orchestrator runs a whole sweep through the reading, plan and effect nodes, equal to the real merge_sweep.js run with scripted runner exit codes on the recorded sweep."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: the starts, waits, runner commands, briefs, lane receipts and deferred count of a sweep run by one request to the orchestrator equal the real merge_sweep.js run with scripted runner exit codes on the recorded cases, and its plan equals the old plan -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_merge_sweep_orchestrator_parity.py -q fails on a broken brief or a retry that never waits"
+      - id: "AC8"
+        statement: "AC8: the orchestrator contract declares its topics and a wiring plan naming only operations the sibling nodes declare, the entry point is package-form, the metadata passes the schema test, and a stale or missing watcher state is refused with no lane started -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Focused tests of the merge-sweep plan node."
@@ -94,3 +101,19 @@ dod_evidence:
         check_value: "uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn20676-ac7-orchestrator-parity"
+    description: "AC7 whole-sweep parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_merge_sweep_orchestrator_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20676-ac8-orchestrator-registration"
+    description: "AC8 contract, wiring plan, entry point, metadata and refusal tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]

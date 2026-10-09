@@ -32,16 +32,16 @@ description: >
   lanes run or when one is retried.
 input_model:
   name: "ModelMergeSweepLoadRequest"
-  module: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect"
+  module: "omnimarket.models.merge_sweep.model_merge_sweep_effect"
   description: "Paths of the state, ledger, tick log and floors, and the time (load facts); each operation has its own request."
 output_model:
   name: "ModelMergeSweepLoadResult"
-  module: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect"
+  module: "omnimarket.models.merge_sweep.model_merge_sweep_effect"
   description: "The facts of one reading or the reason the state was refused (load facts); each operation has its own result."
 handler:
   module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts"
   class: "HandlerMergeSweepLoadFacts"
-  input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
+  input_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts:HandlerMergeSweepLoadFacts"
@@ -50,14 +50,14 @@ handler_routing:
       handler:
         name: "HandlerMergeSweepLoadFacts"
         module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts"
-      input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
-      output_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadResult"
+      input_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
+      output_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLoadResult"
     - operation: "run_merge_sweep_lane"
       handler:
         name: "HandlerMergeSweepLaneRun"
         module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_lane_run"
-      input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLaneRunRequest"
-      output_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLaneRunResult"
+      input_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLaneRunRequest"
+      output_model: "omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLaneRunResult"
 descriptor:
   node_archetype: effect
   purity: effectful
