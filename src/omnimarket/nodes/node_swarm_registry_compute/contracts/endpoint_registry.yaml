@@ -31,25 +31,3 @@ endpoints:
     cost_basis: "local"
     health_check_path: "/health"
     declared_by: "operator"
-  - id: "deepseek-v4-flash"
-    base_url: "http://192.168.86.200:8101/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "deepseek-v4-flash"
-    endpoint_ref: "LLM_LOCAL_FAST_URL"
-    provider: "ds4"
-    capabilities: [reasoning, analysis, math, planning, general]
-    context_window: 131072
-    context_window_source: "probe"
-    cost_basis: "local"
-    health_check_path: "/health"
-    declared_by: "operator"
-  - id: "deepseek-v4-pro"
-    base_url: "http://192.168.86.200:8101/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "deepseek-v4-pro"
-    endpoint_ref: "LLM_REMOTE_FRONTIER_URL"
-    provider: "ds4"
-    capabilities: [reasoning, analysis, math, planning, general]
-    context_window: 131072
-    context_window_source: "probe"
-    cost_basis: "local"
-    health_check_path: "/health"
-    declared_by: "operator"

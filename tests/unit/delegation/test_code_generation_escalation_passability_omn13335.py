@@ -8,7 +8,7 @@ OMN-13335 (the SEA customer-beta discriminator) requires that a fresh
 
   * ``escalation_count >= 1`` (a real up-tier escalation happened),
   * a non-local CLOUD ``model_name`` (the escalation reached a capable cloud
-    ceiling, NOT a local Qwen / ds-v4-flash), and
+    ceiling, NOT a local Qwen), and
   * ``quality_gate_passed = true`` (the cloud answer cleared the required bar).
 
 The routing layer already PRODUCES this terminal on the judge-fix image
@@ -77,7 +77,6 @@ _LOCAL_BACKEND_IDS: frozenset[str] = frozenset(
         "local-coder",
         "local-reasoner",
         "local-heavy-reasoning",
-        "local-ds-v4-flash",
         "local-embedding",
     }
 )
@@ -108,7 +107,7 @@ def test_code_generation_tier_order_ceiling_is_cloud_not_local() -> None:
 
     The discriminator requires a CLOUD terminal after escalation. If the
     contract-declared ceiling tier were ``local`` the escalation could only ever
-    terminate on a local Qwen / ds-v4-flash, which fails the discriminator's
+    terminate on a local Qwen, which fails the discriminator's
     "non-local model_name" clause by construction.
     """
     config = _get_config()

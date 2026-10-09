@@ -4,9 +4,9 @@
 """Record genuine per-rung outputs for the graded ladder benchmark (OMN-13935).
 
 This is the explicitly-invoked capture step. It hits the REAL local ladder
-endpoints (the 5090/4090 AI-PC rungs and the Mac-Studio DS-V4-Flash ceiling) with
+endpoints (the 5090/4090 AI-PC rungs) with
 every corpus prompt and writes the raw completions to
-``tests/unit/delegation/graded_ladder/recorded_rung_outputs.json``.
+``tests/unit/delegation/graded_ladder/recorded_rung_outputs.json.captured``.
 
 It is NOT run in CI — the committed benchmark grades the recorded fixtures
 hermetically. Re-run this only to refresh the durable evidence against the live
@@ -94,9 +94,8 @@ def _resolve_model(endpoint: str, configured: str, *, timeout_s: float = 15.0) -
     """Return the server's actual model id, honoring the configured id if served.
 
     Local servers expose ``/v1/models``; if the configured id is not in the list
-    (e.g. the DS server lists ``deepseek-v4-flash`` while the ladder labels it
-    ``ds-v4-flash``), fall back to the first served id so the completion call
-    does not fail closed on a label mismatch.
+    (for example, when the ladder uses a logical routing key), fall back to the
+    first served id so the completion call does not fail closed on a label mismatch.
     """
 
     models_url = endpoint.replace("/chat/completions", "/models")
