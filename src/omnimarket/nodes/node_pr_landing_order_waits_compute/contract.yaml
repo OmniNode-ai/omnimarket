@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingOrderWaitsCompute
+#
+# The merge-order waits of one landing-controller tick as a pure definition-B compute:
+#
+#   handle(ModelLandingOrderWaitsRequest) -> ModelLandingOrderWaitsResult
+#
+# A lane that cannot land a PR until another PR merges ends with a TERMINAL outcome=waiting_order. From
+# ledger rows already parsed (the read of the ledger files is an effect, not this node), the open PRs and
+# the watcher's state of each predecessor, it says which PRs are still waiting, which waits fired and
+# which fired waits a lane already routed. The live controller keeps deriving its own copy; the two are
+# compared on the recorded ledger before any caller moves. No clock (the tick's time is in the request),
+# no I/O, no model.
+name: "node_pr_landing_order_waits_compute"
+contract_name: "node_pr_landing_order_waits_compute"
+node_name: "node_pr_landing_order_waits_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B derivation of the landing controller's merge-order waits:
+  waits_open, waits_fired and msg_after_wait, from the tick's ledger rows, open
+  PRs, predecessor states and clock. Only an order wait is read; a ci or lab
+  wait is the drain's own recheck. Deterministic in the row order the ledger
+  gives.
+input_model:
+  name: "ModelLandingOrderWaitsRequest"
+  module: "omnimarket.nodes.node_pr_landing_order_waits_compute.models.model_landing_order_waits"
+  description: "The tick's clock, the window's parsed ledger rows, the open PRs and the state of each predecessor."
+output_model:
+  name: "ModelLandingOrderWaitsResult"
+  module: "omnimarket.nodes.node_pr_landing_order_waits_compute.models.model_landing_order_waits"
+  description: "The open waits, the fired waits and the fired waits a lane already routed."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_order_waits_compute.handlers.handler_pr_landing_order_waits"
+  class: "HandlerPrLandingOrderWaits"
+  input_model: "omnimarket.nodes.node_pr_landing_order_waits_compute.models.model_landing_order_waits.ModelLandingOrderWaitsRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_order_waits_compute.handlers.handler_pr_landing_order_waits:HandlerPrLandingOrderWaits"
+  handlers:
+    - operation: "derive_landing_order_waits"
+      handler:
+        name: "HandlerPrLandingOrderWaits"
+        module: "omnimarket.nodes.node_pr_landing_order_waits_compute.handlers.handler_pr_landing_order_waits"
+# Addressable the way the other directly-invoked compute nodes are; the topics are
+# declared here and no caller publishes the command until the controller switches.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-order-waits-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-order-waits-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-order-waits-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Merge-order waits of one landing tick."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - ledger
+    - pure
