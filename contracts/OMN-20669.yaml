@@ -21,7 +21,7 @@ requirements:
     statement: "Both nodes are registered as package-form entry points with valid metadata."
     acceptance:
       - id: "AC3"
-        statement: "AC3: both entry points are package-form and both metadata files pass the schema test -- falsifier: uv run pytest tests/test_all_node_entry_points_are_package_form.py tests/test_metadata_schema.py -q"
+        statement: "AC3: both entry points are package-form and both metadata files pass the schema test -- falsifier: uv run pytest tests/test_remote_lane_registration.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Focused tests of both remote-lane nodes."
@@ -52,6 +52,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_all_node_entry_points_are_package_form.py tests/test_metadata_schema.py -q"
+        check_value: "uv run pytest tests/test_remote_lane_registration.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
