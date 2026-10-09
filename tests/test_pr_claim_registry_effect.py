@@ -229,3 +229,22 @@ def test_contract_declares_its_topics_and_the_definition_b_handler() -> None:
     handler = contract["handler"]
     assert handler["class"] == "HandlerPrClaimRegistry"
     assert handler["input_model"] == contract["input_model"]
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    [
+        "../../etc/passwd#1",
+        "a/../b#1",
+        "../x#1",
+        "org/repo",
+        "org/repo#1/..",
+        "",
+        "./.#1",
+    ],
+)
+def test_filesystem_key_rejects_keys_that_could_escape_the_directory(
+    bad_key: str,
+) -> None:
+    with pytest.raises(ValueError, match="invalid PR key"):
+        filesystem_key(bad_key)

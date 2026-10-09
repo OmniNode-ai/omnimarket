@@ -23,6 +23,7 @@ claim file that is not a JSON object where the module returned the value.
 
 import json
 import os
+import re
 import socket
 import uuid
 from collections.abc import Mapping
@@ -42,6 +43,7 @@ _REAP_ATTEMPTS = 4
 _TAG = "[claim-registry]"
 
 _Claim = dict[str, object]
+_PR_KEY_PATTERN = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+")
 
 
 def canonical_pr_key(org: str, repo: str, number: int | str) -> str:
@@ -50,7 +52,16 @@ def canonical_pr_key(org: str, repo: str, number: int | str) -> str:
 
 
 def filesystem_key(pr_key: str) -> str:
-    """Convert a canonical PR key to a safe filename stem."""
+    """Convert a canonical PR key to a safe filename stem.
+
+    Rejects any key that is not ``<org>/<repo>#<number>`` so a caller-supplied
+    key cannot escape the registry directory.
+    """
+    if _PR_KEY_PATTERN.fullmatch(pr_key) is None:
+        raise ValueError(f"invalid PR key: {pr_key!r}")
+    org, repo = pr_key.split("#", 1)[0].split("/", 1)
+    if org.strip(".") == "" or repo.strip(".") == "":
+        raise ValueError(f"invalid PR key: {pr_key!r}")
     return pr_key.replace("/", "--").replace("#", "--")
 
 
