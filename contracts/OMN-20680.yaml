@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20680"
+title: "The linear-comments sweep and hourly tick decisions run as omnimarket compute nodes"
+summary: "node_linear_comments_decision_compute ports the pure block of the linear-comments-hourly workflow script and node_hourly_tick_decision_compute holds the tick's probe and record decisions. Both are contract-declared COMPUTE nodes dispatched over the bus, with parity against captured outputs of the old code. Repointing callers and deleting the old script are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-linear-comments-decision-node"
+    statement: |-
+      The linear-comments sweep's deterministic decisions (author classification, draft-or-not, prompt, citation check, truncation, held classification, held tally, degraded flag, metrics row) run in node_linear_comments_decision_compute and match the old JS pure block.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Every decision kind returns the old block's captured output for the same input -- falsifier: tests/nodes/node_linear_comments_decision_compute/test_parity_linear_comments_decision_compute.py against tests/fixtures/linear_comments_hourly_parity.json, which fails on any differing decision
+      - id: "AC2"
+        statement: |-
+          AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and an invalid request is refused with no result -- falsifier: tests/nodes/node_linear_comments_decision_compute/test_golden_chain_linear_comments_decision_compute.py
+  - id: "req-hourly-tick-decision-node"
+    statement: |-
+      The hourly tick's probe and record decisions run in node_hourly_tick_decision_compute, with no clock and no file reads, and match the pre-conversion tick.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: probe then record over the bus returns the pre-conversion tick's window state, checkpoint line, sweep request, completion line, phase, degraded class and fire-result payload for every captured case -- falsifier: tests/nodes/node_hourly_tick_decision_compute/test_golden_chain_hourly_tick_decision_compute.py against tests/fixtures/hourly_tick_parity.json
+evidence_requirements:
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for both decision compute nodes."
+    command: "uv run pytest tests/nodes/node_linear_comments_decision_compute tests/nodes/node_hourly_tick_decision_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20680-linear-comments-decision"
+    description: "node_linear_comments_decision_compute matches the old JS pure block and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_linear_comments_decision_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20680-hourly-tick-decision"
+    description: "node_hourly_tick_decision_compute matches the pre-conversion tick and runs probe then record over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hourly_tick_decision_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
