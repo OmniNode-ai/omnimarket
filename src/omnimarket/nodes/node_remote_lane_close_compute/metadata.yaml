@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-name: node_remote_lane_compute
+name: node_remote_lane_close_compute
 version: 0.1.0
-description: Decide which pool host takes a remote lane from supplied facts.
+description: Decide how a finished remote lane closes from its exit code and final message.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:
-    node_remote_lane_compute: omnimarket.nodes.node_remote_lane_compute
+    node_remote_lane_close_compute: omnimarket.nodes.node_remote_lane_close_compute
 capabilities:
   standalone: true
   full_runtime: false
@@ -25,5 +25,5 @@ tags:
 - lab
 - remote-lane
 pack: operator_tooling
-display_name: Remote Lane Compute
+display_name: Remote Lane Close Compute
 node_role: compute
