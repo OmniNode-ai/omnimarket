@@ -315,17 +315,6 @@ def _scan_bifrost_backends(rel: str, data: dict[str, Any]) -> list[str]:
         tier = backend.get("tier", "")
         if backend_id in _NO_SECRET_BACKEND_IDS:
             continue
-        # OMN-20287: a ``kind: harness`` backend (Codex, GLM through Claude
-        # Code, Claude Code) runs a CLI that owns its own login. It must declare
-        # NO credential ref -- the backend model refuses one -- so a ref here is
-        # the violation, not its absence.
-        if backend.get("kind") == "harness":
-            if _backend_has_logical_ref(backend) or backend.get("credential_ref"):
-                violations.append(
-                    f"{rel}: harness backend {backend_id!r} declares a credential "
-                    f"ref; a harness owns its own login and declares none"
-                )
-            continue
         if tier in _LOCAL_TIERS:
             continue
         # Fail closed for every non-local, non-exempt backend, including

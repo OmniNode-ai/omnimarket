@@ -244,37 +244,6 @@ def test_local_backend_without_ref_passes() -> None:
 
 
 @pytest.mark.unit
-def test_harness_backend_without_ref_passes() -> None:
-    """OMN-20287: a harness backend owns its login and declares no ref."""
-    module = _load_module()
-    backend = {"backend_id": "harness-x", "kind": "harness", "tier": "harness"}
-    assert module._scan_bifrost_backends("fake.yaml", {"backends": [backend]}) == []
-
-
-@pytest.mark.unit
-def test_harness_backend_with_ref_detected() -> None:
-    """OMN-20287: a credential ref on a harness backend is the violation."""
-    module = _load_module()
-    backend = {
-        "backend_id": "harness-x",
-        "kind": "harness",
-        "tier": "harness",
-        "secret_ref": "llm.anthropic.api_key",
-    }
-    violations = module._scan_bifrost_backends("fake.yaml", {"backends": [backend]})
-    assert len(violations) == 1
-    assert "harness backend 'harness-x'" in violations[0]
-
-
-@pytest.mark.unit
-def test_endpoint_backend_on_harness_tier_still_needs_a_ref() -> None:
-    """OMN-20287: the exemption is the declared kind, never the tier name."""
-    module = _load_module()
-    backend = {"backend_id": "cloud-x", "tier": "harness"}
-    assert len(module._scan_bifrost_backends("fake.yaml", {"backends": [backend]})) == 1
-
-
-@pytest.mark.unit
 def test_mutually_exclusive_auth_detected() -> None:
     module = _load_module()
     data = {
