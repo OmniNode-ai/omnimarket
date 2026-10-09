@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20678"
+title: "delegate-fanout.js becomes a call to the delegation nodes over the bus"
+summary: "The delegate fan-out tool becomes node_delegate_fanout_effect in omnimarket: a contract.yaml, a declarative node and a handler with the canonical signature, with its topics declared in the contract. Deleting the old script entry point in omnibase_internal is a separate change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-canonical-node"
+    statement: "The fan-out tool is a contract-declared node with a canonical handler."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the tool is a contract.yaml, a declarative node and a handler with the canonical definition-B signature, and its topics are declared in the contract"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the node's golden chain, handler and parity tests pass through the contract's handler binding."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20678-ac1-canonical-node"
+    description: "AC1: the node's golden chain, handler and parity tests pass through the contract's handler binding."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
