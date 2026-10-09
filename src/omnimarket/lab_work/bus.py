@@ -64,6 +64,10 @@ logger = logging.getLogger(__name__)
 LAB_WORK_NODE = "node_lab_work_unit_effect"
 GROUP_SERVICE = "omnimarket"
 DEFAULT_MAX_COMMAND_AGE_SECONDS = 900
+#: A worker that holds a unit logs a progress line at least this often.
+DEFAULT_PROGRESS_SECONDS = 300.0
+#: A worker that has held one unit for this many of its limits is stuck.
+STUCK_AFTER_LIMITS = 2
 DEFAULT_TOOLS = (
     "git",
     "uv",
@@ -85,6 +89,10 @@ class ModelLabWorkTopics(BaseModel):
     failure: str
     capacity: str
     cadence_seconds: int
+
+
+class StuckWorkerError(RuntimeError):
+    """A worker held one unit for :data:`STUCK_AFTER_LIMITS` of its limits."""
 
 
 class ModelLabWorkCommandFailure(BaseModel):
@@ -184,6 +192,7 @@ class LabWorkHost:
         rank_penalty: float = 0.0,
         tools: tuple[str, ...] = DEFAULT_TOOLS,
         max_command_age_seconds: int = DEFAULT_MAX_COMMAND_AGE_SECONDS,
+        progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._bus = bus
@@ -195,6 +204,7 @@ class LabWorkHost:
         self._rank_penalty = rank_penalty
         self._tools = tools
         self._max_age = max_command_age_seconds
+        self._progress = progress_seconds
         self._now = now
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
@@ -202,6 +212,11 @@ class LabWorkHost:
         self.running = 0
         self.processed = 0
         self.advertised = 0
+        #: Set when a worker has held one unit for two of its limits. The
+        #: advertiser keeps beating, so a live advertiser proves nothing: the
+        #: serve command reads this and exits non-zero.
+        self.stuck = asyncio.Event()
+        self.stuck_reason = ""
 
     @property
     def topics(self) -> ModelLabWorkTopics:
@@ -273,7 +288,7 @@ class LabWorkHost:
         self._queue.put_nowait(message)
 
     async def _worker(self) -> None:
-        while True:
+        while not self.stuck.is_set():
             message = await self._queue.get()
             try:
                 await self._process(message)
@@ -316,7 +331,7 @@ class LabWorkHost:
         self.running += 1
         started = time.monotonic()
         try:
-            receipt = await self._work.handle(request)
+            receipt = await self._hold(request)
         except (
             Exception
         ) as exc:  # fallback-ok: a handler crash is answered on the failure terminal
@@ -343,6 +358,57 @@ class LabWorkHost:
         await self._bus.publish(
             self._topics.success, receipt.work_unit_id.encode("utf-8"), _bytes(envelope)
         )
+
+    async def _hold(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt:
+        """Run the unit; say so at least every ``progress_seconds`` while it is
+        held, and raise :class:`StuckWorkerError` once it has been held for
+        :data:`STUCK_AFTER_LIMITS` of its limits (its own ``timeout_seconds``)."""
+        limit = float(request.timeout_seconds)
+        stuck_at = STUCK_AFTER_LIMITS * limit
+        started = time.monotonic()
+        next_progress = self._progress
+        task = asyncio.ensure_future(self._work.handle(request))
+        try:
+            while True:
+                held = time.monotonic() - started
+                wait = max(min(next_progress, stuck_at) - held, 0.0)
+                done, _ = await asyncio.wait({task}, timeout=wait)
+                if done:
+                    return task.result()
+                held = time.monotonic() - started
+                if held >= stuck_at:
+                    # Flagged before the failure terminal is published, so a bus that
+                    # will not take the answer cannot keep the serve command from exiting.
+                    self.stuck_reason = (
+                        f"unit {request.work_unit_id} held for {int(held)}s, "
+                        f"{STUCK_AFTER_LIMITS} times its {int(limit)}s limit, "
+                        "and not answered"
+                    )
+                    self.stuck.set()
+                    logger.error(
+                        "lab-work host %s: %s; the host is exiting",
+                        self._host,
+                        self.stuck_reason,
+                    )
+                    raise StuckWorkerError(self.stuck_reason)
+                if held >= next_progress:
+                    next_progress += self._progress
+                    logger.log(
+                        logging.WARNING if held >= limit else logging.INFO,
+                        "lab-work host %s: holding unit %s (lane %s, kind %s) for %ds, %s "
+                        "its %ds limit; %d more queued",
+                        self._host,
+                        request.work_unit_id,
+                        request.lane,
+                        request.kind,
+                        int(held),
+                        "past" if held >= limit else "within",
+                        int(limit),
+                        self._queue.qsize(),
+                    )
+        finally:
+            if not task.done():
+                task.cancel()
 
     def _age(self, raw: dict[str, object]) -> float | None:
         stamp = raw.get("envelope_timestamp")
@@ -560,6 +626,7 @@ def _infra_error(
 
 __all__ = [
     "DEFAULT_MAX_COMMAND_AGE_SECONDS",
+    "DEFAULT_PROGRESS_SECONDS",
     "DEFAULT_TOOLS",
     "LAB_WORK_NODE",
     "EnumPlacementDecision",
@@ -567,6 +634,7 @@ __all__ = [
     "LabWorkHost",
     "ModelLabWorkCommandFailure",
     "ModelLabWorkTopics",
+    "StuckWorkerError",
     "host_group_id",
     "load_lab_work_topics",
 ]

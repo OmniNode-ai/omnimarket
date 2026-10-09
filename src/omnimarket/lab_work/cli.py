@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import signal
 import sys
 import uuid
@@ -60,6 +61,18 @@ EXIT_NO_HOST = 75
 #: bar) because the instruction differs: a serve process is down, or the interim ssh path is needed.
 EXIT_NO_ADVERTISEMENT = 69
 EXIT_NOT_RUN = 70
+#: ``serve`` found a worker that held one unit for two of its limits while the advertiser was
+#: still beating. Non-zero so the service manager restarts the host and a stall is not silent.
+EXIT_STUCK_WORKER = 71
+
+
+def _exit_hard(code: int) -> None:
+    """Leave now. A worker thread that never returns would hold a normal interpreter
+    exit open (the asyncio executor and ``threading`` both join it), so a stuck host
+    flushes its log and ends the process without that wait."""
+    logging.shutdown()
+    os._exit(code)
+
 
 _bus_options = [
     click.option(
@@ -156,7 +169,7 @@ def serve_command(
         allowed_executables=frozenset(allowed_executables),
     )
 
-    async def main() -> None:
+    async def main() -> int:
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -176,20 +189,32 @@ def serve_command(
                 rank_penalty=rank_penalty,
                 max_command_age_seconds=max_command_age,
             )
+            code = 0
             await host.start()
             try:
                 while not stop.is_set():
+                    if host.stuck.is_set():
+                        click.echo(
+                            f"lab-work: stuck worker: {host.stuck_reason}", err=True
+                        )
+                        code = EXIT_STUCK_WORKER
+                        break
                     if max_commands and host.processed >= max_commands:
                         break
                     with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(stop.wait(), timeout=1.0)
             finally:
                 await host.stop()
+        if code:
+            _exit_hard(code)
+        return code
 
     try:
-        asyncio.run(main())
+        code = asyncio.run(main())
     except LabRunBusError as exc:
         raise click.ClickException(f"bus: {exc}") from exc
+    if code:
+        sys.exit(code)
 
 
 @lab_work_group.command("hosts")
@@ -373,6 +398,7 @@ __all__ = [
     "EXIT_NOT_RUN",
     "EXIT_NO_ADVERTISEMENT",
     "EXIT_NO_HOST",
+    "EXIT_STUCK_WORKER",
     "hosts_command",
     "lab_work_group",
     "run_command",
