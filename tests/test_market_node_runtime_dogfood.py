@@ -71,6 +71,9 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # The host-reconcile effect is likewise run from the command line by a host
+    # timer; it subscribes to no topic and has no onex.nodes entry point.
+    "node_host_reconcile_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration

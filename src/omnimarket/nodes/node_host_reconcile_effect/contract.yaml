@@ -50,7 +50,7 @@ externally_consumed_topics:
 - onex.evt.omnimarket.host-reconcile-run-completed.v1
 metadata:
   # The receipt is a consumed contract read by the workspace onex wrapper.
-  receipt_schema: onex.workspace.reconcile.v1
+  receipt_schema: onex.workspace.reconcile.v1  # schema id, not a Kafka topic
   transport_type: kafka
   execution_locus: host-local
 inputs:
