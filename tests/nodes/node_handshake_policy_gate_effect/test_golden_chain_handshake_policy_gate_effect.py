@@ -350,7 +350,14 @@ async def test_golden_chain_over_the_bus(
 
 
 @pytest.mark.asyncio
-async def test_error_chain_over_the_bus_fails_without_a_result(tmp_path: Path) -> None:
+async def test_error_chain_over_the_bus_fails_without_a_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse() -> str:
+        raise PolicyGatePortError("no GitHub token: GH_TOKEN is not set")
+
+    # The failure must not depend on whether the runner exports GH_TOKEN.
+    monkeypatch.setattr(adapters, "resolve_policy_gate_token", refuse)
     (tmp_path / "bad").mkdir()
     runtime = await _run(tmp_path / "bad", {"strict": True})
     assert runtime.handler_result is None
