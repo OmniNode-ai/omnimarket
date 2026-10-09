@@ -357,6 +357,7 @@ node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 # OMN-20275: ledger-host append effect, hosted by `onex work-ledger serve`.
 node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
+node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_manifest_fetch_effect = "omnimarket.nodes.node_manifest_fetch_effect"

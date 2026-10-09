@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_bus_mirror
+lifecycle: experimental
+node_type: compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure mapping of a completed or failed delegation terminal to one STATUS
+  append request. Hosted by the single ledger serve process, which serializes
+  these requests with ordinary ledger commands through the existing append
+  handler. No shared runtime subscription: only the ledger host can append.
+input_model:
+  name: ModelDelegateSkillTerminalProjection
+  module: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection
+output_model:
+  name: ModelWorkLedgerAppendRequest
+  module: omnimarket.models.work_ledger_append.model_work_ledger_append
+handler:
+  module: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror
+  class: HandlerWorkLedgerBusMirror
+  input_model: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection.ModelDelegateSkillTerminalProjection
+  output_model: omnimarket.models.work_ledger_append.model_work_ledger_append.ModelWorkLedgerAppendRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_terminal_to_status
+      handler:
+        name: HandlerWorkLedgerBusMirror
+        module: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+# The serve adapter loads these topics from the contract. Keeping event_bus
+# absent prevents shared-runtime auto-wiring from racing the ledger host.
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.delegate-skill-completed.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
+published_events:
+  - event_type: ModelWorkLedgerAppendRequest
+    topic: onex.cmd.omnimarket.work-ledger-append-requested.v1
+    description: Append request consumed by the ledger host's append handler.
+metadata:
+  transport_type: kafka

@@ -15,6 +15,7 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from functools import partial
 from importlib import resources
 from typing import Protocol
 
@@ -29,15 +30,21 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.nodes.node_work_ledger_bus_mirror import HandlerWorkLedgerBusMirror
+from omnimarket.projection.envelope import unwrap_envelope
 
 logger = logging.getLogger(__name__)
 WORK_LEDGER_APPEND_NODE = "node_work_ledger_append_effect"
 GROUP_SERVICE = "omnimarket"
+WORK_LEDGER_MIRROR_NODE = "node_work_ledger_bus_mirror"
 
 
 class ModelWorkLedgerAppendTopics(BaseModel):
@@ -80,6 +87,15 @@ def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
     )
 
 
+def load_work_ledger_delegation_topics() -> tuple[str, ...]:
+    contract = (
+        resources.files(f"omnimarket.nodes.{WORK_LEDGER_MIRROR_NODE}")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    return tuple(yaml.safe_load(contract)["runtime_dispatch"]["subscribe_topics"])
+
+
 class WorkLedgerAppendHost:
     """Serve ledger commands strictly one at a time in one consumer group."""
 
@@ -93,31 +109,53 @@ class WorkLedgerAppendHost:
         self._bus = bus
         self._handler = handler
         self._topics = topics or load_work_ledger_append_topics()
-        self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
+        self._delegation_topics = load_work_ledger_delegation_topics()
+        self._mapper = HandlerWorkLedgerBusMirror()
+        self._queue: asyncio.Queue[
+            tuple[ProtocolBusMessage, asyncio.Future[None], str | None]
+        ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
-        self._unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
         self.processed = 0
 
     @property
     def topics(self) -> ModelWorkLedgerAppendTopics:
         return self._topics
 
+    @property
+    def delegation_topics(self) -> tuple[str, ...]:
+        return self._delegation_topics
+
     async def start(self) -> None:
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._worker())
-        self._unsubscribe = await _subscribe(
-            self._bus,
-            self._topics.command,
-            self._enqueue,
-            derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
-            "earliest",
+        self._unsubscribes.append(
+            await _subscribe(
+                self._bus,
+                self._topics.command,
+                self._enqueue,
+                derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
+                "earliest",
+            )
         )
+        for topic in self._delegation_topics:
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._bus,
+                    topic,
+                    partial(self._enqueue, delegation_topic=topic),
+                    derive_service_group_id(
+                        WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE
+                    ),
+                    "earliest",
+                )
+            )
 
     async def stop(self) -> None:
-        if self._unsubscribe is not None:
-            await self._unsubscribe()
-            self._unsubscribe = None
+        for unsubscribe in self._unsubscribes:
+            await unsubscribe()
+        self._unsubscribes.clear()
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -127,29 +165,42 @@ class WorkLedgerAppendHost:
     async def drain(self) -> None:
         await self._queue.join()
 
-    async def _enqueue(self, message: ProtocolBusMessage) -> None:
+    async def _enqueue(
+        self, message: ProtocolBusMessage, *, delegation_topic: str | None = None
+    ) -> None:
         # Handled inside the subscription callback, not handed to a queue: the bus
         # client advances the group's position when the callback returns, so a
         # command must be appended and answered first. Committing earlier is the
         # model's commit_first control, where a crash loses the command
         # (omnibase_internal tla/ledger_bus_append).
-        self._queue.put_nowait(message)
-        await self._queue.join()
+        completed: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._queue.put_nowait((message, completed, delegation_topic))
+        await completed
 
     async def _worker(self) -> None:
         while True:
-            message = await self._queue.get()
+            message, completed, delegation_topic = await self._queue.get()
             try:
-                await self._process(message)
-            except (
-                Exception
-            ):  # fallback-ok: transport errors are logged so the next command can run
+                await self._process(message, delegation_topic=delegation_topic)
+            except Exception as exc:
+                # A mirror failure must reach the callback so Kafka cannot pass
+                # a terminal whose append has not landed. Keep the worker alive.
                 logger.exception("work-ledger host: command processing failed")
+                if not completed.done():
+                    completed.set_exception(exc)
+            else:
+                if not completed.done():
+                    completed.set_result(None)
             finally:
                 self.processed += 1
                 self._queue.task_done()
 
-    async def _process(self, message: ProtocolBusMessage) -> None:
+    async def _process(
+        self, message: ProtocolBusMessage, *, delegation_topic: str | None = None
+    ) -> None:
+        if delegation_topic is not None:
+            await self._process_delegation(message, delegation_topic)
+            return
         try:
             raw = json.loads(message.value)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -173,6 +224,46 @@ class WorkLedgerAppendHost:
                 command_id, "", f"not a ledger append request: {exc}"
             )
             return
+        await self._append_and_publish(request, command_id)
+
+    async def _process_delegation(
+        self, message: ProtocolBusMessage, topic: str
+    ) -> None:
+        payload = unwrap_envelope(message.value)
+        raw = payload.get("_envelope", {}) if payload is not None else {}
+        if not isinstance(raw, dict):
+            raw = {}
+        command_id = _uuid_or_none(raw.get("envelope_id"))
+        try:
+            if payload is None:
+                raise ValueError("delegation terminal is not an object")
+            if (
+                not any(
+                    payload.get(key) is not None
+                    for key in ("emitted_at", "emittedAt", "timestamp")
+                )
+                and raw.get("envelope_timestamp") is None
+            ):
+                raise ValueError("delegation terminal has no event timestamp")
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            completed_topic = self._delegation_topics[0]
+            if (terminal.status == "completed") != (topic == completed_topic):
+                raise ValueError("delegation terminal status disagrees with topic")
+            request = self._mapper.handle(terminal)
+        except (ValueError, ValidationError) as exc:
+            await self._publish_failure(
+                command_id, "", f"invalid delegation terminal: {exc}"
+            )
+            return
+        await self._append_and_publish(request, command_id, require_landed=True)
+
+    async def _append_and_publish(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        command_id: uuid.UUID | None,
+        *,
+        require_landed: bool = False,
+    ) -> None:
         try:
             receipt = await asyncio.to_thread(self._handler.handle, request)
         except (
@@ -181,6 +272,8 @@ class WorkLedgerAppendHost:
             await self._publish_failure(
                 command_id, str(request.request_id), f"{type(exc).__name__}: {exc}"
             )
+            if require_landed:
+                raise
             return
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=receipt.model_dump(mode="json"),
@@ -201,6 +294,13 @@ class WorkLedgerAppendHost:
             receipt.exit_code,
             receipt.ledger_lines,
         )
+        if require_landed and receipt.status not in (
+            EnumWorkLedgerAppendStatus.ACCEPTED,
+            EnumWorkLedgerAppendStatus.DUPLICATE,
+        ):
+            raise RuntimeError(
+                f"delegation ledger append {receipt.status}: {receipt.message}"
+            )
 
     async def _publish_failure(
         self, command_id: uuid.UUID | None, request_id: str, message: str
