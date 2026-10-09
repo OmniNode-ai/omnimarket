@@ -1,0 +1,68 @@
+---
+name: node_delegation_acceptance_judged_publish_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: false
+description: >
+  Publishes judged-acceptance events on the bus through the local emit daemon, the path
+  delegation terminals use (omnimarket.events.emit_client over the daemon's Unix socket), never
+  a direct database or broker write. Used by the delegation-judge skill after score, and to
+  replay a committed run. A socket that is absent or refuses an event fails the run and names the
+  socket; the events carry deterministic ids, so publishing them again is safe.
+
+handler:
+  module: omnimarket.nodes.node_delegation_acceptance_judged_publish_effect.handlers.handler_delegation_acceptance_judged_publish
+  class: HandlerDelegationAcceptanceJudgedPublish
+  input_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_publish_request.ModelAcceptancePublishRequest
+  output_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_publish_result.ModelAcceptancePublishResult
+
+handler_routing:
+  handlers:
+    - operation: delegation_acceptance_judged_publish
+      handler:
+        name: HandlerDelegationAcceptanceJudgedPublish
+        module: omnimarket.nodes.node_delegation_acceptance_judged_publish_effect.handlers.handler_delegation_acceptance_judged_publish
+
+input_model:
+  name: ModelAcceptancePublishRequest
+  module: omnimarket.models.delegation_acceptance_judge.model_acceptance_publish_request
+  description: "The judged-acceptance events and, optionally, the emit daemon socket path."
+output_model:
+  name: ModelAcceptancePublishResult
+  module: omnimarket.models.delegation_acceptance_judge.model_acceptance_publish_result
+  description: "Completed with the count published, or failed naming the socket."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true  # event_id is the uuid5 of judge_run_id and correlation_id
+  timeout_ms: 60000
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-acceptance-judged-publish.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-acceptance-judged-publish-completed.v1
+    failure: onex.evt.omnimarket.delegation-acceptance-judged-publish-failed.v1
+  default_timeout_ms: 60000
+  max_timeout_ms: 60000
+
+terminal_event: onex.evt.omnimarket.delegation-acceptance-judged-publish-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-acceptance-judged-publish.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-acceptance-judged.v1
+    - onex.evt.omnimarket.delegation-acceptance-judged-publish-completed.v1
+    - onex.evt.omnimarket.delegation-acceptance-judged-publish-failed.v1
+
+# The judged events are consumed by the judged-acceptance projection (OMN-20428 J.5); the two
+# terminal events by the observability plane.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-acceptance-judged-publish-completed.v1
+  - onex.evt.omnimarket.delegation-acceptance-judged-publish-failed.v1
+
+metadata:
+  transport_type: kafka

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_bus_mirror
+version: "0.1.0"
+description: Pure lab work terminal to ledger STATUS mapping
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_bus_mirror: omnimarket.nodes.node_work_ledger_bus_mirror
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies: ["pydantic>=2.12.5"]
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, work-ledger, lab-work]
+node_role: compute
+pack: pipeline
+display_name: Lab Work Ledger Mirror

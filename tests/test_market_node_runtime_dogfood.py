@@ -86,6 +86,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # overlay, so it has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_morning_ground_state_orchestrator",
+    # OMN-20674: hosted from the operator tooling repository, whose copy is
+    # still registered; its briefs, paths and lanes arrive through a deployment
+    # overlay, so it has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_morning_friction_sweep_orchestrator",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.

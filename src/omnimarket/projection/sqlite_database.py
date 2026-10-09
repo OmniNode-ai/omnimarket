@@ -52,7 +52,11 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     correlation_id          TEXT    NOT NULL UNIQUE,
     -- OMN-19448: nullable terminal stop reason and truncation evidence.
     finish_reason           TEXT,
-    truncated               INTEGER
+    truncated               INTEGER,
+    -- OMN-19448: nullable requested model and terminal timings (0058).
+    requested_model         TEXT,
+    queue_wait_ms           INTEGER,
+    execution_ms            INTEGER
 )
 """
 
@@ -81,6 +85,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "delegated_to",
     "delegation_latency_ms",
     "escalation_count",
+    "execution_ms",
     "finish_reason",
     "host",
     "latency_ms",
@@ -95,7 +100,9 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "quality_gate_passed",
     "quality_gates_checked",
     "quality_gates_failed",
+    "queue_wait_ms",
     "request_override_applied",
+    "requested_model",
     "required_bar",
     "response_text",
     "routed_model",

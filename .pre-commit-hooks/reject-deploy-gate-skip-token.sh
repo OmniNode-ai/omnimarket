@@ -5,6 +5,7 @@
 # OMN-10414 (extends OMN-10347 / OMN-9730 DGM-Phase4): Mechanical block on ALL
 # [skip-*] bypass tokens, including [skip-receipt-gate:] and [skip-deploy-gate:].
 # Rejects any staged file or commit message containing [skip-<anything>:].
+# OMN-12696 extends staged scans to committed .onex_state/evidence text files.
 #
 # BLOCKING — this hook rejects all [skip-*] tokens. This is the LOCAL enforcement
 # layer. The GHA workflow (reject-deploy-gate-skip.yml) is the REMOTE enforcement
@@ -27,6 +28,8 @@
 # Usage:
 #   Invoked by pre-commit with staged filenames as arguments.
 #   --self-test       Run synthetic self-tests and exit.
+#   --commit-msg <FILE>   Scan one commit message file (the remote hook's commit-msg id passes this;
+#                         a missing file is an error, not a pass).
 #   --check-pr-body <PR_NUMBER>   Also scan live PR body via gh cli.
 
 set -euo pipefail
@@ -159,7 +162,16 @@ fi
 # pre-commit passes the message file path; we read it directly (it is not a
 # staged blob — it lives outside the index).
 # ──────────────────────────────────────────────────────────────────────────────
-if [[ "${GIT_HOOK_STAGE:-}" == "commit-msg" || "$#" -eq 1 && "${1:-}" == *COMMIT_EDITMSG* ]]; then
+EXPLICIT_COMMIT_MSG=0
+if [[ "${1:-}" == "--commit-msg" ]]; then
+    EXPLICIT_COMMIT_MSG=1
+    shift
+    if [[ "$#" -ne 1 || ! -f "${1:-}" ]]; then
+        echo "ERROR: --commit-msg requires exactly one existing message file" >&2
+        exit 2
+    fi
+fi
+if [[ "$EXPLICIT_COMMIT_MSG" -eq 1 || "${GIT_HOOK_STAGE:-}" == "commit-msg" || "$#" -eq 1 && "${1:-}" == *COMMIT_EDITMSG* ]]; then
     msg_file="${1:-}"
     if [[ -n "$msg_file" && -f "$msg_file" ]]; then
         if grep -qiE "$SKIP_PATTERN" "$msg_file"; then
@@ -184,8 +196,8 @@ fi
 # Normal mode: scan staged files passed as arguments.
 # Read staged blobs from the index (git show :$file) rather than the working
 # tree to prevent bypass via working-tree edits after git add.
-# Only scan file types that could plausibly be PR bodies or ticket contracts:
-# markdown, yaml, yml, txt, md. Python/shell source that discusses skip tokens
+# Only scan file types that could plausibly be PR bodies, ticket contracts, or
+# committed session evidence. Python/shell source that discusses skip tokens
 # (docs, tests, validators) should not be blocked by this hook.
 # ──────────────────────────────────────────────────────────────────────────────
 FOUND_VIOLATION=0
@@ -194,6 +206,12 @@ for file in "$@"; do
     # Restrict to PR-body-like file types to avoid false positives on source/test files
     case "$file" in
         *.md|*.yaml|*.yml|*.txt) ;;
+        .onex_state/evidence/*|*/.onex_state/evidence/*)
+            case "$file" in
+                *.err|*.json|*.jsonl|*.log|*.out) ;;
+                *) continue ;;
+            esac
+            ;;
         *) continue ;;
     esac
 
@@ -209,9 +227,9 @@ for file in "$@"; do
         continue
     fi
 
-    if grep -qiE "$SKIP_PATTERN" <<< "$staged_content"; then
+    if grep -qiE "$SKIP_PATTERN" < <(printf '%s\n' "$staged_content"); then
         # Check for explicit allowlist receipt in the staged content (also case-insensitive)
-        if grep -qiE "$ALLOWLIST_PATTERN" <<< "$staged_content"; then
+        if grep -qiE "$ALLOWLIST_PATTERN" < <(printf '%s\n' "$staged_content"); then
             echo "WARNING: [skip-*] token found in $file but explicit approval receipt present — allowed." >&2
             continue
         fi

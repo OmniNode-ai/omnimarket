@@ -84,7 +84,19 @@ DELEGATE_CONTRACT: Final[Path] = (
 # everything before it, so with thinking on the deliberation never reached the
 # caller.  With thinking off the model writes its reasoning inside the
 # deliverable, where the caller does receive it (OMN-19267).
-REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {}
+#
+# OMN-20469 put `reasoning` (only) back on the thinking-on path on a 60-item,
+# two-judge replay: accepted 48 of 60 with thinking on against 28 (Codex judge)
+# and 35 (Opus judge) with it off, and 0 of 60 thinking-on responses were
+# refused by the extractor because the servers separate the trace into
+# `reasoning_content`.
+REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {
+    "reasoning": (
+        "OMN-20469: thinking on was accepted 48 of 60 against 28 (Codex judge) "
+        "and 35 (Opus judge) with it off; both gains clear the pre-registered "
+        "bar of 15 points and an exact paired p below 0.05"
+    ),
+}
 
 
 def _allowed_task_types() -> list[str]:
@@ -184,7 +196,7 @@ def test_document_class_is_the_measured_regression() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("task_type", ["reasoning", "complex_reasoning"])
+@pytest.mark.parametrize("task_type", ["complex_reasoning"])
 def test_reasoning_classes_are_the_measured_empty_answer_regression(
     task_type: str,
 ) -> None:
