@@ -495,28 +495,3 @@ tiers:
           - validator_generation
     eval_before_accept: false
     max_retries: 2
-
-# Harness tiers (OMN-20287) — the rungs a harness backend serves.
-#
-# One tier per backend declared as `kind: harness` in bifrost_delegation.yaml
-# `backends`. A task class names these tiers, beside `local`, in its
-# `escalation_chain` (task_class_contracts.v1.yaml). They are a separate block
-# because the ladder above is walked over HTTP backends only: the ladder parser
-# reads `tiers` and nothing else, so declaring a harness tier here changes no
-# live route. `use_for` lists the classes whose chain may name the tier.
-harness_tiers:
-  - name: harness_codex
-    backend_id: harness-codex
-    use_for: [code_review, test, code_generation]
-  - name: harness_glm_flash
-    backend_id: harness-claude-glm-flash
-    use_for: [document]
-  - name: harness_glm
-    backend_id: harness-claude-glm
-    use_for: [document, code_review, reasoning]
-  - name: harness_haiku
-    backend_id: harness-claude-haiku
-    use_for: [document, test]
-  - name: harness_sonnet
-    backend_id: harness-claude-sonnet
-    use_for: [summarization, document, code_review, test, code_generation, reasoning]

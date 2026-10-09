@@ -12,17 +12,10 @@ from __future__ import annotations
 
 from omnibase_infra.errors import ProtocolConfigurationError
 
-from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    load_bifrost_delegation_config,
-)
 from omnimarket.enums.enum_harness_rung_refusal import EnumHarnessRungRefusal
-from omnimarket.inference.delegation_config_provenance import (
-    resolve_bifrost_path_binding,
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    ModelDelegationRoutingOverlay,
 )
-from omnimarket.models.delegation.model_class_escalation_chain import (
-    ModelClassEscalationChain,
-)
-from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 from omnimarket.models.delegation.model_resolved_chain_rung import (
     ModelResolvedChainRung,
 )
@@ -32,14 +25,12 @@ from omnimarket.models.delegation.model_resolved_escalation_chain import (
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
     EnumDelegationBackendSurface,
-    ModelDelegationBackendConfig,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     _get_config,
-    _get_task_class_contract,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.routing_tiers_path import load_harness_tiers
+from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
 
 def resolve_class_escalation_chain(
@@ -47,42 +38,22 @@ def resolve_class_escalation_chain(
     *,
     tenant_id: str | None,
     surface: EnumDelegationBackendSurface,
-    backends: tuple[ModelDelegationBackendConfig, ...] | None = None,
-    harness_tiers: tuple[ModelHarnessTier, ...] | None = None,
-    task_class_contract: dict[str, object] | None = None,
+    overlay: ModelDelegationRoutingOverlay | None = None,
     ladder_tier_names: frozenset[str] | None = None,
 ) -> ModelResolvedEscalationChain | None:
     """Resolve a declared chain without selecting a backend within a live ladder tier."""
-    contract = (
-        task_class_contract
-        if task_class_contract is not None
-        else _get_task_class_contract()
-    )
-    if contract is None:
+    overlay = overlay if overlay is not None else load_delegation_routing_overlay()
+    chain = overlay.chain_for(task_type)
+    if chain is None:
         return None
-    classes = contract.get("task_classes")
-    if not isinstance(classes, dict):
-        return None
-    entry = classes.get(task_type)
-    if not isinstance(entry, dict) or "escalation_chain" not in entry:
-        return None
-    chain = ModelClassEscalationChain.model_validate(entry["escalation_chain"])
-    if backends is None:
-        binding = resolve_bifrost_path_binding()
-        config = load_bifrost_delegation_config(
-            config_path=binding.contract_path, overlay_path=binding.overlay_path
-        )
-        backends = tuple(
-            backend
-            for backend in config.backends
-            if backend.kind is EnumDelegationBackendKind.HARNESS
-        )
-    if harness_tiers is None:
-        harness_tiers = load_harness_tiers()
     if ladder_tier_names is None:
         ladder_tier_names = frozenset(tier.name for tier in _get_config().tiers)
-    tier_by_name = {tier.name: tier for tier in harness_tiers}
-    backend_by_id = {backend.backend_id: backend for backend in backends}
+    tier_by_name = overlay.tier_by_name()
+    collisions = tier_by_name.keys() & ladder_tier_names
+    if collisions:
+        msg = f"Overlay harness tiers collide with ladder tier names: {tuple(sorted(collisions))}"
+        raise ProtocolConfigurationError(msg)
+    backend_by_id = overlay.backend_by_id()
     resolved: list[ModelResolvedChainRung] = []
     for name in chain.rungs:
         if name in ladder_tier_names:
