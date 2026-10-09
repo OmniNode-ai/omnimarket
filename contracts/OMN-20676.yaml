@@ -22,10 +22,25 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: the entry point is package-form, the metadata passes the schema test and the contract declares the command and terminal topics -- falsifier: uv run pytest tests/test_merge_sweep_plan_registration.py tests/nodes/node_merge_sweep_plan_compute/test_golden_chain_merge_sweep_plan_compute.py -q"
+  - id: "req-merge-sweep-reading-node"
+    statement: "The reading of a merge sweep is the pure node node_merge_sweep_reading_compute over facts gathered from the PR watcher's state by node_merge_sweep_effect, equal to the old reader's reading on the recorded sweep."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the product merges, controller stall, escalations, red PRs with owners and classes, chain heads and claim-time rechecks of the node chain equal the old sweep reader's on the recorded sweep, and the plan over them equals the old plan -- falsifier: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q fails on a broken owner gate or a broken class rule"
+  - id: "req-merge-sweep-dispatch"
+    statement: "The brief of each lane and its dispatch through the remote-lane runner are operations of the plan and effect nodes, equal to the real merge_sweep.js run with scripted runner exit codes on the recorded sweep."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: every brief, runner command, start, wait and receipt of a sweep through the nodes equals the real merge_sweep.js run with scripted runner exit codes on the recorded cases -- falsifier: uv run pytest tests/nodes/node_merge_sweep_effect/test_merge_sweep_dispatch_parity.py -q fails on a broken brief"
+  - id: "req-merge-sweep-shard2-registration"
+    statement: "The reading and effect nodes are package-form entry points with valid metadata, their topics are declared in their contracts and the effect refuses a state that is not fresh."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the entry points are package-form, the metadata passes the schema test, the contracts declare their topics and a stale or incomplete watcher state is refused with no reading -- falsifier: uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
 evidence_requirements:
   - kind: "tests"
     description: "Focused tests of the merge-sweep plan node."
-    command: "uv run pytest tests/nodes/node_merge_sweep_plan_compute tests/test_merge_sweep_plan_registration.py -q"
+    command: "uv run pytest tests/nodes/node_merge_sweep_plan_compute tests/nodes/node_merge_sweep_reading_compute tests/nodes/node_merge_sweep_effect tests/test_merge_sweep_plan_registration.py tests/test_merge_sweep_nodes_registration.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -55,3 +70,27 @@ dod_evidence:
         check_value: "uv run pytest tests/test_merge_sweep_plan_registration.py tests/nodes/node_merge_sweep_plan_compute/test_golden_chain_merge_sweep_plan_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20676-ac4-reading-parity"
+    description: "AC4 reading and claim-check parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20676-ac5-dispatch-parity"
+    description: "AC5 brief and dispatch parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_effect/test_merge_sweep_dispatch_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20676-ac6-shard2-registration"
+    description: "AC6 entry point, metadata, contract topic and refusal tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

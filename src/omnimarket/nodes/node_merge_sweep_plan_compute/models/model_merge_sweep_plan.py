@@ -175,3 +175,37 @@ class ModelMergeSweepPlanResult(BaseModel):
     skipped: list[ModelMergeSweepSkipped]
     dispatch: list[ModelMergeSweepLane]
     deferred: int
+
+
+DEFAULT_CLAIM_CHECK_COMMAND = (
+    'python3 "${CLAUDE_PLUGIN_ROOT}/skills/merge-sweep/scripts/sweep_read.py" '
+    "--claim-check <repo>#<n>"
+)
+
+
+class ModelMergeSweepBriefRequest(BaseModel):
+    """One lane to brief: its name, its kind, the PRs it covers and why the sweep planned it.
+
+    ``sweep_lane`` is the sweep's own lane and ``orchestrator`` its parent. ``claim_check_command``
+    is the recheck every lane runs before it touches a PR.
+    """
+
+    model_config = _FROZEN
+
+    lane: str
+    sweep_lane: str
+    orchestrator: str
+    ticket: str
+    kind: str
+    repo: str | None = None
+    prs: list[ModelMergeSweepLanePr] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    claim_check_command: str = DEFAULT_CLAIM_CHECK_COMMAND
+
+
+class ModelMergeSweepBrief(BaseModel):
+    """The lane's brief, as the runner is given it."""
+
+    model_config = _FROZEN
+
+    text: str

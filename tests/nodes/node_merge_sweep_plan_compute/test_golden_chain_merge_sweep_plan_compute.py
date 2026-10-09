@@ -50,6 +50,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     assert {e["operation"] for e in routing["handlers"]} == {
         "plan_merge_sweep_lanes",
         "decide_merge_sweep_lane_retry",
+        "render_merge_sweep_lane_brief",
     }
 
 
