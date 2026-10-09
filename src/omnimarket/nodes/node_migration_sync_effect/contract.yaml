@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Migration Sync Effect (OMN-20687)
+#
+# The I/O half of vendoring omnimarket node migrations into omnibase_infra's
+# forward-migration tree. The decisions (copy, keep as declared history, remove as
+# stale, drift, the old script's messages and exit code) are
+# node_migration_sync_plan_compute's; this node reads the trees and the manifest,
+# and applies the actions the plan decided.
+#
+# WHO HOSTS THIS NODE. A serve process on a host that holds both checkouts: the
+# omnimarket source (or its installed package) and the omnibase_infra tree that
+# receives the vendored files. Shared runtimes must NOT attach it: an attached copy
+# would read a runtime container's filesystem, not the operator's checkout. The
+# contract declares runtime_dispatch and NO event_bus block, as node_lab_fill_effect
+# does; runtime auto-wiring attaches only contracts that declare both.
+#
+# NO ENVIRONMENT. The old script read OMNIMARKET_SRC, OMNI_HOME, the destination
+# and the manifest from its environment. They arrive on the request, read by the
+# caller from its own.
+name: "node_migration_sync_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Reads the omnimarket node migrations, the vendored copies and the
+  application-migrations manifest into an inventory, and applies the copy and remove
+  actions a plan decided below the vendored root. Decides nothing about which
+  migrations are in sync.
+input_model:
+  name: "ModelMigrationSyncReadRequest"
+  module: "omnimarket.nodes.node_migration_sync_effect.models.model_migration_sync_effect"
+  description: "Source, vendored root and manifest to read (read); the apply operation has its own request."
+output_model:
+  name: "ModelMigrationSyncInventory"
+  module: "omnimarket.models.migration_sync.model_migration_sync"
+  description: "The inventory the plan node decides from, or the read that failed (read); the apply operation has its own result."
+handler:
+  module: "omnimarket.nodes.node_migration_sync_effect.handlers.handler_migration_sync_read"
+  class: "HandlerMigrationSyncRead"
+  input_model: "omnimarket.nodes.node_migration_sync_effect.models.model_migration_sync_effect.ModelMigrationSyncReadRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_migration_sync_effect.handlers.handler_migration_sync_read:HandlerMigrationSyncRead"
+  handlers:
+    - operation: "read_migration_sync_inventory"
+      handler:
+        name: "HandlerMigrationSyncRead"
+        module: "omnimarket.nodes.node_migration_sync_effect.handlers.handler_migration_sync_read"
+      input_model: "omnimarket.nodes.node_migration_sync_effect.models.model_migration_sync_effect.ModelMigrationSyncReadRequest"
+      output_model: "omnimarket.models.migration_sync.model_migration_sync.ModelMigrationSyncInventory"
+    - operation: "apply_migration_sync_plan"
+      handler:
+        name: "HandlerMigrationSyncApply"
+        module: "omnimarket.nodes.node_migration_sync_effect.handlers.handler_migration_sync_apply"
+      input_model: "omnimarket.nodes.node_migration_sync_effect.models.model_migration_sync_effect.ModelMigrationSyncApplyRequest"
+      output_model: "omnimarket.nodes.node_migration_sync_effect.models.model_migration_sync_effect.ModelMigrationSyncApplyResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.migration-sync-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.migration-sync-effect-completed.v1"
+    failure: "onex.evt.omnimarket.migration-sync-effect-failed.v1"
+published_events:
+  - event_type: ModelMigrationSyncApplyResult
+    topic: onex.evt.omnimarket.migration-sync-effect-completed.v1
+    description: "The outcome of one migration-sync effect operation, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.migration-sync-effect-completed.v1
+  - onex.evt.omnimarket.migration-sync-effect-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-20687
+  description: "Migration-sync I/O: read the source, vendored and manifest trees; apply the planned copies and removals"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "migrations"
+    - "OMN-20687"

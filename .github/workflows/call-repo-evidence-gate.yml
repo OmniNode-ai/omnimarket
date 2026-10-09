@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@81b34fe91f995e75acd65694e81ecf2c385456a4 # OMN-17427: immutable full-SHA pin, the squash commit of omnibase_core#1912 on that repo's dev branch, the pin omnibase_core's own caller uses. It descends from omnibase_core#1884 (the dependency-bot and pin-only writer-app exemption, OMN-20073), #1886 (Postgres for bound tests, OMN-20543) and #1911, whose dod-verify job derives the writer app's dependency-pin-only exemption from the head's diff with the pinned verifier, because omnimarket no longer produces the occ-autobind outcome that exemption used to read.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@fb0c6c2117d5868a398b0920cd0048d0824415b1 # OMN-20074: immutable full-SHA pin, the squash commit of omnibase_core#1914 on that repo's dev branch, the pin omnibase_core's own caller and omnibase_infra's caller use; it descends from #1912 (and #1884, #1886, #1911) and adds the writer app's release-cut exemption derived at the head.
     with:
       evidence-source: caller
       verifier-version: 0.4.294

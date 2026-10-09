@@ -1,0 +1,96 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20676"
+title: "The merge sweep's lane plan, dispatch cap and lane retry decisions are the node node_merge_sweep_plan_compute"
+summary: "The first shard of OMN-20676 adds the pure compute node node_merge_sweep_plan_compute, which ports the merge-sweep skill's lane plan and the sweep workflow's dispatch cap and lane retry loop, with its topics declared in its contract. The workflow stays the live path: the lane runner, the reader and the callers are not moved in this shard. AC1 and AC2 are bound to the parity tests recorded from the old tools, and AC3 to the entry-point and metadata test."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-merge-sweep-plan-node"
+    statement: "The lane plan of a merge sweep is the pure node node_merge_sweep_plan_compute, equal to the skill's own plan rule over generated readings."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the lanes, skipped PRs, placement flag and load per core of node_merge_sweep_plan_compute equal the skill's own plan rule on the recorded parity cases -- falsifier: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py -q fails on a broken owner gate"
+  - id: "req-merge-sweep-workflow-decisions"
+    statement: "The dispatch cap and the lane retry loop of the sweep workflow are operations of the same node, equal to the workflow run with scripted runner exits."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the dispatched and deferred lane counts and every start and wait of a lane equal the real merge_sweep.js run with scripted runner exit codes on the recorded cases -- falsifier: uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py -q fails on a wrong no-host exit code"
+  - id: "req-merge-sweep-plan-registration"
+    statement: "The node is a package-form entry point with valid metadata and its topics are declared in its contract."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the entry point is package-form, the metadata passes the schema test and the contract declares the command and terminal topics -- falsifier: uv run pytest tests/test_merge_sweep_plan_registration.py tests/nodes/node_merge_sweep_plan_compute/test_golden_chain_merge_sweep_plan_compute.py -q"
+  - id: "req-merge-sweep-reading-node"
+    statement: "The reading of a merge sweep is the pure node node_merge_sweep_reading_compute over facts gathered from the PR watcher's state by node_merge_sweep_effect, equal to the old reader's reading on the recorded sweep."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the product merges, controller stall, escalations, red PRs with owners and classes, chain heads and claim-time rechecks of the node chain equal the old sweep reader's on the recorded sweep, and the plan over them equals the old plan -- falsifier: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q fails on a broken owner gate or a broken class rule"
+  - id: "req-merge-sweep-dispatch"
+    statement: "The brief of each lane and its dispatch through the remote-lane runner are operations of the plan and effect nodes, equal to the real merge_sweep.js run with scripted runner exit codes on the recorded sweep."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: every brief, runner command, start, wait and receipt of a sweep through the nodes equals the real merge_sweep.js run with scripted runner exit codes on the recorded cases -- falsifier: uv run pytest tests/nodes/node_merge_sweep_effect/test_merge_sweep_dispatch_parity.py -q fails on a broken brief"
+  - id: "req-merge-sweep-shard2-registration"
+    statement: "The reading and effect nodes are package-form entry points with valid metadata, their topics are declared in their contracts and the effect refuses a state that is not fresh."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the entry points are package-form, the metadata passes the schema test, the contracts declare their topics and a stale or incomplete watcher state is refused with no reading -- falsifier: uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused tests of the merge-sweep plan node."
+    command: "uv run pytest tests/nodes/node_merge_sweep_plan_compute tests/nodes/node_merge_sweep_reading_compute tests/nodes/node_merge_sweep_effect tests/test_merge_sweep_plan_registration.py tests/test_merge_sweep_nodes_registration.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20676-ac1-plan-parity"
+    description: "AC1 lane plan parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20676-ac2-workflow-parity"
+    description: "AC2 dispatch cap and retry parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py tests/nodes/node_merge_sweep_plan_compute/test_error_chain_merge_sweep_plan_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20676-ac3-registration"
+    description: "AC3 entry point, metadata and contract topic tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_merge_sweep_plan_registration.py tests/nodes/node_merge_sweep_plan_compute/test_golden_chain_merge_sweep_plan_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20676-ac4-reading-parity"
+    description: "AC4 reading and claim-check parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20676-ac5-dispatch-parity"
+    description: "AC5 brief and dispatch parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_effect/test_merge_sweep_dispatch_parity.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20676-ac6-shard2-registration"
+    description: "AC6 entry point, metadata, contract topic and refusal tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_merge_sweep_nodes_registration.py tests/nodes/node_merge_sweep_reading_compute/test_golden_chain_merge_sweep_reading_compute.py tests/nodes/node_merge_sweep_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

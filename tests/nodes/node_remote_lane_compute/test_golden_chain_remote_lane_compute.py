@@ -10,17 +10,20 @@ from typing import Any
 
 import yaml
 
+from omnimarket.nodes.node_remote_lane_close_compute.models import (
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.nodes.node_remote_lane_compute.models import (
     ModelRemoteLanePlacementRequest,
-    ModelRemoteLaneResultRequest,
 )
 
 NAME = "node_remote_lane_compute"
+CLOSE_NAME = "node_remote_lane_close_compute"
 
 
-def _contract() -> dict[str, Any]:
+def _contract(name: str = NAME) -> dict[str, Any]:
     return yaml.safe_load(
-        files(f"omnimarket.nodes.{NAME}").joinpath("contract.yaml").read_text()
+        files(f"omnimarket.nodes.{name}").joinpath("contract.yaml").read_text()
     )
 
 
@@ -49,7 +52,22 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     assert routing["routing_strategy"] == "operation_match"
     assert {e["operation"] for e in routing["handlers"]} == {
         "decide_remote_lane_placement",
-        "decide_remote_lane_result",
+    }
+
+
+def test_close_contract_declares_its_own_bus_route() -> None:
+    contract = _contract(CLOSE_NAME)
+    assert contract["name"] == CLOSE_NAME
+    assert contract["node_type"] == "compute"
+    assert contract["descriptor"]["side_effects"] == []
+    bus = contract["event_bus"]
+    assert bus["subscribe_topics"] == [
+        "onex.cmd.omnimarket.remote-lane-close-requested.v1"
+    ]
+    assert bus["publish_topics"] == ["onex.evt.omnimarket.remote-lane-close-decided.v1"]
+    assert contract["terminal_event"] in bus["publish_topics"]
+    assert {e["operation"] for e in contract["handler_routing"]["handlers"]} == {
+        "decide_remote_lane_close",
     }
 
 
@@ -90,7 +108,10 @@ def test_golden_chain_places_a_lane_then_closes_it() -> None:
         ("host_b", "usage-limited"),
     ]
 
-    handler, request_type, result_type = _resolve(entries["decide_remote_lane_result"])
+    closing = {
+        e["operation"]: e for e in _contract(CLOSE_NAME)["handler_routing"]["handlers"]
+    }
+    handler, request_type, result_type = _resolve(closing["decide_remote_lane_close"])
     assert request_type is ModelRemoteLaneResultRequest
     closed = handler().handle(
         request_type(

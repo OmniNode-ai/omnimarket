@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Merge Sweep Effect (OMN-20676)
+#
+# The I/O half of a merge sweep. The decisions (the reading, the lane plan, the dispatch cap, each
+# lane's brief, the retry of a lane) are node_merge_sweep_reading_compute's and
+# node_merge_sweep_plan_compute's; this node reads and acts: it gathers a reading's facts from the
+# PR watcher's state, the rolling ledger and the controller's tick log, and it starts one lane
+# through the remote-lane runner and waits for its receipt. It makes no GitHub call.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that holds the PR watcher's state, the ledger
+# copy, the controller's tick log and the remote-lane runner. Shared runtimes must NOT attach it:
+# an attached copy would read a runtime container's filesystem and could start lanes from the
+# wrong host. The contract declares runtime_dispatch and NO event_bus block, as
+# node_lab_fill_effect does.
+#
+# OVERLAY. No project, operator, host path or ticket lives in this node: they arrive on the
+# request, read by the caller from its overlay.
+name: "node_merge_sweep_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Gathers the facts of one merge-sweep reading from the PR watcher's state file (refusing a
+  state that is not fresh), the ledger and the controller's tick log, and starts one merge-sweep
+  lane through the remote-lane runner, returning its final receipt. Decides nothing about which
+  lanes run or when one is retried.
+input_model:
+  name: "ModelMergeSweepLoadRequest"
+  module: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect"
+  description: "Paths of the state, ledger, tick log and floors, and the time (load facts); each operation has its own request."
+output_model:
+  name: "ModelMergeSweepLoadResult"
+  module: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect"
+  description: "The facts of one reading or the reason the state was refused (load facts); each operation has its own result."
+handler:
+  module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts"
+  class: "HandlerMergeSweepLoadFacts"
+  input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts:HandlerMergeSweepLoadFacts"
+  handlers:
+    - operation: "load_merge_sweep_facts"
+      handler:
+        name: "HandlerMergeSweepLoadFacts"
+        module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_load_facts"
+      input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadRequest"
+      output_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLoadResult"
+    - operation: "run_merge_sweep_lane"
+      handler:
+        name: "HandlerMergeSweepLaneRun"
+        module: "omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_lane_run"
+      input_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLaneRunRequest"
+      output_model: "omnimarket.nodes.node_merge_sweep_effect.models.model_merge_sweep_effect.ModelMergeSweepLaneRunResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 25000000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.merge-sweep-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.merge-sweep-effect-completed.v1"
+    failure: "onex.evt.omnimarket.merge-sweep-effect-failed.v1"
+published_events:
+  - event_type: ModelMergeSweepLaneRunResult
+    topic: onex.evt.omnimarket.merge-sweep-effect-completed.v1
+    description: "The outcome of one merge-sweep effect operation, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.merge-sweep-effect-completed.v1
+  - onex.evt.omnimarket.merge-sweep-effect-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-20676
+  description: "Merge-sweep I/O: gather a reading from the PR watcher state, start a lane"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "merge-sweep"
+    - "OMN-20676"
+  related_tickets:
+    - "OMN-20676"

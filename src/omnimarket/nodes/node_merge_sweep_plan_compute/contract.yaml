@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_plan_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide a merge sweep from supplied facts without I/O: the lanes one sweep dispatches
+  from one evaluated reading of the fleet (diagnose, escalation, land-chain-head and fix
+  lanes, with the PRs skipped and why, and the dispatch cap that defers the rest to the
+  next sweep), and what the sweep does next with a lane whose runner exited without a
+  host (wait and retry on no host, retry once on another host when the account is limited
+  or its login expired), and the brief each lane is dispatched with. The reading and the
+  lane receipts arrive evaluated.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: plan_merge_sweep_lanes
+    handler:
+      name: HandlerMergeSweepPlan
+      module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_plan
+    input_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_plan.ModelMergeSweepPlanRequest
+    output_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_plan.ModelMergeSweepPlanResult
+  - operation: decide_merge_sweep_lane_retry
+    handler:
+      name: HandlerMergeSweepRetry
+      module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_retry
+    input_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_retry.ModelMergeSweepRetryRequest
+    output_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_retry.ModelMergeSweepRetryResult
+  - operation: render_merge_sweep_lane_brief
+    handler:
+      name: HandlerMergeSweepBrief
+      module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_brief
+    input_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_plan.ModelMergeSweepBriefRequest
+    output_model: omnimarket.nodes.node_merge_sweep_plan_compute.models.model_merge_sweep_plan.ModelMergeSweepBrief
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.merge-sweep-plan-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.merge-sweep-planned.v1
+terminal_event: onex.evt.omnimarket.merge-sweep-planned.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.merge-sweep-plan-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.merge-sweep-planned.v1
+metadata:
+  ticket: OMN-20676
+  transport_type: kafka
+lifecycle: experimental

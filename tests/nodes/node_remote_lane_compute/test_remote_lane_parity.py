@@ -17,14 +17,18 @@ from typing import Any
 
 import pytest
 
+from omnimarket.nodes.node_remote_lane_close_compute.handlers import (
+    HandlerRemoteLaneResult,
+)
+from omnimarket.nodes.node_remote_lane_close_compute.models import (
+    ModelRemoteLaneResultRequest,
+)
 from omnimarket.nodes.node_remote_lane_compute.handlers import (
     HandlerRemoteLanePlacement,
-    HandlerRemoteLaneResult,
     handler_remote_lane_placement,
 )
 from omnimarket.nodes.node_remote_lane_compute.models import (
     ModelRemoteLanePlacementRequest,
-    ModelRemoteLaneResultRequest,
 )
 
 CASES = json.loads(
