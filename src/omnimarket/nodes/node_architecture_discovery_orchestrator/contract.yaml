@@ -76,11 +76,6 @@ descriptor:
   side_effects: [dispatches canonical coding-agent commands, writes KB report via the report phase]
 data_files:
   schemas: handlers/schemas.json
-entry_points:
-  console_scripts:
-    onex-architecture-discovery: omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main
-  onex.nodes:
-    node_architecture_discovery_orchestrator: omnimarket.nodes.node_architecture_discovery_orchestrator
 metadata:
   ticket: OMN-20679
   transport_type: kafka
