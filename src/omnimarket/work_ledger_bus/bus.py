@@ -252,6 +252,12 @@ class WorkLedgerAppendHost:
             if mirror:
                 raise
             return
+        # ProjectionNotMaterializedError's doctrine: content refusals advance;
+        # write-path errors withhold the offset and must not publish a receipt.
+        if mirror and receipt.status == EnumWorkLedgerAppendStatus.ERROR:
+            raise RuntimeError(
+                f"lab receipt append {receipt.status}: {receipt.message}"
+            )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=receipt.model_dump(mode="json"),
             correlation_id=request.request_id,
@@ -263,13 +269,14 @@ class WorkLedgerAppendHost:
             str(request.request_id).encode("utf-8"),
             _bytes(envelope),
         )
-        if mirror and receipt.status not in {
-            EnumWorkLedgerAppendStatus.ACCEPTED,
-            EnumWorkLedgerAppendStatus.DUPLICATE,
-        }:
-            raise RuntimeError(
-                f"lab receipt append {receipt.status}: {receipt.message}"
+        if mirror and receipt.status == EnumWorkLedgerAppendStatus.REFUSED:
+            logger.warning(
+                "work-ledger host %s request %s refused: %s",
+                receipt.ledger_host,
+                receipt.request_id,
+                receipt.message,
             )
+            return
         logger.info(
             "work-ledger host %s request %s status=%s exit=%s lines=%s",
             receipt.ledger_host,
