@@ -34,8 +34,8 @@ requirements:
           AC7: `--json` output on add, list and test, for the onboarding script to read.
 evidence_requirements:
   - kind: "tests"
-    description: "onex models add, test, list and remove against a SQLite store under tmp_path, with the pinned test delegation faked."
-    command: "uv run pytest tests/unit/cli/test_omn20817_models_cli.py -q -p no:randomly"
+    description: "onex models add, test, list and remove through node_model_setup_effect, against a SQLite store under tmp_path, with the pinned test delegation faked."
+    command: "uv run pytest tests/nodes/node_model_setup_effect/test_golden_chain_model_setup_effect.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -46,6 +46,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/cli/test_omn20817_models_cli.py -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_model_setup_effect/test_golden_chain_model_setup_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7"]

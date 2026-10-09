@@ -29,17 +29,20 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from omnimarket.cli import cli_models
-from omnimarket.cli.cli_models import key_looks_like, models_group
+from omnimarket.cli.cli_secret import models_group
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
 )
+from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    key_looks_like,
+)
 
 pytestmark = pytest.mark.unit
 
-_OPENAI_KEY = "sk-proj-customer-key"  # pragma: allowlist secret (a test value)
-_GEMINI_KEY = "AIzaCustomerKey"  # pragma: allowlist secret (a test value)
+_OPENAI_KEY = "sk-proj-customer-key"
+_GEMINI_KEY = "AIzaCustomerKey"
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +51,7 @@ def local_store_at_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     db_path.parent.mkdir()
     for module in (
         "omnimarket.inference.local_byok_credential_adapter",
-        "omnimarket.cli.cli_models",
+        "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup",
     ):
         monkeypatch.setattr(f"{module}.default_evidence_db_path", lambda: db_path)
     # The provider's model list is not under test; no network is used.
@@ -103,7 +106,7 @@ def _fake(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **kwargs: str
 ) -> _FakeDelegate:
     fake = _FakeDelegate(tmp_path, **kwargs)
-    monkeypatch.setattr(cli_models, "run_test_delegation", fake)
+    monkeypatch.setattr(handler_model_setup, "run_pinned_delegation", fake)
     return fake
 
 
@@ -128,7 +131,7 @@ class TestAdd:
         result = _run(["add", "openai"], stdin=f"{_OPENAI_KEY}\n")
 
         assert fake.pins == ["byok-openai"]
-        assert "OpenAI  ✓ answered (gpt-5-mini)" in result.output
+        assert "OpenAI      ✓ answered (gpt-5-mini)" in result.output
 
     def test_never_echoes_the_key(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -171,7 +174,8 @@ class TestAdd:
 
         assert result.exit_code == 1
         assert (
-            "OpenAI  ✗ provider_error: insufficient_quota: add credits" in result.output
+            "OpenAI      ✗ provider_error: insufficient_quota: add credits"
+            in result.output
         )
 
     def test_an_answer_from_another_backend_is_a_failure(

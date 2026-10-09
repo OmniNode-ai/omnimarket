@@ -40,7 +40,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from getpass import getpass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 from pydantic import SecretStr, ValidationError
@@ -59,6 +59,18 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
 )
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_result import (
     ModelLocalSecretResult,
+)
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    PROVIDERS,
+    HandlerModelSetup,
+    key_looks_like,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
+    ModelModelSetupRequest,
+    ModelProvider,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelModelTestResult,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
@@ -88,7 +100,7 @@ from omnimarket.routing.byok_provider_backends import (
 )
 from omnimarket.routing.local_byok_route import house_provider_slug
 
-__all__ = ["delete_secret_value", "secret_group", "store_secret_value"]
+__all__ = ["delete_secret_value", "models_group", "secret_group", "store_secret_value"]
 
 #: The leading characters a key for a known provider starts with. Checked only
 #: on the terminal prompt, where a mistyped or mis-pasted value is the failure;
@@ -668,3 +680,171 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+# ---------------------------------------------------------------------------
+# ``onex models`` (OMN-20817): set up the models delegation can use. A shim like
+# ``onex secret`` above: the key is stored by store_secret_value, and status and
+# the pinned test delegation are node_model_setup_effect's.
+# ---------------------------------------------------------------------------
+
+_MODEL_LABELS: dict[str, str] = {
+    "gemini": "Gemini",
+    "openrouter": "OpenRouter",
+    "openai": "OpenAI",
+    "ollama": "Ollama",
+    "anthropic": "Anthropic (Claude)",
+}
+_KEY_PAGES: dict[str, str] = {
+    "gemini": "aistudio.google.com/apikey",
+    "openrouter": "openrouter.ai/keys",
+    "openai": "platform.openai.com/api-keys",
+}
+_OLLAMA_HOW = (
+    "Ollama is installed by onboarding, which downloads a model sized to this "
+    "Mac: run onboarding again with --provider ollama."
+)
+
+
+def _model_handler() -> HandlerModelSetup:
+    return HandlerModelSetup()
+
+
+def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
+    if as_json:
+        click.echo(result.model_dump_json())
+        return
+    label = f"{_MODEL_LABELS[result.provider]:<11}"
+    if result.status == "passed":
+        click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
+    elif result.status == "failed":
+        click.echo(f"{label} ✗ {result.reason}")
+        if result.provider != "ollama":
+            click.echo(f"  Fix it, then run: onex models test {result.provider}")
+    elif result.provider == "ollama":
+        click.echo(f"{label} not set up. {_OLLAMA_HOW}")
+    else:
+        click.echo(
+            f"{label} not set up. Add it with: onex models add {result.provider}"
+        )
+
+
+def _read_model_key(provider: str) -> str:
+    """The key from stdin when piped, else one hidden prompt. Never echoed."""
+    label = _MODEL_LABELS[provider]
+    if _stdin_is_tty():
+        value = getpass(
+            f"Paste your {label} API key ({_KEY_PAGES[provider]}; input is hidden): "
+        ).strip()
+    else:
+        value = sys.stdin.read().strip()
+    if not value:
+        raise click.ClickException(f"no {label} key was entered; nothing was stored.")
+    looks = key_looks_like(value)
+    if looks is not None and looks != provider:
+        raise click.ClickException(
+            f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
+            "Nothing was stored."
+        )
+    return value
+
+
+_model_choice = click.Choice(PROVIDERS, case_sensitive=False)
+_model_json = click.option(
+    "--json", "as_json", is_flag=True, help="One JSON object per line."
+)
+
+
+models_group = click.Group(
+    "models",
+    help=(
+        "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
+        "Ollama.\n\nSet up any combination; delegation chooses among them for "
+        "each task."
+    ),
+)
+
+
+@models_group.command("add")
+@click.argument("provider", type=_model_choice)
+@_model_json
+def add_model(provider: str, as_json: bool) -> None:
+    """Store PROVIDER's key, then test it with one delegation pinned to it.
+
+    The key is read from stdin when piped, or asked for at a hidden prompt.
+    A key already stored for PROVIDER is replaced.
+    """
+    name = provider.lower()
+    handler = _model_handler()
+    if name == "ollama":
+        if not handler.is_set_up("ollama"):
+            raise click.ClickException(_OLLAMA_HOW)
+    else:
+        store_secret_value(f"llm.{name}.api_key", _read_model_key(name), force=True)
+    request = ModelModelSetupRequest(operation="test", provider=name)
+    (result,) = handler.handle(request).tests
+    _show_model_test(result, as_json)
+    if result.status != "passed":
+        sys.exit(1)
+
+
+@models_group.command("test")
+@click.argument("provider", required=False, type=_model_choice)
+@_model_json
+def test_models(provider: str | None, as_json: bool) -> None:
+    """Test PROVIDER, or every set-up provider, with one pinned delegation each."""
+    request = ModelModelSetupRequest(
+        operation="test",
+        provider=provider.lower() if provider else None,
+    )
+    tests = _model_handler().handle(request).tests
+    if not tests:
+        raise click.ClickException(
+            "no model is set up. Add one with: onex models add <provider>"
+        )
+    for result in tests:
+        _show_model_test(result, as_json)
+    if any(result.status != "passed" for result in tests):
+        sys.exit(1)
+
+
+@models_group.command("list")
+@_model_json
+def list_models(as_json: bool) -> None:
+    """Each provider: set up or not, and its last test result."""
+    status = _model_handler().handle(ModelModelSetupRequest(operation="status"))
+    for row in status.providers:
+        if as_json:
+            click.echo(row.model_dump_json())
+            continue
+        label = f"{_MODEL_LABELS[row.provider]:<11}"
+        last = row.last_test
+        if not row.set_up:
+            click.echo(f"{label} not set up")
+        elif last is None:
+            click.echo(f"{label} set up, not tested yet")
+        elif last.status == "passed":
+            click.echo(
+                f"{label} set up, last test passed {last.tested_at} ({last.model})"
+            )
+        else:
+            click.echo(
+                f"{label} set up, last test FAILED {last.tested_at}: {last.reason}"
+            )
+
+
+@models_group.command("remove")
+@click.argument("provider", type=_model_choice)
+def remove_model(provider: str) -> None:
+    """Delete PROVIDER's stored key so delegation no longer uses it."""
+    name = provider.lower()
+    handler = _model_handler()
+    if name == "ollama":
+        raise click.ClickException(
+            f"Ollama's routes are in {handler.overrides_path()}; delete that file "
+            "to stop using Ollama, and quit the Ollama app."
+        )
+    if not handler.is_set_up(cast(ModelProvider, name)):
+        raise click.ClickException(f"no {_MODEL_LABELS[name]} key is stored.")
+    delete_secret_value(f"llm.{name}.api_key")
+    handler.handle(ModelModelSetupRequest(operation="forget", provider=name))

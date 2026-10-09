@@ -874,7 +874,7 @@ work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
 secret = "omnimarket.cli.cli_secret:secret_group"
 # OMN-20817: `onex models` -- set up the models delegation can use (a key stored
 # and tested with one pinned delegation), at onboarding or any time after.
-models = "omnimarket.cli.cli_models:models_group"
+models = "omnimarket.cli.cli_secret:models_group"
 # OMN-19970: `onex seed` -- labelled fixture delegations through the real
 # delegation projection, for dev and demo dashboards. Registered here for the
 # same reason as the others: the CLI discovers this group over installed
