@@ -191,3 +191,27 @@ def test_effects_never_name_a_posting_command() -> None:
     source = Path(shadow_effects.__file__).read_text()
     for verb in ('"gh"', "gh pr comment", "gh api", "create_check", "pulls/comments"):
         assert verb not in source
+
+
+@pytest.mark.parametrize("var", ["GITHUB_ACTIONS", "CI"])
+def test_entry_point_refuses_to_run_in_ci(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, var: str
+) -> None:
+    from omnimarket.nodes.node_shadow_review_effect.__main__ import main
+
+    state = tmp_path / "state.json"
+    state.write_text('{"schema": 1, "prs": {}}')
+    monkeypatch.setenv(var, "true")
+    rc = main(
+        [
+            "--watcher-state",
+            str(state),
+            "--store",
+            str(tmp_path / "s"),
+            "--dry-run",
+            "--omni-home",
+            str(tmp_path),
+        ]
+    )
+    assert rc == 2
+    assert not (tmp_path / "s").exists()

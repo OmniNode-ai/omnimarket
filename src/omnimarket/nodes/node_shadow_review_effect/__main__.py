@@ -37,6 +37,8 @@ from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review impor
     ModelShadowReviewRequest,
 )
 
+_CI_MARKERS = ("GITHUB_ACTIONS", "CI")
+
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="node_shadow_review_effect")
@@ -60,6 +62,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    # Codex stays out of CI (operator ruling 2026-10-09T04:15:56Z): the tick
+    # runs on a lab host, never inside a CI runner where PR code runs.
+    ci_markers = [v for v in _CI_MARKERS if os.environ.get(v)]
+    if ci_markers:
+        sys.stderr.write(
+            f"refused: a shadow-review tick never runs in CI ({ci_markers[0]} is set)\n"
+        )
+        return 2
     if not args.watcher_state.is_file():
         sys.stderr.write(f"watcher state not found: {args.watcher_state}\n")
         return 2
