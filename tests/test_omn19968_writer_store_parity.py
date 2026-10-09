@@ -555,14 +555,25 @@ _CRED_CLOCK_COLUMNS = frozenset({"created_at", "updated_at", "revoked_at"})
 
 
 def _registered(
-    ref: str, name: str = "parity", provider: str = "openrouter"
+    ref: str, name: str = "parity", provider: str = "openrouter", **extra: Any
 ) -> dict[str, Any]:
     return {
         "tenant_id": _CRED_TENANT,
         "provider": provider,
         "name": name,
         "api_key_ref": ref,
+        **extra,
     }
+
+
+# OMN-19985: a locally set key's event carries its fingerprint prefix and set time.
+def _local(ref: str, fingerprint: str) -> dict[str, Any]:
+    return _registered(
+        ref,
+        name="llm.openrouter.api_key",
+        fingerprint=fingerprint,
+        set_at="2026-10-07T07:00:00+00:00",
+    )
 
 
 def _revoked(ref: str) -> dict[str, Any]:
@@ -591,6 +602,31 @@ _CRED_SCENARIOS: dict[str, list[tuple[str, dict[str, Any]]]] = {
         ("registered", _registered("ref-a")),
         ("revoked", _revoked("ref-a")),
         ("registered", _registered("ref-b")),
+    ],
+    # OMN-19985 AC4: the same fixtures carrying a fingerprint and set time.
+    "local_set_stores_the_fingerprint_and_set_time": [
+        ("registered", _local("ref-l", "0123abcd")),
+    ],
+    "local_revoke_keeps_the_fingerprint": [
+        ("registered", _local("ref-l", "0123abcd")),
+        ("revoked", _revoked("ref-l")),
+    ],
+    "local_revoke_before_register_then_the_fingerprint_fills_in": [
+        ("revoked", _revoked("ref-l")),
+        ("registered", _local("ref-l", "0123abcd")),
+    ],
+    "local_duplicate_delivery_converges": [
+        ("registered", _local("ref-l", "0123abcd")),
+        ("registered", _local("ref-l", "0123abcd")),
+    ],
+    "local_delete_then_set_is_a_second_live_row": [
+        ("registered", _local("ref-l", "0123abcd")),
+        ("revoked", _revoked("ref-l")),
+        ("registered", _local("ref-m", "89abcdef")),
+    ],
+    "an_event_without_the_fields_keeps_them": [
+        ("registered", _local("ref-l", "0123abcd")),
+        ("registered", _registered("ref-l", name="llm.openrouter.api_key")),
     ],
 }
 
