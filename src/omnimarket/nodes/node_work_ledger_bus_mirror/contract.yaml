@@ -21,20 +21,14 @@ handler:
   class: HandlerWorkLedgerBusMirror
   input_model: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection.ModelDelegateSkillTerminalProjection
   output_model: omnimarket.models.work_ledger_append.model_work_ledger_append.ModelWorkLedgerAppendRequest
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: delegation_terminal_to_status
-      handler:
-        name: HandlerWorkLedgerBusMirror
-        module: omnimarket.nodes.node_work_ledger_bus_mirror.handlers.handler_work_ledger_bus_mirror
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   timeout_ms: 5000
 # The serve adapter loads these topics from the contract. Keeping event_bus
-# absent prevents shared-runtime auto-wiring from racing the ledger host.
+# and handler_routing absent prevents shared-runtime auto-wiring from racing
+# the ledger host.
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.delegate-skill-completed.v1
   subscribe_topics:
