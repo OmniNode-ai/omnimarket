@@ -34,7 +34,7 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: |-
-          AC4: the omniintelligence clone is pinned to 30f37eca07b692d7889692edfe99686c87612315 -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py::test_omniintelligence_is_pinned_to_the_parse_fix -q
+          AC4: the omniintelligence clone is pinned to 30f37eca07b692d7889692edfe99686c87612315 -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The workflow voter tests pass at the head."
@@ -47,7 +47,7 @@ evidence_requirements:
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
   - kind: "tests"
     description: "The workflow clones omniintelligence at 30f37eca at the head."
-    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py::test_omniintelligence_is_pinned_to_the_parse_fix -q"
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -82,6 +82,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py::test_omniintelligence_is_pinned_to_the_parse_fix -q"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
