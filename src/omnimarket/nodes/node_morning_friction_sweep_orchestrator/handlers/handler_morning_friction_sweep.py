@@ -234,7 +234,11 @@ class HandlerMorningFrictionSweep:
     ) -> None:
         from .handler_friction_phase_bus import HandlerFrictionPhaseBus
 
-        self.overlay = overlay or load_friction_overlay()
+        # OMN-17427: the overlay is a deployment fact of a RUN. Auto-wiring builds
+        # this handler inside the effects runtime, and a constructor that raises
+        # there takes every other node's runtime down with it, so nothing here
+        # touches the deployment: an absent overlay is refused when a run starts.
+        self._overlay = overlay
         self.gateway = gateway or HandlerFrictionPhaseBus(event_bus)
         self.schemas = cast(
             dict[str, dict[str, JsonValue]],
@@ -243,9 +247,18 @@ class HandlerMorningFrictionSweep:
             ),
         )
 
+    @property
+    def overlay(self) -> ModelFrictionOverlay:
+        """The deployment overlay, read on first use; absent or invalid is a refusal."""
+        if self._overlay is None:
+            self._overlay = load_friction_overlay()
+        return self._overlay
+
     async def handle(
         self, request: ModelMorningFrictionSweepRequest
     ) -> ModelMorningFrictionSweepResult:
+        # Refuse a run without its overlay before any phase or agent runs.
+        _ = self.overlay
         slots = self._slots(request)
         violations: list[str] = []
 

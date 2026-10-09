@@ -108,12 +108,6 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     "node_memory_storage_effect": (
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
-    "node_morning_friction_sweep_orchestrator": (
-        "needs an operator overlay (OMNIMARKET_MORNING_FRICTION_SWEEP_OVERLAY)"
-    ),
-    "node_morning_ground_state_orchestrator": (
-        "needs an operator overlay (OMNIMARKET_MORNING_GROUND_STATE_OVERLAY)"
-    ),
 }
 
 # The ModelDispatchRoute field each derived identifier is stored in.

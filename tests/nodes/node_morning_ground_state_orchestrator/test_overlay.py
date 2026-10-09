@@ -217,3 +217,34 @@ def test_the_node_package_holds_no_private_identity() -> None:
         if word in path.read_text(encoding="utf-8")
     ]
     assert offenders == []
+
+
+def test_wiring_the_handler_without_an_overlay_does_not_raise() -> None:
+    """OMN-17427: a runtime without this node's overlay must still boot.
+
+    The effects runtime builds every handler at auto-wiring, and one that raises
+    takes the whole process down with it. The overlay is a deployment fact of a
+    RUN, so its absence is refused when a run starts, never when the runtime does.
+    """
+    HandlerMorningGroundState(None, FixtureGateway())
+
+
+def test_a_run_without_an_overlay_is_refused_before_any_phase_runs() -> None:
+    gateway = FixtureGateway()
+    handler = HandlerMorningGroundState(None, gateway)
+    with pytest.raises(MorningGroundStateConfigurationError, match=OVERLAY_ENV):
+        asyncio.run(handler.handle(request({"force": True})))
+    assert gateway.calls == []
+    assert gateway.reconciled == []
+
+
+def test_a_wired_handler_picks_the_overlay_up_once_it_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = FixtureGateway()
+    handler = HandlerMorningGroundState(None, gateway)
+    with pytest.raises(MorningGroundStateConfigurationError):
+        asyncio.run(handler.handle(request({"force": True})))
+    monkeypatch.setenv(OVERLAY_ENV, str(OVERLAY_FILE))
+    asyncio.run(handler.handle(request({"force": True})))
+    assert gateway.calls
