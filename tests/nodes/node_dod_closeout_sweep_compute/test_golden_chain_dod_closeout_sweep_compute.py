@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_close
     HandlerDodCloseoutSweep,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+    EnumCloseoutAction,
     EnumPrecheckVerdict,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
@@ -712,3 +714,654 @@ async def test_error_chain_over_the_bus_fails_without_a_result(tmp_path: Path) -
     )
     assert await refused.run_async() is EnumWorkflowResult.FAILED
     assert refused.handler_result is None
+
+
+# --- flip_decision --------------------------------------------------------------
+
+FLIPPABLE: dict[str, Any] = {
+    "ticket_id": "OMN-1",
+    "total_checks": 6,
+    "verified_count": 5,
+    "non_probative_count": 1,
+    "behavior_proving_count": 2,
+    "criteria": ["AC1", "AC2", "AC3"],
+    "bound_criteria": ["AC1", "AC2", "AC3"],
+    "all_prs_merged": True,
+}
+
+
+def flip(**overrides: Any) -> Any:
+    return decide(kind="flip_decision", date=DATE, **{**FLIPPABLE, **overrides})
+
+
+def test_every_conjunct_met_flips() -> None:
+    result = flip()
+    assert result.action is EnumCloseoutAction.FLIPPED_DONE
+    assert (result.predicate_met, result.unmet, result.primary_blocker) == (
+        True,
+        [],
+        None,
+    )
+    assert flip(released="released").action is EnumCloseoutAction.FLIPPED_DONE
+    assert flip(released="not-applicable").action is EnumCloseoutAction.FLIPPED_DONE
+
+
+@pytest.mark.parametrize(
+    ("overrides", "blocker"),
+    [
+        ({"all_prs_merged": False}, "pr:unmerged"),
+        ({"criteria": [], "bound_criteria": []}, "ac:unparseable"),
+        ({"bound_criteria": ["AC1", "AC2"]}, "ac:unbound"),
+        # three checks verified against three criteria says nothing about which one each covers
+        ({"bound_criteria": ["AC1", "AC2", "AC9"]}, "ac:unbound"),
+        ({"total_checks": 7}, "checks:tally"),
+        (
+            {
+                "total_checks": 6,
+                "verified_count": 3,
+                "failed_count": 2,
+                "non_probative_count": 1,
+            },
+            "checks:tally",
+        ),
+        # a green tally over zero checks is an arithmetic identity, not evidence
+        (
+            {"total_checks": 0, "verified_count": 0, "non_probative_count": 0},
+            "checks:tally",
+        ),
+        ({"behavior_proving_count": 0}, "behavior:none"),
+        ({"prior_reversal": True}, "reverted:unchanged"),
+    ],
+)
+def test_one_unmet_conjunct_holds_and_names_its_class(
+    overrides: dict[str, Any], blocker: str
+) -> None:
+    result = flip(**overrides)
+    assert result.action is EnumCloseoutAction.HELD_GAP
+    assert result.predicate_met is False
+    assert result.primary_blocker == blocker
+    assert result.unmet is not None
+    assert blocker in result.unmet
+
+
+def test_the_unbound_criteria_are_named() -> None:
+    result = flip(bound_criteria=["AC2"])
+    assert result.unbound_criteria == ["AC1", "AC3"]
+    assert flip().unbound_criteria == []
+
+
+def test_a_reversal_releases_only_when_a_check_outcome_changed() -> None:
+    assert flip(prior_reversal=True, outcome_changed_since_reversal=True).action is (
+        EnumCloseoutAction.FLIPPED_DONE
+    )
+
+
+def test_several_unmet_conjuncts_are_all_listed_with_the_first_as_primary() -> None:
+    result = flip(all_prs_merged=False, bound_criteria=[], behavior_proving_count=0)
+    assert result.unmet == ["pr:unmerged", "ac:unbound", "behavior:none"]
+    assert result.primary_blocker == "pr:unmerged"
+
+
+def test_merged_unreleased_is_its_own_hold_not_a_gap() -> None:
+    result = flip(released="merged-unreleased")
+    assert result.action is EnumCloseoutAction.HELD_MERGED_UNRELEASED
+    assert (result.predicate_met, result.primary_blocker) == (
+        True,
+        "released:merged-unreleased",
+    )
+
+
+def test_an_indeterminate_release_read_is_never_a_flip() -> None:
+    result = flip(released="indeterminate")
+    assert result.action is EnumCloseoutAction.HELD_GAP
+    assert (result.predicate_met, result.primary_blocker) == (
+        True,
+        "released:indeterminate",
+    )
+
+
+def test_an_unmet_conjunct_beats_the_release_state() -> None:
+    result = flip(released="merged-unreleased", bound_criteria=[])
+    assert result.action is EnumCloseoutAction.HELD_GAP
+    assert result.primary_blocker == "ac:unbound"
+
+
+# --- report ---------------------------------------------------------------------
+
+SCOPE_COUNTS = {
+    "enumerated": 79,
+    "in_progress": 40,
+    "in_review": 39,
+    "fenced": 37,
+    "parents": 11,
+    "external": 15,
+    "no_contract_no_merged_pr": 6,
+    "occ_contract_present": 60,
+    "candidates": 7,
+    "candidates_with_occ_contract": 7,
+}
+
+
+def _result(tid: str, action: str, **fields: Any) -> dict[str, Any]:
+    return {"id": tid, "action": action, **fields}
+
+
+def build_report(chunks: list[dict[str, Any]], **fields: Any) -> Any:
+    return decide(
+        kind="report",
+        date=DATE,
+        project_id=UUID_A,
+        project_name="Sprint 2026-09-21 → 2026-09-28 (Beta)",
+        scope_counts=SCOPE_COUNTS,
+        chunk_results=chunks,
+        plan_comparison="The P1 order still matches. The dominant class has a row.",
+        not_done="No product code. No parent written.",
+        released_positive_control="9f034fd6 is contained in v1.2.3",
+        **fields,
+    )
+
+
+MIXED_CHUNKS: list[dict[str, Any]] = [
+    {
+        "chunk": 0,
+        "tickets": ["OMN-1", "OMN-2", "OMN-3", "OMN-4", "OMN-5"],
+        "audited": True,
+        "reverted": ["OMN-2"],
+        "audit_notes": "re-derived OMN-1 and OMN-2",
+        "results": [
+            _result(
+                "OMN-1",
+                "flipped-done",
+                product_pr="o/r#1",
+                merge_sha="aaa111",
+                receipt="drift/dod_receipts/OMN-1 PASS",
+                behavior_proving_count=2,
+                predicate_met=True,
+            ),
+            _result(
+                "OMN-2",
+                "flipped-done",
+                product_pr="o/r#2",
+                merge_sha="bbb222",
+                receipt="r",
+                behavior_proving_count=1,
+                predicate_met=True,
+            ),
+            _result(
+                "OMN-3",
+                "held-gap",
+                unmet_check="AC2 bound to no check",
+                primary_blocker="ac:unbound",
+                tooling_blockers=["CHECK_BUDGET_EXCEEDED"],
+                behavior_proving_count=0,
+                predicate_met=False,
+            ),
+            _result(
+                "OMN-4",
+                "held-merged-unreleased",
+                repo="omnibase_core",
+                merge_sha="ccc333",
+                tag_lookup="no v* tag contains it",
+                index_read="0.47.1 served",
+                release_ticket="OMN-9",
+                behavior_proving_count=1,
+                predicate_met=True,
+            ),
+            _result(
+                "OMN-5", "held-external", unmet_check="external collaborator ticket"
+            ),
+        ],
+    },
+    {
+        "chunk": 1,
+        "tickets": ["OMN-6", "OMN-7"],
+        "audited": True,
+        "results": [
+            _result("OMN-6", "corrected-state"),
+            _result(
+                "OMN-7",
+                "held-gap",
+                unmet_check="released read unreachable",
+                primary_blocker="released:indeterminate",
+                tooling_blockers=["CHECK_BUDGET_EXCEEDED"],
+                behavior_proving_count=3,
+                predicate_met=True,
+            ),
+        ],
+    },
+]
+
+
+def test_counts_are_derived_from_the_results_and_a_reverted_flip_is_not_a_flip() -> (
+    None
+):
+    result = build_report(MIXED_CHUNKS)
+    counts = result.closeout_counts
+    assert (
+        counts.flipped,
+        counts.held,
+        counts.merged_unreleased,
+        counts.corrected,
+        counts.reverted,
+    ) == (1, 3, 1, 1, 1)
+    assert (counts.fenced, counts.parents, counts.external) == (37, 11, 15)
+    assert (counts.candidates, counts.enumerated) == (7, 79)
+    assert result.verified_nothing is False
+    assert result.report_path == "beta/tracking/2026-09-24-dod-closeout-sweep.md"
+
+
+def test_primary_histogram_sums_to_held_and_tooling_is_occurrences() -> None:
+    result = build_report(MIXED_CHUNKS)
+    primary = {r.check_class: r.count for r in result.primary_histogram}
+    assert primary == {
+        "ac:unbound": 1,
+        "external:comment-only": 1,
+        "released:indeterminate": 1,
+    }
+    assert sum(primary.values()) == result.closeout_counts.held
+    tooling = {r.check_class: r.count for r in result.tooling_histogram}
+    assert tooling == {
+        "CHECK_BUDGET_EXCEEDED": 2,
+        "released:indeterminate": 1,
+        "released:merged-unreleased": 1,
+    }
+    assert (result.behavior_proving_positive, result.predicate_satisfied) == (4, 4)
+
+
+def test_a_held_ticket_with_no_class_is_unclassified_not_dropped() -> None:
+    result = build_report(
+        [
+            {
+                "chunk": 0,
+                "tickets": ["OMN-1"],
+                "audited": True,
+                "results": [_result("OMN-1", "held-gap", unmet_check="x")],
+            }
+        ]
+    )
+    assert [(r.check_class, r.count) for r in result.primary_histogram] == [
+        ("unclassified", 1)
+    ]
+
+
+def test_a_dropped_chunk_and_unadjudicated_tickets_are_named() -> None:
+    chunks = [
+        MIXED_CHUNKS[0],
+        {"chunk": 1, "tickets": ["OMN-6", "OMN-7"], "dropped": True},
+    ]
+    result = build_report(chunks)
+    assert result.dropped_chunks == [1]
+    assert result.unadjudicated_tickets == ["OMN-6", "OMN-7"]
+    assert result.report_text is not None
+    assert "## DROPPED CHUNKS" in result.report_text
+    assert "OMN-6, OMN-7" in result.report_text
+    assert "DROPPED, not adjudicated" in result.report_text
+
+
+def test_a_ticket_missing_from_a_live_chunk_is_unadjudicated_too() -> None:
+    chunks = [
+        {
+            "chunk": 0,
+            "tickets": ["OMN-1", "OMN-2"],
+            "results": [_result("OMN-1", "no-change")],
+        }
+    ]
+    result = build_report(chunks)
+    assert result.unadjudicated_tickets == ["OMN-2"]
+    assert result.report_text is not None
+    assert "NOT AUDITED" in result.report_text
+
+
+def test_zero_candidates_report_opens_with_the_marker_and_the_exclusions() -> None:
+    scope = {**SCOPE_COUNTS, "candidates": 0, "candidates_with_occ_contract": 0}
+    result = decide(
+        kind="report",
+        date=DATE,
+        project_id=UUID_A,
+        project_name="Sprint X",
+        scope_counts=scope,
+        chunk_results=[],
+    )
+    assert result.verified_nothing is True
+    assert result.report_text is not None
+    first, second, third = result.report_text.split("\n")[:3]
+    assert first == "VERIFIED NOTHING: zero candidates"
+    assert UUID_A in second
+    assert "fenced 37, parents 11, external 15, no contract and no merged PR 6" in third
+    live = build_report(MIXED_CHUNKS)
+    assert live.report_text is not None
+    assert not live.report_text.startswith("VERIFIED NOTHING")
+
+
+def test_the_flipped_table_names_a_missing_receipt_as_a_defect() -> None:
+    result = build_report(
+        [
+            {
+                "chunk": 0,
+                "tickets": ["OMN-1"],
+                "audited": True,
+                "results": [
+                    _result(
+                        "OMN-1", "flipped-done", product_pr="o/r#1", merge_sha="aaa"
+                    )
+                ],
+            }
+        ]
+    )
+    assert result.report_text is not None
+    assert "NONE CITED - defect" in result.report_text
+    assert "NONE CITED" not in (build_report(MIXED_CHUNKS).report_text or "")
+
+
+def test_an_empty_merged_unreleased_section_needs_its_positive_control() -> None:
+    chunks = [MIXED_CHUNKS[1]]
+    proven = build_report(chunks)
+    assert proven.report_text is not None
+    assert "Positive control: 9f034fd6 is contained in v1.2.3" in proven.report_text
+    unproven = decide(
+        kind="report",
+        date=DATE,
+        project_id=UUID_A,
+        scope_counts=SCOPE_COUNTS,
+        chunk_results=chunks,
+        released_probe_run=False,
+    )
+    assert unproven.report_text is not None
+    assert "an unrun probe is not a zero" in unproven.report_text
+
+
+def test_dry_mode_is_said_in_the_header() -> None:
+    dry = build_report(MIXED_CHUNKS, apply=False)
+    assert dry.report_text is not None
+    assert "mode: dry (no state written)" in dry.report_text
+    assert "mode: apply" in (build_report(MIXED_CHUNKS).report_text or "")
+
+
+def test_the_rendered_report_is_conformant_and_under_the_line_cap() -> None:
+    result = build_report(MIXED_CHUNKS)
+    assert result.checks_failed == []
+    assert result.report_lines is not None
+    assert 0 < result.report_lines <= 150
+    assert result.report_text is not None
+    assert result.report_lines == len(result.report_text.rstrip("\n").split("\n"))
+
+
+def test_a_report_over_the_cap_is_flagged_not_truncated() -> None:
+    tickets = [f"OMN-{n}" for n in range(1, 181)]
+    chunks = [
+        {
+            "chunk": 0,
+            "tickets": tickets,
+            "audited": True,
+            "results": [
+                _result(t, "held-gap", unmet_check="x", primary_blocker="ac:unbound")
+                for t in tickets
+            ],
+        }
+    ]
+    result = build_report(chunks)
+    assert result.checks_failed is not None
+    assert "report-lines>150" in result.checks_failed
+    assert result.report_text is not None
+    assert "OMN-180" in result.report_text
+
+
+def test_terminal_cells_are_one_key_value_each_and_cite_the_report() -> None:
+    result = build_report(MIXED_CHUNKS, friction="see FRICTION row of lane x")
+    cells = result.terminal_cells
+    assert cells is not None
+    for cell in cells:
+        assert re.fullmatch(r"[a-z_]+=[^|\n]+", cell), cell
+    keys = [c.split("=", 1)[0] for c in cells]
+    assert keys == [
+        "lane",
+        "date",
+        "friction",
+        "sprint",
+        "enumerated",
+        "candidates",
+        "flipped",
+        "held",
+        "merged_unreleased",
+        "corrected",
+        "reverted",
+        "fenced",
+        "parents",
+        "external",
+    ]
+    by_key = dict(c.split("=", 1) for c in cells)
+    assert by_key["lane"] == "dod-closeout-sweep"
+    assert by_key["friction"] == "see FRICTION row of lane x"
+    assert (
+        by_key["flipped"]
+        == "1 [cite: beta/tracking/2026-09-24-dod-closeout-sweep.md §2]"
+    )
+
+
+def test_the_rendered_report_and_cells_are_what_the_precheck_accepts_as_delivered() -> (
+    None
+):
+    result = build_report(MIXED_CHUNKS)
+    assert result.report_text is not None
+    assert result.terminal_cells is not None
+    row = " | ".join(["2026-09-24T15:00:00Z", "TERMINAL", *result.terminal_cells])
+    verdict = precheck(
+        [row], report_text=result.report_text, report_commit_sha="abc123"
+    )
+    assert verdict.verdict is EnumPrecheckVerdict.ALREADY_DELIVERED
+
+
+def test_report_refuses_a_friction_that_would_break_the_ledger_row() -> None:
+    for bad in ("a | b", "a\nb"):
+        with pytest.raises(ValidationError, match="friction is one ledger cell"):
+            ModelDodCloseoutDecisionRequest.model_validate(
+                {
+                    "kind": "report",
+                    "date": DATE,
+                    "project_id": UUID_A,
+                    "scope_counts": SCOPE_COUNTS,
+                    "chunk_results": [],
+                    "friction": bad,
+                }
+            )
+
+
+@pytest.mark.parametrize(
+    ("chunks", "message"),
+    [
+        (
+            [
+                {
+                    "chunk": 0,
+                    "tickets": ["OMN-1"],
+                    "results": [_result("OMN-1", "no-change")],
+                },
+                {
+                    "chunk": 1,
+                    "tickets": ["OMN-1"],
+                    "results": [_result("OMN-1", "no-change")],
+                },
+            ],
+            "more than one result",
+        ),
+        (
+            [{"chunk": 0, "tickets": ["OMN-1"]}, {"chunk": 0, "tickets": ["OMN-2"]}],
+            "chunk number twice",
+        ),
+        ([{"chunk": 0, "tickets": []}], "at least 1"),
+        (
+            [
+                {
+                    "chunk": 0,
+                    "tickets": ["OMN-1"],
+                    "results": [_result("OMN-1", "bogus")],
+                }
+            ],
+            "action",
+        ),
+    ],
+)
+def test_report_refuses_inconsistent_chunk_results(
+    chunks: list[dict[str, Any]], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        ModelDodCloseoutDecisionRequest.model_validate(
+            {
+                "kind": "report",
+                "date": DATE,
+                "project_id": UUID_A,
+                "scope_counts": SCOPE_COUNTS,
+                "chunk_results": chunks,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "total_checks": 1,
+                "all_prs_merged": True,
+            },
+            "flip_decision requires ticket_id",
+        ),
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "ticket_id": "OMN-1",
+                "all_prs_merged": True,
+            },
+            "flip_decision requires total_checks",
+        ),
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "ticket_id": "OMN-1",
+                "total_checks": 1,
+            },
+            "flip_decision requires all_prs_merged",
+        ),
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "ticket_id": "OMN-1",
+                "total_checks": -1,
+                "all_prs_merged": True,
+            },
+            "greater than or equal to 0",
+        ),
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "ticket_id": "OMN-1",
+                "total_checks": 1,
+                "all_prs_merged": True,
+                "released": "maybe",
+            },
+            "released",
+        ),
+        (
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                "ticket_id": "OMN-1",
+                "total_checks": 1,
+                "all_prs_merged": True,
+                "apply": False,
+            },
+            "flip_decision does not take apply",
+        ),
+        (
+            {
+                "kind": "precheck",
+                "date": DATE,
+                "clock_utc": CLOCK,
+                "ledger_rows": [],
+                "criteria": ["AC1"],
+            },
+            "precheck does not take criteria",
+        ),
+        (
+            {"kind": "report", "date": DATE, "project_id": UUID_A, "chunk_results": []},
+            "report requires scope_counts",
+        ),
+        (
+            {
+                "kind": "report",
+                "date": DATE,
+                "project_id": UUID_A,
+                "scope_counts": SCOPE_COUNTS,
+            },
+            "report requires chunk_results",
+        ),
+    ],
+)
+def test_error_chain_refuses_flip_and_report_requests(
+    payload: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        ModelDodCloseoutDecisionRequest.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_golden_chain_flip_then_report_over_the_bus(tmp_path: Path) -> None:
+    flipped = (
+        await _run(
+            tmp_path / "flip",
+            {
+                "kind": "flip_decision",
+                "date": DATE,
+                **FLIPPABLE,
+                "released": "merged-unreleased",
+            },
+        )
+    ).handler_result
+    assert isinstance(flipped, ModelDodCloseoutDecisionResult)
+    assert flipped.action is EnumCloseoutAction.HELD_MERGED_UNRELEASED
+    done = (
+        await _run(
+            tmp_path / "report",
+            {
+                "kind": "report",
+                "date": DATE,
+                "project_id": UUID_A,
+                "scope_counts": SCOPE_COUNTS,
+                "chunk_results": MIXED_CHUNKS,
+                "plan_comparison": "Matches.",
+                "not_done": "Nothing else.",
+            },
+        )
+    ).handler_result
+    assert isinstance(done, ModelDodCloseoutDecisionResult)
+    assert done.checks_failed == []
+    assert done.closeout_counts is not None
+    assert done.closeout_counts.flipped == 1
+    assert (
+        ModelDodCloseoutDecisionResult.model_validate_json(done.model_dump_json())
+        == done
+    )
+
+
+@pytest.mark.asyncio
+async def test_error_chain_over_the_bus_refuses_an_inconsistent_report(
+    tmp_path: Path,
+) -> None:
+    runtime = await _run(
+        tmp_path / "bad",
+        {
+            "kind": "report",
+            "date": DATE,
+            "project_id": UUID_A,
+            "scope_counts": SCOPE_COUNTS,
+            "chunk_results": [],
+            "friction": "a | b",
+        },
+    )
+    assert runtime.handler_result is None

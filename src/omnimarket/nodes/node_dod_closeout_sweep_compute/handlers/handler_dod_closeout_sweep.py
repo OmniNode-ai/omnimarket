@@ -12,22 +12,42 @@ returns the decision. It reads nothing, has no clock and writes nothing.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import datetime, timedelta
 
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
     CLOCK_FORMAT,
     UUID_PATTERN,
+    EnumCloseoutAction,
     EnumCloseoutDecisionKind,
     EnumPrecheckVerdict,
+    EnumReleasedState,
+    ModelChunkResult,
+    ModelCloseoutCounts,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
+    ModelHistogramRow,
     ModelNonCandidate,
     ModelScopeCounts,
     ModelScopeTicket,
     ModelSprintProject,
+    ModelTicketResult,
 )
 
 LANE = "dod-closeout-sweep"
+REPORT_PATH_TEMPLATE = "beta/tracking/{date}-dod-closeout-sweep.md"
+# Blocking classes of a flip, in the order the primary blocker is chosen: a ticket whose
+# work is not merged is held for that before its evidence is weighed.
+BLOCK_PR_UNMERGED = "pr:unmerged"
+BLOCK_AC_UNPARSEABLE = "ac:unparseable"
+BLOCK_AC_UNBOUND = "ac:unbound"
+BLOCK_CHECKS_TALLY = "checks:tally"
+BLOCK_BEHAVIOR_NONE = "behavior:none"
+BLOCK_REVERTED_UNCHANGED = "reverted:unchanged"
+BLOCK_MERGED_UNRELEASED = "released:merged-unreleased"
+BLOCK_RELEASED_INDETERMINATE = "released:indeterminate"
+BLOCK_UNCLASSIFIED = "unclassified"
+BLOCK_EXTERNAL = "external:comment-only"
 PEER_CLAIM_MINUTES = 180
 REPORT_MAX_LINES = 150
 # A TERMINAL row is a delivered pass only when it reports the counts.
@@ -365,6 +385,350 @@ def plan_scope(
     )
 
 
+def flip_decision(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Apply the flip predicate to one ticket's verifier counters.
+
+    A flip needs every part: every cited PR merged; at least one parsed acceptance
+    criterion and every one bound to a verified probative check; the tally
+    verified + non-probative == total over a non-empty check set; at least one
+    behaviour-proving check; and no prior reversal without a changed outcome. Then the
+    release state: merged-unreleased and indeterminate are holds of their own, never a flip.
+    """
+    kind = EnumCloseoutDecisionKind.FLIP_DECISION
+    assert request.total_checks is not None
+    unbound = [c for c in request.criteria if c not in set(request.bound_criteria)]
+    unmet: list[str] = []
+    if not request.all_prs_merged:
+        unmet.append(BLOCK_PR_UNMERGED)
+    if not request.criteria:
+        unmet.append(BLOCK_AC_UNPARSEABLE)
+    elif unbound:
+        unmet.append(BLOCK_AC_UNBOUND)
+    if (
+        request.total_checks == 0
+        or request.verified_count + request.non_probative_count != request.total_checks
+    ):
+        unmet.append(BLOCK_CHECKS_TALLY)
+    if request.behavior_proving_count == 0:
+        unmet.append(BLOCK_BEHAVIOR_NONE)
+    if request.prior_reversal and not request.outcome_changed_since_reversal:
+        unmet.append(BLOCK_REVERTED_UNCHANGED)
+    if unmet:
+        return ModelDodCloseoutDecisionResult(
+            kind=kind,
+            action=EnumCloseoutAction.HELD_GAP,
+            predicate_met=False,
+            unmet=unmet,
+            primary_blocker=unmet[0],
+            unbound_criteria=unbound,
+        )
+    if request.released is EnumReleasedState.MERGED_UNRELEASED:
+        return ModelDodCloseoutDecisionResult(
+            kind=kind,
+            action=EnumCloseoutAction.HELD_MERGED_UNRELEASED,
+            predicate_met=True,
+            unmet=[BLOCK_MERGED_UNRELEASED],
+            primary_blocker=BLOCK_MERGED_UNRELEASED,
+            unbound_criteria=[],
+        )
+    if request.released is EnumReleasedState.INDETERMINATE:
+        return ModelDodCloseoutDecisionResult(
+            kind=kind,
+            action=EnumCloseoutAction.HELD_GAP,
+            predicate_met=True,
+            unmet=[BLOCK_RELEASED_INDETERMINATE],
+            primary_blocker=BLOCK_RELEASED_INDETERMINATE,
+            unbound_criteria=[],
+        )
+    return ModelDodCloseoutDecisionResult(
+        kind=kind,
+        action=EnumCloseoutAction.FLIPPED_DONE,
+        predicate_met=True,
+        unmet=[],
+        primary_blocker=None,
+        unbound_criteria=[],
+    )
+
+
+def _cell(text: str) -> str:
+    """One markdown table cell: no pipe, no line break."""
+    return " ".join(text.replace("|", "/").split()) or "-"
+
+
+def _table(header: list[str], rows: list[list[str]], *, empty: str) -> list[str]:
+    if not rows:
+        return [empty]
+    return [
+        "| " + " | ".join(header) + " |",
+        "|" + "---|" * len(header),
+        *["| " + " | ".join(_cell(c) for c in row) + " |" for row in rows],
+    ]
+
+
+def _histogram(counter: Counter[str]) -> list[ModelHistogramRow]:
+    return [
+        ModelHistogramRow(check_class=name, count=count)
+        for name, count in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+
+def report(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Counts, histogram, report text and TERMINAL cells from the chunk results.
+
+    Every count is derived from the per-ticket results, never from a figure a chunk
+    reported about itself. A dropped chunk is named, and so is every candidate no chunk
+    adjudicated: an unadjudicated ticket must not read as one with no findings.
+    """
+    kind = EnumCloseoutDecisionKind.REPORT
+    assert request.scope_counts is not None
+    assert request.chunk_results is not None
+    assert request.project_id is not None
+    scope = request.scope_counts
+    date = request.date
+    chunks: list[ModelChunkResult] = sorted(
+        request.chunk_results, key=lambda c: c.chunk
+    )
+    results: list[ModelTicketResult] = [r for c in chunks for r in c.results]
+    reverted = sorted({t for c in chunks for t in c.reverted})
+    dropped = [c.chunk for c in chunks if c.dropped]
+    adjudicated = {r.id for r in results}
+    unadjudicated = [t for c in chunks for t in c.tickets if t not in adjudicated]
+    flipped = [
+        r
+        for r in results
+        if r.action is EnumCloseoutAction.FLIPPED_DONE and r.id not in reverted
+    ]
+    held = [
+        r
+        for r in results
+        if r.action in (EnumCloseoutAction.HELD_GAP, EnumCloseoutAction.HELD_EXTERNAL)
+    ]
+    unreleased = [
+        r for r in results if r.action is EnumCloseoutAction.HELD_MERGED_UNRELEASED
+    ]
+    corrected = [r for r in results if r.action is EnumCloseoutAction.CORRECTED_STATE]
+    counts = ModelCloseoutCounts(
+        enumerated=scope.enumerated,
+        candidates=scope.candidates,
+        flipped=len(flipped),
+        held=len(held),
+        merged_unreleased=len(unreleased),
+        corrected=len(corrected),
+        reverted=len(reverted),
+        fenced=scope.fenced,
+        parents=scope.parents,
+        external=scope.external,
+    )
+    primary: Counter[str] = Counter(
+        r.primary_blocker
+        or (
+            BLOCK_EXTERNAL
+            if r.action is EnumCloseoutAction.HELD_EXTERNAL
+            else BLOCK_UNCLASSIFIED
+        )
+        for r in held
+    )
+    tooling: Counter[str] = Counter()
+    for r in results:
+        classes = set(r.tooling_blockers)
+        if r.action is EnumCloseoutAction.HELD_MERGED_UNRELEASED:
+            classes.add(BLOCK_MERGED_UNRELEASED)
+        if r.primary_blocker == BLOCK_RELEASED_INDETERMINATE:
+            classes.add(BLOCK_RELEASED_INDETERMINATE)
+        tooling.update(classes)
+    known_behavior = [r for r in results if r.behavior_proving_count is not None]
+    behavior_positive = sum((r.behavior_proving_count or 0) > 0 for r in known_behavior)
+    predicate_satisfied = sum(r.predicate_met is True for r in results)
+    path = REPORT_PATH_TEMPLATE.format(date=date)
+    verified_nothing = scope.candidates == 0
+
+    lines: list[str] = []
+    if verified_nothing:
+        lines += [
+            "VERIFIED NOTHING: zero candidates",
+            f"Sprint read: {request.project_id} {request.project_name}".rstrip(),
+            f"Exclusions of {scope.enumerated} enumerated: fenced {scope.fenced}, parents {scope.parents}, external {scope.external}, no contract and no merged PR {scope.no_contract_no_merged_pr}",
+            "",
+        ]
+    lines += [
+        f"# DoD closeout sweep {date}",
+        f"Sprint: {request.project_name or '-'} ({request.project_id}) | mode: {'apply' if request.apply else 'dry (no state written)'}",
+        "",
+        "## 1. Counts",
+        *_table(
+            [
+                "flipped",
+                "held",
+                "merged-unreleased",
+                "corrected",
+                "reverted",
+                "fenced",
+                "parents",
+                "external",
+                "candidates",
+                "enumerated",
+            ],
+            [
+                [
+                    str(n)
+                    for n in (
+                        counts.flipped,
+                        counts.held,
+                        counts.merged_unreleased,
+                        counts.corrected,
+                        counts.reverted,
+                        counts.fenced,
+                        counts.parents,
+                        counts.external,
+                        counts.candidates,
+                        counts.enumerated,
+                    )
+                ]
+            ],
+            empty="",
+        ),
+        "Buckets overlap: a ticket can be fenced and a parent. merged-unreleased is disjoint from held.",
+        f"OCC contracts: {scope.occ_contract_present} of {scope.enumerated} enumerated, {scope.candidates_with_occ_contract} of {scope.candidates} candidates.",
+    ]
+    if dropped or unadjudicated:
+        lines += [
+            "",
+            "## DROPPED CHUNKS",
+            f"Chunks {', '.join(map(str, dropped)) or 'none'} returned nothing. Not adjudicated: {', '.join(unadjudicated) or 'none'}.",
+        ]
+    lines += [
+        "",
+        "## 2. Flipped tickets",
+        *_table(
+            ["ticket", "PR", "merge sha", "receipt"],
+            [
+                [
+                    r.id,
+                    r.product_pr or "-",
+                    r.merge_sha or "-",
+                    r.receipt or "NONE CITED - defect",
+                ]
+                for r in flipped
+            ],
+            empty="| ticket | PR | merge sha | receipt |\n|---|---|---|---|\n| none | - | - | - |",
+        ),
+        "",
+        "## 3. Held tickets",
+        *_table(
+            ["ticket", "unmet check"],
+            [
+                [r.id, r.unmet_check or r.primary_blocker or r.evidence or "-"]
+                for r in held
+            ],
+            empty="| ticket | unmet check |\n|---|---|\n| none | - |",
+        ),
+        "",
+        "## 3b. Merged-unreleased tickets",
+        *_table(
+            [
+                "ticket",
+                "repo",
+                "merge sha",
+                "tag lookup",
+                "index read",
+                "release ticket",
+            ],
+            [
+                [
+                    r.id,
+                    r.repo,
+                    r.merge_sha,
+                    r.tag_lookup,
+                    r.index_read,
+                    r.release_ticket or "no release ticket exists",
+                ]
+                for r in unreleased
+            ],
+            empty=(
+                "None. Positive control: " + request.released_positive_control
+                if unreleased == []
+                and request.released_probe_run
+                and request.released_positive_control
+                else "None, but the released probe was not run or carries no positive control: an unrun probe is not a zero."
+            ),
+        ),
+        "",
+        "## 4. Blocking-check-class histogram",
+        "### 4a. Primary DoD blocker per held ticket (sums to held)",
+        *_table(
+            ["class", "tickets"],
+            [[h.check_class, str(h.count)] for h in _histogram(primary)],
+            empty="| class | tickets |\n|---|---|\n| none | 0 |",
+        ),
+        "### 4b. Verifier and tooling blockers (occurrences, not a partition)",
+        *_table(
+            ["class", "occurrences"],
+            [[h.check_class, str(h.count)] for h in _histogram(tooling)],
+            empty="| class | occurrences |\n|---|---|\n| none | 0 |",
+        ),
+        f"behavior_proving_count > 0: {behavior_positive} of {len(known_behavior)} with a reading; full flip predicate satisfied: {predicate_satisfied} of {len(results)}.",
+        f"ac:unbound {primary.get(BLOCK_AC_UNBOUND, 0)}, ac:unparseable {primary.get(BLOCK_AC_UNPARSEABLE, 0)} as the primary blocker.",
+        "",
+        "## 5. Plan comparison",
+        request.plan_comparison or "NOT PROVIDED",
+        "",
+        "## 6. Audit",
+        *[
+            f"- chunk {c.chunk}: "
+            + (
+                "DROPPED, not adjudicated"
+                if c.dropped
+                else ("audited" if c.audited else "NOT AUDITED")
+            )
+            + f"; reverted: {', '.join(c.reverted) or 'none'}"
+            + (f"; {_cell(c.audit_notes)}" if c.audit_notes else "")
+            for c in chunks
+        ],
+        "",
+        "## 7. Not done",
+        request.not_done or "NOT PROVIDED",
+    ]
+    text = "\n".join(lines) + "\n"
+    line_count, conformance_failed = report_conformance(text)
+    cite = f" [cite: {path}"
+    terminal_cells = [
+        f"lane={LANE}",
+        f"date={date}",
+        f"friction={request.friction}",
+        f"sprint={request.project_id}",
+        f"enumerated={counts.enumerated}{cite} §1]",
+        f"candidates={counts.candidates}{cite} §1]",
+        f"flipped={counts.flipped}{cite} §2]",
+        f"held={counts.held}{cite} §3]",
+        f"merged_unreleased={counts.merged_unreleased}{cite} §3b]",
+        f"corrected={counts.corrected}{cite} §1]",
+        f"reverted={counts.reverted}{cite} §6]",
+        f"fenced={counts.fenced}{cite} §1]",
+        f"parents={counts.parents}{cite} §1]",
+        f"external={counts.external}{cite} §1]",
+    ]
+    return ModelDodCloseoutDecisionResult(
+        kind=kind,
+        report_path=path,
+        report_text=text,
+        report_lines=line_count,
+        checks_failed=conformance_failed,
+        closeout_counts=counts,
+        primary_histogram=_histogram(primary),
+        tooling_histogram=_histogram(tooling),
+        behavior_proving_positive=behavior_positive,
+        predicate_satisfied=predicate_satisfied,
+        dropped_chunks=dropped,
+        unadjudicated_tickets=unadjudicated,
+        verified_nothing=verified_nothing,
+        terminal_cells=terminal_cells,
+    )
+
+
 class HandlerDodCloseoutSweep:
     """Pure decisions of the DoD closeout sweep. No reads, no clock, no writes."""
 
@@ -391,6 +755,10 @@ class HandlerDodCloseoutSweep:
                 project_override=request.project_override,
                 projects=request.projects,
             )
+        if kind is EnumCloseoutDecisionKind.FLIP_DECISION:
+            return flip_decision(request=request)
+        if kind is EnumCloseoutDecisionKind.REPORT:
+            return report(request=request)
         assert request.project_id is not None
         assert request.tickets is not None
         return plan_scope(

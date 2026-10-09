@@ -22,12 +22,32 @@ class EnumCloseoutDecisionKind(StrEnum):
     PRECHECK = "precheck"
     RESOLVE_SPRINT = "resolve_sprint"
     PLAN_SCOPE = "plan_scope"
+    FLIP_DECISION = "flip_decision"
+    REPORT = "report"
 
 
 class EnumPrecheckVerdict(StrEnum):
     ALREADY_DELIVERED = "already-delivered"
     PEER_OWNED = "peer-owned"
     RUN = "run"
+
+
+class EnumCloseoutAction(StrEnum):
+    FLIPPED_DONE = "flipped-done"
+    HELD_GAP = "held-gap"
+    HELD_MERGED_UNRELEASED = "held-merged-unreleased"
+    HELD_EXTERNAL = "held-external"
+    CORRECTED_STATE = "corrected-state"
+    NO_CHANGE = "no-change"
+
+
+class EnumReleasedState(StrEnum):
+    """What the released check said about the merges a ticket cites."""
+
+    RELEASED = "released"
+    MERGED_UNRELEASED = "merged-unreleased"
+    INDETERMINATE = "indeterminate"
+    NOT_APPLICABLE = "not-applicable"
 
 
 class ModelSprintProject(BaseModel):
@@ -83,6 +103,65 @@ class ModelNonCandidate(BaseModel):
     why_not: str
 
 
+class ModelTicketResult(BaseModel):
+    """One ticket's disposition as a verify chunk reported it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1)
+    action: EnumCloseoutAction
+    verdict: str = ""
+    evidence: str = ""
+    product_pr: str = ""
+    merge_sha: str = ""
+    receipt: str = ""
+    unmet_check: str = ""
+    primary_blocker: str = ""
+    tooling_blockers: list[str] = Field(default_factory=list)
+    behavior_proving_count: int | None = Field(default=None, ge=0)
+    predicate_met: bool | None = None
+    repo: str = ""
+    tag_lookup: str = ""
+    index_read: str = ""
+    release_ticket: str = ""
+
+
+class ModelChunkResult(BaseModel):
+    """One chunk: the tickets it was given, its verify results and its audit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chunk: int = Field(ge=0)
+    tickets: list[str] = Field(min_length=1)
+    dropped: bool = False
+    results: list[ModelTicketResult] = Field(default_factory=list)
+    audited: bool = False
+    reverted: list[str] = Field(default_factory=list)
+    audit_notes: str = ""
+
+
+class ModelHistogramRow(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check_class: str
+    count: int
+
+
+class ModelCloseoutCounts(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enumerated: int
+    candidates: int
+    flipped: int
+    held: int
+    merged_unreleased: int
+    corrected: int
+    reverted: int
+    fenced: int
+    parents: int
+    external: int
+
+
 class ModelDodCloseoutDecisionRequest(BaseModel):
     """One decision of the closeout sweep; the caller performs every read and passes what it saw."""
 
@@ -104,6 +183,29 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     project_id: str | None = None
     tickets: list[ModelScopeTicket] | None = None
     chunk_size: int = Field(default=5, ge=1)
+    # flip_decision
+    ticket_id: str | None = Field(default=None, min_length=1)
+    total_checks: int | None = Field(default=None, ge=0)
+    verified_count: int = Field(default=0, ge=0)
+    failed_count: int = Field(default=0, ge=0)
+    non_probative_count: int = Field(default=0, ge=0)
+    behavior_proving_count: int = Field(default=0, ge=0)
+    criteria: list[str] = Field(default_factory=list)
+    bound_criteria: list[str] = Field(default_factory=list)
+    prior_reversal: bool = False
+    outcome_changed_since_reversal: bool = False
+    all_prs_merged: bool | None = None
+    released: EnumReleasedState = EnumReleasedState.NOT_APPLICABLE
+    # report
+    project_name: str = ""
+    scope_counts: ModelScopeCounts | None = None
+    chunk_results: list[ModelChunkResult] | None = None
+    apply: bool = True
+    plan_comparison: str = ""
+    not_done: str = ""
+    friction: str = "none"
+    released_probe_run: bool = True
+    released_positive_control: str = ""
 
     @model_validator(mode="after")
     def validate_fields_for_kind(self) -> Self:
@@ -114,6 +216,16 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
             EnumCloseoutDecisionKind.PRECHECK: ("clock_utc", "ledger_rows"),
             EnumCloseoutDecisionKind.RESOLVE_SPRINT: ("projects",),
             EnumCloseoutDecisionKind.PLAN_SCOPE: ("project_id", "tickets"),
+            EnumCloseoutDecisionKind.FLIP_DECISION: (
+                "ticket_id",
+                "total_checks",
+                "all_prs_merged",
+            ),
+            EnumCloseoutDecisionKind.REPORT: (
+                "project_id",
+                "scope_counts",
+                "chunk_results",
+            ),
         }
         optional: dict[EnumCloseoutDecisionKind, tuple[str, ...]] = {
             EnumCloseoutDecisionKind.PRECHECK: (
@@ -124,6 +236,26 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
             ),
             EnumCloseoutDecisionKind.RESOLVE_SPRINT: ("project_override",),
             EnumCloseoutDecisionKind.PLAN_SCOPE: ("chunk_size",),
+            EnumCloseoutDecisionKind.FLIP_DECISION: (
+                "verified_count",
+                "failed_count",
+                "non_probative_count",
+                "behavior_proving_count",
+                "criteria",
+                "bound_criteria",
+                "prior_reversal",
+                "outcome_changed_since_reversal",
+                "released",
+            ),
+            EnumCloseoutDecisionKind.REPORT: (
+                "project_name",
+                "apply",
+                "plan_comparison",
+                "not_done",
+                "friction",
+                "released_probe_run",
+                "released_positive_control",
+            ),
         }
         for field in required[kind]:
             if getattr(self, field) is None:
@@ -134,7 +266,9 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
         allowed = set(required[kind]) | set(optional[kind])
         defaults = type(self).model_fields
         for field in sorted(owned - allowed):
-            if getattr(self, field) != defaults[field].default:
+            if getattr(self, field) != defaults[field].get_default(
+                call_default_factory=True
+            ):
                 raise ValueError(f"{kind.value} does not take {field}")
         if kind is EnumCloseoutDecisionKind.PRECHECK:
             assert self.clock_utc is not None
@@ -144,6 +278,16 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 raise ValueError(
                     f"clock_utc must be {CLOCK_FORMAT}, got {self.clock_utc!r}"
                 ) from exc
+        if kind is EnumCloseoutDecisionKind.REPORT:
+            if "|" in self.friction or "\n" in self.friction:
+                raise ValueError("friction is one ledger cell: no pipe and no newline")
+            assert self.chunk_results is not None
+            result_ids = [r.id for c in self.chunk_results for r in c.results]
+            if len(set(result_ids)) != len(result_ids):
+                raise ValueError("report got a ticket in more than one result")
+            chunk_numbers = [c.chunk for c in self.chunk_results]
+            if len(set(chunk_numbers)) != len(chunk_numbers):
+                raise ValueError("report got a chunk number twice")
         return self
 
 
@@ -171,3 +315,20 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     non_candidates: list[ModelNonCandidate] | None = None
     overlaps: list[str] | None = None
     verified_nothing: bool | None = None
+    # flip_decision
+    action: EnumCloseoutAction | None = None
+    predicate_met: bool | None = None
+    unmet: list[str] | None = None
+    primary_blocker: str | None = None
+    unbound_criteria: list[str] | None = None
+    # report
+    report_path: str | None = None
+    report_text: str | None = None
+    closeout_counts: ModelCloseoutCounts | None = None
+    primary_histogram: list[ModelHistogramRow] | None = None
+    tooling_histogram: list[ModelHistogramRow] | None = None
+    behavior_proving_positive: int | None = None
+    predicate_satisfied: int | None = None
+    dropped_chunks: list[int] | None = None
+    unadjudicated_tickets: list[str] | None = None
+    terminal_cells: list[str] | None = None
