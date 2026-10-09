@@ -38,7 +38,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_linear_comments_decision_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_linear_comments_decision_compute/test_parity_linear_comments_decision_compute.py tests/nodes/node_linear_comments_decision_compute/test_golden_chain_linear_comments_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
   - id: "dod-omn20680-hourly-tick-decision"
@@ -46,6 +46,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_hourly_tick_decision_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_hourly_tick_decision_compute/test_golden_chain_hourly_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
