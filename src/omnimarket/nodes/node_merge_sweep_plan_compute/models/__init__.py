@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of the merge-sweep decision node (OMN-20676)."""
 
-from .model_merge_sweep_plan import (
+from omnimarket.models.merge_sweep.model_merge_sweep_plan import (
     DEFAULT_CLAIM_CHECK_COMMAND,
     DEFAULT_MAX_LANES,
     MAX_LANES_CEILING,
@@ -21,7 +21,7 @@ from .model_merge_sweep_plan import (
     ModelMergeSweepRed,
     ModelMergeSweepSkipped,
 )
-from .model_merge_sweep_retry import (
+from omnimarket.models.merge_sweep.model_merge_sweep_retry import (
     DEFAULT_RETRIES,
     DEFAULT_RETRY_WAIT_MIN,
     EXIT_HOST_AUTH_EXPIRED,

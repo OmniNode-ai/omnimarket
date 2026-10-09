@@ -30,6 +30,13 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: For every captured case the node returns the wrapper's exit code and message from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py against tests/fixtures/onex_ledger_admission_parity.json, which fails on any differing case
+  - id: "req-skill-exec-decision-node"
+    statement: |-
+      The argument parsing, command planning and result reporting of the retired skill_exec.py executor run in node_skill_exec_decision_compute, with no clock, no file reads and no process calls, and match the old executor.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: For every captured case the node plans the executor's command, files, environment and time budget and reports its exit code and output byte for byte from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py against tests/fixtures/skill_exec_parity.json, which fails on any differing case
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
@@ -63,3 +70,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20686-skill-exec-decision"
+    description: "node_skill_exec_decision_compute matches the captured plans and reports of the retired skill_exec.py and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
