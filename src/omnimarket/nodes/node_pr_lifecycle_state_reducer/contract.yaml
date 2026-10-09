@@ -105,6 +105,12 @@ handler_routing:
       handler:
         name: HandlerPrLifecycleStateReducer
         module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.ci-red-triage-decided.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
 
 descriptor:
   node_archetype: reducer
@@ -254,6 +260,7 @@ event_bus:
     # Repo-health lane (OMN-13585): additive fold only — does not drive FSM transitions
     - onex.evt.omnimarket.repo-health-classified.v1
     - onex.evt.omnimarket.repo-health-repair-emitted.v1
+    - onex.evt.omnimarket.ci-red-triage-decided.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
     # OMN-13321 / F5: per-iteration durable PR ledger projection snapshot.

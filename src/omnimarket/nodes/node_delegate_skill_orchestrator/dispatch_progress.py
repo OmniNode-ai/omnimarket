@@ -21,7 +21,7 @@ current_dispatch_progress: ContextVar[ModelDelegationDispatchProgress | None] = 
 
 @contextmanager
 def dispatch_stage(stage: DispatchStage) -> Iterator[None]:
-    """Record the innermost cancelled stage before cleanup can change it."""
+    """Preserve the innermost cancelled or timed-out stage through cleanup."""
     progress = current_dispatch_progress.get()
     if progress is None:
         yield
@@ -33,6 +33,11 @@ def dispatch_stage(stage: DispatchStage) -> Iterator[None]:
     except asyncio.CancelledError:
         if progress.cancelled_stage is None:
             progress.cancelled_stage = progress.stage
+        raise
+    except TimeoutError:
+        # A stage's own deadline can expire without cancelling this task.
+        # Carry that stage through outer scopes and any subsequent cleanup.
+        previous_stage = progress.stage
         raise
     finally:
         progress.stage = previous_stage

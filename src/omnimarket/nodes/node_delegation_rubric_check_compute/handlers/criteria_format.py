@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Only explicit prompt declarations activate format checks."""
 
+import json
 import re
 
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_common import (
@@ -19,6 +20,18 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 )
 
 
+def _declared_facts(prompt: str, pattern: str) -> dict[str, object] | None:
+    """The JSON object of facts the prompt supplies, or None when unreadable."""
+    start = re.search(pattern, prompt)
+    if start is None:
+        return None
+    try:
+        value, _ = json.JSONDecoder().raw_decode(prompt, start.end())
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def declared_format_met(
     request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
 ) -> ModelRubricCriterionResult:
@@ -27,11 +40,64 @@ def declared_format_met(
     prompt = request.request_text
     lower = prompt.lower()
     facts: list[str] = []
+    single = re.search(params.single_word_pattern, prompt, re.IGNORECASE)
+    if single:
+        word = single[1]
+        if request.answer_text.strip() != word:
+            return result(
+                criterion,
+                EnumRubricOutcome.FAIL,
+                "format_violation",
+                "expected the single word: " + word,
+            )
+        facts.append("single_word_verified")
     if any(phrase.lower() in lower for phrase in params.json_phrases):
         allowed = any(phrase.lower() in lower for phrase in params.fence_allow_phrases)
-        if not parses_json(json_text(request.answer_text, allowed)):
+        text = json_text(request.answer_text, allowed)
+        if not parses_json(text):
             return result(criterion, EnumRubricOutcome.FAIL, "not_json")
         facts.append("json_parsed")
+        value = json.loads(text)
+        for choice in re.finditer(params.json_choice_pattern, prompt):
+            field = choice[1]
+            alternatives = re.findall(r'"([^"]+)"', choice[2])
+            if not isinstance(value, dict) or value.get(field) not in alternatives:
+                return result(
+                    criterion,
+                    EnumRubricOutcome.FAIL,
+                    "format_violation",
+                    field + " not one of " + ", ".join(alternatives),
+                )
+            facts.append("choice_verified:" + field)
+        for echo in re.finditer(params.echo_field_pattern, prompt):
+            field = echo[1]
+            source_facts = _declared_facts(prompt, params.facts_object_pattern)
+            if source_facts is None:
+                # An echo that cannot be checked against the facts never passes.
+                return result(
+                    criterion, EnumRubricOutcome.UNDETERMINED, "facts_unreadable"
+                )
+            echoed = value.get(field) if isinstance(value, dict) else None
+            if not isinstance(echoed, dict) or not echoed:
+                return result(
+                    criterion,
+                    EnumRubricOutcome.FAIL,
+                    "format_violation",
+                    field + " missing",
+                )
+            for key, echoed_value in echoed.items():
+                if (
+                    key not in source_facts
+                    or type(echoed_value) is not type(source_facts[key])
+                    or echoed_value != source_facts[key]
+                ):
+                    return result(
+                        criterion,
+                        EnumRubricOutcome.FAIL,
+                        "format_violation",
+                        field + ": " + key,
+                    )
+            facts.append("facts_echo_verified:" + field)
     if any(phrase.lower() in lower for phrase in params.finding_phrases):
         declaration = next(
             (

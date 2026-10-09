@@ -355,3 +355,42 @@ profiles:
     request_options:
       chat_template_kwargs:
         enable_thinking: false
+
+  # OMN-17427: the .200 Mac Studio planner rung (backend local-studio-planner,
+  # llama.cpp on :8130) serves Qwen3.6-35B-A3B under the alias
+  # `qwen3.6-35b-a3b` since 2026-10-08, replacing gpt-oss-120b (operator RULING
+  # 2026-10-08T17:38:56Z). The `*qwen*` profiles above already turn thinking
+  # off for every class this rung serves; this profile adds the vendor's
+  # sampling for that mode, from the model card (huggingface.co/Qwen/
+  # Qwen3.6-35B-A3B, "Best Practices", read 2026-10-08): Instruct (or
+  # non-thinking) mode `temperature=0.7, top_p=0.80, top_k=20, min_p=0.0,
+  # presence_penalty=1.5, repetition_penalty=1.0`. The card also says Qwen3.6
+  # does not officially support the `/no_think` soft switch; the switch that
+  # holds is `chat_template_kwargs.enable_thinking: false`, set here as well so
+  # this model's sampling and its mode cannot drift apart for a class the
+  # `*qwen*` lists do not name.
+  #
+  # Matched by the exact served alias, so the Qwen3.8-27B rungs on .201 and .202
+  # keep the requests they were measured with. Profiles merge in file order, so
+  # this one is last and its keys win.
+  - profile_id: local-qwen3-6-35b-a3b-vendor-sampling
+    enabled: true
+    model_name_patterns:
+      - "qwen3.6-35b-a3b"
+      - "*/qwen3.6-35b-a3b"
+    # The schema requires a directive. This one is the `*qwen*` profiles' own
+    # `/no_think` prefix with apply_once, so wherever those profiles already
+    # applied it the prompt is unchanged; the load-bearing keys are below.
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    default_temperature: 0.7
+    request_options:
+      top_p: 0.8
+      top_k: 20
+      min_p: 0.0
+      presence_penalty: 1.5
+      chat_template_kwargs:
+        enable_thinking: false

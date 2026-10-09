@@ -83,7 +83,9 @@ class BusLaneLedgerAppender:
         async with open_lab_run_bus(
             bus="kafka", lane=self._lane, kafka_bootstrap=None, omni_home=self._root
         ) as bus:
-            caller = WorkLedgerAppendCaller(bus)
+            # OMN-20282: the existing handoff port uses the ledger signing
+            # identity too; lane and host claims are not authentication.
+            caller = WorkLedgerAppendCaller.from_signing_environment(bus)
             try:
                 return await caller.append(request, timeout_s=timeout_s)
             except TimeoutError:

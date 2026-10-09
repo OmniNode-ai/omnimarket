@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.305"
+version = "0.4.307"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -266,9 +266,13 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
+node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
+node_lab_fill_effect = "omnimarket.nodes.node_lab_fill_effect"
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
+node_linear_comments_decision_compute = "omnimarket.nodes.node_linear_comments_decision_compute"
+node_hourly_tick_decision_compute = "omnimarket.nodes.node_hourly_tick_decision_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
@@ -1079,9 +1083,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
-version = "v1.1.4"
-sha256 = "7a6b840c0ce1808a776e2371207f56d58118a2f628bc6dacbc9cc3104512a5d8"
-asset = "omnidash-bundle-v1.1.4.tar.gz"
+version = "v1.1.7"
+sha256 = "ae796d2a5bde8dc66b1a02959e77542fe4e8aca95497950915226c5fdd6079c6"
+asset = "omnidash-bundle-v1.1.7.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

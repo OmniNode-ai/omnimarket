@@ -11,9 +11,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 # (OMN-19408) that holds runtime-effects Docker-unhealthy on every lane. The main runtime
 # declares the lane and carries OMNINODE_INTERNAL_DB_URL and the ONEXBOT_OCC App credential
 # this node reads. Same reasoning as node_pr_landing_orchestrator's contract.
+runtime_profiles: [main]
 runtime_lanes: [compose-dev, onex-lab, onex-lab-k3s]
-descriptor:
-  runtime_profiles: [main]
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.branch-claim-check-requested.v1
   terminal_events:

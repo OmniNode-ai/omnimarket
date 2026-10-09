@@ -19,6 +19,9 @@ Two subcommands:
 ``run --manifest-id <id> --gate-version <v>``
     Replays one rater's labels of the manifest and writes the verdict and
     results rows under the eval run id. Prints a content-free JSON receipt.
+    ``--task-class`` (repeatable) keeps only the named classes, so a rubric change
+    can be re-measured on the classes it touches; the label set, and so the eval
+    run id, is the subset's.
 
 DSNs come from environment variables named on the command line, with no default
 (root rule 8): ``--read-dsn-env`` reads ``delegation_events`` and
@@ -196,6 +199,8 @@ async def _read_labelled(args: argparse.Namespace, tenant: str) -> list[dict[str
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     tenant = str(UUID(args.tenant_id))
     rows = asyncio.run(_read_labelled(args, tenant))
+    if args.task_class is not None:
+        rows = [row for row in rows if row["task_class"] in args.task_class]
     gate_version = args.gate_version or f"omnimarket=={metadata.version('omnimarket')}"
     result = HandlerDelegationEvalRun(_PrefetchedLabelledItems(rows)).handle(
         ModelDelegationEvalRunRequest(
@@ -235,6 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--rater-role", required=True)
     run.add_argument("--rubric-version", required=True)
     run.add_argument("--gate-version", default="")
+    run.add_argument(
+        "--task-class",
+        action="append",
+        default=None,
+        dest="task_class",
+        help="Keep only labelled items of this task class; repeatable",
+    )
     args = parser.parse_args(argv)
     receipt = _label_record(args) if args.command == "label-record" else _run(args)
     json.dump(receipt, sys.stdout, indent=1, sort_keys=True)

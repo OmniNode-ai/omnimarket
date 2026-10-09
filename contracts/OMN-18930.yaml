@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18930"
+title: "delegation_events validates the complete cohort key before recording it"
+summary: "omnimarket validates a carried cohort key against the released omnibase_infra ModelDelegationCohortKey before the delegation projection records it. A key missing or malforming any nested identity, policy or retry field is recorded as a named refusal with no cohort key or digest, the delegation row itself is kept, and a valid key is stored as the original wire value with its original digest. Each acceptance criterion is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-complete-cohort-key"
+    statement: |-
+      delegation_events must record a cohort key only when every nested field of the released cohort key model is present and valid, and must record a named refusal otherwise.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the projection fold refuses a cohort key with a missing or malformed nested identity, policy or retry field, naming the field path and error type with no cohort key or digest, and keeps a valid key as the original wire value and digest -- falsifier: uv run pytest tests/unit/delegation/test_delegation_cohort_key_projection_omn18930.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: against PostgreSQL 16, the sync writer persists the delegation row with the refusal and a null cohort key when the nested key is incomplete -- falsifier: uv run pytest tests/test_omn18930_cohort_key_projection_real_postgres.py -q -k "refuses_incomplete_nested_key"
+evidence_requirements:
+  - kind: "tests"
+    description: "The cohort key fold unit tests."
+    command: "uv run pytest tests/unit/delegation/test_delegation_cohort_key_projection_omn18930.py -q"
+  - kind: "tests"
+    description: "The real PostgreSQL cohort key projection test."
+    command: "uv run pytest tests/test_omn18930_cohort_key_projection_real_postgres.py -q -k \"refuses_incomplete_nested_key\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-complete-cohort-key-ac1"
+    description: "The projection fold refuses an incomplete or malformed nested cohort key by field path and keeps a valid key as its original wire value and digest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_cohort_key_projection_omn18930.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-complete-cohort-key-ac2"
+    description: "Against PostgreSQL 16 the sync writer keeps the delegation row and records the refusal with a null cohort key for an incomplete nested key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18930_cohort_key_projection_real_postgres.py -q -k \"refuses_incomplete_nested_key\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
