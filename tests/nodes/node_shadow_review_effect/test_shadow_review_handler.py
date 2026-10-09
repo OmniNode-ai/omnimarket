@@ -130,6 +130,17 @@ def test_unobtainable_head_is_dropped_and_counted_once(tmp_path: Path) -> None:
     assert diffs.calls == ["omnimarket#1"]
 
 
+def test_boot_resolved_handler_without_arms_refuses_before_any_io(
+    tmp_path: Path,
+) -> None:
+    # The runtime boot resolver builds the handler from the injectable
+    # container alone; such a handler has no arms and must not run a tick.
+    handler = HandlerShadowReview(container=object())
+    with pytest.raises(RuntimeError, match="lab-host entry point"):
+        handler.handle(request(tmp_path, pr("omnimarket", 1)))
+    assert not (tmp_path / "store").exists()
+
+
 def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     reviewer = FakeReviewer()
     result = HandlerShadowReview(FakeDiffs({"omnimarket#1": DIFF}), reviewer).handle(

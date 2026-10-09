@@ -52,17 +52,25 @@ def store_name(key: str) -> str:
 
 
 class HandlerShadowReview:
-    """Definition-B handler; the diff source and reviewer are injected."""
+    """Definition-B handler; the diff source and reviewer are injected.
+
+    The arms are host tools, so only the lab-host entry point (``__main__``)
+    wires them. The runtime boot resolver can still construct the handler from
+    the injectable ``container`` alone; a tick dispatched that way has no arms
+    and refuses before it reads or writes anything.
+    """
 
     def __init__(
         self,
-        diff_source: ProtocolShadowDiffSource,
-        reviewer: ProtocolShadowReviewer,
+        diff_source: ProtocolShadowDiffSource | None = None,
+        reviewer: ProtocolShadowReviewer | None = None,
         clock: Callable[[], str] = _now,
+        container: object | None = None,
     ):
         self._diff_source = diff_source
         self._reviewer = reviewer
         self._clock = clock
+        self._container = container
 
     @staticmethod
     def _read_store(root: Path) -> tuple[frozenset[str], int]:
@@ -90,6 +98,13 @@ class HandlerShadowReview:
         tmp.replace(path)
 
     def handle(self, request: ModelShadowReviewRequest) -> ModelShadowReviewResult:
+        if self._diff_source is None or self._reviewer is None:
+            raise RuntimeError(
+                "shadow-review tick refused: no diff source or reviewer is wired;"
+                " a tick runs only from the lab-host entry point, never in a"
+                " runtime container"
+            )
+        diff_source, reviewer = self._diff_source, self._reviewer
         root = request.store_root
         seen, public_reviewed = self._read_store(root)
         selections = select_candidates(
@@ -107,7 +122,7 @@ class HandlerShadowReview:
                 continue
             candidate = by_key[sel.key]
             observed_at = self._clock()
-            diff, reason = self._diff_source.diff(candidate)
+            diff, reason = diff_source.diff(candidate)
             hits = scan_for_secrets(diff) if diff is not None else ()
             if diff is None or hits:
                 drop = sel.model_copy(
@@ -134,7 +149,7 @@ class HandlerShadowReview:
             work_dir = root / "artifacts" / store_name(sel.key)
             work_dir.mkdir(parents=True, exist_ok=True)
             self._write(work_dir / "diff.patch", diff)
-            arms = self._reviewer.review(candidate, diff, sel.stratum, work_dir)
+            arms = reviewer.review(candidate, diff, sel.stratum, work_dir)
             record = ModelShadowReviewRecord(
                 key=sel.key,
                 repo=candidate.repo,
