@@ -17,10 +17,23 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and an invalid request is refused with no result -- falsifier: tests/nodes/node_handshake_policy_gate_compute/test_golden_chain_handshake_policy_gate_compute.py
+  - id: "req-policy-gate-read-effect"
+    statement: |-
+      The policy gate's GitHub reads, retries and printed report run in node_handshake_policy_gate_effect, which asks the compute node for every decision and matches the retired script's captured behaviour.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: Replaying the 24 captured scenarios through the effect handler and through its command line reproduces the retired script's stdout, stderr, exit code, endpoints read and sleeps taken -- falsifier: tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py::test_handler_reproduces_the_old_script and ::test_cli_reproduces_the_old_script, which fail on any differing scenario
+      - id: "AC4"
+        statement: |-
+          AC4: The effect is dispatched through its contract on the RuntimeLocal in-memory bus and a request that fails validation produces no result -- falsifier: tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py::test_golden_chain_over_the_bus and ::test_error_chain_over_the_bus_fails_without_a_result
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the handshake policy gate compute node."
     command: "uv run pytest tests/nodes/node_handshake_policy_gate_compute -q -p no:randomly"
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for the handshake policy gate effect node."
+    command: "uv run pytest tests/nodes/node_handshake_policy_gate_effect -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_handshake_policy_gate_compute/test_golden_chain_handshake_policy_gate_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20671-policy-gate-read-effect"
+    description: "node_handshake_policy_gate_effect matches the retired script on the captured cases and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
