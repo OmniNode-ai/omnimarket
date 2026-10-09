@@ -19,6 +19,7 @@ from omnimarket.models.model_host_reconcile import (
     ModelHostReconcileCommand,
     ModelHostReconcileDecisions,
     ModelHostReconcileEvaluateRequest,
+    ModelHostReconcileRunResult,
     ModelHostReconcileSlackCommand,
 )
 from omnimarket.nodes.node_host_reconcile_compute.handlers.handler_host_reconcile_compute import (
@@ -566,7 +567,6 @@ def test_cli_environment_and_json_output(
 def test_cli_all_environment_fields(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from omnimarket.models.model_host_reconcile import ModelHostReconcileRunResult
 
     seen: list[ModelHostReconcileCommand] = []
 
@@ -633,3 +633,138 @@ def test_regular_shadow_does_not_resolve_broken_wrapper(
     assert result.surfaces[-1].verdict == "SHADOWED"
     assert "a regular file" in result.surfaces[-1].detail
     assert result.floor_stamped
+
+
+# --------------------------------------------------------------------------- #
+# The omnimarket target is the head the venv delegate started from
+# --------------------------------------------------------------------------- #
+def advance_clone_script(tmp_path: Path, root: Path, label: str) -> str:
+    """Shell lines that land a new commit on origin/dev and fast-forward the clone.
+
+    This is the canonical-clone-sync timer moving the omnimarket clone while the
+    venv delegate runs.
+    """
+    seed, clone = tmp_path / "seed", root / "omnimarket"
+    return (
+        f'printf "{label}\\n" > "{seed}/{label}.txt"\n'
+        f'git -C "{seed}" add -A\n'
+        f'git -C "{seed}" -c user.name=Fixture -c user.email=fixture commit --quiet -m {label}\n'
+        f'git -C "{seed}" push --quiet origin dev\n'
+        f'git -C "{clone}" pull --quiet --ff-only origin dev\n'
+    )
+
+
+def install_clone_head_script(root: Path, sp: Path) -> str:
+    return (
+        f'git -C "{root / "omnimarket"}" rev-parse HEAD > "{sp}/installed-commit"\n'
+        f'cp "{sp}/installed-commit" "{root.parent}/installed.txt"\n'
+    )
+
+
+def write_venv_delegate(root: Path, body: str) -> None:
+    (root / "omnibase_infra/scripts/reconcile-workspace-venvs.sh").write_text(
+        'printf "venv delegate ran\\n"\n'
+        'sp="$2/.onex-dispatch-venv/lib/python3.12/site-packages"\n'
+        'rm -rf "$sp"/omnibase_core-*.dist-info\n'
+        'mkdir -p "$sp/omnibase_core-2.dist-info"\n' + body
+    )
+
+
+def surface_verdict(result: ModelHostReconcileRunResult, surface: str) -> str:
+    return next(s.verdict for s in result.surfaces if s.surface == surface)
+
+
+def floor_commit(root: Path) -> str:
+    floor = next(c for c in calls(root) if c[0] == "floor")
+    return floor[floor.index("--omnimarket-commit") + 1]
+
+
+def test_clone_advancing_during_the_venv_delegate_does_not_fail_the_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The clone-sync timer may fast-forward omnimarket while the delegate runs.
+
+    The delegate installs the clone HEAD it read when it started, then the clone
+    moves on before the readback. Judging the install against the head read
+    after the delegate reports DID_NOT_MOVE for a correct install and the floor
+    is never stamped.
+    """
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    write_venv_delegate(
+        root,
+        install_clone_head_script(root, sp)
+        + advance_clone_script(tmp_path, root, "raced"),
+    )
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    installed = (tmp_path / "installed.txt").read_text().strip()
+    assert run_git(root / "omnimarket", "rev-parse", "HEAD") != installed
+    assert surface_verdict(result, "venv:omnimarket") == "MOVED"
+    assert result.exit_code == 0
+    assert result.floor_stamped is True
+    assert floor_commit(root) == installed
+
+
+def test_install_from_a_head_the_clone_passed_through_mid_run_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The clone moves before and after the delegate reads it."""
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    write_venv_delegate(
+        root,
+        advance_clone_script(tmp_path, root, "before")
+        + install_clone_head_script(root, sp)
+        + advance_clone_script(tmp_path, root, "after"),
+    )
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    installed = (tmp_path / "installed.txt").read_text().strip()
+    assert installed != run_git(root / "omnimarket", "rev-parse", "HEAD")
+    assert surface_verdict(result, "venv:omnimarket") == "MOVED"
+    assert result.exit_code == 0
+    assert floor_commit(root) == installed
+
+
+def test_a_delegate_that_installs_nothing_still_fails_when_the_clone_advances(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A no-op delegate is not turned into a pass by the clone moving."""
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    write_venv_delegate(root, advance_clone_script(tmp_path, root, "raced"))
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert surface_verdict(result, "venv:omnimarket") == "DID_NOT_MOVE"
+    assert result.exit_code == 2
+    assert result.floor_stamped is False
+
+
+def test_an_install_off_the_clone_history_still_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit the clone never held is not accepted because the clone moved."""
+    root = setup_workspace(tmp_path, monkeypatch, behind=True)
+    sp = root / ".onex-dispatch-venv/lib/python3.12/site-packages"
+    write_venv_delegate(
+        root,
+        f'printf "{"1" * 40}\\n" > "{sp}/installed-commit"\n'
+        + advance_clone_script(tmp_path, root, "raced"),
+    )
+
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "repair")
+    )
+
+    assert surface_verdict(result, "venv:omnimarket") == "DID_NOT_MOVE"
+    assert result.exit_code == 2
+    assert result.floor_stamped is False
