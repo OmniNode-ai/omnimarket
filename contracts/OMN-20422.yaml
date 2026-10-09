@@ -14,10 +14,20 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: the job-level env names LLM_GPT_OSS_REVIEW_URL on :8131 and a non-empty LLM_ENDPOINT_CIDR_ALLOWLIST, and both voter models are still requested -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q
+  - id: "req-shadow-review-runner"
+    statement: |-
+      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (knowledge-base-internal never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the shadow-review tick keeps the pre-registered scope and never posts -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q
 evidence_requirements:
   - kind: "tests"
     description: "The workflow voter tests pass at the head."
     command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+  - kind: "tests"
+    description: "The shadow-review node tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-shadow-review-runner-ac2"
+    description: "node_shadow_review_effect selects the pre-registered sample, drops secret-pattern diffs before any call, runs A2 on public PRs only, and writes one record per PR without posting."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_shadow_review_effect/test_shadow_review_selection.py tests/nodes/node_shadow_review_effect/test_shadow_review_handler.py tests/nodes/node_shadow_review_effect/test_golden_chain_shadow_review.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
