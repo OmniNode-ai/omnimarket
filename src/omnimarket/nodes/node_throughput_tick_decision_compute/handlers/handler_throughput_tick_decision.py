@@ -5,10 +5,13 @@
 The retired throughput_tick.py and the loops_check.py checks it called mixed these
 decisions with launchctl, ps and file reads. Here the caller reads those and passes the
 facts; the handler returns the finding lines and the status line, byte-identical to the
-retired script for the controller, merges, floors and escalation findings.
+retired script for the controller, merges, floors, escalation and lab-headroom findings.
 
-Not yet ported (next shard): the lab-headroom finding, which needs the remote-lane
-placement readings.
+The lab-headroom finding runs only when the caller supplies `lab_headroom` facts: the
+pool hosts with their limited and auth-expired marks, the runner's receipts, the live
+placement markers, and, per host, whether the placement module parsed each reading
+and the admission refusal it names (that parse stays in the placement module until its
+own shard).
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ from typing import Any
 from omnibase_core.types import JsonType
 
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
+    ModelLabHeadroomFacts,
+    ModelLabMark,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
 )
@@ -567,6 +572,130 @@ def report_floors(
             rep.miss(loop, f"{rest.rpartition(' | FIX: ')[0]}; {cells}", CONTROLLER_FIX)
 
 
+READING_REFUSALS = ("UNREADABLE(", "ADMISSION-REFUSED(", "LANE-REFUSED(")
+READING_WINDOW = timedelta(minutes=15)
+READING_FIELD_RE = re.compile(r"(?:[:,])([a-z_]+)=([^,]+)")
+
+
+def _mark_until(mark: ModelLabMark) -> datetime | None:
+    """The mark's `until` stamp; None for an absent mark; ValueError/TypeError when unreadable."""
+    if mark.state == "absent":
+        return None
+    if mark.state == "unreadable" or mark.until is None:
+        raise ValueError("unreadable mark")
+    return parse_stamp(mark.until)
+
+
+def _receipt_summary(
+    facts: ModelLabHeadroomFacts,
+) -> tuple[dict[str, int], dict[str, tuple[datetime, str]]]:
+    running: dict[str, int] = {}
+    latest: dict[str, tuple[datetime, str]] = {}
+    for receipt in facts.receipts:
+        try:
+            at = parse_stamp(receipt.started_at)
+        except (ValueError, TypeError):
+            continue  # An interrupted receipt is not evidence of free capacity.
+        host = receipt.host
+        if host and not receipt.final and receipt.status in ("preparing", "running"):
+            if not receipt.pid_valid:
+                continue
+            if receipt.pid_alive is None or receipt.pid_alive:
+                running[host] = running.get(host, 0) + 1
+        for reading in receipt.readings:
+            name, _, _ = reading.partition(":")
+            if name not in latest or at > latest[name][0]:
+                latest[name] = (at, reading)
+    return running, latest
+
+
+def check_lab_headroom(
+    rep: Report, facts: ModelLabHeadroomFacts, now: datetime
+) -> None:
+    """Free lane slots in the runner's recent placement receipts; never probes or places."""
+    rep.checked.append("lab-headroom")
+    if facts.module_unavailable:
+        rep.note("lab-headroom: placement module unavailable")
+        return
+    for name in facts.unavailable_hosts:
+        rep.note(f"lab-headroom:{name} | unavailable in host table; no dispatch")
+    if facts.placement_error is not None:
+        rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
+        return
+    running, latest = _receipt_summary(facts)
+    placed: dict[str, int] = {}
+    for name in facts.live_marker_hosts:
+        placed[name] = placed.get(name, 0) + 1
+    for host in facts.hosts:
+        if host.local:
+            continue
+        label = f"lab-headroom:{host.name}"
+        try:
+            until = _mark_until(host.limited_mark)
+        except (ValueError, TypeError):
+            rep.note(f"{label} | limited mark unreadable; no dispatch")
+            continue
+        if until is not None and until > now:
+            rep.note(
+                f"{label} | limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}; no dispatch"
+            )
+            continue
+        try:
+            auth_until = _mark_until(host.auth_mark)
+            if host.auth_mark.state == "present" and host.auth_mark.at is None:
+                raise ValueError("auth mark lacks `at`")
+        except (ValueError, TypeError):
+            rep.note(f"{label} | auth-expired mark unreadable; no dispatch")
+            continue
+        if auth_until is not None and auth_until > now:
+            rep.note(
+                f"{label} | claude auth expired since {host.auth_mark.at}; log in again; no dispatch"
+            )
+            continue
+        cached = latest.get(host.name)
+        if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
+            rep.note(f"{label} | no recent placement reading; no dispatch")
+            continue
+        reading = cached[1]
+        if any(reason in reading for reason in READING_REFUSALS):
+            rep.note(f"{label} | unhealthy: {reading}; no dispatch")
+            continue
+        parse = host.parses.get(reading)
+        if parse is None or not parse.parsed:
+            rep.note(f"{label} | unreadable placement reading; no dispatch")
+            continue
+        fields = dict(READING_FIELD_RE.findall(reading))
+        try:
+            cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
+            # The snapshot precedes placement. Markers and live receipts include that new lane;
+            # max avoids charging it twice and also counts landing workers in the same pool.
+            count = max(placed.get(host.name, 0), running.get(host.name, 0))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if parse.admission_refusal is not None:
+            rep.note(
+                f"{label} | admission refused: {parse.admission_refusal}; "
+                f"running lanes {count} of cap {cap}, free slots 0"
+            )
+            continue
+        try:
+            observed = int(fields["placed"])
+            free = max(0, min(cap - count, int(fields["slots"]) + observed - count))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if free:
+            rep.miss(
+                label,
+                f"running lanes {count} of cap {cap}, free slots {free}",
+                f"dispatch up to {free} lanes of the session's pillar work to {host.name} "
+                "through the remote-lane runner; never pin to a host without headroom",
+            )
+        else:
+            rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -574,6 +703,12 @@ class HandlerThroughputTickDecision:
         now = parse_stamp(request.now)
         ticks: list[dict[str, Any]] = [dict(t) for t in request.ticks]
         rep = Report()
+        if request.heartbeat_write_error is not None:
+            rep.unk(
+                "tick-heartbeat",
+                f"cannot write {request.heartbeat_write_error}",
+                "make the state directory writable (OMNI_SESSION_START_STATE_DIR names another)",
+            )
         escalated: list[tuple[str, str]] = []
         check_controller(rep, request, now, escalated)
         check_merges(rep, request, now)
@@ -582,6 +717,8 @@ class HandlerThroughputTickDecision:
         check_floors(floor_rep, request, now)
         report_floors(rep, floor_rep, covers, ticks)
         report_escalated(rep, escalated, covers, ticks)
+        if request.lab_headroom is not None:
+            check_lab_headroom(rep, request.lab_headroom, now)
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),

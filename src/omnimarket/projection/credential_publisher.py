@@ -385,6 +385,12 @@ class ModelCredentialRegisteredEvent(BaseModel):
     name: str
     api_key_ref: str
     metadata: dict[str, str] = Field(default_factory=dict)
+    # A locally set key carries both (the local secret store effect); the hosted
+    # path does not send them, so they stay optional and an older producer's
+    # event still validates. The fingerprint is the first 8 hex characters of
+    # sha256(value): enough to tell two keys apart, never enough to recover one.
+    fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{8}$")
+    set_at: datetime | None = None
 
 
 class ModelCredentialRevokedEvent(BaseModel):

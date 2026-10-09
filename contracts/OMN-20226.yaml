@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20226"
+title: "Overview shows compression and cache hit rate from measured exposures and a typed not-measured state until they exist"
+summary: "The producer half of OMN-20226. Migration 0003 adds compression_ratio, cache_hit_rate and runs_cache_answered to metering_summary, nullable with no default; the fold writes null for all three because no metering record carries a raw or compressed input-token count or a semantic-cache answer, and metering-summary.v1 serves the three columns. This contract declares and binds only AC1 and AC2, the typed not-measured state on the served exposure. AC3 and AC4 (the formulas) are not transcribed: they waited on the ruling asked on the ticket at 2026-10-07T05:53Z, and Jonah answered at 2026-10-07T14:08Z that typed not-measured is the accepted end state for this sprint and that AC3 and AC4 move to a producer ticket of their own. The Overview cards are omnidash's half."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criteria this repository's half proves, transcribed from the OMN-20226 ticket body as read on 2026-10-07. AC3 and AC4 are not transcribed (see summary).
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Compression and cache hit rate each read from a served exposure and not from a browser computation -- falsifier: the page contract vitest finding either figure whose data is not a served exposure
+      - id: "AC2"
+        statement: |-
+          AC2: A figure with no measurement behind it renders its typed not-measured state, never 0 and never a blank -- falsifier: a fresh store showing 0 or a blank for either figure
+evidence_requirements:
+  - kind: "tests"
+    description: "Measured runs still serve null for all three fields; no column default; every window carries them; an all-unmeasured row serves null; a replayed fold is byte-identical; the SQLite store keeps and serves null keys; the exposure declares the three columns; the migration adds nullable columns with no default. At dev e565ba5ba0 all 7 fail; writing compression_ratio as \"0\" fails 5 of 7."
+    command: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20226_compression_and_cache_hit.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20226-null-until-measured"
+    description: "The metering-summary fold and the SQLite store serve compression_ratio, cache_hit_rate and runs_cache_answered as null on every row and window, migration 0003 adds them nullable with no default, and metering-summary.v1 declares them: the served half of AC1 and AC2."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20226_compression_and_cache_hit.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
