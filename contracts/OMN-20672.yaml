@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20672"
 title: "The landing-controller scripts become contract, node and handler over the bus"
-summary: "First shard: the landing tick's decision half, with the per-repository fair share the live controller applies on top of the decision node, becomes a contract-declared COMPUTE node, and an observe-mode COMPUTE node compares the node path's decision with the live controller's decision on a copied tick. The live controller is not changed."
+summary: "Shard 2 adds node_pr_landing_ledger_facts_compute: the landing controller's row-only ledger facts (fixer kill switch, cause owners, cause fixes, cause releases, lab PASS readbacks, live drain lane) derived from parsed ledger rows by a contract-declared COMPUTE node, equal to the live derivation on the recorded ledger. First shard: the landing tick's decision half, with the per-repository fair share the live controller applies on top of the decision node, becomes a contract-declared COMPUTE node, and an observe-mode COMPUTE node compares the node path's decision with the live controller's decision on a copied tick. The live controller is not changed."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,10 +16,20 @@ requirements:
         statement: "With free worker slots fewer than the dispatch candidates, the tick node shares the slots across repositories, and on every reviewed one-repository scenario tick it returns the decision node's decision byte for byte."
       - id: "AC3"
         statement: "node_pr_landing_tick_observe_compute reports equal for a copied tick whose controller decision is the node path's, and names each differing path for a controller decision that did not share the slots."
+  - id: "req-landing-ledger-facts-node"
+    statement: "The row-only ledger facts of a landing tick are derived by a definition-B node with its topics declared in the contract, and its facts equal the live controller's derivation on the same ledger rows."
+    acceptance:
+      - id: "AC4"
+        statement: "node_pr_landing_ledger_facts_compute is a contract.yaml, a declarative node and a handle(ModelLandingLedgerRows) -> ModelLandingLedgerFacts handler with its command and terminal topics declared in the contract."
+      - id: "AC5"
+        statement: "On a fixed set of ledger rows that reaches the fixer kill switch, the cause owners, the declared fixes, the cause releases, the lab PASS readbacks and the drain lane, the node returns the facts the live derivation returned for the same rows and clock."
 evidence_requirements:
   - kind: "tests"
     description: "Execute the tick and observe node tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute tests/unit/nodes/node_pr_landing_tick_observe_compute -q"
+  - kind: "tests"
+    description: "Execute the ledger facts node tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,3 +51,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_observe_compute/test_landing_tick_observe.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-ledger-facts-node"
+    description: "The ledger facts node's contract, handler signature and facts hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4", "AC5"]
