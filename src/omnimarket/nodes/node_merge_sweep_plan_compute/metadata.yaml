@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_plan_compute
+version: 0.1.0
+description: Decide a merge sweep from supplied facts - the lanes one sweep dispatches
+  and the retry of a lane whose runner exited without a host.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_merge_sweep_plan_compute: omnimarket.nodes.node_merge_sweep_plan_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- lab
+- merge-sweep
+pack: operator_tooling
+display_name: Merge Sweep Plan Compute
+node_role: compute
