@@ -204,12 +204,13 @@ class HandlerCiRedTriage:
                         )
                     )
                     action_applied = True
+                    self._owners[owner_key] = run_id
+                    while len(self._owners) > self.MEMORY_LIMIT:
+                        self._owners.popitem(last=False)
                 else:
-                    # A dry-run lifecycle run reads GitHub on the operator login and cannot act.
+                    # A dry-run lifecycle run reads GitHub on the operator login and cannot act;
+                    # shadow mode starts no run, so it claims no owner either.
                     start_evidence = " start=withheld:act=false"
-                self._owners[owner_key] = run_id
-                while len(self._owners) > self.MEMORY_LIMIT:
-                    self._owners.popitem(last=False)
             unread = []
             missing = [
                 check

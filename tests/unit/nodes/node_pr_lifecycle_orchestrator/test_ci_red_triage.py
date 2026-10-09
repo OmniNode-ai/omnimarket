@@ -106,9 +106,10 @@ async def test_shadow_mode_records_decision_and_starts_nothing() -> None:
     assert len(decisions) == 3
     assert [ev.action for ev in decisions] == [
         EnumCiRedAction.START_CAUSE_OWNER,
-        EnumCiRedAction.JOINED_OWNER,
-        EnumCiRedAction.JOINED_OWNER,
+        EnumCiRedAction.START_CAUSE_OWNER,
+        EnumCiRedAction.START_CAUSE_OWNER,
     ]
+    assert handler._owners == {}
     assert all(ev.action_applied is False for ev in decisions)
     run_id = decisions[0].orchestrator_run_id
     assert run_id is not None
