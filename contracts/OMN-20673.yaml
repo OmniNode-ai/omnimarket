@@ -41,7 +41,7 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
   - kind: "tests"
     description: "AC4: the entry point is registered in pyproject.toml."
-    command: "grep -c '^node_morning_ground_state_orchestrator = ' pyproject.toml"
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -75,7 +75,7 @@ dod_evidence:
     description: "AC4: pyproject.toml registers node_morning_ground_state_orchestrator in the onex.nodes entry points."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "grep -c '^node_morning_ground_state_orchestrator = \"omnimarket.nodes.node_morning_ground_state_orchestrator\"$' pyproject.toml"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
