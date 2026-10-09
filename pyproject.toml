@@ -293,6 +293,7 @@ node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_d
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_ci_state_verdict_compute = "omnimarket.nodes.node_ci_state_verdict_compute"
+node_product_floor_verdict_compute = "omnimarket.nodes.node_product_floor_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
