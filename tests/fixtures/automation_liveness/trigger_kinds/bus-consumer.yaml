@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind bus-consumer.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-b/example-consumer
+  owner_repo: example-owner/example-repo
+  host: host-b
+  trigger:
+    kind: bus-consumer
+    native_id: example-consumer-group
+  expected_interval_seconds: 300
+  alarm_deadline_seconds: 1800
+  max_silence_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: consumer_group
+    locator: example-consumer-group
+    completion_record: projection applied event
+  real_work: applied events
+  demand: end offset minus committed offset > 0
+  positive_control:
+    kind: class_drill
+    ref: publish a trigger with no answer
+  state: active
