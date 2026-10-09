@@ -100,7 +100,6 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs(
     expected_envs = {
         "local-coder": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
         "local-heavy-reasoning": "BIFROST_LOCAL_CODER_ENDPOINT_URL",
-        "local-ds-v4-flash": "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL",
     }
     for backend_id, env in expected_envs.items():
         assert backends[backend_id]["endpoint_url_env"] == env
@@ -110,7 +109,6 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs(
         "local-coder": "Qwen3.8-27B",
         "local-heavy-reasoning": "Qwen3.8-27B",
         "local-embedding": "text-embedding-qwen3",
-        "local-ds-v4-flash": "deepseek-v4-flash",
     }
     assert all(backends[backend_id]["model_name"] is None for backend_id in served_ids)
     overlay = tmp_path / "lab-overlay.yaml"

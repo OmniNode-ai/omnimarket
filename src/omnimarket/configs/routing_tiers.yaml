@@ -76,8 +76,8 @@ tiers:
         # reasoning: bifrost_delegation.yaml's `test` routing_rule ALREADY
         # declares backend_ids [local-coder, cloud-gemini-2-5-flash], so the two
         # surfaces now agree instead of contradicting each other. `research`
-        # is deliberately NOT restored here — it keeps two live local rungs
-        # (local-heavy-reasoning, local-ds-v4-flash) without local-coder.
+        # is deliberately NOT restored here — it keeps the live local rung
+        # local-heavy-reasoning without local-coder.
         #
         # OMN-15630: validator_generation added — its DoD (compiles_without_errors,
         # final_artifact_only, passes_existing_tests) is an exact match for
@@ -112,8 +112,8 @@ tiers:
       # trip to reach a live backend. Its task types are rehomed, not dropped:
       # `test` -> local-coder above; documentation + summarization ->
       # local-heavy-reasoning below; research/reasoning/planning/review/
-      # document were already served by local-heavy-reasoning and/or
-      # local-ds-v4-flash. Proof that no task_type lost its last backend is the
+      # document were already served by local-heavy-reasoning. Proof that no
+      # task_type lost its last backend is the
       # before/after resolution table on OMN-16442 and
       # test_no_task_type_loses_its_last_local_backend_omn16442.
       # OMN-16419: was "Qwen3.6-35B-A3B" — same repoint as local-coder above
@@ -176,64 +176,6 @@ tiers:
           - documentation
           - summarization
         fast_path_threshold_tokens: 8192
-      # OMN-16833: the `ds-v4-flash` rung (backend_id local-ds-v4-flash, the
-      # LARGE-window 65536 local entry) was REMOVED from this tier. The backend
-      # DECLARATION is deliberately kept and parked in bifrost_delegation.yaml —
-      # only the tier reference goes — because the endpoint is STOPPED, not
-      # retired, and comes back by flipping one flag.
-      #
-      # Measured 2026-09-10, not inferred: GET .200:8101/v1/models
-      # -> curl exit 7 "Couldn't connect to server", http=000.
-      # Controls proving the probe ran and the host is up: `ping .200`
-      # -> 2/2 packets, 0.0% loss, and the same probe against .201:8000 -> HTTP
-      # 200. All THREE lab lane overlays (dev, judge, lakshman) declare
-      # `serving: false` on this backend per OMN-16999 — a stopped
-      # operator-started service on the workstation — and the onex-dev overlay
-      # declares `locale: cloud` with zero local backends. So the renderer
-      # writes `endpoint_url: null` on every lane in the fleet and
-      # `_load_bifrost_endpoints` drops it SILENTLY: the rung was declared and
-      # unreachable at the same time, which is what this ticket was filed for.
-      #
-      # What this costs, stated rather than glossed: `escalation` loses its
-      # LARGE-window (65536) local rung, so an escalation prompt too big for
-      # local-heavy-reasoning's 8192 window now goes to the metered ceiling.
-      # That is the state the fleet was ALREADY in — the rung was being dropped
-      # at load time — so this records the truth rather than changing routing.
-      # `code_generation` keeps its zero-cost local rung on local-coder above;
-      # what it loses is OMN-15180's same-tier retry SIBLING, which was likewise
-      # already absent in fact. See
-      # test_local_tier_keeps_a_same_tier_sibling_for_code_generation, which now
-      # asserts the sibling guarantee CONDITIONALLY on the endpoint being back.
-      #
-      # RESTORE, in this order and not another: start the ds4 server on .200:8101,
-      # re-probe, update omnibase_infra tests/fixtures/bifrost_served_models_probe.json,
-      # flip `serving: true` in the three lane overlays, move the id from
-      # NOT_SERVING_LOCAL_BACKENDS to LANE_BOUND_LOCAL_BACKENDS in
-      # omnimarket.validators.routing_tier_backend_bindability, and only THEN
-      # restore this entry. Endpoint first, tier reference last.
-      # OMN-16442: `id` here is the routing CATALOG KEY, not the served id —
-      # the served ids at .200:8101 are {deepseek-v4-flash, deepseek-v4-pro}
-      # (live readback 2026-08-28), and bifrost_delegation.yaml's
-      # local-ds-v4-flash.model_name carries the served id per OMN-16833.
-      #
-      # OMN-16442: the `local-coder-mlx` rung (id
-      # mlx-community/Qwen3.6-35B-A3B-8bit, .200:8401) was DELETED here for the
-      # same reason as local-reasoner above — the endpoint is dead and the
-      # named artifact is served nowhere on the fleet. Live probe 2026-08-28:
-      # `curl .200:8401/v1/models` → exit 7 "Couldn't connect
-      # to server". The Mac Studio's MLX server was replaced (canonical
-      # inventory omni_home/docs/reference/AI_LAB_HARDWARE.md, verified
-      # 2026-08-28): it now serves `Qwen3.8-27B-8bit` on 127.0.0.1:8099 and is
-      # bound LOCALHOST-ONLY, so it is not reachable from the .201 runtime and
-      # must NOT be re-registered as a routable rung until it has explicit
-      # availability semantics + a health check — the same gate the inventory
-      # places on the mini/laptop/Gemma-canary endpoints. That re-registration
-      # is the scoped follow-on recorded on OMN-16442, not this pass.
-      #
-      # OMN-15180's same-tier fallback (sibling_backend_available_in_tier) is
-      # NOT lost: code_generation keeps two local siblings (local-coder,
-      # local-ds-v4-flash), so a transport failure on the first still retries
-      # inside `local` before escalating to cheap_cloud.
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 2
