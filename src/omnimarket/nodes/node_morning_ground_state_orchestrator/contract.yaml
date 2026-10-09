@@ -39,7 +39,7 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 14400000
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 env_dependencies:
   ONEX_ENVIRONMENT: {required: true, description: Explicit runtime environment for canonical bus wiring.}
   OMNIMARKET_MORNING_GROUND_STATE_OVERLAY: {required: false, description: Path to the deployment overlay.yaml; when unset the first node_morning_ground_state_orchestrator/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS is used, and a run with neither refuses to start.}
