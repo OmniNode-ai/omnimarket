@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20477"
+title: "Route the test class away from the local coder outside the repair loop"
+summary: "The judged matrix accepted 2 of 18 single-shot test answers from the local coder. routing_tiers.yaml drops test from the local-coder use_for list, the test class contract drops the local tier from its escalation order, and the delegated test loop pins --backend-id local-coder so the repair loop keeps the model."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-test-class-leaves-local"
+    statement: |-
+      An unpinned test request must not select the local rung, and the run-the-tests-and-repair loop must still reach it through its backend pin.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an unpinned test request routes to cheap_frontier and the test class ladder declares no local tier -- falsifier: uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k "unpinned_test_request or ladder_declares_no_local"
+      - id: "AC2"
+        statement: |-
+          AC2: the repair loop pins local-coder on every delegate call and that pin still selects the local rung for test -- falsifier: uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k "loop_pin or repair_loop_pins"
+evidence_requirements:
+  - kind: "tests"
+    description: "An unpinned test request leaves the local rung and the test ladder has no local tier."
+    command: "uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k \"unpinned_test_request or ladder_declares_no_local\""
+  - kind: "tests"
+    description: "The repair loop pins local-coder and the pin selects the local rung."
+    command: "uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k \"loop_pin or repair_loop_pins\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20477-unpinned-test-leaves-local"
+    description: "The focused tests prove an unpinned test request routes to cheap_frontier and the test ladder declares no local tier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k \"unpinned_test_request or ladder_declares_no_local\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20477-loop-pins-local-coder"
+    description: "The focused tests prove the repair loop pins local-coder and the pin selects the local rung for test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judged_matrix_routing_omn20477.py -q -k \"loop_pin or repair_loop_pins\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
