@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
+
+# psycopg2 ships no type stubs; bind its sql module as Any.
+pgsql: Any = importlib.import_module("psycopg2.sql")
 
 
 class ModelWorkLedgerQuerySource(BaseModel):
@@ -90,10 +94,15 @@ class PostgresWorkLedgerQueryReader:
             conn, self._conn = self._conn, None
             conn.close()
 
-    def _query(self, sql: str, params: tuple[object, ...]) -> list[tuple[Any, ...]]:
+    def _query(
+        self, template: str, params: tuple[object, ...]
+    ) -> list[tuple[Any, ...]]:
+        """Run ``template`` with the relation bound as a quoted identifier."""
+        schema, table = self._source.relation.split(".", 1)
+        query = pgsql.SQL(template).format(relation=pgsql.Identifier(schema, table))
         try:
             with self._connect().cursor() as cursor:
-                cursor.execute(sql, params)
+                cursor.execute(query, params)
                 return list(cursor.fetchall())
         except Exception as exc:
             with contextlib.suppress(Exception):
@@ -123,12 +132,12 @@ class PostgresWorkLedgerQueryReader:
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         if since is None:
             rows = self._query(
-                f"SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {self._source.relation} WHERE row_ts <= %s ORDER BY row_ts, projected_at, row_id",
+                "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_ts <= %s ORDER BY row_ts, projected_at, row_id",
                 (until,),
             )
         else:
             rows = self._query(
-                f"SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {self._source.relation} WHERE row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
+                "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
                 (since, until),
             )
         return self._records(rows)
@@ -137,14 +146,14 @@ class PostgresWorkLedgerQueryReader:
         self, *, since: datetime, until: datetime
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         rows = self._query(
-            f"SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {self._source.relation} WHERE row_type = 'STATUS' AND row_lane = %s AND row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
+            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at FROM {relation} WHERE row_type = 'STATUS' AND row_lane = %s AND row_ts >= %s AND row_ts <= %s ORDER BY row_ts, projected_at, row_id",
             (self._source.parity_receipt_lane, since, until),
         )
         return self._records(rows)
 
     def freshness(self, *, until: datetime) -> tuple[datetime | None, datetime | None]:
         rows = self._query(
-            f"SELECT max(row_ts), max(projected_at) FROM {self._source.relation} WHERE row_ts <= %s",
+            "SELECT max(row_ts), max(projected_at) FROM {relation} WHERE row_ts <= %s",
             (until,),
         )
         row_ts, projected_at = rows[0]
