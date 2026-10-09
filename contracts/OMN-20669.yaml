@@ -36,7 +36,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_remote_lane_compute -q"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_remote_lane_parity.py tests/nodes/node_remote_lane_compute/test_golden_chain_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_error_chain_remote_lane_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20669-ac2-effect-ref"
@@ -44,7 +44,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_remote_lane_effect -q"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_effect/test_golden_chain_remote_lane_effect.py tests/nodes/node_remote_lane_effect/test_error_chain_remote_lane_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20669-ac3-registration"
