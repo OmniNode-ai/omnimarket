@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dod_closeout_sweep_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the DoD closeout sweep (OMN-20675), the decisions the
+  dod-closeout-sweep workflow left to agents. precheck says whether a date's sweep is already
+  delivered, owned by a live peer lane, or to be run; resolve_sprint picks the one live dated
+  beta sprint whose window holds the date and refuses to pick among several; plan_scope
+  classifies started tickets by the four exclusions (parent, fenced, external, no contract and
+  no merged PR) and cuts the candidates into chunks. Performs no read, has no clock and writes
+  nothing: the caller reads the ledger, Linear, GitHub and the report file and passes what it saw.
+input_model:
+  name: ModelDodCloseoutDecisionRequest
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+output_model:
+  name: ModelDodCloseoutDecisionResult
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+handler:
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep
+  class: HandlerDodCloseoutSweep
+  input_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionRequest
+  output_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep:HandlerDodCloseoutSweep
+  handlers:
+    - operation: decide_dod_closeout_sweep
+      handler:
+        name: HandlerDodCloseoutSweep
+        module: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope]}
+  date: {type: str, required: true, description: "YYYY-MM-DD the sweep is for."}
+  force: {type: bool, required: false, description: "precheck: bypass the idempotency guard."}
+  clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ."}
+  ledger_rows: {type: list, required: false, description: "precheck: ledger rows, one string each."}
+  report_text: {type: str, required: false, description: "precheck: the date's report, absent when the file is."}
+  report_commit_sha: {type: str, required: false}
+  report_dirty: {type: bool, required: false}
+  project_override: {type: str, required: false, description: "resolve_sprint: explicit sprint uuid."}
+  projects: {type: list, required: false, description: "resolve_sprint: every listed Linear project."}
+  project_id: {type: str, required: false, description: "plan_scope: the sprint uuid."}
+  tickets: {type: list, required: false, description: "plan_scope: started tickets with the facts read for each."}
+  chunk_size: {type: int, required: false}
+outputs:
+  kind: {type: str}
+  verdict: {type: str, enum: [already-delivered, peer-owned, run]}
+  evidence: {type: str}
+  reason: {type: str}
+  report_lines: {type: int}
+  checks_failed: {type: list}
+  resolved: {type: bool}
+  project_id: {type: str}
+  project_name: {type: str}
+  residuals: {type: list}
+  counts: {type: object}
+  candidates: {type: list}
+  chunks: {type: list}
+  non_candidates: {type: list}
+  overlaps: {type: list}
+  verified_nothing: {type: bool}
+terminal_event: onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dod-closeout-sweep-decide-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dod-closeout-sweep-decide-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+metadata:
+  transport_type: inmemory
+  description: DoD closeout sweep decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20675]
