@@ -1,0 +1,43 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20675"
+title: "The DoD closeout sweep's decisions run as an omnimarket compute node over the bus"
+summary: "node_dod_closeout_decision_compute ports the pure block of the dod-closeout-sweep workflow script (check refusal, candidate rotation, run clock, the Done decision, the open comment, the verifier receipt reading, the delegation cell gate and the Accept-stage glue) to a contract-declared COMPUTE node dispatched over the bus, with parity against outputs captured from the old code. This is the first shard of the ticket: its acceptance criteria AC1 and AC2 (the whole tool converted, the old entry point deleted) are not claimed here, so no check below binds to them. The agent phases, the Linear and GitHub effects, the absorption of the two standalone handlers, repointing callers and deleting the old script are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-closeout-decision-node"
+    statement: |-
+      The closer's deterministic decisions run in node_dod_closeout_decision_compute and match the old JS pure block, and the node is dispatched through its contract on the bus.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: Every decision kind returns the old block's captured output for the same input, errors included -- falsifier: tests/nodes/node_dod_closeout_decision_compute/test_parity_dod_closeout_decision_compute.py against tests/fixtures/dod_closeout_decision_parity.json, which fails on any differing decision
+      - id: "AC4"
+        statement: |-
+          AC4: The node is dispatched through its contract on the RuntimeLocal in-memory bus and an invalid request is refused with no result -- falsifier: tests/nodes/node_dod_closeout_decision_compute/test_golden_chain_dod_closeout_decision_compute.py
+evidence_requirements:
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for the closeout decision compute node."
+    command: "uv run pytest tests/nodes/node_dod_closeout_decision_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20675-closeout-decision-parity"
+    description: "node_dod_closeout_decision_compute matches the old JS pure block over the captured cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_decision_compute/test_parity_dod_closeout_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20675-closeout-decision-bus"
+    description: "node_dod_closeout_decision_compute runs over the in-memory bus and refuses invalid requests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_decision_compute/test_golden_chain_dod_closeout_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

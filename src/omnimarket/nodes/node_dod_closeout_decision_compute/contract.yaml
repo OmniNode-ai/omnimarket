@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dod_closeout_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the DoD closeout sweep, the closer (OMN-20675):
+  the parsed run arguments and the run clock derived from the fire id, which started
+  tickets a bounded run examines (least recently examined first, held tickets skipped),
+  the chunking, the refusal of a proposed check that only reads source text or pull
+  request state, the vetting of the binder's output, the Done decision (a ticket is Done
+  only when every criterion is bound, accepted by a lane other than its author and
+  verified by dod_verify), the open comment with its dedupe signature, the reading of the
+  verifier's declared result arm, the merged-pull-request window and the delegation cell
+  gate. Behaviour-preserving port of the pure block of the dod-closeout-sweep workflow.
+  Reads no files, calls no model, writes nothing to Linear; a refusal is a typed
+  validation error naming the missing field, or the original argument error text.
+input_model:
+  name: ModelDodCloseoutDecisionRequest
+  module: omnimarket.nodes.node_dod_closeout_decision_compute.models.model_dod_closeout_decision
+output_model:
+  name: ModelDodCloseoutDecisionResult
+  module: omnimarket.nodes.node_dod_closeout_decision_compute.models.model_dod_closeout_decision
+handler:
+  module: omnimarket.nodes.node_dod_closeout_decision_compute.handlers.handler_dod_closeout_decision
+  class: HandlerDodCloseoutDecision
+  input_model: omnimarket.nodes.node_dod_closeout_decision_compute.models.model_dod_closeout_decision.ModelDodCloseoutDecisionRequest
+  output_model: omnimarket.nodes.node_dod_closeout_decision_compute.models.model_dod_closeout_decision.ModelDodCloseoutDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dod_closeout_decision_compute.handlers.handler_dod_closeout_decision:HandlerDodCloseoutDecision
+  handlers:
+    - operation: decide_dod_closeout
+      handler:
+        name: HandlerDodCloseoutDecision
+        module: omnimarket.nodes.node_dod_closeout_decision_compute.handlers.handler_dod_closeout_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind:
+    type: str
+    required: true
+    enum: [parse_args, select_candidates, chunk_list, refusal_of, vet_bindings, decide_chunk, decide_ticket, open_comment, read_dod_verify, merged_since, check_delegation]
+  args: {type: object, required: false, description: The workflow args as the launchd driver passes them, for parse_args.}
+  candidates: {type: array, required: false, description: Enumerated candidate tickets, for select_candidates.}
+  text_state: {type: str, required: false, description: Stdout of the text-state command, for select_candidates.}
+  max_candidates: {type: int, required: false, description: Bound on tickets examined per run, for select_candidates.}
+  items: {type: array, required: false, description: Ticket ids to chunk, for chunk_list.}
+  size: {type: int, required: false, description: Chunk size, for chunk_list.}
+  check: {type: object, required: false, description: A binder-proposed check, for refusal_of.}
+  chunk: {type: object, required: false, description: One chunk (index and tickets), for vet_bindings and decide_chunk.}
+  run_key: {type: str, required: false, description: The run key, for vet_bindings, decide_chunk and open_comment.}
+  bind_result: {type: object, required: false, description: The Bind agent's result, for vet_bindings.}
+  vetted: {type: array, required: false, description: The vetted tickets, for decide_chunk.}
+  accept_result: {type: object, required: false, description: The Accept agent's result, for decide_chunk.}
+  apply: {type: bool, required: false, description: Whether Linear writes are in scope, for decide_chunk.}
+  text_sha_by_id: {type: object, required: false, description: Description hash per ticket, for decide_chunk.}
+  ticket: {type: object, required: false, description: One merged ticket, for decide_ticket.}
+  ticket_id: {type: str, required: false, description: The ticket id, for open_comment.}
+  unmet: {type: array, required: false, description: Unmet criteria, for open_comment.}
+  text_sha: {type: str, required: false, description: Description hash, for open_comment.}
+  receipt_json: {type: str, required: false, description: The verifier's JSON stdout, for read_dod_verify.}
+  date: {type: str, required: false, description: Run date YYYY-MM-DD, for merged_since.}
+  phase: {type: str, required: false, description: Phase name, for check_delegation.}
+  delegation_result: {type: object, required: false, description: A phase result carrying its delegation cell, for check_delegation.}
+  precheck_only: {type: bool, required: false, description: Whether the phase is an Enumerate precheck, for check_delegation.}
+outputs:
+  status: {type: str, enum: [decided]}
+  kind: {type: str}
+  config: {type: object}
+  selection: {type: object}
+  chunks: {type: array}
+  binding_refusal: {type: object}
+  vetted: {type: array}
+  for_review: {type: array}
+  merged: {type: array}
+  decisions: {type: array}
+  flips: {type: array}
+  opens: {type: array}
+  decision: {type: object}
+  open_comment: {type: object}
+  dod_verify: {type: object}
+  merged_since: {type: str}
+  delegation_check: {type: object}
+terminal_event: onex.evt.omnimarket.dod-closeout-decision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dod-closeout-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dod-closeout-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dod-closeout-decision-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.dod-closeout-decision-completed.v1
+metadata:
+  transport_type: inmemory
+  description: DoD closeout sweep decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20675]
