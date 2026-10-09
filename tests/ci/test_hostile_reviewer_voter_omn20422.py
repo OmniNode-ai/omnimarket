@@ -27,7 +27,7 @@ def _job_env() -> dict[str, str]:
 
 
 def test_second_voter_url_points_at_studio_8131() -> None:
-    assert _job_env()["LLM_GPT_OSS_REVIEW_URL"].endswith(":8131")
+    assert _job_env()["LLM_LOCAL_STUDIO_PLANNER_URL"].endswith(":8131")
 
 
 def test_cidr_allowlist_is_job_level() -> None:
@@ -37,4 +37,4 @@ def test_cidr_allowlist_is_job_level() -> None:
 def test_both_voter_models_are_still_requested() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "--model qwen3-review" in text
-    assert "--model gpt-oss-review" in text
+    assert "--model local-studio-planner" in text

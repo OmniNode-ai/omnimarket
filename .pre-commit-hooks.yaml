@@ -1,0 +1,47 @@
+# Pre-commit hooks exported by omnimarket.
+# Consumers reference these via:
+#
+#   - repo: https://github.com/OmniNode-ai/omnimarket
+#     rev: <release tag>
+#     hooks:
+#       - id: reject-skip-token
+#       - id: reject-skip-token-commit-msg
+#
+# `rev:` must be a release tag that postdates this file reaching the default branch and
+# the main fast-forward; a rev without this file makes pre-commit hard-error on an unknown
+# hook id.
+#
+# Both ids run .pre-commit-hooks/reject-deploy-gate-skip-token.sh, a self-contained bash
+# script (no repo-relative imports: a consumer clones this repo at `rev:` into pre-commit's
+# cache, not into a workspace). Its verdicts equal node_reject_skip_token_compute's, which
+# the tests hold it to on one fixture set.
+#
+# Install the commit-msg stage in the consumer: `pre-commit install --hook-type commit-msg`
+# (or list it in default_install_hook_types).
+
+- id: reject-skip-token
+  name: Reject skip-gate bypass tokens in staged files (operating rule 10)
+  description: >
+    Blocks any [skip-<letter>... bypass token in a staged markdown, yaml, yml or
+    txt file, or committed .onex_state/evidence text, unless the same file carries
+    "# skip-token-allowed: <receipt-id>". Free-text justification does not pass.
+    Reads the staged blob, not the working tree.
+  language: script
+  entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
+  pass_filenames: true
+  always_run: true
+  require_serial: true
+  stages: [pre-commit]
+
+- id: reject-skip-token-commit-msg
+  name: Reject skip-gate bypass tokens in commit messages (operating rule 10)
+  description: >
+    Blocks any [skip-<letter>... bypass token in the commit message unless the
+    message carries "# skip-token-allowed: <receipt-id>". A distinct code path
+    from the staged-content scan: pre-commit passes the message file path.
+  language: script
+  entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh --commit-msg
+  pass_filenames: true
+  always_run: true
+  require_serial: true
+  stages: [commit-msg]
