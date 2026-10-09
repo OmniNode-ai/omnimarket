@@ -49,6 +49,19 @@ _CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         {"host": "h202", "engine": "claude_sonnet", "local": False},
     ),
     (
+        # An unreadable host has no rank (the reader's -inf, which the bus envelope
+        # cannot carry as a number): it travels as null and ranks below every host.
+        "node_remote_lane_compute",
+        {
+            "engine": "codex",
+            "readings": [
+                {"name": "h101", "rank_free": None},
+                {"name": "h202", "rank_free": 7.19, "mem_avail_gb": 37.3},
+            ],
+        },
+        {"host": "h202", "engine": "codex", "local": False},
+    ),
+    (
         "node_remote_lane_close_compute",
         {
             "engine_exit_code": 0,
