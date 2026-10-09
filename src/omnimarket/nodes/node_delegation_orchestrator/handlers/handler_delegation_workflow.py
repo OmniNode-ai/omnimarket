@@ -4253,7 +4253,15 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.request is not None
         return [
-            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+            # OMN-19215: a quality retry after transport failover must retain
+            # the unavailable same-model rung's routing exclusion.
+            ModelRoutingIntent(
+                payload=workflow.request,
+                min_tier_name=tier,
+                excluded_backend_refs=tuple(
+                    sorted(workflow.transport_failed_backend_refs)
+                ),
+            ),
         ]
 
     def _build_escalation_event(
