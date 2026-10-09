@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind gh-event.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: github/example-repo/example-on-merge
+  owner_repo: example-owner/example-repo
+  host: github
+  trigger:
+    kind: gh-event
+    native_id: .github/workflows/example-on-merge.yml
+  alarm_deadline_seconds: 2400
+  max_runtime_seconds: 1800
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: workflow_runs
+    locator: example-owner/example-repo .github/workflows/example-on-merge.yml
+    completion_record: run conclusion
+  real_work: deployed
+  demand: none
+  correlation:
+    trigger_event: pull request merged to the default branch
+    answer_event: example deploy completed
+    match_key: merge commit sha
+    answer_deadline_seconds: 1800
+  positive_control:
+    kind: class_drill
+    ref: publish a trigger with no answer
+  state: active

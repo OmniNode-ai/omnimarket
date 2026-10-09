@@ -1,0 +1,47 @@
+{
+  "overlay": {
+    "schema_version": "automation-liveness-overlay/v1",
+    "timing": {
+      "observer_interval_seconds": 60,
+      "evaluation_interval_seconds": 60,
+      "confirmation_evaluations": 2,
+      "outbox_retry_seconds": 120,
+      "delivery_budget_seconds": 120
+    },
+    "processes": [
+      {
+        "process_id": "host-a/example-interval-job",
+        "owner_repo": "example-owner/example-repo",
+        "host": "host-a",
+        "trigger": {
+          "kind": "launchd-interval",
+          "native_id": "com.example.interval-job"
+        },
+        "expected_interval_seconds": 300,
+        "alarm_deadline_seconds": 1800,
+        "max_silence_seconds": 900,
+        "max_runtime_seconds": 240,
+        "emitter": "observer",
+        "run_record": "per-run",
+        "evidence": {
+          "source": "receipts_file",
+          "locator": "example-state/interval-job/fire-receipts.jsonl",
+          "completion_record": "outcome and exit_code"
+        },
+        "real_work": "placed",
+        "demand": "free_slots > 0 and eligible > 0",
+        "correlation": null,
+        "idle_runs_before_alarm": 3,
+        "positive_control": {
+          "kind": "class_drill",
+          "ref": "stop a launchd interval job"
+        },
+        "state": "active"
+      }
+    ]
+  },
+  "overlay_digest": "17e752fbde74d5ec51b1544cf36a48724a3c94162da5aefb1dfb620bd887096c",
+  "declared_by": "host-c/watchdog-primary",
+  "host": "host-c",
+  "declared_at": "2026-10-09T00:00:05Z"
+}

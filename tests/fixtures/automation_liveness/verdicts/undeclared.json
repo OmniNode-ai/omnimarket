@@ -1,0 +1,12 @@
+{
+  "process_id": "host-a/example-unknown-job",
+  "host": "host-a",
+  "verdict": "undeclared",
+  "state": "red",
+  "reason": "process_without_entry",
+  "previous_verdict": null,
+  "verdict_since": "2026-10-09T02:10:00Z",
+  "evaluated_at": "2026-10-09T02:31:00Z",
+  "contract_digest": null,
+  "detail": "example undeclared verdict"
+}
