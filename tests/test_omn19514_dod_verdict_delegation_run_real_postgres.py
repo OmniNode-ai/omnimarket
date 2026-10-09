@@ -14,13 +14,11 @@ the table does not have and raises UndefinedColumn.
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -77,37 +75,6 @@ MIGRATIONS = (
 )
 
 
-def _base_dsn() -> str:
-    password = os.environ.get(
-        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
-    )
-    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
-    port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
-    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
-    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
-    return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
-
-
-async def _connect_or_skip(dsn: str | None = None) -> asyncpg.Connection:
-    if dsn is not None:
-        # An explicitly provisioned database must fail, never silently skip.
-        return await asyncpg.connect(dsn)
-    password = os.environ.get(
-        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
-    )
-    if not password:
-        pytest.skip(
-            "POSTGRES_PASSWORD not set -- skipping the OMN-19514 real-Postgres "
-            "producer-payload write-path gate"
-        )
-        raise AssertionError("unreachable: pytest.skip always raises")
-    try:
-        return await asyncpg.connect(_base_dsn())
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
-        pytest.skip(f"no reachable Postgres for the OMN-19514 write-path gate: {exc}")
-        raise AssertionError("unreachable: pytest.skip always raises") from exc
-
-
 class _ConnectionDb:
     """The two methods the writer calls, bound to one disposable connection."""
 
@@ -130,10 +97,10 @@ class _ConnectionDb:
 
 @asynccontextmanager
 async def _migrated_writer(
-    dsn: str | None = None,
+    dsn: str,
 ) -> AsyncIterator[tuple[DodVerdictProjectionWriter, asyncpg.Connection, str]]:
     """A throwaway schema carrying the real migration, wired to the real writer."""
-    connection = await _connect_or_skip(dsn)
+    connection = await asyncpg.connect(dsn)
     schema = f"omn19514_{uuid4().hex[:12]}"
     original_table = writer_module.TABLE
     original_upsert = writer_module._UPSERT
@@ -207,7 +174,7 @@ async def _row_count(connection: asyncpg.Connection, schema: str) -> int:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_linked_verdict_stores_the_delegation_run() -> None:
+async def test_a_linked_verdict_stores_the_delegation_run(postgres: _Postgres) -> None:
     delegation = uuid4()
     payload = _produced_payload(
         ticket_id="OMN-19514",
@@ -215,7 +182,7 @@ async def test_a_linked_verdict_stores_the_delegation_run() -> None:
         delegation_correlation_id=delegation,
     )
     assert payload["delegation_correlation_id"] == str(delegation)
-    async with _migrated_writer() as (writer, connection, schema):
+    async with _migrated_writer(postgres.dsn("public")) as (writer, connection, schema):
         assert await writer._project_verdict(payload) is not None
         stored = await connection.fetchval(
             f"SELECT delegation_correlation_id FROM {schema}.dod_verify_runs "
@@ -228,13 +195,13 @@ async def test_a_linked_verdict_stores_the_delegation_run() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_an_unlinked_verdict_stores_null() -> None:
+async def test_an_unlinked_verdict_stores_null(postgres: _Postgres) -> None:
     payload = _produced_payload(
         ticket_id="OMN-19514",
         checks=[_check("dod-001", EnumEvidenceCheckStatus.VERIFIED)],
     )
     assert "delegation_correlation_id" not in payload
-    async with _migrated_writer() as (writer, connection, schema):
+    async with _migrated_writer(postgres.dsn("public")) as (writer, connection, schema):
         assert await writer._project_verdict(payload) is not None
         count = await connection.fetchval(
             f"SELECT count(*) FROM {schema}.dod_verify_runs "

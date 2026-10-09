@@ -260,7 +260,9 @@ def _same_binding(
     return len(hashes) <= 1
 
 
-def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
+def self_accepted_bindings(
+    dod_items: Sequence[Any], *, retired: frozenset[tuple[str, str]] = frozenset()
+) -> tuple[str, ...]:
     """OMN-17427: every binding no second lane accepted, whatever else shares its label.
 
     A record whose ``accepted_by`` is its own author, or is absent, is reported
@@ -268,6 +270,17 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
     criterion text) by a different actor. Another record on the label, such as
     the original ``occ-autobind`` one, does not stand in for that acceptance.
     """
+    return tuple(
+        f"{item_id}:{label} accepted_by={shown}"
+        for item_id, label, shown in _self_accepted_binding_records(dod_items)
+        if (item_id, _canonical_label(label)) not in retired
+    )
+
+
+def _self_accepted_binding_records(
+    dod_items: Sequence[Any],
+) -> tuple[tuple[str, str, str], ...]:
+    """Structured pre-retirement bindings, preserving display spelling and order."""
     records: list[tuple[str, str, Mapping[str, Any]]] = []
     for index, item in enumerate(dod_items):
         if not isinstance(item, Mapping):
@@ -283,7 +296,7 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
             and isinstance(label := record.get("label"), str)
         )
     independent = [record for _, _, record in records if is_accepted_binding(record)]
-    bindings: list[str] = []
+    bindings: list[tuple[str, str, str]] = []
     for item_id, label, record in records:
         accepted_by = self_accepting_actor(record)
         if accepted_by is None and str(record.get("accepted_by") or "").strip():
@@ -292,7 +305,7 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
         if any(_same_binding(other, record, canonical) for other in independent):
             continue
         shown = accepted_by or "<none>"
-        bindings.append(f"{item_id}:{label} accepted_by={shown}")
+        bindings.append((item_id, label, shown))
     return tuple(bindings)
 
 
@@ -382,6 +395,13 @@ def derive_falsifier_items(
     prefix for the selector's first path (a bare Python form depends on it);
     a repository that declares none is reported for the collector to fail.
     """
+    # Lazy import: the resolver uses the structured pre-retirement helpers here.
+    from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
+        resolve_retirements,
+    )
+
+    resolution = resolve_retirements(dod_items)
+    retired = resolution.pairs
     accepted = _accepted_labels(dod_items)
     taken_ids = _declared_item_ids(dod_items)
     items: list[dict[str, Any]] = []
@@ -453,7 +473,10 @@ def derive_falsifier_items(
         binds_ac = item.get("binds_ac")
         if isinstance(binds_ac, list):
             bound_labels.update(
-                _canonical_label(label) for label in binds_ac if isinstance(label, str)
+                _canonical_label(label)
+                for label in binds_ac
+                if isinstance(label, str)
+                and (item.get("id"), _canonical_label(label)) not in retired
             )
     unbound_criteria = tuple(
         label
@@ -466,7 +489,9 @@ def derive_falsifier_items(
         unrunnable_labels=tuple(unrunnable),
         undeclared_runner=tuple(undeclared_runner),
         derived_item_ids=tuple(str(item["id"]) for item in items),
-        self_accepted_bindings=self_accepted_bindings(dod_items),
+        self_accepted_bindings=self_accepted_bindings(dod_items, retired=retired),
+        retired_bindings=resolution.applied_summaries,
+        refused_retirements=resolution.refused,
         unbound_criteria=unbound_criteria,
     )
     return items, summary

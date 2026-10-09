@@ -1099,3 +1099,180 @@ def test_added_diff_lines_parser():
         "@@ -2,2 +2,2 @@\n context\n+d\n"
     )
     assert interrupted == "a\nd"
+
+
+# OMN-19787: answers whose only checkable claims are the shape the prompt
+# declares (a single word, one JSON object with enumerated values, facts echoed
+# exactly as given) are decided against the prompt's own declarations.
+SINGLE_WORD_PROMPT = "Reply with the single word: alive. This is a synthetic probe."
+
+
+@pytest.mark.parametrize("task_class", ["test", "review"])
+@pytest.mark.parametrize(
+    ("answer", "outcome"),
+    [
+        ("alive", "PASS"),
+        ("alive\n", "PASS"),
+        ("Alive.", "FAIL"),
+        ("alive, ready", "FAIL"),
+        ("provider HTTP 429 Too Many Requests", "FAIL"),
+        ("```python\nprint('alive')\n```", "FAIL"),
+    ],
+)
+def test_declared_format_met_single_word(task_class, answer, outcome):
+    row = criterion(
+        "declared_format_met",
+        task_class=task_class,
+        answer=answer,
+        prompt=SINGLE_WORD_PROMPT,
+        source=None,
+    )
+    assert row.outcome == outcome
+
+
+def test_single_word_probe_is_decided_for_the_test_class():
+    handler = HandlerDelegationRubricCheck()
+    exact = handler.handle(
+        request(
+            task_class="test", answer="alive", prompt=SINGLE_WORD_PROMPT, source=None
+        )
+    )
+    assert exact.outcome == "PASS"
+    code = handler.handle(
+        request(
+            task_class="test",
+            answer="```python\nimport pytest\n\n\ndef test_alive():\n    assert True\n```",
+            prompt=SINGLE_WORD_PROMPT,
+            source=None,
+        )
+    )
+    assert code.outcome == "FAIL"
+    assert code.failed_criteria == ("declared_format_met",)
+
+
+DECISION_FACTS = (
+    '{"commits_on_no_remote": 1, "dirty_tracked_files": 0, '
+    '"last_activity_hours": 15, "open_claim_on_ticket_last_24h": true, '
+    '"open_pull_request": false}'
+)
+ECHO_PROMPT = (
+    "Choose keep or pin_and_remove for a synthetic leftover tree. Facts: "
+    + DECISION_FACTS
+    + '. Answer with only one JSON object {"decision": "keep" or "pin_and_remove", '
+    '"rationale": "<one sentence>", "facts_relied_on": {"<fact name>": '
+    "<its value exactly as given>}} naming every fact your decision rests on."
+)
+OPTIONS_PROMPT = (
+    "Choose what to do with a synthetic leftover tree. Facts: "
+    + DECISION_FACTS
+    + '. Answer with only one JSON object {"decision": "keep" or "pin_and_remove" '
+    'or "needs_human", "rationale": "<one sentence>"}.'
+)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "answer", "outcome"),
+    [
+        (
+            ECHO_PROMPT,
+            '{"decision": "keep", "rationale": "A claim is open.", '
+            '"facts_relied_on": {"open_claim_on_ticket_last_24h": true, '
+            '"last_activity_hours": 15}}',
+            "PASS",
+        ),
+        (
+            ECHO_PROMPT,
+            '{"decision": "needs_human", "rationale": "Unsure.", '
+            '"facts_relied_on": {"open_pull_request": false}}',
+            "FAIL",
+        ),
+        (
+            ECHO_PROMPT,
+            '{"decision": "keep", "rationale": "Recent.", '
+            '"facts_relied_on": {"last_activity_hours": 16}}',
+            "FAIL",
+        ),
+        (
+            ECHO_PROMPT,
+            '{"decision": "keep", "rationale": "Branch.", '
+            '"facts_relied_on": {"branch": "main"}}',
+            "FAIL",
+        ),
+        (
+            ECHO_PROMPT,
+            '{"decision": "keep", "rationale": "No PR.", '
+            '"facts_relied_on": {"open_pull_request": 0}}',
+            "FAIL",
+        ),
+        (ECHO_PROMPT, '{"decision": "keep", "rationale": "A claim is open."}', "FAIL"),
+        (
+            ECHO_PROMPT,
+            '{"decision": "keep", "rationale": "None.", "facts_relied_on": {}}',
+            "FAIL",
+        ),
+        (ECHO_PROMPT, "keep: a claim is open", "FAIL"),
+        (ECHO_PROMPT, "[REDACTED - potentially sensitive data]", "FAIL"),
+        (
+            ECHO_PROMPT,
+            '```json\n{"decision": "keep", "rationale": "A claim is open.", '
+            '"facts_relied_on": {"open_claim_on_ticket_last_24h": true}}\n```',
+            "FAIL",
+        ),
+        (OPTIONS_PROMPT, '{"decision": "needs_human", "rationale": "Look."}', "PASS"),
+        (OPTIONS_PROMPT, '{"decision": "delete", "rationale": "Old."}', "FAIL"),
+        (OPTIONS_PROMPT, '["keep"]', "FAIL"),
+    ],
+    ids=[
+        "echo-exact",
+        "echo-choice-off-menu",
+        "echo-value-differs",
+        "echo-fact-absent",
+        "echo-type-differs",
+        "echo-missing",
+        "echo-empty",
+        "prose",
+        "redacted",
+        "undeclared-fence",
+        "options-choice",
+        "options-off-menu",
+        "options-not-object",
+    ],
+)
+def test_declared_format_met_json_decision(prompt, answer, outcome):
+    row = criterion(
+        "declared_format_met",
+        task_class="review",
+        answer=answer,
+        prompt=prompt,
+        source=None,
+    )
+    assert row.outcome == outcome
+
+
+def test_declared_echo_without_a_facts_object_never_passes():
+    prompt = ECHO_PROMPT.replace("Facts: " + DECISION_FACTS, "Facts are withheld")
+    row = criterion(
+        "declared_format_met",
+        task_class="review",
+        answer='{"decision": "keep", "rationale": "A claim is open.", '
+        '"facts_relied_on": {"open_claim_on_ticket_last_24h": true}}',
+        prompt=prompt,
+        source=None,
+    )
+    assert row.outcome == "UNDETERMINED"
+
+
+def test_json_decision_is_decided_for_the_review_class():
+    verdict = HandlerDelegationRubricCheck().handle(
+        request(
+            task_class="review",
+            answer='{"decision": "keep", "rationale": "A claim is open.", '
+            '"facts_relied_on": {"open_claim_on_ticket_last_24h": true}}',
+            prompt=ECHO_PROMPT,
+            source=None,
+        )
+    )
+    assert verdict.outcome == "PASS"
+    assert [row.criterion_id for row in verdict.criteria if row.outcome == "PASS"] == [
+        "declared_format_met"
+    ]

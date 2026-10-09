@@ -5,24 +5,30 @@
 Reads one manifest's labelled items through an injected tenant-bound port,
 replays them through the gate-eval compute, and returns exactly one terminal
 payload: a run-completed event with status ``completed`` or ``failed``. It never
-publishes; the runtime does.
+publishes; the runtime does. The run also scores each rubric class's verdict
+(rubric arm) against the labels, with the class lines from
+``configs/delegation_class_rubrics.v1.yaml``.
 
 The eval run id is ``uuid5`` of the manifest id, the sha256 of the ordered label
 set (item key and label, under one rater role and rubric version) and the gate
-version. It never depends on the delivery, so a redelivered command yields the
-same run id and the same rows, and a gate change is a new run. The TLA+ model
-``formal/delegation_eval_run/DelegationEvalRun.tla`` checks that design and
-fails on each of its three mutations.
+version, plus the class rubric version when a rubric class occurs in the run.
+It never depends on the delivery, so a redelivered command yields the same run
+id and the same rows, and a gate or class rubric change is a new run. The TLA+
+model ``formal/delegation_eval_run/DelegationEvalRun.tla`` checks that design
+and fails on each of its three mutations.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import Protocol
 from uuid import UUID, uuid5
 
+from omnimarket.delegation.rubric.attempt_verdict import record_attempt_rubric_verdict
+from omnimarket.delegation.rubric.contract_loader import load_delegation_class_rubrics
 from omnimarket.events.delegation_eval import (
     ModelDelegationEvalItemVerdict,
     ModelDelegationEvalResultRow,
@@ -41,6 +47,10 @@ from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
 from omnimarket.events.delegation_gate_eval.model_gate_rate_row import (
     ModelGateRateRow,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
+from omnimarket.models.ranges import ModelRangeAcceptanceLine
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.models.model_eval_run import (
     ModelEvalRunResult,
 )
@@ -53,6 +63,22 @@ from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegat
 
 #: Fixed namespace for eval run ids, so the same inputs give the same id on any host.
 EVAL_RUN_NAMESPACE = UUID("5b0c7e2a-19f3-5d4e-9a93-6c1d0e4f1979")
+
+
+class _ClassRubricContract(Protocol):
+    """The shared loader's contract surface, without importing node models."""
+
+    @property
+    def rubric_version(self) -> str: ...
+
+    @property
+    def classes(self) -> Mapping[str, object]: ...
+
+    @property
+    def false_pass_lines(self) -> Mapping[str, ModelRangeAcceptanceLine]: ...
+
+    @property
+    def false_refusal_lines(self) -> Mapping[str, ModelRangeAcceptanceLine]: ...
 
 
 def label_set_sha256(
@@ -68,9 +94,17 @@ def label_set_sha256(
     return hashlib.sha256(body.encode()).hexdigest()
 
 
-def eval_run_id(manifest_id: str, label_sha: str, gate_version: str) -> UUID:
-    """The run id of section 3 of the plan: uuid5 of the three inputs."""
-    return uuid5(EVAL_RUN_NAMESPACE, f"{manifest_id}\n{label_sha}\n{gate_version}")
+def eval_run_id(
+    manifest_id: str,
+    label_sha: str,
+    gate_version: str,
+    class_rubric_version: str | None = None,
+) -> UUID:
+    """Stable uuid5, extended by the class rubric version for rubric runs."""
+    name = f"{manifest_id}\n{label_sha}\n{gate_version}"
+    if class_rubric_version is not None:
+        name += f"\n{class_rubric_version}"
+    return uuid5(EVAL_RUN_NAMESPACE, name)
 
 
 def _error_bound(lower_bound: float | None) -> float | None:
@@ -116,10 +150,19 @@ class HandlerDelegationEvalRun:
         items_source: ProtocolDelegationEvalLabelledItems | None = None,
         gate_eval: HandlerDelegationGateEval | None = None,
         clock: Callable[[], datetime] | None = None,
+        *,
+        class_rubrics: Callable[[], _ClassRubricContract] | None = None,
+        rubric_verdict: Callable[..., ModelAttemptRubricVerdict] | None = None,
     ) -> None:
         self._items_source = items_source
         self._gate_eval = gate_eval or HandlerDelegationGateEval()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._class_rubrics = (
+            load_delegation_class_rubrics if class_rubrics is None else class_rubrics
+        )
+        self._rubric_verdict = (
+            record_attempt_rubric_verdict if rubric_verdict is None else rubric_verdict
+        )
 
     def handle(self, request: ModelDelegationEvalRunRequest) -> ModelEvalRunResult:
         if self._items_source is None:
@@ -157,8 +200,55 @@ class HandlerDelegationEvalRun:
                     ),
                 )
             )
+        try:
+            contract = self._class_rubrics()
+        except Exception as exc:
+            return ModelEvalRunResult(
+                payload=ModelDelegationEvalRunCompleted(
+                    **common,
+                    status=str(EnumGateEvalRunStatus.FAILED),
+                    failure_reasons=(
+                        f"class rubric contract unavailable: {type(exc).__name__}",
+                    ),
+                )
+            )
+        rubric_classes = {item.task_class for item in items} & contract.classes.keys()
+        run_id = eval_run_id(
+            request.manifest_id,
+            sha,
+            request.gate_version,
+            contract.rubric_version if rubric_classes else None,
+        )
+        common["eval_run_id"] = run_id
+        items = tuple(
+            item.model_copy(
+                update={
+                    "rubric_verdict": self._rubric_verdict(
+                        task_class=item.task_class,
+                        request_text=item.prompt_text,
+                        answer_text=item.recorded_answer,
+                    )
+                }
+            )
+            if item.task_class in rubric_classes and item.recorded_answer is not None
+            else item
+            for item in items
+        )
         result = self._gate_eval.handle(
-            ModelDelegationGateEvalRequest(run_id=str(run_id), items=items)
+            ModelDelegationGateEvalRequest(
+                run_id=str(run_id),
+                items=items,
+                rubric_false_pass_lines={
+                    task_class: line
+                    for task_class, line in contract.false_pass_lines.items()
+                    if task_class in rubric_classes
+                },
+                rubric_false_refusal_lines={
+                    task_class: line
+                    for task_class, line in contract.false_refusal_lines.items()
+                    if task_class in rubric_classes
+                },
+            )
         )
         if result.status != EnumGateEvalRunStatus.COMPLETED:
             return ModelEvalRunResult(

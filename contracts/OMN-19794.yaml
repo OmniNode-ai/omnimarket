@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19794"
+title: "Every delegation acceptance class declares both a false-pass and a false-refusal range"
+summary: "The check register gains the seven per-class false-refusal ranges, and the register check requires both the false-pass and the false-refusal range for every acceptance class, so a register missing a false-refusal line is refused."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-per-class-false-refusal-ranges"
+    statement: |-
+      Every acceptance class has declared false-pass and false-refusal ranges, and the register check refuses a register that lacks either.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every acceptance class has declared false-pass and false-refusal ranges with the full declared line, and removing any required entry or underpowering an acceptance range is refused naming the check -- falsifier: uv run pytest tests/test_omn19320_check_register.py -q fails at the merge base on the false-refusal tests
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The check register tests pass at the head, including the per-class false-refusal ranges."
+    command: "uv run pytest tests/test_omn19320_check_register.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19794-ac1-false-refusal-ranges"
+    description: "AC1 hosted probe. The check register tests pass at the head, including the per-class false-refusal ranges."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19320_check_register.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

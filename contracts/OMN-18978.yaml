@@ -47,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_runtime_bus_deadline_preserves_the_stage_after_unwinding -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-stage-deadline-survives-cleanup"
+    description: "A stage's own TimeoutError names the innermost stage after terminal cleanup runs; the test fails at the merge base, where the stage is reset to the outer scope before cleanup."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_stage_deadline_names_the_innermost_stage_after_cleanup -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

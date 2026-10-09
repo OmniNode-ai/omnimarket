@@ -1218,7 +1218,7 @@ async def test_qwen_protocol_request_options_flow_to_generation_request(
             tmp_path,
             endpoint_ref="local-coder",
             provider="local",
-            served_model_id="Qwen3.6-35B-A3B",
+            served_model_id="Qwen3.8-27B",
         ),
         event_publisher=lambda _t, _p: None,
     )

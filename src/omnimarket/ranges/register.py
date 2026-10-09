@@ -32,8 +32,9 @@ DEFAULT_CHECK_REGISTER_PATH = (
 )
 
 # Delegation-acceptance checks the register must hold: every quality gate check as a
-# gate, and one declared false-pass range per acceptance class.
+# gate, and declared false-pass and false-refusal ranges per acceptance class.
 FALSE_PASS_ID_PREFIX = "delegation.acceptance.false_pass."
+FALSE_REFUSAL_ID_PREFIX = "delegation.acceptance.false_refusal."
 GATE_ID_PREFIX = "delegation.acceptance.gate."
 
 REQUIRED_FALSE_PASS_CLASSES: tuple[str, ...] = (
@@ -86,9 +87,11 @@ REQUIRED_GATE_CHECKS: tuple[str, ...] = (
 
 
 def required_check_ids() -> tuple[str, ...]:
-    """Return required gate IDs followed by required false-pass range IDs."""
+    """Return required gate IDs followed by both acceptance range IDs per class."""
     return tuple(GATE_ID_PREFIX + name for name in REQUIRED_GATE_CHECKS) + tuple(
-        FALSE_PASS_ID_PREFIX + name for name in REQUIRED_FALSE_PASS_CLASSES
+        prefix + name
+        for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
+        for name in REQUIRED_FALSE_PASS_CLASSES
     )
 
 
@@ -172,7 +175,7 @@ def validate_check_register(
             errors.append(
                 f"{check_id}: required delegation-acceptance check must be a gate"
             )
-        elif check_id.startswith(FALSE_PASS_ID_PREFIX) and (
+        elif check_id.startswith((FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)) and (
             entry.get("check_class") != "range"
             or entry.get("range_status") != "declared"
         ):
@@ -185,6 +188,7 @@ def validate_check_register(
 __all__ = [
     "DEFAULT_CHECK_REGISTER_PATH",
     "FALSE_PASS_ID_PREFIX",
+    "FALSE_REFUSAL_ID_PREFIX",
     "GATE_ID_PREFIX",
     "REQUIRED_FALSE_PASS_CLASSES",
     "REQUIRED_GATE_CHECKS",

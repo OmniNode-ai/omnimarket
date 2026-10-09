@@ -58,8 +58,9 @@ class EnumPrLandingCompanionOp(StrEnum):
 class EnumPrLandingCompanionOutcomeKind(StrEnum):
     """Terminal disposition of one companion command.
 
-    The values equal ``EnumAutobindOutcome`` in ``occ_autobind_outcome`` so the
-    marker line the live producer posts maps onto exactly one kind.
+    The marker reader maps each check headline onto one kind. A ``NOOP``
+    headline uses ``DECLINED`` with an ``ALREADY_BOUND`` or ``STAMP_REBOUND``
+    code, preserving the bus contract and landing decisions (OMN-18939).
     """
 
     MINTED = "MINTED"
@@ -74,8 +75,9 @@ class EnumPrLandingCompanionDeclineCode(StrEnum):
     ``skip:`` prefix classify the producer's other deliberate returns:
 
     AUTHORED_UNVERIFIED  the producer authored the companion and named it, but
-                         its read-back verifier did not confirm it, so the live
-                         surface reports DECLINED. The companion exists.
+                         its read-back verifier did not confirm it. Historic
+                         DECLINED markers retain this code; new markers report
+                         MINTED with an unknown stamp. The companion exists.
     ALREADY_BOUND        the product body already names a companion.
     STAMP_REBOUND        the product body was re-pointed at the proven companion.
     DRY_RUN              the producer ran without side effects.

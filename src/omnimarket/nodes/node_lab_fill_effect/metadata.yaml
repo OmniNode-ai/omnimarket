@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_effect
+version: "0.1.0"
+description: "Effect: the I/O of a lab-fill run - read the lab pool and the ownership sources, launch decided lanes through the remote-lane runner, read their receipts and append the run's STATUS row over the bus. Decisions are node_lab_fill_plan_compute's. Hosted by a serve process on the host that holds the ledger, the runner and the PR watcher state, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Lab Fill Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lab_fill_effect: "omnimarket.nodes.node_lab_fill_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "lab-fill"]
