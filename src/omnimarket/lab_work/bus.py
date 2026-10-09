@@ -26,6 +26,7 @@ import contextlib
 import inspect
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -55,6 +56,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelHostCapacityProbeRequest,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    WorkKind,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +93,11 @@ class ModelLabWorkCommandFailure(BaseModel):
     status: str = "failed"
     work_unit_id: str = ""
     host: str = ""
+    lane: str = ""
+    repo: str = ""
+    commit_sha: str = ""
+    kind: WorkKind = "other"
+    duration_seconds: float = 0.0
     error_message: str = Field(default="", max_length=2000)
 
 
@@ -307,6 +314,7 @@ class LabWorkHost:
             )
             return
         self.running += 1
+        started = time.monotonic()
         try:
             receipt = await self._work.handle(request)
         except (
@@ -314,14 +322,20 @@ class LabWorkHost:
         ) as exc:  # fallback-ok: a handler crash is answered on the failure terminal
             logger.exception("lab-work handler raised")
             await self._publish_failure(
-                command_id, request.work_unit_id, f"{type(exc).__name__}: {exc}"
+                command_id,
+                request.work_unit_id,
+                f"{type(exc).__name__}: {exc}",
+                request=request,
+                duration_seconds=time.monotonic() - started,
             )
             return
         finally:
             self.running -= 1
             self.processed += 1
         envelope = ModelEventEnvelope[dict[str, object]](
-            payload=receipt.model_dump(mode="json"),
+            payload=receipt.model_copy(
+                update={"lane": request.lane, "kind": request.kind}
+            ).model_dump(mode="json"),
             correlation_id=_uuid_or_none(raw.get("correlation_id")) or uuid.uuid4(),
             parent_envelope_id=command_id,
             event_type=event_type_for(self._topics.success),
@@ -343,10 +357,23 @@ class LabWorkHost:
         return (self._now() - sent).total_seconds()
 
     async def _publish_failure(
-        self, command_id: uuid.UUID | None, work_unit_id: str, message: str
+        self,
+        command_id: uuid.UUID | None,
+        work_unit_id: str,
+        message: str,
+        *,
+        request: ModelLabWorkUnitRequest | None = None,
+        duration_seconds: float = 0.0,
     ) -> None:
         failure = ModelLabWorkCommandFailure(
-            work_unit_id=work_unit_id, host=self._host, error_message=message[:2000]
+            work_unit_id=work_unit_id,
+            host=self._host,
+            error_message=message[:2000],
+            lane=request.lane if request else "",
+            repo=request.repo if request else "",
+            commit_sha=request.commit_sha if request else "",
+            kind=request.kind if request else "other",
+            duration_seconds=duration_seconds,
         )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=failure.model_dump(mode="json"),
@@ -524,6 +551,8 @@ def _infra_error(
         host="",
         repo=request.repo,
         commit_sha=request.commit_sha,
+        lane=request.lane,
+        kind=request.kind,
         status=EnumLabWorkUnitStatus.INFRA_ERROR,
         detail=detail[:2000],
     )

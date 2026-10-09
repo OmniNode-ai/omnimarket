@@ -5311,9 +5311,9 @@ class HandlerDelegationWorkflow:
         # OMN-18928: lifecycle completion is not evidence of returned content.
         # Decide before advancing the FSM so a missing artifact closes FAILED
         # once, rather than manufacturing a perfect score from the status text.
+        # An empty artifact map also contains no returned answer.
         missing_final_artifact = (
-            next_state is EnumDelegationState.COMPLETED
-            and lifecycle_event.artifact is None
+            next_state is EnumDelegationState.COMPLETED and not lifecycle_event.artifact
         )
         if missing_final_artifact:
             next_state = EnumDelegationState.FAILED
@@ -5339,6 +5339,14 @@ class HandlerDelegationWorkflow:
             )
 
         completed = next_state is EnumDelegationState.COMPLETED
+        # A lifecycle error/status is operational evidence, never answer text.
+        # Reuse the inference path's retained-answer provenance when this agent
+        # returned no artifact; its final verdict and score remain unscored.
+        content, history_dicts = _terminal_response_fields(
+            workflow,
+            content if lifecycle_event.artifact else "",
+            retain_best=not completed,
+        )
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
         # counts and no serving tier — it is not a tier-routed LLM inference. The
         # single terminal builder still prices it through the same typed-tier-cost
@@ -5381,10 +5389,7 @@ class HandlerDelegationWorkflow:
             escalation_count=0,
             # Historical grades remain evidence about answered attempts,
             # independent of this lifecycle's unscored final response.
-            escalation_history=tuple(
-                attempt.model_dump(mode="json")
-                for attempt in workflow.escalation_history
-            ),
+            escalation_history=history_dicts,
             terminal_failure_reason=None,
             routing_tiers_hash=None,
             escalation_config_hash=None,

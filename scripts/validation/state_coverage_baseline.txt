@@ -186,7 +186,6 @@ node_pr_health_monitor onex.evt.omnimarket.pr-health-report-completed.v1
 node_pr_snapshot_effect onex.evt.omnimarket.pr-snapshot-completed.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1
-node_projection_instruction_eval onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
 node_projection_llm_routing onex.evt.omnimarket.projection-llm-routing-applied.v1
 node_projection_pattern_learning onex.evt.omnimarket.projection-pattern-learning-applied.v1
 node_projection_routing_decision onex.evt.omnimarket.projection-routing-decision-applied.v1

@@ -270,13 +270,18 @@ class TestTransportFailureTerminal:
     def test_the_cause_is_resolved_from_the_stored_ladder(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AC5. The failure text carries no quota phrasing, so only the ladder can type it."""
+        """AC5. The failure text carries no quota phrasing, so only the ladder can type it.
+
+        The gate refused the local rung before cheap_cloud hit its rate limit,
+        so the gate decided the run and the later capacity refusal does not
+        (OMN-19004, OMN-19448).
+        """
         _install_ladder(monkeypatch, max_escalations=1)
         effect = _Effect(fail_tiers=frozenset({"cheap_cloud"}))
         _response, row, _ladder = _run(tmp_path, effect)
 
         assert row["terminal_ok"] == 0
-        assert row["terminal_failure_cause"] == "provider_quota_exhausted"
+        assert row["terminal_failure_cause"] == "quality_gate_refused"
 
 
 class TestQualityPassTerminal:
@@ -326,12 +331,13 @@ class TestQualityFailTerminal:
     def test_a_quality_refusal_is_not_read_as_a_quota_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AC5. A refused ladder types no cause, even when the failure TEXT looks like quota.
+        """AC5. A refused ladder is typed by the gate, even when the failure TEXT looks like quota.
 
         The real gate's failure text is wrapped to carry quota phrasing, the
         way a model that quotes a provider error in its answer would make it.
-        With the ladder on the row the cause is None; with an empty ladder the
-        text fallback would type it ``provider_quota_exhausted``.
+        With the ladder on the row the cause is ``quality_gate_refused``
+        (OMN-19448); with an empty ladder the text fallback would type it
+        ``provider_quota_exhausted``.
         """
         _install_ladder(monkeypatch, max_escalations=1)
         real_gate = evaluate_quality_gate
@@ -352,4 +358,4 @@ class TestQualityFailTerminal:
 
         assert _QUOTA_SHAPED_TEXT in row["quality_gate_detail"]
         assert row["terminal_ok"] == 0
-        assert row["terminal_failure_cause"] is None
+        assert row["terminal_failure_cause"] == "quality_gate_refused"

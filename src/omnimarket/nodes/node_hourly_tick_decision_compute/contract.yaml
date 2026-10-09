@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hourly_tick_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the hourly tick (OMN-20680). probe turns the
+  checkpoint file, the sweep pointer and the ledger contents (read by the caller) into the
+  window state, the checkpoint line and the sweep request; record turns the state and the
+  sweep result into the completion line, the phase, the degraded class and the fire-result
+  payload. Reads no files, has no clock (the caller supplies now), mutates nothing. Every
+  refusal the retired tick made before a write is a refusal here, so a caller that gets one
+  has written nothing. Behaviour-preserving port of the retired tick, pinned by 60 captured
+  cases.
+input_model:
+  name: ModelHourlyTickDecisionRequest
+  module: omnimarket.nodes.node_hourly_tick_decision_compute.models.model_hourly_tick_decision
+output_model:
+  name: ModelHourlyTickDecisionResult
+  module: omnimarket.nodes.node_hourly_tick_decision_compute.models.model_hourly_tick_decision
+handler:
+  module: omnimarket.nodes.node_hourly_tick_decision_compute.handlers.handler_hourly_tick_decision
+  class: HandlerHourlyTickDecision
+  input_model: omnimarket.nodes.node_hourly_tick_decision_compute.models.model_hourly_tick_decision.ModelHourlyTickDecisionRequest
+  output_model: omnimarket.nodes.node_hourly_tick_decision_compute.models.model_hourly_tick_decision.ModelHourlyTickDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_hourly_tick_decision_compute.handlers.handler_hourly_tick_decision:HandlerHourlyTickDecision
+  handlers:
+    - operation: decide_hourly_tick
+      handler:
+        name: HandlerHourlyTickDecision
+        module: omnimarket.nodes.node_hourly_tick_decision_compute.handlers.handler_hourly_tick_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind: {type: str, required: true, enum: [probe, record]}
+  now: {type: str, required: false, description: ISO-Z time of the tick, for probe.}
+  checkpoint_text: {type: str, required: false, description: Contents of the checkpoint file, for probe.}
+  sweep_pointer_text: {type: str, required: false, description: Contents of the sweep pointer file, for probe.}
+  ledger_text: {type: str, required: false, description: Contents of the rolling ledger, for probe.}
+  tailLines: {type: int, required: false}
+  facts: {type: str, required: false, description: Caller facts; take precedence over the derived facts.}
+  taskType: {type: str, required: false}
+  skipSweep: {type: bool, required: false}
+  state: {type: object, required: false, description: The state probe returned, for record.}
+  sweep: {type: object, required: false, description: The sweep result, for record.}
+  runId: {type: str, required: false}
+  fireId: {type: str, required: false}
+outputs:
+  kind: {type: str}
+  state: {type: object}
+  checkpoint_line: {type: str}
+  facts_source: {type: str}
+  sweep_request: {type: object}
+  completion_line: {type: str}
+  phase: {type: str, enum: [prepared, completed, degraded]}
+  degraded: {type: bool}
+  class: {type: str}
+  result_payload: {type: object}
+terminal_event: onex.evt.omnimarket.hourly-tick-decision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hourly-tick-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.hourly-tick-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.hourly-tick-decision-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.hourly-tick-decision-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Hourly tick decisions
+  author: OmniNode Team
+  created: "2026-10-08"
+  related_tickets: [OMN-20680]

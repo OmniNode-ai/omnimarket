@@ -45,7 +45,7 @@ class ModelDelegatedTestPromptRequest(BaseModel):
     )
     forbidden_fragments: tuple[str, ...] = Field(
         default=(),
-        description="Strings that must not appear anywhere in the prompt: the "
+        description="Strings that must not appear anywhere in the bundle: the "
         "hidden human test's class and function names.",
     )
 

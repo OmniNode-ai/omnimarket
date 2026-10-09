@@ -62,7 +62,6 @@ def test_every_packaged_local_backend_defers_its_model_to_the_overlay(
         "local-coder",
         "local-heavy-reasoning",
         "local-embedding",
-        "local-ds-v4-flash",
     }
     assert all(backend["model_name"] is None for backend in local)
 
@@ -103,10 +102,7 @@ def test_local_pick_posts_the_overlay_served_id_instead_of_the_tier_key(
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay))
     endpoints = routing._load_bifrost_endpoints()
     assert "local-coder" in endpoints
-    assert (
-        not {"local-heavy-reasoning", "local-embedding", "local-ds-v4-flash"}
-        & endpoints.keys()
-    )
+    assert not {"local-heavy-reasoning", "local-embedding"} & endpoints.keys()
     decision = routing.delta(
         ModelDelegationRequest(
             prompt="Write a small function that adds two integers.",

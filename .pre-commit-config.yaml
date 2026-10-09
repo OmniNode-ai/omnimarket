@@ -1388,6 +1388,23 @@ repos:
         stages: [pre-commit]
 
       # OMN-18932: the release bar is checked here and in ci.yml.
+      # OMN-20282: each hook runs one focused file; both are paired with ci.yml.
+      - id: work-ledger-principal-auth
+        name: Work-ledger signature and operator-only consent
+        entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: work-ledger-principal-cli
+        name: Work-ledger signing configuration and bus round-trip
+        entry: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: output-only-release-acceptance
         name: D1 output-only release acceptance (OMN-18932)
         entry: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q

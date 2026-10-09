@@ -253,7 +253,7 @@ def _completed_payload(
 
 def _escalation_payload(
     *,
-    model_id: str = "ds-v4-flash",
+    model_id: str = "fixture-model-a",
     task_type: str = "codegen",
     correlation_id: str = "04d63eb7-be92-4f7a-b4c8-5bcdce043a9d",
     request_id: str = "req-esc",
@@ -275,7 +275,11 @@ def _escalation_payload(
 def _all_tiers_failed_payload(
     *,
     task_type: str = "codegen",
-    attempted_models: tuple[str, ...] = ("ds-v4-flash", "qwen3-coder-30b", "claude"),
+    attempted_models: tuple[str, ...] = (
+        "fixture-model-a",
+        "qwen3-coder-30b",
+        "claude",
+    ),
     correlation_id: str = "corr-failed",
     request_id: str = "req-failed",
 ) -> dict[str, Any]:
@@ -315,7 +319,7 @@ class TestHandlerTypedTerminalPayload:
     def test_escalation_raw_payload_emits_terminal_not_swallowed(self) -> None:
         result = HandlerDelegationRoutingFeedback().handle(
             ModelDelegationTerminalPayload(
-                **_escalation_payload(model_id="ds-v4-flash", task_type="codegen")
+                **_escalation_payload(model_id="fixture-model-a", task_type="codegen")
             )
         )
         assert result is not None

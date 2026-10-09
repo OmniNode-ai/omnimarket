@@ -1,0 +1,23 @@
+name: node_reject_skip_token_compute
+version: "0.1.0"
+description: "reject [skip-*] bypass tokens in staged files, commit messages and PR bodies"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_reject_skip_token_compute: "omnimarket.nodes.node_reject_skip_token_compute"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the pre-commit export and the CI gate run the script and omniclaude's workflow.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "gate", "skip-token", "pure"]
+pack: "pr_lifecycle"
+display_name: "Reject Skip Token"
+node_role: "compute"

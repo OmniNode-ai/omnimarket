@@ -38,13 +38,29 @@ deliverable extractor refused the response and blanked it.  Measured
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
+from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.models.delegation.wire.model_routing_decision import (
+    ModelRoutingDecision,
+)
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    HandlerDelegationWorkflow,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+    ModelDelegationRequest,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
+    _build_messages_and_request_options,
+    _merge_provider_request_options,
+)
 
 # The local tier this defect was measured on.  The profiles match on
 # ``model_name_patterns``, so the model name is load-bearing for the assertion.
@@ -68,7 +84,19 @@ DELEGATE_CONTRACT: Final[Path] = (
 # everything before it, so with thinking on the deliberation never reached the
 # caller.  With thinking off the model writes its reasoning inside the
 # deliverable, where the caller does receive it (OMN-19267).
-REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {}
+#
+# OMN-20469 put `reasoning` (only) back on the thinking-on path on a 60-item,
+# two-judge replay: accepted 48 of 60 with thinking on against 28 (Codex judge)
+# and 35 (Opus judge) with it off, and 0 of 60 thinking-on responses were
+# refused by the extractor because the servers separate the trace into
+# `reasoning_content`.
+REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {
+    "reasoning": (
+        "OMN-20469: thinking on was accepted 48 of 60 against 28 (Codex judge) "
+        "and 35 (Opus judge) with it off; both gains clear the pre-registered "
+        "bar of 15 points and an exact paired p below 0.05"
+    ),
+}
 
 
 def _allowed_task_types() -> list[str]:
@@ -168,7 +196,7 @@ def test_document_class_is_the_measured_regression() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("task_type", ["reasoning", "complex_reasoning"])
+@pytest.mark.parametrize("task_type", ["complex_reasoning"])
 def test_reasoning_classes_are_the_measured_empty_answer_regression(
     task_type: str,
 ) -> None:
@@ -202,3 +230,69 @@ def test_the_exclusions_are_real_task_classes() -> None:
         "REASONING_IS_THE_DELIVERABLE names task classes the delegate contract "
         f"no longer declares: {unknown}. Remove the dead entries."
     )
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize(
+    "task_type",
+    [
+        "document",
+        "documentation",
+        "summarization",
+        "research",
+        "review",
+        "code_review",
+        "planning",
+        "escalation",
+    ],
+)
+def test_prose_suppression_survives_the_bus_intent_and_provider_boundary(
+    task_type: str,
+) -> None:
+    """Profile matching alone does not prove that thinking is off at egress.
+
+    Exercise the orchestrator and the inference effect's request builders,
+    with a wire round-trip between them. No provider response, extraction or
+    grading is involved: the assertion is on the outbound provider options.
+    """
+    workflow = HandlerDelegationWorkflow(workflows={})
+    correlation_id = uuid4()
+    request = ModelDelegationRequest(
+        prompt="Write a four-sentence ticket body describing a projection defect.",
+        system_prompt="You are a helpful assistant.",
+        task_type=task_type,
+        correlation_id=correlation_id,
+        emitted_at=datetime.now(UTC),
+    )
+    assert workflow.handle_delegation_request(request)
+    decision = ModelRoutingDecision(
+        correlation_id=correlation_id,
+        task_type=task_type,
+        selected_model=LOCAL_MODEL,
+        selected_backend_id=uuid4(),
+        endpoint_url="http://test-local-prose:8000/v1/chat/completions",
+        cost_tier="local",
+        max_context_tokens=32768,
+        max_tokens=512,
+        system_prompt="You are a helpful assistant.",
+        rationale="Local prose provider-boundary regression.",
+        tier_name="local",
+        route="local-heavy-reasoning",
+        provider="local",
+    )
+    intents = workflow.handle_routing_decision(decision)
+    assert len(intents) == 1
+    assert isinstance(intents[0], ModelInferenceIntent)
+    intent = ModelInferenceIntent.model_validate_json(intents[0].model_dump_json())
+
+    messages, options = _build_messages_and_request_options(intent)
+    payload = _merge_provider_request_options(
+        {"model": intent.model, "messages": messages}, options
+    )
+
+    assert intent.correlation_id == correlation_id
+    assert intent.base_url == decision.endpoint_url
+    assert intent.model == LOCAL_MODEL
+    assert _thinking_is_suppressed(payload), payload
+    assert payload["messages"][1]["content"].count("/no_think") == 1

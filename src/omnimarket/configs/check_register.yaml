@@ -24,7 +24,8 @@
 # that register carries.
 # Delegation-acceptance entries are required by `omnimarket.ranges.register`: every
 # quality gate check is registered as a gate, and each acceptance class carries
-# a declared false-pass range with its full acceptance line and method.
+# declared false-pass and false-refusal ranges with their full acceptance lines
+# and methods.
 #
 schema_version: check_register.v1
 checks:
@@ -636,6 +637,209 @@ checks:
         confidence: 0.95
         power: 0.8
         margin: 0.07
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.code_generation
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the code_generation acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.code_generation
+      case_set: >-
+        refused delegation gate decisions of class code_generation, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.document
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the document acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.document
+      case_set: >-
+        refused delegation gate decisions of class document, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.planning
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the planning acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.planning
+      case_set: >-
+        refused delegation gate decisions of class planning, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.reasoning
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the reasoning acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.reasoning
+      case_set: >-
+        refused delegation gate decisions of class reasoning, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.research
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the research acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.research
+      case_set: >-
+        refused delegation gate decisions of class research, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.summarization
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the summarization acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.summarization
+      case_set: >-
+        refused delegation gate decisions of class summarization, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
+        incomplete_run_treatment: count_as_failure
+
+  - check_id: delegation.acceptance.false_refusal.test
+    check_class: range
+    range_status: declared
+    blocks:
+      - routing read of the test acceptance eval
+    source: >-
+      false-refusal line of the delegation evals plan, section 2.1: among refused answers,
+      the share labelled inadequate has a lower bound of at least 0.80. The gate-eval
+      compute's method uses confidence 0.95, power 0.8 and margin 0.12 (true false-refusal
+      rate 8%); required_sample_size returns n=57. The recorded-verdict arms of eval runs
+      02ef53fd-8f09-5f9d-80d0-f41db6cbbfe2 and 38ff2fb6-b4bb-5e79-90b9-e6f611fef56e remain
+      under-powered for false refusal, as reported in
+      reports/2026-09-30-delegation-gate-false-pass-first-run.md. An item the replay
+      cannot decide counts against the line; ruled no-target refusals are counted
+      separately and excluded from this rate.
+    acceptance_line:
+      check_id: delegation.acceptance.false_refusal.test
+      case_set: >-
+        refused delegation gate decisions of class test, house tenant, dev lane,
+        labelled adequate or inadequate, excluding ruled no-target refusals
+      floor: 0.80
+      window: trailing 30 days
+      method:
+        sample_size: 57
+        confidence: 0.95
+        power: 0.8
+        margin: 0.12
         incomplete_run_treatment: count_as_failure
 
   # OMN-20166: deterministic criteria and class calibration lines.

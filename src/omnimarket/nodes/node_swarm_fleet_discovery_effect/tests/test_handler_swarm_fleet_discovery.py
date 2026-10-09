@@ -73,7 +73,6 @@ _LOCAL_HEALTH_URLS = [
     _local_health_url("201", 8000),
     _local_health_url("201", 8001),
     _local_health_url("201", 8002),
-    _local_health_url("200", 8101),
 ]
 
 
@@ -81,8 +80,6 @@ _LOCAL_HEALTH_URLS = [
 @pytest.mark.asyncio
 async def test_all_local_healthy_no_openrouter() -> None:
     responses = dict.fromkeys(_LOCAL_HEALTH_URLS, (200, b"ok"))
-    # 5 local endpoints (including deepseek-v4-pro which shares same health URL)
-    responses[_local_health_url("200", 8101)] = (200, b"ok")
 
     handler = HandlerSwarmFleetDiscovery(
         http_get_fn=_make_http_get(responses),
@@ -93,14 +90,14 @@ async def test_all_local_healthy_no_openrouter() -> None:
         correlation_id="test-1",
         include_local=True,
         include_openrouter=False,
-        min_healthy_endpoints=4,
+        min_healthy_endpoints=2,
     )
     result = await handler.handle(req)
 
-    assert result.local_count >= 4
+    assert result.local_count == 2
     assert result.openrouter_count == 0
     assert result.meets_threshold is True
-    assert result.healthy_count >= 4
+    assert result.healthy_count == 2
     for ep in result.endpoints:
         assert ep.status == EnumDiscoveryEndpointStatus.healthy
 
@@ -123,7 +120,7 @@ async def test_local_unhealthy_fallback() -> None:
         correlation_id="test-2",
         include_local=True,
         include_openrouter=False,
-        min_healthy_endpoints=4,
+        min_healthy_endpoints=2,
     )
     result = await handler.handle(req)
 
@@ -291,7 +288,7 @@ async def test_combined_local_and_openrouter_meets_threshold() -> None:
 
     assert result.meets_threshold is True
     assert result.healthy_count >= 8
-    assert result.local_count >= 4
+    assert result.local_count == 2
     assert result.openrouter_count == 12
 
 

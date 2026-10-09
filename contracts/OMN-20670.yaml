@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20670"
+title: "Host reconciliation runs as omnimarket compute and effect nodes"
+summary: "node_host_reconcile_compute holds every decision of the host reconciler (surface verdicts, dispatch premise, remedy, exit code, floor stamp, verdict lines) and node_host_reconcile_effect keeps its host-local side effects, with the receipt layout and command line of onex-host-reconcile. Repointing callers and deleting the old entry point are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-host-reconcile-compute-node"
+    statement: |-
+      The host reconciler's decisions run in node_host_reconcile_compute, a contract-declared COMPUTE node with the canonical handle(request) -> result signature and its topics declared in the contract.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every surface verdict, dispatch premise, remedy, exit code and floor decision of the old reconciler is returned by the compute handler, and the node is dispatched through its contract on the in-memory bus -- falsifier: tests/test_host_reconcile_compute.py and tests/test_golden_chain_host_reconcile.py fail with the compute handler file removed
+  - id: "req-host-reconcile-effect-node"
+    statement: |-
+      The host-local side effects (lock, fetch, clone and venv delegates, readbacks, receipt, floor and alert) run in node_host_reconcile_effect, which takes every decision from the compute handler and publishes the run-completed event declared in its contract.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the effect keeps the command line, receipt schema and lock behaviour of onex-host-reconcile and publishes only contract-declared topics -- falsifier: tests/test_host_reconcile_effect.py and tests/test_host_reconcile_topics.py fail with the effect handler file removed
+evidence_requirements:
+  - kind: "tests"
+    description: "Compute, effect, topic and golden-chain tests for both host reconcile nodes."
+    command: "uv run pytest tests/test_host_reconcile_compute.py tests/test_host_reconcile_effect.py tests/test_golden_chain_host_reconcile.py tests/test_host_reconcile_topics.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20670-host-reconcile-compute"
+    description: "node_host_reconcile_compute decides every host reconcile surface and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_host_reconcile_compute.py tests/test_golden_chain_host_reconcile.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20670-host-reconcile-effect"
+    description: "node_host_reconcile_effect keeps the host-local side effects and publishes only contract topics."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_topics.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

@@ -1,0 +1,396 @@
+{
+  "PRECHECK": {
+    "type": "object",
+    "required": [
+      "date",
+      "clock_utc",
+      "verdict",
+      "evidence",
+      "reason"
+    ],
+    "properties": {
+      "date": {
+        "type": "string"
+      },
+      "clock_utc": {
+        "type": "string"
+      },
+      "verdict": {
+        "type": "string",
+        "enum": [
+          "already-delivered",
+          "peer-owned",
+          "run"
+        ]
+      },
+      "evidence": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "state_last_run_date": {
+        "type": "string"
+      },
+      "checks_failed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "SCAN": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "sources_read",
+      "candidate_count",
+      "unreadable_sources",
+      "ledger_rows"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "sources_read": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "candidate_count": {
+        "type": "number"
+      },
+      "unreadable_sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "SOURCE": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "source_id",
+      "verdict",
+      "freshness",
+      "candidate_count",
+      "unreadable",
+      "ledger_rows"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "source_id": {
+        "type": "string"
+      },
+      "verdict": {
+        "type": "string"
+      },
+      "freshness": {
+        "type": "string"
+      },
+      "candidate_count": {
+        "type": "number"
+      },
+      "unreadable": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "positive_controls": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "SYNTHESIZE": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "candidate_count",
+      "root_causes",
+      "sources_unknown",
+      "pickups",
+      "ledger_rows",
+      "delegation"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "candidate_count": {
+        "type": "number"
+      },
+      "root_causes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "sources_unknown": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "pickups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "ADJUDICATE": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "filed",
+      "commented",
+      "known",
+      "first_occurrence",
+      "escalated",
+      "ledger_rows",
+      "delegation"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "filed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "commented": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "known": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "first_occurrence": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "escalated": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "REPORT": {
+    "type": "object",
+    "required": [
+      "report_path",
+      "state_path",
+      "commit_sha",
+      "watermark_summary",
+      "ledger_rows",
+      "premise_audit",
+      "delegation"
+    ],
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "state_path": {
+        "type": "string"
+      },
+      "commit_sha": {
+        "type": "string"
+      },
+      "watermark_summary": {
+        "type": "string"
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "premise_audit": {
+        "type": "object",
+        "required": [
+          "status",
+          "rule_landed_at",
+          "rule_evidence",
+          "eligible_terminal_rows",
+          "falsified_terminal_rows",
+          "positive_controls",
+          "unreadable_sources",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "MEASURED",
+              "UNKNOWN"
+            ]
+          },
+          "rule_landed_at": {
+            "type": "string"
+          },
+          "rule_evidence": {
+            "type": "string"
+          },
+          "eligible_terminal_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "falsified_terminal_rows": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "positive_controls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "lane",
+                "terminal_rows",
+                "evidence"
+              ],
+              "properties": {
+                "lane": {
+                  "type": "string"
+                },
+                "terminal_rows": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "evidence": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "unreadable_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

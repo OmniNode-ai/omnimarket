@@ -545,6 +545,12 @@ class HandlerDodVerify:
                 "accepted by a second lane that re-runs the bound check, never "
                 "by its author; until then the criterion is unproven."
             )
+            if acceptance_summary is not None and acceptance_summary.retired_bindings:
+                error_message += (
+                    " Retired bindings (not counted): "
+                    + "; ".join(acceptance_summary.retired_bindings)
+                    + "."
+                )
         elif unbound_demotion:
             unbound = (
                 acceptance_summary.unbound_criteria
@@ -705,6 +711,12 @@ class HandlerDodVerify:
             ),
             acceptance_self_accepted_bindings=(
                 acceptance_summary.self_accepted_bindings if acceptance_summary else ()
+            ),
+            acceptance_retired_bindings=(
+                acceptance_summary.retired_bindings if acceptance_summary else ()
+            ),
+            acceptance_refused_retirements=(
+                acceptance_summary.refused_retirements if acceptance_summary else ()
             ),
             acceptance_unbound_criteria=(
                 acceptance_summary.unbound_criteria if acceptance_summary else ()

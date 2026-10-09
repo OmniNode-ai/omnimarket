@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20755"
+title: "The local delegate path records the routing tier on the receipt but not on the delegation row the Tier mix reads"
+summary: "The delegate-skill terminal projection now stores the routing tier the run was served on (the accepting attempt's tier, else the last rung reached) as cost_tier_name, so the model-routing view's Tier mix lists a run under the tier its receipt names."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegate-terminal-routing-tier"
+    statement: |-
+      A delegate-skill terminal stores the routing tier its receipt names, and the Tier mix reads it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: After one `onex delegate` on a fresh local install, the run's `delegation_events.cost_tier_name` equals its receipt's `routing_tier` -- falsifier: a test or container run that records one delegation and finds the column NULL or different from the receipt
+      - id: "AC2"
+        statement: |-
+          AC2: On that install, the served Overview's Tier mix lists the receipt's tier with 100 percent of tier-routed runs -- falsifier: the Tier mix shows the run as not tier-routed
+evidence_requirements:
+  - kind: "tests"
+    description: "A terminal written through project_delegate_skill_terminal stores the serving tier, and the model-routing row lists the run under it."
+    command: "uv run pytest tests/unit/projection/test_delegate_skill_terminal_routing_tier_omn20755.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20755-terminal-routing-tier"
+    description: "The delegate-skill terminal stores its serving tier as cost_tier_name, and the Tier mix lists the run under it at 100 percent of tier-routed runs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_delegate_skill_terminal_routing_tier_omn20755.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

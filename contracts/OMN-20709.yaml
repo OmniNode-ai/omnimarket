@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20709"
+title: "The local dashboard's delegation summary projection returns 503 while decisions returns 200"
+summary: "A local store gains the SQLite counterpart of the projection_delegation_summary view, so onex dashboard serves the summary exposure from one recorded delegation. The local catalogue probes the store on every read and lists a topic it cannot serve as degraded, so no topic listed ok answers 503."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-local-summary-and-honest-catalogue"
+    statement: |-
+      The local dashboard serves the delegation summary from the local store, and lists only what it can serve as ok.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: On a fresh container with one delegation recorded, the summary projection returns 200 with a row whose totalDelegations is at least 1 -- falsifier: the scripted container run reads a status other than 200, or a row count of 0, from `/projection/onex.snapshot.projection.delegation.summary.v1`
+      - id: "AC2"
+        statement: |-
+          AC2: A topic `/projections` advertises as status ok never answers 503 on the same server -- falsifier: the same run finds any topic listed ok whose own read returns 503
+evidence_requirements:
+  - kind: "tests"
+    description: "One recorded delegation in a fresh local store reads 200 from the summary exposure, with the Postgres view's aggregates."
+    command: "uv run pytest tests/unit/projection/test_sqlite_delegation_summary_view_omn20709.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Against a fresh install's store and the real topic map, no topic the dashboard lists ok answers 503."
+    command: "uv run pytest tests/projection/test_dashboard_catalogue_serves_what_it_lists_omn20709.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20709-local-summary-view"
+    description: "A fresh local store with one delegation serves the summary exposure: 200 and totalDelegations at least 1."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_sqlite_delegation_summary_view_omn20709.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20709-catalogue-serves-what-it-lists"
+    description: "The local catalogue lists a topic the store cannot serve as degraded, so every topic listed ok reads without 503."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_catalogue_serves_what_it_lists_omn20709.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

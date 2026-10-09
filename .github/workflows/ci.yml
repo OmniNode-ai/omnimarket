@@ -498,6 +498,12 @@ jobs:
       # OMN-18932: keep the release bar paired with its pre-commit hook.
       - name: D1 output-only release acceptance (OMN-18932)
         run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-20282: paired with the work-ledger-principal-auth pre-commit hook.
+      - name: Work-ledger signature and operator-only consent
+        run: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
+      # OMN-20282: paired with the work-ledger-principal-cli pre-commit hook.
+      - name: Work-ledger signing configuration and bus round-trip
+        run: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.
@@ -3065,7 +3071,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.68
+          ref: v0.38.69
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python

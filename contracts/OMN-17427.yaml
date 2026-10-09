@@ -104,6 +104,37 @@ requirements:
       - id: "AC18"
         statement: |-
           AC18: the provision step in ci.yml jobs test and integration-guard and in nightly-full-suite.yml job shard has a step timeout of at most 15 minutes and runs apt-get update only inside the branch taken when the PG16 tools are absent, with the fail-closed binary checks after it -- falsifier: uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q fails at the merge base
+      - id: "AC19"
+        statement: |-
+          AC19: .github/workflows/call-repo-evidence-gate.yml pins the omnibase_core receipt-gate reusable at 81b34fe91f995e75acd65694e81ecf2c385456a4, whose dod-verify job derives the OCC writer app's dependency-pin-only exemption from the head's diff, so a post-release version bump that changes only pyproject.toml project.version and uv.lock is exempt without an occ-autobind outcome -- falsifier: uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q fails at the merge base
+  - id: "req-qwen36-planner-vendor-sampling"
+    statement: |-
+      The .200 planner rung's served Qwen3.6-35B-A3B (qwen3.6-35b-a3b) gets the model card's non-thinking request for every class, while the Qwen3.8-27B rungs keep their measured request.
+    acceptance:
+      - id: "AC20"
+        statement: |-
+          AC20: every class the planner rung serves, and a class outside the qwen lists, sends top_p 0.8, top_k 20, min_p 0, presence_penalty 1.5, enable_thinking false and default temperature 0.7 for qwen3.6-35b-a3b, and Qwen3.8-27B planning sends only enable_thinking false -- falsifier: uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q fails at the merge base
+  - id: "req-ci-red-triage-shadow"
+    statement: |-
+      With ci_red_triage.act false, the red-CI triage records its decision and publishes no pr-lifecycle start command, so a shadow triage starts no PR inventory on the operator's GitHub login.
+    acceptance:
+      - id: "AC21"
+        statement: |-
+          AC21: HandlerCiRedTriage with act false records each decision with action_applied false and evidence start=withheld:act=false and publishes no start command, and the contract default is act false -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode fails at the merge base
+  - id: "req-lane-scoped-contracts-main-profile"
+    statement: |-
+      Every node contract that declares runtime_lanes belongs to the main runtime profile only, because no compose lane's effects runtime declares ONEX_RUNTIME_LANE and a lane-scoped contract owned by effects fails closed on discovery, which holds omninode-runtime-effects Docker-unhealthy.
+    acceptance:
+      - id: "AC22"
+        statement: |-
+          AC22: node_branch_claim_check_effect declares runtime_profiles [main] and every contract declaring runtime_lanes is owned by main only -- falsifier: uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q fails at the merge base
+  - id: "req-bound-selector-names-file"
+    statement: |-
+      Every pytest check bound to an acceptance criterion in a repo contract names its target by a test file (or a tests directory), because the repo evidence gate refuses a bare directory selector and that refusal turns Tests (Split 2/20) red on every open pull request.
+    acceptance:
+      - id: "AC23"
+        statement: |-
+          AC23: every binds_ac pytest check in contracts/OMN-*.yaml names an existing .py file or a /tests directory, and dod-omn-20429-ac4 names the golden chain test file -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -150,6 +181,21 @@ evidence_requirements:
   - kind: "tests"
     description: "The PG16 provision step is bounded and runs apt only when the runner image lacks PG16."
     command: "uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q"
+  - kind: "tests"
+    description: "The caller pins the reusable that derives the writer app's dependency-pin-only exemption in-job."
+    command: "uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q"
+  - kind: "tests"
+    description: "The planner rung's Qwen3.6-35B-A3B gets the vendor non-thinking request and the Qwen3.8-27B rungs keep theirs."
+    command: "uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q"
+  - kind: "tests"
+    description: "A shadow-mode red-CI triage records its decision and publishes no start command."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
+  - kind: "tests"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    command: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+  - kind: "tests"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    command: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -275,3 +321,43 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC18"]
+  - id: "dod-omn17427-ac19-writer-pin-only-repin"
+    description: "The caller pins the reusable that derives the writer app's dependency-pin-only exemption in-job."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC19"]
+  - id: "dod-omn17427-ac20-qwen36-planner-vendor-sampling"
+    description: "The planner rung's Qwen3.6-35B-A3B gets the vendor non-thinking request and the Qwen3.8-27B rungs keep theirs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn17427-ac21-ci-red-triage-shadow"
+    description: "A shadow-mode red-CI triage records its decision and publishes no start command."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn17427-ac22-lane-contracts-main-profile"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
+  - id: "dod-omn17427-ac23-bound-selector-names-file"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC23"]

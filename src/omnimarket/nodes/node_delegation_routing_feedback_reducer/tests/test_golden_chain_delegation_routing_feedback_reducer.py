@@ -67,10 +67,10 @@ class TestGoldenChainDelegationRoutingFeedback:
     def test_escalation_ladder_terminal_not_swallowed(self) -> None:
         handler = HandlerDelegationRoutingFeedback()
         payloads = [
-            _escalation(model_id="ds-v4-flash", rid="r1"),
+            _escalation(model_id="fixture-model-a", rid="r1"),
             _escalation(model_id="qwen3-coder-30b", rid="r2"),
             _all_tiers_failed(
-                attempted=("ds-v4-flash", "qwen3-coder-30b", "claude"), rid="r3"
+                attempted=("fixture-model-a", "qwen3-coder-30b", "claude"), rid="r3"
             ),
         ]
         updates = [
@@ -102,7 +102,7 @@ class TestGoldenChainDelegationRoutingFeedback:
         first = handler.handle(
             ModelDelegationTerminalPayload(
                 **_completed(
-                    model_id="ds-v4-flash", success=True, latency_ms=120, rid="r1"
+                    model_id="fixture-model-a", success=True, latency_ms=120, rid="r1"
                 )
             )
         )
@@ -111,7 +111,7 @@ class TestGoldenChainDelegationRoutingFeedback:
         assert first.feedback.avg_latency_ms == pytest.approx(120.0)
         second = handler.handle(
             ModelDelegationTerminalPayload(
-                **_escalation(model_id="ds-v4-flash", rid="r2")
+                **_escalation(model_id="fixture-model-a", rid="r2")
             )
         )
         assert second is not None
@@ -130,7 +130,9 @@ class TestGoldenChainDelegationRoutingFeedback:
     def test_replay_same_terminal_redrives_same_identity(self) -> None:
         handler = HandlerDelegationRoutingFeedback()
         request = ModelDelegationTerminalPayload(
-            **_completed(model_id="ds-v4-flash", success=True, latency_ms=100, rid="r1")
+            **_completed(
+                model_id="fixture-model-a", success=True, latency_ms=100, rid="r1"
+            )
         )
         first, second = handler.handle(request), handler.handle(request)
         assert first is not None

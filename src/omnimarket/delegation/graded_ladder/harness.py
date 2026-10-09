@@ -36,7 +36,9 @@ _DATA_DIR = _REPO_ROOT / "tests" / "unit" / "delegation" / "graded_ladder"
 
 DEFAULT_RUNGS_PATH = _DATA_DIR / "ladder_rungs.yaml"
 DEFAULT_CORPUS_PATH = _DATA_DIR / "escalating_corpus.yaml"
-DEFAULT_FIXTURES_PATH = _DATA_DIR / "recorded_rung_outputs.json"
+# Captured model outputs are immutable history, including retired rungs.
+# The active roster above decides which recorded rungs the benchmark grades.
+DEFAULT_FIXTURES_PATH = _DATA_DIR / "recorded_rung_outputs.json.captured"
 
 # Acceptance threshold: the ceiling rung's weighted graded score must clear the
 # floor rung's by at least this margin for the ladder to count as separated.

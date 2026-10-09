@@ -2329,6 +2329,10 @@ def _evaluate_response_contract(
     acceptance authority.
     """
     deliverable_contract = resolve_deliverable_contract(response_contract)
+    extraction = extract_deliverable(
+        gate_input.llm_response_content,
+        deliverable_contract,
+    )
     evidence = gate_input.deliverable_evidence
     if evidence is not None:
         content = gate_input.llm_response_content
@@ -2348,6 +2352,9 @@ def _evaluate_response_contract(
                 failure_reasons=(
                     "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match "
                     "the declared extraction evidence",
+                    # A refused extraction withholds the deliverable while the
+                    # gate grades raw content. Keep its label diagnostics too.
+                    *extraction.contract_failure_reasons,
                 ),
                 fallback_recommended=True,
             )
@@ -2371,10 +2378,6 @@ def _evaluate_response_contract(
                 failure_reasons=(),
                 fallback_recommended=False,
             )
-    extraction = extract_deliverable(
-        gate_input.llm_response_content,
-        deliverable_contract,
-    )
     if (
         extraction.refusal is not None
         and extraction.refusal

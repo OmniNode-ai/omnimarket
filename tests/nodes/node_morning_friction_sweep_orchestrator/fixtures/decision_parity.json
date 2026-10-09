@@ -1,0 +1,3624 @@
+{
+ "legacy_source_sha256": "fc513b4c6249529f38f8b3d33625d6afe0a2e27b26c7772c2ba9aaecc816ff3b",
+ "cases": [
+  {
+   "name": "full",
+   "args": {
+    "date": "2026-08-29"
+   },
+   "responses": {
+    "friction-precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "run",
+     "evidence": "",
+     "reason": "dry-read stub"
+    },
+    "friction-scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "friction-source-linear": {
+     "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+     "source_id": "linear",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "linear: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-checkpoints": {
+     "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+     "source_id": "checkpoints",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "checkpoints: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "checkpoints: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-ci": {
+     "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+     "source_id": "ci",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "ci: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-guards": {
+     "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+     "source_id": "guards",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "guards: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "guards: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-synthesize": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "friction-adjudicate": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "friction-report": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "report_path": "/tmp/dry-read-friction-report.md",
+     "state_path": "/tmp/dry-read-friction-state.json",
+     "commit_sha": "deadbeefcafe",
+     "watermark_summary": "stub",
+     "ledger_rows": [],
+     "premise_audit": {
+      "status": "UNKNOWN",
+      "rule_landed_at": "",
+      "rule_evidence": "",
+      "eligible_terminal_rows": 0,
+      "falsified_terminal_rows": null,
+      "positive_controls": [],
+      "unreadable_sources": [
+       "dry-read stub"
+      ],
+      "reason": "dry read has no ledger"
+     }
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": false,
+    "force": false,
+    "short_circuited": null,
+    "precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "run",
+     "evidence": "",
+     "reason": "dry-read stub"
+    },
+    "precheck_agents": 1,
+    "report": "/tmp/dry-read-friction-report.md",
+    "premise_audit": {
+     "status": "UNKNOWN",
+     "rule_landed_at": "",
+     "rule_evidence": "",
+     "eligible_terminal_rows": 0,
+     "falsified_terminal_rows": null,
+     "positive_controls": [],
+     "unreadable_sources": [
+      "dry-read stub"
+     ],
+     "reason": "dry read has no ledger"
+    },
+    "state": "/tmp/dry-read-friction-state.json",
+    "commit": "deadbeefcafe",
+    "window": "[2026-08-28T00:00:00Z, 2026-08-29T00:00:00Z) — the previous UTC day, 2026-08-28",
+    "scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "sources": [
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+      "source_id": "linear",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "linear: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+      "source_id": "checkpoints",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "checkpoints: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "checkpoints: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+      "source_id": "ci",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "ci: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+      "source_id": "guards",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "guards: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "guards: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     }
+    ],
+    "sources_unknown": [
+     "checkpoints: stub over-bound",
+     "guards: stub no-timestamp"
+    ],
+    "synthesis": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "root_causes": [
+     "stub cause — 2 occurrences across 2 fingerprints"
+    ],
+    "pickups": [
+     "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+    ],
+    "adjudication": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "agents": 9
+   },
+   "calls": [
+    {
+     "label": "friction-precheck",
+     "phase": "Precheck",
+     "model": "sonnet",
+     "effort": "medium",
+     "schema": {
+      "type": "object",
+      "required": [
+       "date",
+       "clock_utc",
+       "verdict",
+       "evidence",
+       "reason"
+      ],
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "clock_utc": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string",
+        "enum": [
+         "already-delivered",
+         "peer-owned",
+         "run"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "state_last_run_date": {
+        "type": "string"
+       },
+       "checks_failed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-scan",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "sources_read",
+       "candidate_count",
+       "unreadable_sources",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "sources_read": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable_sources": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-linear",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-checkpoints",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-ci",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-guards",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-synthesize",
+     "phase": "Synthesize",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "candidate_count",
+       "root_causes",
+       "sources_unknown",
+       "pickups",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "root_causes": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "sources_unknown": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "pickups": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-adjudicate",
+     "phase": "Adjudicate",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "filed",
+       "commented",
+       "known",
+       "first_occurrence",
+       "escalated",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "filed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "commented": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "known": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "first_occurrence": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "escalated": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-report",
+     "phase": "Report",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "report_path",
+       "state_path",
+       "commit_sha",
+       "watermark_summary",
+       "ledger_rows",
+       "premise_audit",
+       "delegation"
+      ],
+      "properties": {
+       "report_path": {
+        "type": "string"
+       },
+       "state_path": {
+        "type": "string"
+       },
+       "commit_sha": {
+        "type": "string"
+       },
+       "watermark_summary": {
+        "type": "string"
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "premise_audit": {
+        "type": "object",
+        "required": [
+         "status",
+         "rule_landed_at",
+         "rule_evidence",
+         "eligible_terminal_rows",
+         "falsified_terminal_rows",
+         "positive_controls",
+         "unreadable_sources",
+         "reason"
+        ],
+        "properties": {
+         "status": {
+          "type": "string",
+          "enum": [
+           "MEASURED",
+           "UNKNOWN"
+          ]
+         },
+         "rule_landed_at": {
+          "type": "string"
+         },
+         "rule_evidence": {
+          "type": "string"
+         },
+         "eligible_terminal_rows": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "falsified_terminal_rows": {
+          "type": [
+           "integer",
+           "null"
+          ],
+          "minimum": 0
+         },
+         "positive_controls": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "required": [
+            "lane",
+            "terminal_rows",
+            "evidence"
+           ],
+           "properties": {
+            "lane": {
+             "type": "string",
+             "enum": [
+              "control-lane-a",
+              "control-lane-b",
+              "control-lane-c"
+             ]
+            },
+            "terminal_rows": {
+             "type": "integer",
+             "minimum": 0
+            },
+            "evidence": {
+             "type": "string"
+            }
+           }
+          }
+         },
+         "unreadable_sources": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckVerdict": "run"
+  },
+  {
+   "name": "delivered",
+   "args": {
+    "date": "2026-08-29"
+   },
+   "responses": {
+    "friction-precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "already-delivered",
+     "evidence": "d425b1c4f0000000000000000000000000000000",
+     "reason": "dry-read stub"
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": false,
+    "force": false,
+    "short_circuited": "already-delivered",
+    "precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "already-delivered",
+     "evidence": "d425b1c4f0000000000000000000000000000000",
+     "reason": "dry-read stub"
+    },
+    "expensive_agents_spawned": 0,
+    "precheck_agents": 1,
+    "report": "$KB/reports/2026-08-29-friction.md",
+    "state": "$KB/reports/friction-state.json"
+   },
+   "calls": [
+    {
+     "label": "friction-precheck",
+     "phase": "Precheck",
+     "model": "sonnet",
+     "effort": "medium",
+     "schema": {
+      "type": "object",
+      "required": [
+       "date",
+       "clock_utc",
+       "verdict",
+       "evidence",
+       "reason"
+      ],
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "clock_utc": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string",
+        "enum": [
+         "already-delivered",
+         "peer-owned",
+         "run"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "state_last_run_date": {
+        "type": "string"
+       },
+       "checks_failed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckVerdict": "already-delivered"
+  },
+  {
+   "name": "owned",
+   "args": {
+    "date": "2026-08-29"
+   },
+   "responses": {
+    "friction-precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "peer-owned",
+     "evidence": "2026-08-29T15:45:00Z lane friction-scan",
+     "reason": "dry-read stub"
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": false,
+    "force": false,
+    "short_circuited": "peer-owned",
+    "precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "peer-owned",
+     "evidence": "2026-08-29T15:45:00Z lane friction-scan",
+     "reason": "dry-read stub"
+    },
+    "expensive_agents_spawned": 0,
+    "precheck_agents": 1,
+    "report": "$KB/reports/2026-08-29-friction.md",
+    "state": "$KB/reports/friction-state.json"
+   },
+   "calls": [
+    {
+     "label": "friction-precheck",
+     "phase": "Precheck",
+     "model": "sonnet",
+     "effort": "medium",
+     "schema": {
+      "type": "object",
+      "required": [
+       "date",
+       "clock_utc",
+       "verdict",
+       "evidence",
+       "reason"
+      ],
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "clock_utc": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string",
+        "enum": [
+         "already-delivered",
+         "peer-owned",
+         "run"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "state_last_run_date": {
+        "type": "string"
+       },
+       "checks_failed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckVerdict": "peer-owned"
+  },
+  {
+   "name": "unknown",
+   "args": {
+    "date": "2026-08-29"
+   },
+   "responses": {
+    "friction-precheck": null,
+    "friction-scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "friction-source-linear": {
+     "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+     "source_id": "linear",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "linear: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-checkpoints": {
+     "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+     "source_id": "checkpoints",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "checkpoints: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "checkpoints: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-ci": {
+     "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+     "source_id": "ci",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "ci: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-guards": {
+     "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+     "source_id": "guards",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "guards: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "guards: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-synthesize": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "friction-adjudicate": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "friction-report": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "report_path": "/tmp/dry-read-friction-report.md",
+     "state_path": "/tmp/dry-read-friction-state.json",
+     "commit_sha": "deadbeefcafe",
+     "watermark_summary": "stub",
+     "ledger_rows": [],
+     "premise_audit": {
+      "status": "UNKNOWN",
+      "rule_landed_at": "",
+      "rule_evidence": "",
+      "eligible_terminal_rows": 0,
+      "falsified_terminal_rows": null,
+      "positive_controls": [],
+      "unreadable_sources": [
+       "dry-read stub"
+      ],
+      "reason": "dry read has no ledger"
+     }
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": false,
+    "force": false,
+    "short_circuited": null,
+    "precheck": {
+     "bypassed": "unavailable — fell through to a full run"
+    },
+    "precheck_agents": 1,
+    "report": "/tmp/dry-read-friction-report.md",
+    "premise_audit": {
+     "status": "UNKNOWN",
+     "rule_landed_at": "",
+     "rule_evidence": "",
+     "eligible_terminal_rows": 0,
+     "falsified_terminal_rows": null,
+     "positive_controls": [],
+     "unreadable_sources": [
+      "dry-read stub"
+     ],
+     "reason": "dry read has no ledger"
+    },
+    "state": "/tmp/dry-read-friction-state.json",
+    "commit": "deadbeefcafe",
+    "window": "[2026-08-28T00:00:00Z, 2026-08-29T00:00:00Z) — the previous UTC day, 2026-08-28",
+    "scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "sources": [
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+      "source_id": "linear",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "linear: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+      "source_id": "checkpoints",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "checkpoints: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "checkpoints: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+      "source_id": "ci",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "ci: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+      "source_id": "guards",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "guards: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "guards: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     }
+    ],
+    "sources_unknown": [
+     "checkpoints: stub over-bound",
+     "guards: stub no-timestamp"
+    ],
+    "synthesis": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "root_causes": [
+     "stub cause — 2 occurrences across 2 fingerprints"
+    ],
+    "pickups": [
+     "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+    ],
+    "adjudication": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "agents": 9
+   },
+   "calls": [
+    {
+     "label": "friction-precheck",
+     "phase": "Precheck",
+     "model": "sonnet",
+     "effort": "medium",
+     "schema": {
+      "type": "object",
+      "required": [
+       "date",
+       "clock_utc",
+       "verdict",
+       "evidence",
+       "reason"
+      ],
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "clock_utc": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string",
+        "enum": [
+         "already-delivered",
+         "peer-owned",
+         "run"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "state_last_run_date": {
+        "type": "string"
+       },
+       "checks_failed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-scan",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "sources_read",
+       "candidate_count",
+       "unreadable_sources",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "sources_read": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable_sources": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-linear",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-checkpoints",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-ci",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-guards",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-synthesize",
+     "phase": "Synthesize",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "candidate_count",
+       "root_causes",
+       "sources_unknown",
+       "pickups",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "root_causes": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "sources_unknown": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "pickups": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-adjudicate",
+     "phase": "Adjudicate",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "filed",
+       "commented",
+       "known",
+       "first_occurrence",
+       "escalated",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "filed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "commented": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "known": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "first_occurrence": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "escalated": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-report",
+     "phase": "Report",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "report_path",
+       "state_path",
+       "commit_sha",
+       "watermark_summary",
+       "ledger_rows",
+       "premise_audit",
+       "delegation"
+      ],
+      "properties": {
+       "report_path": {
+        "type": "string"
+       },
+       "state_path": {
+        "type": "string"
+       },
+       "commit_sha": {
+        "type": "string"
+       },
+       "watermark_summary": {
+        "type": "string"
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "premise_audit": {
+        "type": "object",
+        "required": [
+         "status",
+         "rule_landed_at",
+         "rule_evidence",
+         "eligible_terminal_rows",
+         "falsified_terminal_rows",
+         "positive_controls",
+         "unreadable_sources",
+         "reason"
+        ],
+        "properties": {
+         "status": {
+          "type": "string",
+          "enum": [
+           "MEASURED",
+           "UNKNOWN"
+          ]
+         },
+         "rule_landed_at": {
+          "type": "string"
+         },
+         "rule_evidence": {
+          "type": "string"
+         },
+         "eligible_terminal_rows": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "falsified_terminal_rows": {
+          "type": [
+           "integer",
+           "null"
+          ],
+          "minimum": 0
+         },
+         "positive_controls": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "required": [
+            "lane",
+            "terminal_rows",
+            "evidence"
+           ],
+           "properties": {
+            "lane": {
+             "type": "string",
+             "enum": [
+              "control-lane-a",
+              "control-lane-b",
+              "control-lane-c"
+             ]
+            },
+            "terminal_rows": {
+             "type": "integer",
+             "minimum": 0
+            },
+            "evidence": {
+             "type": "string"
+            }
+           }
+          }
+         },
+         "unreadable_sources": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckNull": true
+  },
+  {
+   "name": "forced",
+   "args": {
+    "date": "2026-08-29",
+    "force": true
+   },
+   "responses": {
+    "friction-scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "friction-source-linear": {
+     "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+     "source_id": "linear",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "linear: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-checkpoints": {
+     "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+     "source_id": "checkpoints",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "checkpoints: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "checkpoints: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-ci": {
+     "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+     "source_id": "ci",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "ci: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-guards": {
+     "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+     "source_id": "guards",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "guards: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "guards: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-synthesize": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "friction-adjudicate": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "friction-report": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "report_path": "/tmp/dry-read-friction-report.md",
+     "state_path": "/tmp/dry-read-friction-state.json",
+     "commit_sha": "deadbeefcafe",
+     "watermark_summary": "stub",
+     "ledger_rows": [],
+     "premise_audit": {
+      "status": "UNKNOWN",
+      "rule_landed_at": "",
+      "rule_evidence": "",
+      "eligible_terminal_rows": 0,
+      "falsified_terminal_rows": null,
+      "positive_controls": [],
+      "unreadable_sources": [
+       "dry-read stub"
+      ],
+      "reason": "dry read has no ledger"
+     }
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": false,
+    "force": true,
+    "short_circuited": null,
+    "precheck": {
+     "bypassed": "args.force=true"
+    },
+    "precheck_agents": 0,
+    "report": "/tmp/dry-read-friction-report.md",
+    "premise_audit": {
+     "status": "UNKNOWN",
+     "rule_landed_at": "",
+     "rule_evidence": "",
+     "eligible_terminal_rows": 0,
+     "falsified_terminal_rows": null,
+     "positive_controls": [],
+     "unreadable_sources": [
+      "dry-read stub"
+     ],
+     "reason": "dry read has no ledger"
+    },
+    "state": "/tmp/dry-read-friction-state.json",
+    "commit": "deadbeefcafe",
+    "window": "[2026-08-28T00:00:00Z, 2026-08-29T00:00:00Z) — the previous UTC day, 2026-08-28",
+    "scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "sources": [
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+      "source_id": "linear",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "linear: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+      "source_id": "checkpoints",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "checkpoints: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "checkpoints: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+      "source_id": "ci",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "ci: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+      "source_id": "guards",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "guards: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "guards: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     }
+    ],
+    "sources_unknown": [
+     "checkpoints: stub over-bound",
+     "guards: stub no-timestamp"
+    ],
+    "synthesis": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "root_causes": [
+     "stub cause — 2 occurrences across 2 fingerprints"
+    ],
+    "pickups": [
+     "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+    ],
+    "adjudication": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "agents": 8
+   },
+   "calls": [
+    {
+     "label": "friction-scan",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "sources_read",
+       "candidate_count",
+       "unreadable_sources",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "sources_read": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable_sources": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-linear",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-checkpoints",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-ci",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-guards",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-synthesize",
+     "phase": "Synthesize",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "candidate_count",
+       "root_causes",
+       "sources_unknown",
+       "pickups",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "root_causes": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "sources_unknown": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "pickups": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-adjudicate",
+     "phase": "Adjudicate",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "filed",
+       "commented",
+       "known",
+       "first_occurrence",
+       "escalated",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "filed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "commented": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "known": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "first_occurrence": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "escalated": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-report",
+     "phase": "Report",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "report_path",
+       "state_path",
+       "commit_sha",
+       "watermark_summary",
+       "ledger_rows",
+       "premise_audit",
+       "delegation"
+      ],
+      "properties": {
+       "report_path": {
+        "type": "string"
+       },
+       "state_path": {
+        "type": "string"
+       },
+       "commit_sha": {
+        "type": "string"
+       },
+       "watermark_summary": {
+        "type": "string"
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "premise_audit": {
+        "type": "object",
+        "required": [
+         "status",
+         "rule_landed_at",
+         "rule_evidence",
+         "eligible_terminal_rows",
+         "falsified_terminal_rows",
+         "positive_controls",
+         "unreadable_sources",
+         "reason"
+        ],
+        "properties": {
+         "status": {
+          "type": "string",
+          "enum": [
+           "MEASURED",
+           "UNKNOWN"
+          ]
+         },
+         "rule_landed_at": {
+          "type": "string"
+         },
+         "rule_evidence": {
+          "type": "string"
+         },
+         "eligible_terminal_rows": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "falsified_terminal_rows": {
+          "type": [
+           "integer",
+           "null"
+          ],
+          "minimum": 0
+         },
+         "positive_controls": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "required": [
+            "lane",
+            "terminal_rows",
+            "evidence"
+           ],
+           "properties": {
+            "lane": {
+             "type": "string",
+             "enum": [
+              "control-lane-a",
+              "control-lane-b",
+              "control-lane-c"
+             ]
+            },
+            "terminal_rows": {
+             "type": "integer",
+             "minimum": 0
+            },
+            "evidence": {
+             "type": "string"
+            }
+           }
+          }
+         },
+         "unreadable_sources": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckVerdict": "already-delivered"
+  },
+  {
+   "name": "dry",
+   "args": {
+    "date": "2026-08-29",
+    "dryRun": true,
+    "lookbackHours": 72,
+    "fences": [
+     "OMN-123: held",
+     "surface: protected"
+    ]
+   },
+   "responses": {
+    "friction-precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "run",
+     "evidence": "",
+     "reason": "dry-read stub"
+    },
+    "friction-scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "friction-source-linear": {
+     "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+     "source_id": "linear",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "linear: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-checkpoints": {
+     "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+     "source_id": "checkpoints",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "checkpoints: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "checkpoints: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-ci": {
+     "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+     "source_id": "ci",
+     "verdict": "READ",
+     "freshness": "stub: 2h against a 48h bound",
+     "candidate_count": 1,
+     "unreadable": [],
+     "positive_controls": [
+      "ci: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-source-guards": {
+     "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+     "source_id": "guards",
+     "verdict": "UNKNOWN",
+     "freshness": "stub: 264h against a 48h bound",
+     "candidate_count": 0,
+     "unreadable": [
+      "guards: stub over-bound artifact"
+     ],
+     "positive_controls": [
+      "guards: stub control, 3 rows"
+     ],
+     "ledger_rows": []
+    },
+    "friction-synthesize": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "friction-adjudicate": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "friction-report": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "report_path": "/tmp/dry-read-friction-report.md",
+     "state_path": "/tmp/dry-read-friction-state.json",
+     "commit_sha": "deadbeefcafe",
+     "watermark_summary": "stub",
+     "ledger_rows": [],
+     "premise_audit": {
+      "status": "UNKNOWN",
+      "rule_landed_at": "",
+      "rule_evidence": "",
+      "eligible_terminal_rows": 0,
+      "falsified_terminal_rows": null,
+      "positive_controls": [],
+      "unreadable_sources": [
+       "dry-read stub"
+      ],
+      "reason": "dry read has no ledger"
+     }
+    }
+   },
+   "value": {
+    "date": "2026-08-29",
+    "dryRun": true,
+    "force": false,
+    "short_circuited": null,
+    "precheck": {
+     "date": "2026-08-29",
+     "clock_utc": "2026-08-29T15:47:00Z",
+     "verdict": "run",
+     "evidence": "",
+     "reason": "dry-read stub"
+    },
+    "precheck_agents": 1,
+    "report": "/tmp/dry-read-friction-report.md",
+    "premise_audit": {
+     "status": "UNKNOWN",
+     "rule_landed_at": "",
+     "rule_evidence": "",
+     "eligible_terminal_rows": 0,
+     "falsified_terminal_rows": null,
+     "positive_controls": [],
+     "unreadable_sources": [
+      "dry-read stub"
+     ],
+     "reason": "dry read has no ledger"
+    },
+    "state": "/tmp/dry-read-friction-state.json",
+    "commit": "deadbeefcafe",
+    "window": "[2026-08-28T00:00:00Z, 2026-08-29T00:00:00Z) — the previous UTC day, 2026-08-28",
+    "scan": {
+     "handoff_path": "/tmp/dry-read-friction-scan.json",
+     "sources_read": [
+      "a"
+     ],
+     "candidate_count": 1,
+     "unreadable_sources": [],
+     "ledger_rows": []
+    },
+    "sources": [
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-linear.json",
+      "source_id": "linear",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "linear: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-checkpoints.json",
+      "source_id": "checkpoints",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "checkpoints: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "checkpoints: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-ci.json",
+      "source_id": "ci",
+      "verdict": "READ",
+      "freshness": "stub: 2h against a 48h bound",
+      "candidate_count": 1,
+      "unreadable": [],
+      "positive_controls": [
+       "ci: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     },
+     {
+      "handoff_path": "/tmp/dry-read-friction-source-guards.json",
+      "source_id": "guards",
+      "verdict": "UNKNOWN",
+      "freshness": "stub: 264h against a 48h bound",
+      "candidate_count": 0,
+      "unreadable": [
+       "guards: stub over-bound artifact"
+      ],
+      "positive_controls": [
+       "guards: stub control, 3 rows"
+      ],
+      "ledger_rows": []
+     }
+    ],
+    "sources_unknown": [
+     "checkpoints: stub over-bound",
+     "guards: stub no-timestamp"
+    ],
+    "synthesis": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-synthesize.json",
+     "candidate_count": 2,
+     "root_causes": [
+      "stub cause — 2 occurrences across 2 fingerprints"
+     ],
+     "sources_unknown": [
+      "checkpoints: stub over-bound",
+      "guards: stub no-timestamp"
+     ],
+     "pickups": [
+      "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+     ],
+     "ledger_rows": []
+    },
+    "root_causes": [
+     "stub cause — 2 occurrences across 2 fingerprints"
+    ],
+    "pickups": [
+     "1. stub cause — lanes_blocked=2 recurrence=2 — unticketed"
+    ],
+    "adjudication": {
+     "delegation": {
+      "delegated": 1,
+      "runs": [
+       "dry-read"
+      ],
+      "reason": ""
+     },
+     "handoff_path": "/tmp/dry-read-friction-adjudicate.json",
+     "filed": [],
+     "commented": [],
+     "known": [],
+     "first_occurrence": [],
+     "escalated": [],
+     "ledger_rows": []
+    },
+    "agents": 9
+   },
+   "calls": [
+    {
+     "label": "friction-precheck",
+     "phase": "Precheck",
+     "model": "sonnet",
+     "effort": "medium",
+     "schema": {
+      "type": "object",
+      "required": [
+       "date",
+       "clock_utc",
+       "verdict",
+       "evidence",
+       "reason"
+      ],
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "clock_utc": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string",
+        "enum": [
+         "already-delivered",
+         "peer-owned",
+         "run"
+        ]
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "state_last_run_date": {
+        "type": "string"
+       },
+       "checks_failed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-scan",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "sources_read",
+       "candidate_count",
+       "unreadable_sources",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "sources_read": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable_sources": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-linear",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-checkpoints",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-ci",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-source-guards",
+     "phase": "Scan",
+     "model": "sonnet",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "source_id",
+       "verdict",
+       "freshness",
+       "candidate_count",
+       "unreadable",
+       "ledger_rows"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "source_id": {
+        "type": "string"
+       },
+       "verdict": {
+        "type": "string"
+       },
+       "freshness": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "unreadable": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "positive_controls": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-synthesize",
+     "phase": "Synthesize",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "candidate_count",
+       "root_causes",
+       "sources_unknown",
+       "pickups",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "candidate_count": {
+        "type": "number"
+       },
+       "root_causes": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "sources_unknown": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "pickups": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-adjudicate",
+     "phase": "Adjudicate",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "handoff_path",
+       "filed",
+       "commented",
+       "known",
+       "first_occurrence",
+       "escalated",
+       "ledger_rows",
+       "delegation"
+      ],
+      "properties": {
+       "handoff_path": {
+        "type": "string"
+       },
+       "filed": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "commented": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "known": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "first_occurrence": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "escalated": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "label": "friction-report",
+     "phase": "Report",
+     "model": "opus",
+     "effort": "high",
+     "schema": {
+      "type": "object",
+      "required": [
+       "report_path",
+       "state_path",
+       "commit_sha",
+       "watermark_summary",
+       "ledger_rows",
+       "premise_audit",
+       "delegation"
+      ],
+      "properties": {
+       "report_path": {
+        "type": "string"
+       },
+       "state_path": {
+        "type": "string"
+       },
+       "commit_sha": {
+        "type": "string"
+       },
+       "watermark_summary": {
+        "type": "string"
+       },
+       "ledger_rows": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "premise_audit": {
+        "type": "object",
+        "required": [
+         "status",
+         "rule_landed_at",
+         "rule_evidence",
+         "eligible_terminal_rows",
+         "falsified_terminal_rows",
+         "positive_controls",
+         "unreadable_sources",
+         "reason"
+        ],
+        "properties": {
+         "status": {
+          "type": "string",
+          "enum": [
+           "MEASURED",
+           "UNKNOWN"
+          ]
+         },
+         "rule_landed_at": {
+          "type": "string"
+         },
+         "rule_evidence": {
+          "type": "string"
+         },
+         "eligible_terminal_rows": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "falsified_terminal_rows": {
+          "type": [
+           "integer",
+           "null"
+          ],
+          "minimum": 0
+         },
+         "positive_controls": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "required": [
+            "lane",
+            "terminal_rows",
+            "evidence"
+           ],
+           "properties": {
+            "lane": {
+             "type": "string",
+             "enum": [
+              "control-lane-a",
+              "control-lane-b",
+              "control-lane-c"
+             ]
+            },
+            "terminal_rows": {
+             "type": "integer",
+             "minimum": 0
+            },
+            "evidence": {
+             "type": "string"
+            }
+           }
+          }
+         },
+         "unreadable_sources": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       },
+       "delegation": {
+        "type": "object",
+        "required": [
+         "delegated",
+         "runs",
+         "reason"
+        ],
+        "properties": {
+         "delegated": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "runs": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   ],
+   "precheckVerdict": "run"
+  }
+ ]
+}
