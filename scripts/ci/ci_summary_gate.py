@@ -592,6 +592,14 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",
     "pr-title / check-title",
+    # OMN-20781 (public-repo-hygiene.yml): five internal-content classes fail
+    # the run on the lines a pull request adds. The caller is a single job with
+    # no `name:` over the reusable's job `public-repo-hygiene`, so the check-run
+    # reads "<caller job id> / <called job name>". It was exempt while the gate
+    # recorded findings and exited 0; it blocks now, and on this repo the CI
+    # Summary umbrella IS the enforcement surface, so a context missing from
+    # this tuple is silently unenforced.
+    "public-repo-hygiene / public-repo-hygiene",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
@@ -1743,6 +1751,12 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request", "merge_group"),
             (),
             ("Projection Exposure Drift Gate",),
+        ),
+        (
+            "public-repo-hygiene.yml",
+            ("pull_request",),
+            (),
+            ("public-repo-hygiene / public-repo-hygiene",),
         ),
         (
             "receipt-honesty.yml",

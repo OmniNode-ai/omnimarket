@@ -120,8 +120,9 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     assert resolved == gate.expected_external_contexts("pull_request")
     assert resolved == EXPECTED_EXTERNAL_CONTEXTS
     # The owning ticket's historical count was 53; the integrated base has 55,
-    # and OMN-20287 adds the Deployment Fact Gate.
-    assert len(resolved) == 56
+    # OMN-20287 adds the Deployment Fact Gate, and OMN-20781 adds the
+    # public-repo hygiene gate.
+    assert len(resolved) == 57
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
