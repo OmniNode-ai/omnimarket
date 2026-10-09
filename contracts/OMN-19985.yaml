@@ -1,0 +1,69 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19985"
+title: "onex secret set and delete emit credential events with a fingerprint and set time, never the value"
+summary: "omnimarket's half of OMN-19985: node_local_secret_store_effect stores or deletes a local secret and returns credential events carrying a sha256(value)[:8] fingerprint and a set time, the CLI folds them into tenant_inference_credentials, and the tenant-credentials exposure serves both fields. Each criterion below is bound to the pytest files that decide it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19985-credential-events-never-carry-the-value"
+    statement: |-
+      A local provider key set or delete produces credential events and projection rows carrying the key's reference, provider, fingerprint prefix and set time, never its value, and the tenant-credentials exposure serves those fields. The page half of AC2 and AC3 (the omnidash Credentials page and its HAR) is the .201 lab readback cited on the PR; the criteria below are the halves this repository decides.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The handler's credential-registered event bytes do not contain a planted value, its fingerprint is `sha256(value)[:8]`, and revoke returns the mirror event; both delivery orders, a duplicate delivery and a delete-then-set give the expected rows -- falsifier: uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q
+      - id: "AC2"
+        statement: |-
+          AC2 (data half): a planted value appears in no credential event, no tenant_inference_credentials row, no CLI output and no refusal text, through the node and through the real onex secret CLI -- falsifier: uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k "c1_c2_c5 or c4 or h1 or h4 or h5"
+      - id: "AC3"
+        statement: |-
+          AC3 (data half): the tenant-credentials exposure serves the key ref with its provider, fingerprint prefix and set time, names the Credentials page as its consumer, and a set then delete leaves the row revoked with its fingerprint and set time kept -- falsifier: uv run pytest tests/test_omn19985_credential_fingerprint_set_at.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q
+      - id: "AC4"
+        statement: |-
+          AC4: node_projection_tenant_credentials gives equal normalized rows through the real SQLite adapter and the real Postgres adapter for the same recorded credential event fixtures; bound here are the six OMN-19985 scenarios (fingerprint and set time stored, an event without them, revoke keeps them, revoke before register, duplicate delivery, delete-then-set), together with the real-Postgres write-path tests that store and keep the fingerprint and set time, because a parity check alone passes at the merge base (both stores lack the columns there, so their rows still match) -- falsifier: uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k "(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt" -p no:randomly
+evidence_requirements:
+  - kind: "tests"
+    description: "The node and golden-chain tests pass at the head and fail at the merge base, where node_local_secret_store_effect does not exist."
+    command: "uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q"
+  - kind: "tests"
+    description: "The six OMN-19985 tenant-credentials parity scenarios give equal rows on SQLite and real Postgres, and the real-Postgres write path stores and keeps fingerprint and set_at; at the merge base the write-path tests fail."
+    command: "uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k \"(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt\" -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19985-ac1-node-events-and-rows"
+    description: "The node returns credential-registered with sha256(value)[:8] and never the value, a delete returns the mirror revoke, and both delivery orders, a duplicate delivery and delete-then-set fold to the expected rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19985-ac2-value-in-no-event-row-or-output"
+    description: "A planted value is absent from the event bytes, the result, every refusal, the CLI output and every tenant_inference_credentials column; a secret that is not a provider key emits nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k \"c1_c2_c5 or c4 or h1 or h4 or h5\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19985-ac3-exposure-serves-fp-and-set-time"
+    description: "The migration adds the two nullable columns, the exposure serves fingerprint and set_at and names the Credentials page, register stores them, revoke keeps them, and the golden chain reads them back through the served exposure after set and after delete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19985_credential_fingerprint_set_at.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19985-ac4-sqlite-postgres-parity"
+    description: "The six OMN-19985 tenant-credentials scenarios give equal normalized rows on the real SQLite adapter and the real Postgres runner, and the real Postgres writer stores and keeps fingerprint and set_at. Parity alone passes at the merge base (both stores lack the columns), so the write-path tests are what make the control fail: 3 failed there, 15 passed at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19968_writer_store_parity.py tests/test_omn16316_real_postgres_tenant_credentials_write_path.py -q -k \"(tenant_credentials and (local_ or an_event_without)) or FingerprintAndSetAt\" -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

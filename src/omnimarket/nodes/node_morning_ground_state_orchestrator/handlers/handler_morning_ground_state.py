@@ -146,22 +146,39 @@ class HandlerMorningGroundState:
     ) -> None:
         from .handler_morning_phase_bus import HandlerMorningPhaseBus
 
-        self.overlay = overlay or load_morning_overlay()
-        self.gateway = gateway or HandlerMorningPhaseBus(
-            event_bus, overlay=self.overlay
-        )
-        self.templates: dict[str, str] = self.overlay.templates
+        # OMN-17427: the overlay is a deployment fact of a RUN. Auto-wiring builds
+        # this handler inside the effects runtime, and a constructor that raises
+        # there takes every other node's runtime down with it, so nothing here
+        # touches the deployment: an absent overlay is refused when a run starts.
+        self._overlay = overlay
+        self.gateway = gateway or HandlerMorningPhaseBus(event_bus, overlay=overlay)
         self.schemas = cast(
             dict[str, dict[str, JsonValue]],
             json.loads(
                 files(PACKAGE).joinpath("models/phase_schemas.json").read_text()
             ),
         )
-        self.specs: list[dict[str, JsonValue]] = self.overlay.phase_specs
+
+    @property
+    def overlay(self) -> ModelMorningOverlay:
+        """The deployment overlay, read on first use; absent or invalid is a refusal."""
+        if self._overlay is None:
+            self._overlay = load_morning_overlay()
+        return self._overlay
+
+    @property
+    def templates(self) -> dict[str, str]:
+        return self.overlay.templates
+
+    @property
+    def specs(self) -> list[dict[str, JsonValue]]:
+        return self.overlay.phase_specs
 
     async def handle(
         self, request: ModelMorningGroundStateRequest
     ) -> ModelMorningGroundStateResult:
+        # Refuse a run without its overlay before any phase, reconcile or agent runs.
+        _ = self.overlay
         values = self._values(request)
         outcomes: dict[str, dict[str, JsonValue] | None] = {}
         # Reconciliation stays best-effort; its failure is terminal evidence.

@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeGlmAllowanceCompute
+#
+# The GLM Coding Plan allowance check as a pure definition-B compute:
+#
+#   handle(ModelGlmAllowanceRequest) -> ModelGlmAllowanceResult
+#
+# Given the recent usage, the cap refusals the provider returned and the allowance policy the deployment
+# declared, it says how much of the rolling window and the weekly period is left and what that leaves of one
+# delegation chain's GLM rungs: dropped near a cap or for a class the judged evals did not approve, preferred
+# ahead of the costlier rungs while allowance is unused. The window, the caps, the credit rates and the
+# approvals are deployment facts: they arrive in the request from the private routing overlay and no default
+# for any of them is packaged. No clock (the time is in the request), no I/O, no model.
+name: "node_glm_allowance_compute"
+contract_name: "node_glm_allowance_compute"
+node_name: "node_glm_allowance_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B allowance check for the GLM Coding Plan: what is left of the
+  rolling window and the weekly period, and the delegation chain the GLM rungs
+  leave once the allowance, the class approvals and any recent cap refusal are
+  consulted.
+input_model:
+  name: "ModelGlmAllowanceRequest"
+  module: "omnimarket.nodes.node_glm_allowance_compute.models.model_glm_allowance"
+  description: "The clock, the policy from the overlay, recent usage and refusals, the call's class and budget, and the chain."
+output_model:
+  name: "ModelGlmAllowanceResult"
+  module: "omnimarket.nodes.node_glm_allowance_compute.models.model_glm_allowance"
+  description: "The window and week left, the verdict, the chain order to try, the GLM rungs skipped and why."
+handler:
+  module: "omnimarket.nodes.node_glm_allowance_compute.handlers.handler_glm_allowance"
+  class: "HandlerGlmAllowance"
+  input_model: "omnimarket.nodes.node_glm_allowance_compute.models.model_glm_allowance.ModelGlmAllowanceRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_glm_allowance_compute.handlers.handler_glm_allowance:HandlerGlmAllowance"
+  handlers:
+    - operation: "glm_allowance_evaluate"
+      handler:
+        name: "HandlerGlmAllowance"
+        module: "omnimarket.nodes.node_glm_allowance_compute.handlers.handler_glm_allowance"
+# The harness rung of the escalation chain publishes the command before it runs a GLM call; the evaluated
+# event is what the liveness projection shows (allowance left, GLM skipped and why).
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.glm-allowance-evaluate-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.glm-allowance-evaluated.v1"
+    failure: "onex.evt.omnimarket.glm-allowance-evaluate-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.glm-allowance-evaluated.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Allowance left of the GLM Coding Plan window and week, and the chain order that leaves."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - delegation
+    - glm
+    - allowance
+    - pure

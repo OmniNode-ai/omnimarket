@@ -1,0 +1,157 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dod_closeout_sweep_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the DoD closeout sweep (OMN-20675), the decisions the
+  dod-closeout-sweep workflow left to agents. precheck says whether a date's sweep is already
+  delivered, owned by a live peer lane, or to be run; resolve_sprint picks the one live dated
+  sprint whose window holds the date (the name is Sprint and two dates, whatever follows) and
+  the sprint before it, and refuses to pick among several; plan_scope
+  classifies started tickets by the four exclusions (parent, fenced, external, no contract and
+  no merged PR) and cuts the candidates into chunks; flip_decision applies the flip predicate
+  to one ticket's verifier counters and names the primary blocker; report derives the counts and
+  the blocking-check-class histogram from the per-ticket results, renders the closeout report and
+  the TERMINAL row cells. refuse_binding says whether a binder's check may go to the acceptor
+  (a source grep, a file-exists probe or a pull request read is refused), check_identities says
+  whether two lanes are one actor, select_candidates picks the tickets a bounded run examines,
+  least recently examined first, holds those awaiting a text amendment and cuts the rest into
+  chunks, decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
+  comment an open ticket receives. Performs no read, has no clock and writes
+  nothing: the caller reads the ledger, Linear, GitHub and the report file and passes what it saw.
+input_model:
+  name: ModelDodCloseoutDecisionRequest
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+output_model:
+  name: ModelDodCloseoutDecisionResult
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+handler:
+  module: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep
+  class: HandlerDodCloseoutSweep
+  input_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionRequest
+  output_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep:HandlerDodCloseoutSweep
+  handlers:
+    - operation: decide_dod_closeout_sweep
+      handler:
+        name: HandlerDodCloseoutSweep
+        module: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, decide_ticket]}
+  date: {type: str, required: true, description: "YYYY-MM-DD the sweep is for."}
+  force: {type: bool, required: false, description: "precheck: bypass the idempotency guard."}
+  clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ."}
+  ledger_rows: {type: list, required: false, description: "precheck: ledger rows, one string each."}
+  report_text: {type: str, required: false, description: "precheck: the date's report, absent when the file is."}
+  report_commit_sha: {type: str, required: false}
+  report_dirty: {type: bool, required: false}
+  project_override: {type: str, required: false, description: "resolve_sprint: explicit sprint uuid."}
+  projects: {type: list, required: false, description: "resolve_sprint: every listed Linear project."}
+  project_id: {type: str, required: false, description: "plan_scope: the sprint uuid."}
+  tickets: {type: list, required: false, description: "plan_scope: started tickets with the facts read for each."}
+  chunk_size: {type: int, required: false, description: "plan_scope, select_candidates: tickets per chunk."}
+  ticket_id: {type: str, required: false, description: "flip_decision, decide_ticket: the ticket judged."}
+  total_checks: {type: int, required: false}
+  verified_count: {type: int, required: false}
+  failed_count: {type: int, required: false}
+  non_probative_count: {type: int, required: false}
+  behavior_proving_count: {type: int, required: false}
+  criteria: {type: list, required: false, description: "flip_decision: acceptance criteria parsed from the ticket body."}
+  bound_criteria: {type: list, required: false, description: "flip_decision: criteria with a verified probative check that names them."}
+  prior_reversal: {type: bool, required: false}
+  outcome_changed_since_reversal: {type: bool, required: false}
+  all_prs_merged: {type: bool, required: false}
+  released: {type: str, required: false, enum: [released, merged-unreleased, indeterminate, not-applicable]}
+  project_name: {type: str, required: false, description: "report: the sprint name and window."}
+  scope_counts: {type: object, required: false, description: "report: the counts plan_scope returned."}
+  chunk_results: {type: list, required: false, description: "report: every chunk with its verify results, audit and reverts."}
+  apply: {type: bool, required: false}
+  plan_comparison: {type: str, required: false}
+  not_done: {type: str, required: false}
+  friction: {type: str, required: false, description: "report: friction cell of the TERMINAL row; one cell, no pipe."}
+  released_probe_run: {type: bool, required: false}
+  released_positive_control: {type: str, required: false}
+  check: {type: object, required: false, description: "refuse_binding: the check the binder proposed; absent is refused as no-check."}
+  criterion_label: {type: str, required: false, description: "refuse_binding: the label that stands in for a check carrying none."}
+  proposed_by: {type: str, required: false, description: "check_identities: who authored the binding."}
+  accepted_by: {type: str, required: false, description: "check_identities: who accepted it."}
+  acs: {type: list, required: false, description: "decide_ticket: every criterion after bind, vetting and accept."}
+  dod_verify_receipt: {type: str, required: false, description: "decide_ticket: the verifier's JSON output verbatim; absent means it did not run."}
+  criteria_note: {type: str, required: false}
+  criteria_amendment: {type: str, required: false}
+  run_key: {type: str, required: false, description: "decide_ticket: the run named in the open comment."}
+  text_sha: {type: str, required: false, description: "decide_ticket: hash of the description now, recorded in an amendment hold."}
+  records: {type: list, required: false, description: "select_candidates: every candidate with when its last closeout comment was posted."}
+  text_state: {type: str, required: false, description: "select_candidates: the closeout text-state command's stdout, unedited."}
+  max_candidates: {type: int, required: false}
+outputs:
+  kind: {type: str}
+  verdict: {type: str, enum: [already-delivered, peer-owned, run]}
+  evidence: {type: str}
+  reason: {type: str}
+  report_lines: {type: int}
+  checks_failed: {type: list}
+  resolved: {type: bool}
+  project_id: {type: str}
+  project_name: {type: str}
+  residuals: {type: list}
+  counts: {type: object}
+  candidates: {type: list}
+  chunks: {type: list}
+  non_candidates: {type: list}
+  overlaps: {type: list}
+  verified_nothing: {type: bool}
+  action: {type: str, enum: [flipped-done, held-gap, held-merged-unreleased, held-external, corrected-state, no-change]}
+  predicate_met: {type: bool}
+  unmet: {type: list}
+  primary_blocker: {type: str}
+  unbound_criteria: {type: list}
+  report_path: {type: str}
+  report_text: {type: str}
+  closeout_counts: {type: object}
+  primary_histogram: {type: list}
+  tooling_histogram: {type: list}
+  behavior_proving_positive: {type: int}
+  predicate_satisfied: {type: int}
+  dropped_chunks: {type: list}
+  unadjudicated_tickets: {type: list}
+  terminal_cells: {type: list}
+  previous_project_id: {type: str}
+  previous_project_name: {type: str}
+  refused: {type: bool}
+  refusal_class: {type: str}
+  same_actor: {type: bool}
+  selected: {type: list}
+  deferred: {type: list}
+  held: {type: list}
+  decision: {type: str, enum: [done, open]}
+  ticket_unmet: {type: list}
+  needs_amendment: {type: bool}
+  signature: {type: str}
+  comment_text: {type: str}
+terminal_event: onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dod-closeout-sweep-decide-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dod-closeout-sweep-decide-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.dod-closeout-sweep-decided.v1
+metadata:
+  transport_type: inmemory
+  description: DoD closeout sweep decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20675]

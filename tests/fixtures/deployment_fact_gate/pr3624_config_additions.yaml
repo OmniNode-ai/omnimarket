@@ -1,0 +1,177 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# What omnimarket#3624 (head ca6bf7456ea2181ce4e05c7c141115279fe20926, merge base d4eeea2974ef11989a9b37ae02b6c564e878fdc2)
+# added to the three packaged routing configs, parsed from its own files: every
+# backend it appended, its harness_tiers block, and the escalation_chain it gave
+# each task class. Nothing else in those three files' parsed content differs
+# between that head and its merge base. The deployment-fact gate tests apply it
+# to the packaged configs in the tree and expect a refusal (OMN-20287).
+bifrost_delegation.yaml:
+  backends_appended:
+  - backend_id: harness-codex
+    provider: openai
+    kind: harness
+    harness: codex
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - code_generation
+    - test
+    - code_review
+    - refactor
+  - backend_id: harness-claude-glm-flash
+    provider: glm
+    kind: harness
+    harness: claude-glm
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: glm-5.3-flash
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - document
+    - reasoning
+    - summarization
+  - backend_id: harness-claude-glm
+    provider: glm
+    kind: harness
+    harness: claude-glm
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: glm-5.3
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - document
+    - reasoning
+    - code_review
+  - backend_id: harness-claude-haiku
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: claude-haiku-5-5
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - document
+    - test
+  - backend_id: harness-claude-sonnet
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: claude-sonnet-5-5
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - summarization
+    - document
+    - code_review
+    - test
+    - code_generation
+    - reasoning
+  - backend_id: harness-claude-opus
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: claude-opus-5-5
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+    - summarization
+    - document
+    - code_review
+    - test
+    - code_generation
+    - reasoning
+routing_tiers.yaml:
+  harness_tiers:
+  - name: harness_codex
+    backend_id: harness-codex
+    use_for:
+    - code_review
+    - test
+    - code_generation
+  - name: harness_glm_flash
+    backend_id: harness-claude-glm-flash
+    use_for:
+    - document
+  - name: harness_glm
+    backend_id: harness-claude-glm
+    use_for:
+    - document
+    - code_review
+    - reasoning
+  - name: harness_haiku
+    backend_id: harness-claude-haiku
+    use_for:
+    - document
+    - test
+  - name: harness_sonnet
+    backend_id: harness-claude-sonnet
+    use_for:
+    - summarization
+    - document
+    - code_review
+    - test
+    - code_generation
+    - reasoning
+task_class_contracts.v1.yaml:
+  escalation_chain_by_class:
+    code_generation:
+      escalate_on: acceptance_check
+      rungs:
+      - harness_codex
+      - local
+      - harness_sonnet
+    document:
+      escalate_on: acceptance_check
+      rungs:
+      - local
+      - harness_glm_flash
+      - harness_glm
+      - harness_haiku
+      - harness_sonnet
+    test:
+      escalate_on: acceptance_check
+      rungs:
+      - harness_codex
+      - harness_haiku
+      - harness_sonnet
+    reasoning:
+      escalate_on: acceptance_check
+      rungs:
+      - local
+      - harness_glm
+      - harness_sonnet
+    code_review:
+      escalate_on: acceptance_check
+      rungs:
+      - harness_codex
+      - harness_glm
+      - harness_sonnet
+    summarization:
+      escalate_on: acceptance_check
+      rungs:
+      - local
+      - harness_sonnet

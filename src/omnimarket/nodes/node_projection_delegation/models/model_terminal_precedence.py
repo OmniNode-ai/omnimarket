@@ -56,6 +56,9 @@ _TERMINAL_OWNED_COLUMNS = (
     "answering_backend",
     "backend_id",
     "host",
+    "requested_model",
+    "queue_wait_ms",
+    "execution_ms",
 )
 
 

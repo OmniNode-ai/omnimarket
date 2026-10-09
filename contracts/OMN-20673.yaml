@@ -23,7 +23,12 @@ requirements:
     statement: "Keep the node free of private workspace, repository, ticket and tooling identity; the deployment supplies them through a strict overlay."
     acceptance:
       - id: "AC3"
-        statement: "AC3: the overlay pointer wins over ordered roots, an absent or invalid overlay is a hard stop, request values override overlay defaults, and the node package names no private repository or path; the runtime inventory records the deferred registration"
+        statement: "AC3: the overlay pointer wins over ordered roots, an absent or invalid overlay is a hard stop, request values override overlay defaults, and the node package names no private repository or path"
+  - id: "req-registration"
+    statement: "Register the hosted orchestrator in the onex.nodes entry points so the runtime discovers it."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: pyproject.toml registers node_morning_ground_state_orchestrator in the onex.nodes entry points and the runtime dogfood inventory no longer lists it as missing"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: golden chain and decision parity pass."
@@ -32,8 +37,11 @@ evidence_requirements:
     description: "AC2: error chain and phase gateway pass."
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC3: overlay resolution, strict validation and unregistered inventory pass."
+    description: "AC3: overlay resolution, strict validation and the runtime inventory pass."
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: the entry point is registered in pyproject.toml."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -56,10 +64,18 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20673-ac3-overlay"
-    description: "AC3: strict overlay and deferred registration pass."
+    description: "AC3: strict overlay and the runtime inventory pass."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20673-ac4-entry-point-registered"
+    description: "AC4: pyproject.toml registers node_morning_ground_state_orchestrator in the onex.nodes entry points."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

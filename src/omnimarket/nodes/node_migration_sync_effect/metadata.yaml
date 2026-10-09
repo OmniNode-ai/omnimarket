@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_migration_sync_effect
+version: "0.1.0"
+description: "Effect: the I/O of a migration-sync run - read the omnimarket node migrations, the vendored copies and the manifest, then apply the copy and remove actions node_migration_sync_plan_compute decided. Hosted by a serve process on a host that holds both checkouts, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Migration Sync Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_migration_sync_effect: "omnimarket.nodes.node_migration_sync_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "migrations"]

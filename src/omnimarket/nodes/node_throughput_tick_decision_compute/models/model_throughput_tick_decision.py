@@ -12,6 +12,92 @@ from pydantic import BaseModel, ConfigDict, Field
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
 
+class ModelLabMark(BaseModel):
+    """A limited or auth-expired mark file the caller read in the placement directory.
+
+    `absent`: no such file. `unreadable`: the file exists but could not be read or lacks its
+    keys. `present`: `until` (and `at` for an auth mark) hold the stamps the file carries.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: Literal["absent", "present", "unreadable"] = "absent"
+    until: str | None = None
+    at: str | None = None
+
+
+class ModelLabReceipt(BaseModel):
+    """One remote-lane runner receipt the caller read, reduced to the fields the finding uses."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    started_at: str
+    host: str | None = None
+    final: bool = False
+    status: str | None = None
+    pid_alive: bool | None = Field(
+        default=None,
+        description="Whether the receipt's pid is a live process; None when the receipt has no pid.",
+    )
+    pid_valid: bool = Field(
+        default=True,
+        description="False when the receipt's pid is not an integer; such a running receipt is skipped.",
+    )
+    readings: list[str] = Field(default_factory=list)
+
+
+class ModelLabReadingParse(BaseModel):
+    """What the placement module made of one placement reading text for one host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    parsed: bool
+    admission_refusal: str | None = None
+
+
+class ModelLabHost(BaseModel):
+    """A pool host the caller read, with the marks, parse and admission facts for it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    local: bool = False
+    cap: int | None = None
+    limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
+    auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
+    parses: dict[str, ModelLabReadingParse] = Field(
+        default_factory=dict,
+        description=(
+            "For each placement reading text of this host in the receipts, whether the placement "
+            "module parsed it and the lane admission refusal it names, if any."
+        ),
+    )
+
+
+class ModelLabHeadroomFacts(BaseModel):
+    """The remote-lane runner's pool, marks and receipts as the caller read them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    module_unavailable: bool = False
+    unavailable_hosts: list[str] = Field(
+        default_factory=list,
+        description="Names of non-local host-table rows marked unavailable, in table order.",
+    )
+    placement_error: str | None = Field(
+        default=None,
+        description="Why the placement state could not be read, when it could not.",
+    )
+    hosts: list[ModelLabHost] = Field(default_factory=list)
+    receipts: list[ModelLabReceipt] = Field(
+        default_factory=list, description="Receipts in the order the caller read them."
+    )
+    live_marker_hosts: list[str] = Field(
+        default_factory=list,
+        description="One host name per placement marker whose process is alive.",
+    )
+
+
 class ModelThroughputTickRequest(BaseModel):
     """Facts the caller read from the landing controller's files, launchd and the PR watcher.
 
@@ -43,6 +129,13 @@ class ModelThroughputTickRequest(BaseModel):
         description="Why ticks.jsonl could not be read, when it could not.",
     )
     heartbeat_text: str | None = None
+    heartbeat_write_error: str | None = Field(
+        default=None,
+        description=(
+            "`<path>: <error>` when the caller could not write the tick heartbeat file; "
+            "reported as the first finding."
+        ),
+    )
     state_json: JsonType | None = Field(
         default=None,
         description="The controller's state.json, parsed; None when unreadable.",
@@ -57,6 +150,11 @@ class ModelThroughputTickRequest(BaseModel):
     policy_load_error: str | None = None
     policy_error: str = ""
     land_like_operator: list[str] = Field(default_factory=list)
+
+    lab_headroom: ModelLabHeadroomFacts | None = Field(
+        default=None,
+        description="Lab-headroom facts; None skips the finding (and its `checked` entry).",
+    )
 
 
 class ModelThroughputTickResult(BaseModel):

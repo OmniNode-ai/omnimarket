@@ -1,0 +1,23 @@
+name: node_glm_usage_record_compute
+version: "0.1.0"
+description: "one harness run on the GLM Coding Plan as a usage event with its credits, and a refusal event on a cap refusal"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_glm_usage_record_compute: "omnimarket.nodes.node_glm_usage_record_compute"
+capabilities:
+  standalone: true
+  # false until the harness delegate publishes the command after each run: nothing calls the node yet.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "glm", "usage", "pure"]
+pack: "routing"
+display_name: "GLM Usage Record"
+node_role: "compute"

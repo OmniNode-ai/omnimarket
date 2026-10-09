@@ -11,6 +11,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
+from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
+from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
+
 
 class EnumDelegationBackendKind(StrEnum):
     """How a delegation backend is executed (OMN-20287, plan step 7)."""
@@ -147,6 +150,7 @@ class ModelDelegationRoutingRule(BaseModel):
         ...,
         min_length=1,
         description="Ordered backend IDs to try when this rule matches.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_ORDER),
     )
     fallback_policy: ModelDelegationFallbackPolicy = Field(
         ...,
@@ -168,7 +172,10 @@ class ModelDelegationBackendConfig(BaseModel):
     )
 
     backend_id: str = Field(
-        ..., min_length=1, description="Stable human-readable slug."
+        ...,
+        min_length=1,
+        description="Stable human-readable slug.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.BACKEND),
     )
     provider: str | None = Field(
         default=None,
@@ -177,6 +184,7 @@ class ModelDelegationBackendConfig(BaseModel):
             "Declared provider identity for provenance. None is retained only for "
             "legacy config parsing; a provenance-capable route must declare it."
         ),
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.PROVIDER),
     )
     endpoint_url_env: str | None = Field(
         default=None,
@@ -189,10 +197,12 @@ class ModelDelegationBackendConfig(BaseModel):
     endpoint_url: str | None = Field(
         default=None,
         description="COMPLETE endpoint URL (incl. the full chat/completions path) populated by the deploy-time overlay, posted verbatim. Null for local backends until the overlay is applied.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ENDPOINT),
     )
     model_name: str | None = Field(
         default=None,
         description="Model identifier sent in outbound requests. Null for local backends resolved at deploy time.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.MODEL_NAME),
     )
     api_key_env: str | None = Field(
         default=None,
@@ -200,12 +210,14 @@ class ModelDelegationBackendConfig(BaseModel):
             "Legacy environment variable name holding the backend API key. "
             "Use secret_ref for new backends."
         ),
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.SECRET_REF),
     )
     api_key_ref: str | None = Field(
         default=None,
         description=(
             "Legacy non-secret API-key reference. Use secret_ref for new backends."
         ),
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.SECRET_REF),
     )
     secret_ref: str | None = Field(
         default=None,
@@ -213,6 +225,7 @@ class ModelDelegationBackendConfig(BaseModel):
             "Logical secret reference resolved through the lane secret mapping "
             "and ProtocolSecretStore at the effect boundary."
         ),
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.SECRET_REF),
     )
     extra_headers: dict[str, str] | None = Field(
         default=None,
@@ -604,6 +617,7 @@ class ModelBifrostDelegationConfig(BaseModel):
     default_backends: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Fallback backend IDs when no routing rule matches.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_ORDER),
     )
     circuit_breaker: ModelDelegationCircuitBreakerConfig = Field(
         default_factory=ModelDelegationCircuitBreakerConfig,

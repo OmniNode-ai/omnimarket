@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20686"
 title: "The merge-throughput tick decisions run as an omnimarket compute node"
-summary: "node_throughput_tick_decision_compute ports the controller, merges, floors and escalation findings of the throughput tick (throughput_tick.py with the loops_check.py checks it calls) as a contract-declared COMPUTE node dispatched over the bus, with parity against the old code's captured output. The lab-headroom finding, the caller that reads the files and processes, repointing callers and deleting the old script are separate changes."
+summary: "node_throughput_tick_decision_compute ports the controller, merges, floors and escalation findings of the throughput tick (throughput_tick.py with the loops_check.py checks it calls) as a contract-declared COMPUTE node dispatched over the bus, with parity against the old code's captured output. The same node also decides the lab-headroom finding and the tick heartbeat finding from facts a caller read; the caller that reads the files and processes lives in the omni plugin's throughput_tick.py, and deleting the old checks is a separate change."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,6 +16,34 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and a malformed request is refused with no result -- falsifier: the same test file, test_golden_chain_over_the_bus_matches_a_captured_case and test_error_chain_over_the_bus_fails_without_a_result
+  - id: "req-throughput-tick-lab-headroom"
+    statement: |-
+      The throughput tick's lab-headroom finding and its heartbeat-write finding run in the same node, from the pool, marks, receipts and live placement markers a caller read, and match the retired script's whole output.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: For every captured case of the retired script's output the node returns the same finding lines, status line and exit code from the request the repointed tick built from the same fixtures -- falsifier: tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py against tests/fixtures/throughput_tick_cli_parity.json, which fails on any differing line
+  - id: "req-onex-ledger-admission-node"
+    statement: |-
+      The admission decision of the retired onex_ledger.py wrapper (budget usage error, refused TERMINAL rows, missing omnibase_internal clone, run or timeout) runs in node_onex_ledger_admission_compute, with no clock, no file reads and no process calls, and matches the old wrapper.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: For every captured case the node returns the wrapper's exit code and message from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py against tests/fixtures/onex_ledger_admission_parity.json, which fails on any differing case
+  - id: "req-skill-exec-decision-node"
+    statement: |-
+      The argument parsing, command planning and result reporting of the retired skill_exec.py executor run in node_skill_exec_decision_compute, with no clock, no file reads and no process calls, and match the old executor.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: For every captured case the node plans the executor's command, files, environment and time budget and reports its exit code and output byte for byte from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py against tests/fixtures/skill_exec_parity.json, which fails on any differing case
+  - id: "req-ci-state-verdict-node"
+    statement: |-
+      The CI verdict of the retired ci-watch ci_state.py (the watcher's answer, the required-context verdict from every check-run copy, the stuck check-suite finding and the evidence-line class of a gate log) runs in node_ci_state_verdict_compute, with no clock, no file reads and no process calls, and matches the old script.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: For every captured case the node returns the old script's stdout, stderr, exit code, scratch files and watcher fallback reason from the facts a caller read, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_ci_state_verdict_compute/test_golden_chain_ci_state_verdict_compute.py against tests/fixtures/ci_state_verdict_parity.json, which fails on any differing case
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
@@ -33,3 +61,35 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_golden_chain_throughput_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20686-throughput-tick-lab-headroom"
+    description: "node_throughput_tick_decision_compute matches the retired script's lab-headroom and heartbeat findings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20686-onex-ledger-admission"
+    description: "node_onex_ledger_admission_compute matches the captured admission decisions of the retired onex_ledger.py wrapper and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_onex_ledger_admission_compute/test_golden_chain_onex_ledger_admission_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20686-skill-exec-decision"
+    description: "node_skill_exec_decision_compute matches the captured plans and reports of the retired skill_exec.py and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20686-ci-state-verdict"
+    description: "node_ci_state_verdict_compute matches the captured output of the retired ci_state.py and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ci_state_verdict_compute/test_golden_chain_ci_state_verdict_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
