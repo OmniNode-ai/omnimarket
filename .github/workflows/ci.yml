@@ -527,6 +527,17 @@ jobs:
       # SYNC with pre-commit hook 'walkable-state-machines'.
       - name: Walkable contract state machines gate (OMN-19547)
         run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
+      # OMN-17427: every node's derived dispatch ids fit the ModelDispatchRoute
+      # limits, and every contract auto-wires in-process through the infra
+      # runtime's real wire_from_manifest. omnimarket 0.4.308 shipped two nodes
+      # whose route ids exceeded route_id's max_length; the .201 dev lane runs
+      # ONEX_WIRING_STRICT_MODE=1 and crash-looped, while every CI boot ran
+      # non-strict and stayed green. Runs here, not only in the smart-selected
+      # suite, because a contract.yaml change has no import edge to the test.
+      # Shrink-only exception lists. SYNC with pre-commit hook
+      # 'node-auto-wiring-in-process' and the release workflows.
+      - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,

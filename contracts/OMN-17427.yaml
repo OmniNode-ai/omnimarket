@@ -135,6 +135,13 @@ requirements:
       - id: "AC23"
         statement: |-
           AC23: every binds_ac pytest check in contracts/OMN-*.yaml names an existing .py file or a /tests directory, and dod-omn-20429-ac4 names the golden chain test file -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q fails at the merge base
+  - id: "req-node-auto-wiring-in-process"
+    statement: |-
+      Every node's derived dispatch identifiers fit the limits ModelDispatchRoute declares, and every contract auto-wires in-process through the infra runtime's wire_from_manifest, on every pull request and before every release; the known exceptions are shrink-only.
+    acceptance:
+      - id: "AC24"
+        statement: |-
+          AC24: the gate reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -361,3 +368,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC23"]
+  - id: "dod-omn17427-ac24-node-auto-wiring-in-process"
+    description: "Every node's derived dispatch ids fit the ModelDispatchRoute limits and every contract auto-wires in-process, shrink-only exceptions."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC24"]

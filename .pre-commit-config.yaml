@@ -1475,6 +1475,14 @@ repos:
         entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
         pass_filenames: false
+      # OMN-17427: SYNC with the ci.yml lint-job step of the same name and the
+      # pre-build step in release.yml and release-cut.yml.
+      - id: node-auto-wiring-in-process
+        name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427\.py|uv\.lock)$
+        pass_filenames: false
         stages: [pre-commit]
 
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
