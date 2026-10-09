@@ -135,6 +135,13 @@ requirements:
       - id: "AC23"
         statement: |-
           AC23: every binds_ac pytest check in contracts/OMN-*.yaml names an existing .py file or a /tests directory, and dod-omn-20429-ac4 names the golden chain test file -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q fails at the merge base
+  - id: "req-morning-overlay-at-run"
+    statement: |-
+      The morning ground-state and friction-sweep handlers read their deployment overlay when a run starts, so a runtime without the overlay wires every other node and refuses only that run, instead of failing auto-wiring and crash-looping the effects runtime.
+    acceptance:
+      - id: "AC25"
+        statement: |-
+          AC25: HandlerMorningGroundState and HandlerMorningFrictionSweep construct without an overlay, refuse a run without one with their typed configuration error before any phase runs, and pick an overlay up once it exists without a restart -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k "without_an_overlay or picks_the_overlay_up" and the same selector over tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py fail at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -196,6 +203,12 @@ evidence_requirements:
   - kind: "tests"
     description: "Every bound pytest check in a repo contract names a test file or a tests directory."
     command: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
+  - kind: "tests"
+    description: "The morning ground-state node wires without its overlay and refuses a run without one."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+  - kind: "tests"
+    description: "The morning friction-sweep node wires without its overlay and refuses a run without one."
+    command: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -361,3 +374,14 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC23"]
+  - id: "dod-omn17427-ac25-morning-overlay-at-run"
+    description: "The morning nodes wire without their overlay and refuse a run without one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
