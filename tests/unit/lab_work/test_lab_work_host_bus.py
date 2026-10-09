@@ -127,6 +127,7 @@ def test_host_runs_only_units_addressed_to_it_and_answers_with_the_receipt() -> 
 
     receipt, ran_a, ran_b = asyncio.run(scenario())
     assert receipt.host == "h202"
+    assert receipt.lane == "test-lane"
     assert receipt.exit_code == 3
     assert receipt.log_path.endswith("lw-0123456789abcdef.log")
     assert "41 passed" in receipt.output_tail
@@ -145,6 +146,53 @@ def test_host_handler_refuses_another_hosts_unit_and_an_unlisted_executable() ->
     assert {wrong.status, shell.status, owner.status} == {EnumLabWorkUnitStatus.REFUSED}
     assert "executable 'bash'" in shell.detail
     assert runner.ran == []
+
+
+def test_handler_crash_terminal_preserves_unit_attribution() -> None:
+    class CrashingRunner(_Runner):
+        def run(
+            self, request: ModelLabWorkUnitRequest, host_name: str
+        ) -> ModelLabWorkUnitReceipt:
+            raise RuntimeError("worker failed")
+
+    async def scenario() -> None:
+        bus = EventBusInmemory(environment="local", group="lab-work-crash-test")
+        await bus.start()
+        host = LabWorkHost(
+            bus,
+            HandlerLabWorkUnitEffect("h202", CrashingRunner()),
+            HandlerHostCapacityAdvertiseEffect(_Reader(0, 32)),
+        )
+        caller = LabWorkCaller(bus, wait_slack_seconds=1)
+        seen: list[dict[str, object]] = []
+
+        async def on_failure(message: object) -> None:
+            seen.append(json.loads(message.value))
+
+        await bus.subscribe(
+            host.topics.failure, on_message=on_failure, group_id="failure-probe"
+        )
+        await host.start(advertise=False)
+        await caller.start()
+        request = _request("h202", kind="lint")
+        try:
+            receipt = await caller.dispatch(request)
+            await host.drain()
+            assert receipt.status is EnumLabWorkUnitStatus.INFRA_ERROR
+            payload = seen[0]["payload"]
+            assert payload["lane"] == request.lane
+            assert payload["repo"] == request.repo
+            assert payload["commit_sha"] == request.commit_sha
+            assert payload["kind"] == request.kind
+            assert payload["work_unit_id"] == request.work_unit_id
+            assert payload["host"] == "h202"
+            assert payload["duration_seconds"] >= 0
+        finally:
+            await caller.stop()
+            await host.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
 
 
 def test_advertise_stamps_its_own_time_and_carries_the_cadence() -> None:
@@ -230,6 +278,8 @@ def test_local_runner_runs_the_command_at_the_sha_and_keeps_the_log(
     receipt = runner.run(request, "h202")
     assert receipt.status is EnumLabWorkUnitStatus.COMPLETED, receipt.detail
     assert receipt.exit_code == 4
+    assert receipt.lane == request.lane
+    assert receipt.kind == request.kind
     assert "ran at sha" in receipt.output_tail
     assert Path(receipt.log_path).is_file()
     assert not (tmp_path / "work" / "runs" / request.work_unit_id).exists()
