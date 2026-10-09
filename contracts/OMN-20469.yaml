@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20469"
+title: "Task type reasoning on Qwen3.8-27B runs with thinking on"
+summary: "Moves task type reasoning, and only that class, out of the local-qwen-prose-no-think profile into local-qwen38-reasoning-thinking-on, which sends chat_template_kwargs enable_thinking true with no /no_think prefix and leaves temperature and max_tokens unchanged. ModelInferenceProtocolProfile.directive becomes optional so a profile can shape the request alone. The confirmation run (60 stored reasoning prompts, two blind judges) met the pre-registered bar and is recorded on the ticket."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reasoning-thinking-on"
+    statement: "Task type reasoning reaches the Qwen3.8-27B provider with thinking on and no no-think prefix; every other class keeps its profile."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the change removes task type reasoning from local-qwen-prose-no-think and a test shows a reasoning request payload carries chat_template_kwargs enable_thinking true and no /no_think prefix, with temperature and max_tokens unchanged -- falsifier: uv run pytest of the new test in omnimarket fails on the unchanged profile"
+      - id: "AC4"
+        statement: "AC4: the PR body reports median and p90 latency and mean completion tokens for the reasoning class before and after, from delegation_events -- falsifier: a PR body with none of the three figures"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC3: the new test asserts the reasoning payload at the provider boundary and that no other class changes."
+    command: "uv run pytest tests/unit/delegation/test_reasoning_thinking_on_omn20469.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20469-ac3-reasoning-thinking-on-payload"
+    description: "AC3: the reasoning payload carries enable_thinking true, no /no_think prefix, temperature 0.3 and the routed max_tokens; complex_reasoning and the other prose classes stay thinking off."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_reasoning_thinking_on_omn20469.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20469-ac4-pr-body-figures"
+    description: "AC4: the PR body reports median latency, p90 latency and mean completion tokens before and after."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 3628 --repo OmniNode-ai/omnimarket --json body --jq .body | grep -c 'mean completion tokens'"
+    binds_ac: ["AC4"]
