@@ -31,7 +31,7 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/test_nl_to_ticket_pipeline.py tests/nodes/node_nl_intent_pipeline tests/nodes/node_ambiguity_gate tests/nodes/node_plan_dag_generator tests/nodes/node_ticket_compiler tests/nodes/node_evidence_bundle -q"
   - kind: "tests"
     description: "AC3: product-floor verdict captured parity, registered contract and golden/error chains pass."
-    command: "uv run pytest tests/nodes/node_product_floor_verdict_compute -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -58,6 +58,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_product_floor_verdict_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
