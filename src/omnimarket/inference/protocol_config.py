@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 
@@ -58,7 +65,15 @@ class ModelInferenceProtocolProfile(BaseModel):
     task_types: tuple[str, ...] = Field(default_factory=tuple)
     model_name_patterns: tuple[str, ...] = Field(default_factory=tuple)
     system_prompt_contains: tuple[str, ...] = Field(default_factory=tuple)
-    directive: ModelInferencePromptDirective
+    directive: ModelInferencePromptDirective | None = Field(
+        default=None,
+        description=(
+            "OMN-20469. Optional so a profile can shape the provider request "
+            "alone. The thinking-on profile for task type `reasoning` must not "
+            "carry a prompt prefix, and an inert placeholder directive would "
+            "put text in the prompt that the measured arm did not have."
+        ),
+    )
     request_options: dict[str, Any] = Field(default_factory=dict)
     default_temperature: float | None = Field(
         default=None,
@@ -74,6 +89,19 @@ class ModelInferenceProtocolProfile(BaseModel):
             "default."
         ),
     )
+
+    @model_validator(mode="after")
+    def _has_an_effect(self) -> ModelInferenceProtocolProfile:
+        if (
+            self.directive is None
+            and not self.request_options
+            and self.default_temperature is None
+        ):
+            raise ValueError(
+                f"profile {self.profile_id!r} declares no directive, request "
+                "option or default temperature, so it would change nothing"
+            )
+        return self
 
 
 class ModelInferenceProtocolSelection(BaseModel):
@@ -333,11 +361,13 @@ def _profile_matches(
 
 
 def _apply_directive(
-    directive: ModelInferencePromptDirective,
+    directive: ModelInferencePromptDirective | None,
     *,
     system_prompt: str,
     prompt: str,
 ) -> tuple[str, str]:
+    if directive is None:
+        return system_prompt, prompt
     if directive.placement == "user_prefix":
         if directive.apply_once and prompt.lstrip().startswith(directive.text):
             return system_prompt, prompt

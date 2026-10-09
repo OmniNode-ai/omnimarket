@@ -82,7 +82,10 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import projection_read_binding_from_overlay_env
-from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.projection.sqlite_database import (
+    default_evidence_db_path,
+    reconcile_existing_store,
+)
 from omnimarket.projection.table_reader import (
     ProtocolProjectionRowSource,
     TableRowSource,
@@ -101,7 +104,11 @@ def resolve_local_row_source() -> TableRowSource | SqliteTableRowSource:
     """The store this install's writers fill: the read binding's, else the local default."""
     if projection_read_binding_from_overlay_env() is not None:
         return resolve_projection_read_source()
-    return SqliteTableRowSource(default_evidence_db_path())
+    db_path = default_evidence_db_path()
+    # OMN-20226: the row source opens the store read-only, so the store's
+    # one-time upgrades run here, before it is served.
+    reconcile_existing_store(db_path)
+    return SqliteTableRowSource(db_path)
 
 
 def _catalogue_row(
