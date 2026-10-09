@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: the five NL-to-ticket nodes (node_nl_intent_pipeline, node_ambiguity_gate, node_plan_dag_generator, node_ticket_compiler, node_evidence_bundle) land in omnimarket with contracts, onex.nodes registration, golden chains and the R1/R2 pipeline test; the omniclaude copies are untouched"
+  - id: "req-product-floor-verdict-node"
+    statement: "Host the definition-B product-floor alarm decision core as a canonical pure compute node with captured old-script parity."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: node_product_floor_verdict_compute lands in omnimarket with a pure typed contract, onex.nodes registration, captured old-script parity, in-memory golden chains and a malformed-request error chain -- falsifier: tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py against tests/fixtures/product_floor_verdict_parity.json, which fails on any differing case"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: registered contract resolves and executes typed success and timeout requests with mocked HTTP transport."
@@ -24,6 +29,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: five registered compute contracts execute typed golden chains and the R1/R2 pipeline passes."
     command: "uv run pytest tests/nodes/test_nl_to_ticket_pipeline.py tests/nodes/node_nl_intent_pipeline tests/nodes/node_ambiguity_gate tests/nodes/node_plan_dag_generator tests/nodes/node_ticket_compiler tests/nodes/node_evidence_bundle -q"
+  - kind: "tests"
+    description: "AC3: product-floor verdict captured parity, registered contract and golden/error chains pass."
+    command: "uv run pytest tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +53,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/test_nl_to_ticket_pipeline.py tests/nodes/node_nl_intent_pipeline tests/nodes/node_ambiguity_gate tests/nodes/node_plan_dag_generator tests/nodes/node_ticket_compiler tests/nodes/node_evidence_bundle -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn18008-ac3-product-floor-verdict"
+    description: "AC3: product-floor verdict parity and golden/error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
