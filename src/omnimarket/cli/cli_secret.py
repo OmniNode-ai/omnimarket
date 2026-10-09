@@ -88,7 +88,7 @@ from omnimarket.routing.byok_provider_backends import (
 )
 from omnimarket.routing.local_byok_route import house_provider_slug
 
-__all__ = ["secret_group"]
+__all__ = ["delete_secret_value", "secret_group", "store_secret_value"]
 
 #: The leading characters a key for a known provider starts with. Checked only
 #: on the terminal prompt, where a mistyped or mis-pasted value is the failure;
@@ -575,6 +575,20 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
             "read from a command-line argument."
         )
 
+    store_secret_value(secret_ref, value, force=force, plan_option=plan_option)
+
+
+def store_secret_value(
+    secret_ref: str, value: str, *, force: bool, plan_option: str | None = None
+) -> None:
+    """Store ``value`` under ``secret_ref`` and register a provider key's route.
+
+    The body of ``onex secret set`` once the value is in hand, shared with
+    ``onex models add`` so both store a key the same way: plan and model
+    resolved first, the key stored and registered by the local secret store
+    effect, and its credential events folded into the local store.
+    """
+    store = LocalByokCredentialStore()
     provider = _offered_provider(secret_ref)
     plan, detected_model = _resolve_plan(provider, value, plan_option)
     model = (
@@ -634,6 +648,14 @@ def list_secrets() -> None:
 @click.argument("secret_ref")
 def delete_secret(secret_ref: str) -> None:
     """Remove the stored value for SECRET_REF."""
+    delete_secret_value(secret_ref)
+
+
+def delete_secret_value(secret_ref: str) -> None:
+    """Remove ``secret_ref``'s value and withdraw its route key, if any.
+
+    The body of ``onex secret delete``, shared with ``onex models remove``.
+    """
     store = LocalByokCredentialStore()
     _drain_pending_credential_events(store.db_path)
     try:

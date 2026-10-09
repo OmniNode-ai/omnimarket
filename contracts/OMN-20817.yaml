@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20817"
+title: "onex models: add, list, test and remove the models delegation can use"
+summary: "A new onex models command stores a provider key through the same code as onex secret set, tests it with one delegation pinned to that provider's backend, and lists, re-tests and removes set-up models; onboarding and later additions share it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-onex-models"
+    statement: |-
+      One command sets up, tests, lists and removes the models delegation can use.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: `onex models add <gemini|openrouter|openai>` asks for the key at a hidden prompt (or reads it from stdin), stores it with the same validation `onex secret set llm.<provider>.api_key` applies, then runs one delegation pinned to that provider (`--backend-id byok-<provider>`) and prints pass, or fail with the provider's error.
+      - id: "AC2"
+        statement: |-
+          AC2: A key whose prefix belongs to a different provider is refused before storing, naming the provider it looks like.
+      - id: "AC3"
+        statement: |-
+          AC3: `onex models add ollama` says Ollama is set up by onboarding (`--provider ollama`) and changes nothing, unless Ollama routes are already configured, in which case it runs the pinned test delegation on them.
+      - id: "AC4"
+        statement: |-
+          AC4: `onex models list` shows each provider: set up or not, and the last test result with its time.
+      - id: "AC5"
+        statement: |-
+          AC5: `onex models remove <provider>` deletes that provider's stored key.
+      - id: "AC6"
+        statement: |-
+          AC6: `onex models test [<provider>]` re-runs the pinned test delegation for one or every set-up provider.
+      - id: "AC7"
+        statement: |-
+          AC7: `--json` output on add, list and test, for the onboarding script to read.
+evidence_requirements:
+  - kind: "tests"
+    description: "onex models add, test, list and remove against a SQLite store under tmp_path, with the pinned test delegation faked."
+    command: "uv run pytest tests/unit/cli/test_omn20817_models_cli.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20817-onex-models"
+    description: "onex models stores a key as onex secret set does, refuses another provider's key, tests with one delegation pinned to the provider's backend, and lists, re-tests and removes models."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20817_models_cli.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7"]
