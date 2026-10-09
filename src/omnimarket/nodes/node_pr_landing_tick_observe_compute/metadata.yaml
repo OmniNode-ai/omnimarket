@@ -1,0 +1,23 @@
+name: node_pr_landing_tick_observe_compute
+version: "0.1.0"
+description: "the landing tick node path compared with the live controller's decision"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_tick_observe_compute: "omnimarket.nodes.node_pr_landing_tick_observe_compute"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the live controller still runs its own copy.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-landing", "landing-controller", "pure"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Tick Observe"
+node_role: "compute"
