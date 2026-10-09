@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20475"
+title: "Judged acceptance verdicts are published on the bus through the emit daemon, and a committed run can be replayed"
+summary: "Adds node_delegation_acceptance_judged_publish_effect, which sends calibrated judged-acceptance events to the local emit daemon and fails the run, naming the socket, when the socket is absent or refuses an event, and node_delegation_acceptance_judged_replay_compute, which turns a committed judgments.jsonl and summary.json into those events or refuses the whole run. AC1 is bound to the publish effect's tests. AC2 is a dev-lane bus readback and is not bound. The delegation-judge skill shim that calls these nodes lives in another repository and is not changed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-judged-verdicts-reach-the-bus"
+    statement: "A judged verdict is published through the emit daemon, never a direct database write, and a run that cannot reach the daemon does not report success. The criterion below is the node-level half of the ticket's AC1; its id is the label the binding item claims through binds_ac. AC2 is not bound here: it reads the dev-lane topic, which this repository's hosted check cannot reach."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: publishing judged-acceptance events with the emit socket absent returns a failed result that names the socket path and publishes nothing, and a daemon that refuses an event fails the run with the count that got through -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The publish tests prove a failed result naming the socket for an absent, unset-default and stale socket, delivery of every event to a daemon, and a stop at the first daemon refusal. They pass at the head and fail at the merge base, where the node does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20475-ac1-publish-fails-loud"
+    description: "AC1 hosted probe. The publish tests prove a failed result naming the socket for an absent, unset-default and stale socket, delivery of every event to a daemon, and a stop at the first daemon refusal. They pass at the head and fail at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
