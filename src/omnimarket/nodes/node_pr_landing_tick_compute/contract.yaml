@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingTickCompute
+#
+# The decision half of one landing-controller tick as a pure definition-B compute:
+#
+#   handle(ModelLandingFacts) -> ModelLandingDecision
+#
+# It is node_pr_landing_decision_compute's decision plus the per-repository fair
+# share of free worker slots the live controller applies on top of it (a probe
+# run lists the dispatch candidates, the free slots go round-robin across
+# repositories, the repository holding the fewest leases first, and the real run
+# defers the rest with the decision's own hold suspension; when the fair run does
+# not dispatch exactly the fair set the plain decision is returned). No clock, no
+# I/O, no model. The live controller keeps running its own copy of this logic; this
+# node is proven beside it in observe mode (node_pr_landing_tick_observe_compute)
+# before any caller moves.
+name: "node_pr_landing_tick_compute"
+contract_name: "node_pr_landing_tick_compute"
+node_name: "node_pr_landing_tick_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B decision of one landing-controller tick with the free
+  worker slots shared across repositories. Reads one consistent snapshot and
+  returns the same ModelLandingDecision the decision node returns, with the
+  dispatch of fixed worker briefs spread so no repository's old reds take every
+  slot. Deterministic in any input order.
+input_model:
+  name: "ModelLandingFacts"
+  module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"
+  description: "One tick's snapshot and the controller's last state."
+output_model:
+  name: "ModelLandingDecision"
+  module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision"
+  description: "Actions, withheld observe-only actions, recorded outcomes, DEGRADED, violations, next state."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_tick_compute.handlers.handler_pr_landing_tick"
+  class: "HandlerPrLandingTick"
+  input_model: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts.ModelLandingFacts"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_tick_compute.handlers.handler_pr_landing_tick:HandlerPrLandingTick"
+  handlers:
+    - operation: "decide_landing_tick"
+      handler:
+        name: "HandlerPrLandingTick"
+        module: "omnimarket.nodes.node_pr_landing_tick_compute.handlers.handler_pr_landing_tick"
+# Addressable the way the other directly-invoked compute nodes are; the topics are
+# declared here and no caller publishes the command until the controller switches.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-tick-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-tick-decision-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-tick-decision-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Landing tick decision with per-repository fair share."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - pure

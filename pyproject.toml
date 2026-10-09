@@ -538,6 +538,8 @@ node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_pr_landing_github_effect = "omnimarket.nodes.node_pr_landing_github_effect"
 node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
 node_pr_landing_decision_compute = "omnimarket.nodes.node_pr_landing_decision_compute"
+node_pr_landing_tick_compute = "omnimarket.nodes.node_pr_landing_tick_compute"
+node_pr_landing_tick_observe_compute = "omnimarket.nodes.node_pr_landing_tick_observe_compute"
 node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
 node_projection_pr_landing = "omnimarket.nodes.node_projection_pr_landing"
 # PR handoff over the bus (OMN-20636): the orchestrator and its ledger effect are wired; the decision
