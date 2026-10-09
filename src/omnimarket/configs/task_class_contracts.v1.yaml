@@ -912,6 +912,16 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [harness_codex, local, harness_sonnet]
     escalation_policy:
       # OMN-13943: bumped 2 -> 3 so the ladder can actually reach `claude` now
       # that `cheap_frontier` sits between `cheap_cloud` and it — 3 escalations
@@ -1218,6 +1228,16 @@ task_classes:
     # added latency against the identical quota domain, with zero
     # quota-domain independence. Reopen that only if the ceiling is repointed
     # to a genuinely separate provider.
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [local, harness_glm_flash, harness_glm, harness_haiku, harness_sonnet]
     escalation_policy:
       max_escalations: 2
       tier_order:
@@ -1447,6 +1467,16 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [harness_codex, harness_haiku, harness_sonnet]
     escalation_policy:
       max_escalations: 3
       # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
@@ -1582,6 +1612,16 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [local, harness_glm, harness_sonnet]
     escalation_policy:
       # OMN-19432 (RULING 2026-09-30T15:09:11Z: every model used as much as its
       # measurement earns): `cheap_frontier` (OpenRouter free models) INSERTED
@@ -1851,6 +1891,16 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [harness_codex, harness_glm, harness_sonnet]
     escalation_policy:
       max_escalations: 2
       # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
@@ -1983,6 +2033,16 @@ task_classes:
     # added latency against the identical quota domain, with zero
     # quota-domain independence. Reopen that only if the ceiling is repointed
     # to a genuinely separate provider.
+    # OMN-20287: the escalation chain this class climbs, cheapest resource
+    # first. `local` is the routing_tiers.yaml ladder tier; every other rung is a
+    # harness tier (routing_tiers.yaml `harness_tiers`). A rung's answer goes to
+    # this class's own acceptance check, and the chain moves to the next rung only
+    # when that check refuses it; a timeout alone never moves it. Read by
+    # `resolve_class_escalation_chain`; the live ladder still walks
+    # `escalation_policy.tier_order` below until the harness executor is bound.
+    escalation_chain:
+      escalate_on: acceptance_check
+      rungs: [local, harness_sonnet]
     escalation_policy:
       max_escalations: 2
       tier_order:

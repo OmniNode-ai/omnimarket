@@ -46,6 +46,7 @@ from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
 )
+from omnimarket.models.delegation.model_harness_backend import ModelHarnessBackend
 from omnimarket.models.delegation.model_ollama_config import ModelOllamaConfig
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
@@ -464,6 +465,56 @@ def load_ollama_config(
         raise ValueError(msg) from exc
 
 
+def load_harness_backends(
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
+) -> tuple[ModelHarnessBackend, ...]:
+    """Harness declarations from the same resolved contract/overlay pair.
+
+    Absent blocks yield no harness backends. Invalid entries and duplicate or
+    HTTP-colliding identities raise ``ValueError`` naming the backend and source.
+    """
+    data, source = _load_merged_bifrost_data(config_path, overlay_path)
+    if "harness_backends" not in data:
+        return ()
+    block = data["harness_backends"]
+    if not isinstance(block, list):
+        msg = f"Bifrost harness_backends must be a list in {source}"
+        raise ValueError(msg)
+    http_ids = {
+        entry.get("backend_id")
+        for entry in data.get("backends") or []
+        if isinstance(entry, Mapping) and isinstance(entry.get("backend_id"), str)
+    }
+    backends: list[ModelHarnessBackend] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(block):
+        backend_id = (
+            entry.get("backend_id", f"<entry {index}>")
+            if isinstance(entry, Mapping)
+            else f"<entry {index}>"
+        )
+        try:
+            backend = ModelHarnessBackend.model_validate(entry)
+        except ValidationError as exc:
+            msg = (
+                f"Bifrost harness backend {backend_id!r} is invalid in {source}: {exc}"
+            )
+            raise ValueError(msg) from exc
+        if backend.backend_id in seen:
+            msg = f"Duplicate harness backend {backend.backend_id!r} in {source}"
+            raise ValueError(msg)
+        if backend.backend_id in http_ids:
+            msg = (
+                f"Harness backend {backend.backend_id!r} is also declared in "
+                f"backends in {source}"
+            )
+            raise ValueError(msg)
+        seen.add(backend.backend_id)
+        backends.append(backend)
+    return tuple(backends)
+
+
 def load_bifrost_backend_placements(
     config_path: Path | None = None,
     overlay_path: Path | None = None,
@@ -834,16 +885,22 @@ def load_bifrost_delegation_config_payload(
 
 
 def _without_placements(data: dict[str, Any]) -> dict[str, Any]:
-    """``data`` with each backend's ``placement`` and the ``ollama`` block lifted off.
+    """Lift off backend placements, ``ollama`` and ``harness_backends``.
 
     The ``ollama`` block (OMN-20326) is read by :func:`load_ollama_config`.
+    The ``harness_backends`` block (OMN-20287) is read by
+    :func:`load_harness_backends`, separate from the HTTP wire config.
 
     A placement is routing configuration read by
     :func:`load_bifrost_backend_placements`, not a field of the wire model, so
     the backend entry the wire model validates keeps the shape every released
     consumer accepts.
     """
-    data = {key: value for key, value in data.items() if key != "ollama"}
+    data = {
+        key: value
+        for key, value in data.items()
+        if key not in {"ollama", "harness_backends"}
+    }
     backends = data.get("backends")
     if not isinstance(backends, list):
         return data
@@ -989,6 +1046,7 @@ __all__: list[str] = [
     "load_bifrost_backend_placements",
     "load_bifrost_delegation_config",
     "load_bifrost_delegation_config_payload",
+    "load_harness_backends",
     "load_ollama_config",
     "reject_backends_off_a_declared_provider_surface",
     "validate_overlay_added_backends",

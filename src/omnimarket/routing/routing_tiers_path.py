@@ -22,7 +22,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+from pydantic import ValidationError
+
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
+from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 
 #: Env key a contract overlay / deployment MUST bind to pin the tiers file.
 ROUTING_TIERS_PATH_ENV_KEY = "DELEGATION_ROUTING_TIERS_PATH"
@@ -72,8 +76,54 @@ def resolve_routing_tiers_path() -> Path:
     return config_path
 
 
+def load_harness_tiers(
+    routing_tiers_path: Path | None = None,
+) -> tuple[ModelHarnessTier, ...]:
+    """Read the ``harness_tiers`` block of the routing tiers file (OMN-20287).
+
+    The ladder parser reads only ``tiers``, so the harness tiers are read here,
+    from the same resolved file. Absent block -> ``()``; a malformed entry or a
+    duplicate tier name raises ``ValueError`` naming the tier and the path.
+    """
+    path = (
+        routing_tiers_path
+        if routing_tiers_path is not None
+        else resolve_routing_tiers_path()
+    )
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        msg = f"Expected YAML mapping at root for {path}"
+        raise ValueError(msg)
+    if "harness_tiers" not in data:
+        return ()
+    block = data["harness_tiers"]
+    if not isinstance(block, list):
+        msg = f"harness_tiers must be a list in {path}"
+        raise ValueError(msg)
+    tiers: list[ModelHarnessTier] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(block):
+        name = (
+            entry.get("name", f"<entry {index}>")
+            if isinstance(entry, dict)
+            else f"<entry {index}>"
+        )
+        try:
+            tier = ModelHarnessTier.model_validate(entry)
+        except ValidationError as exc:
+            msg = f"Harness tier {name!r} is invalid in {path}: {exc}"
+            raise ValueError(msg) from exc
+        if tier.name in seen:
+            msg = f"Duplicate harness tier {tier.name!r} in {path}"
+            raise ValueError(msg)
+        seen.add(tier.name)
+        tiers.append(tier)
+    return tuple(tiers)
+
+
 __all__ = [
     "ROUTING_TIERS_PACKAGED_DEFAULT_PATH",
     "ROUTING_TIERS_PATH_ENV_KEY",
+    "load_harness_tiers",
     "resolve_routing_tiers_path",
 ]

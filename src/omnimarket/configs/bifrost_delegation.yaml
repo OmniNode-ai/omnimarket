@@ -847,6 +847,89 @@ default_backends:
   - openrouter-nemotron-ultra
   - openrouter-nemotron-super
   - openrouter-north-mini-code
+# Harness backends (OMN-20287) — engines that exist only as a vendor CLI.
+#
+# Codex on its subscription, GLM through Claude Code, and Claude Code itself
+# cannot be reached over HTTP: each runs as a CLI harness on a host that holds
+# its login. Each is declared here as `kind: harness`, a backend of the
+# delegation workflow, so a task class can name it as a rung of its escalation
+# chain (task_class_contracts.v1.yaml `escalation_chain`). The block is read by
+# `load_harness_backends` only; the HTTP endpoint loader never sees it, so no
+# harness backend can reach the HTTP inference path.
+#
+# Every harness backend is internal: it serves the house tenant on the internal
+# surface and nothing else. A customer tenant, or any caller not on the internal
+# surface, is refused at routing (`resolve_class_escalation_chain`); the
+# executor checks again before it runs (plan step 7, execution half). GLM's
+# Coding Plan quota may be used only inside a supported tool, so GLM appears
+# here only through the Claude Code harness, never as an HTTP backend
+# (cloud-glm stays parked, OMN-20173).
+#
+# `executor_bound: false` means no executor runs this backend for the workflow
+# yet. A rung that is not bound is refused with `executor_unbound`, so these
+# declarations change no live route. The executor is
+# node_coding_agent_invoke_effect (omnibase_infra), extended to every harness
+# named here; a backend is bound in the same change that wires it.
+harness_backends:
+  - backend_id: harness-codex
+    kind: harness
+    harness: codex
+    # The Codex account runs its configured default model; no model is pinned.
+    model_name: null
+    surface: internal
+    tenant: omninode
+    executor: node_coding_agent_invoke_effect
+    executor_bound: false
+    budget_seconds: 900
+    terms: >-
+      Runs on the operator's Codex subscription through the codex CLI. House
+      work only; never a customer tenant.
+  - backend_id: harness-claude-glm-flash
+    kind: harness
+    harness: claude-glm
+    model_name: glm-5.3-flash
+    surface: internal
+    tenant: omninode
+    executor: node_coding_agent_invoke_effect
+    executor_bound: false
+    budget_seconds: 600
+    terms: >-
+      GLM Coding Plan quota, usable only inside a supported tool: runs through
+      Claude Code, never as a direct API call. House work only.
+  - backend_id: harness-claude-glm
+    kind: harness
+    harness: claude-glm
+    model_name: glm-5.3
+    surface: internal
+    tenant: omninode
+    executor: node_coding_agent_invoke_effect
+    executor_bound: false
+    budget_seconds: 900
+    terms: >-
+      GLM Coding Plan quota, usable only inside a supported tool: runs through
+      Claude Code, never as a direct API call. House work only.
+  - backend_id: harness-claude-haiku
+    kind: harness
+    harness: claude
+    model_name: claude-haiku-5-5
+    surface: internal
+    tenant: omninode
+    executor: node_coding_agent_invoke_effect
+    executor_bound: false
+    budget_seconds: 600
+    terms: >-
+      Runs through Claude Code on the house login. House work only.
+  - backend_id: harness-claude-sonnet
+    kind: harness
+    harness: claude
+    model_name: claude-sonnet-5-5
+    surface: internal
+    tenant: omninode
+    executor: node_coding_agent_invoke_effect
+    executor_bound: false
+    budget_seconds: 900
+    terms: >-
+      Runs through Claude Code on the house login. House work only.
 # Provider quota policy (OMN-16891) — how to read a 429 from each provider.
 #
 # A 429 is not one failure class. Retrying the same tier on a quota-exhaustion
