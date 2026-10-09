@@ -22,6 +22,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: both entry points are package-form and both metadata files pass the schema test -- falsifier: uv run pytest tests/test_remote_lane_registration.py -q"
+  - id: "req-remote-lane-close-node"
+    statement: "The closing decision is its own compute node node_remote_lane_close_compute, so each remote-lane compute contract declares one operation on its own command topic."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: placement, closing and ref resolution run through RuntimeLocal from each packaged contract, one operation per compute contract on its own topic -- falsifier: uv run pytest tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Focused tests of both remote-lane nodes."
@@ -55,3 +60,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_remote_lane_registration.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20669-ac4-runtime-local"
+    description: "AC4 RuntimeLocal tests of the split placement and closing compute nodes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
