@@ -22,4 +22,5 @@ authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "gate", "routing", "overlay"]
 display_name: "Deployment Fact Gate"
+pack: "routing"
 node_role: "effect"
