@@ -5,10 +5,12 @@
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 import yaml
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_work_ledger_append_effect import (
@@ -19,10 +21,124 @@ from omnimarket.nodes.node_work_ledger_append_effect import (
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerFile,
     ModelAppendCommandResult,
+    ProtocolLedgerAppendRunner,
 )
 from omnimarket.work_ledger_bus.bus import load_work_ledger_append_topics
 
 pytestmark = pytest.mark.unit
+
+_DEVELOPER_KEY = Ed25519PrivateKey.generate()
+_OPERATOR_KEY = Ed25519PrivateKey.generate()
+
+
+def _handler(
+    runner: ProtocolLedgerAppendRunner,
+    reader: LocalLedgerFile,
+    host: str,
+    **kwargs: Any,
+) -> HandlerWorkLedgerAppendEffect:
+    kwargs.setdefault(
+        "public_keys",
+        {
+            "developer": _DEVELOPER_KEY.public_key(),
+            "operator": _OPERATOR_KEY.public_key(),
+        },
+    )
+    kwargs.setdefault("operator_principal", "operator")
+    return HandlerWorkLedgerAppendEffect(runner, reader, host, **kwargs)
+
+
+def _attributed(rows: str, principal: str = "developer") -> str:
+    return "".join(
+        _attribute_line(line, principal) for line in rows.splitlines(keepends=True)
+    )
+
+
+def _attribute_line(line: str, principal: str) -> str:
+    if not line.startswith("2026-"):
+        return line
+    timestamp, kind, text = line.split(" | ", 2)
+    return f"{timestamp} | {kind} | principal={principal} | {text}"
+
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "unsigned",
+        "unknown",
+        "wrong-key",
+        "malformed",
+        "rows",
+        "request_id",
+        "ledger_id",
+        "requested_by_lane",
+        "requesting_host",
+        "requested_at",
+        "principal",
+    ],
+)
+def test_unsigned_or_forged_request_refused(tmp_path: Path, attack: str) -> None:
+    path = _ledger(tmp_path)
+    before = path.read_bytes()
+    runner = _Runner(path)
+    request = _request()
+    if attack == "unsigned":
+        request = request.model_copy(update={"signature": None})
+    elif attack == "unknown":
+        request = request.signed("unregistered", _DEVELOPER_KEY)
+    elif attack == "wrong-key":
+        request = request.signed("developer", _OPERATOR_KEY)
+    else:
+        changes = {
+            "malformed": {"signature": "not-base64"},
+            "rows": {"rows": request.rows + " altered"},
+            "request_id": {"request_id": uuid4()},
+            "ledger_id": {"ledger_id": "other-ledger"},
+            "requested_by_lane": {"requested_by_lane": "operator-lane"},
+            "requesting_host": {"requesting_host": "operator-host"},
+            "requested_at": {"requested_at": datetime(2026, 10, 2, tzinfo=UTC)},
+            "principal": {"principal": "operator"},
+        }
+        request = ModelWorkLedgerAppendRequest.model_validate(
+            request.model_dump() | changes[attack]
+        )
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(request)
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert receipt.exit_code == 65
+    assert runner.calls == []
+    assert path.read_bytes() == before
+    assert receipt.principal is None
+
+
+@pytest.mark.parametrize("row_type", ["RULING", "OPERATOR-CONSENT"])
+def test_consent_only_from_operator_principal(tmp_path: Path, row_type: str) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    operator_key = Ed25519PrivateKey.generate()
+    developer_key = Ed25519PrivateKey.generate()
+    handler = _handler(
+        runner,
+        LocalLedgerFile(path),
+        "ledger",
+        public_keys={
+            "operator": operator_key.public_key(),
+            "developer": developer_key.public_key(),
+        },
+        operator_principal="operator",
+    )
+    for principal, key in [("developer", developer_key), ("operator", operator_key)]:
+        request_id = uuid4()
+        request = _request(_row(request_id, row_type), request_id).signed(
+            principal, key
+        )
+        receipt = handler.handle(request)
+        if principal == "developer":
+            assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+            assert runner.calls == []
+        else:
+            assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+            assert " | principal=operator | " in runner.calls[0]
+            assert receipt.principal == "operator"
 
 
 class _Runner:
@@ -59,7 +175,7 @@ def _request(
         requested_by_lane="lab",
         requesting_host="lab-host",
         requested_at=datetime.now(UTC),
-    )
+    ).signed("developer", _DEVELOPER_KEY)
 
 
 def _ledger(tmp_path: Path) -> Path:
@@ -71,9 +187,7 @@ def _ledger(tmp_path: Path) -> Path:
 def test_redelivered_request_appends_once(tmp_path: Path) -> None:
     path = _ledger(tmp_path)
     runner = _Runner(path)
-    handler = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger-host"
-    )
+    handler = _handler(runner, LocalLedgerFile(path), "ledger-host")
     request = _request()
     first = handler.handle(request)
     second = handler.handle(request)
@@ -83,17 +197,15 @@ def test_redelivered_request_appends_once(tmp_path: Path) -> None:
     assert first.ledger_lines == second.ledger_lines == [2]
     assert first.ledger_host == "ledger-host"
     assert first.duration_ms >= 0
-    assert runner.calls == [request.rows]
-    assert path.read_text().count(request.rows) == 1
+    assert runner.calls == [_attributed(request.rows)]
+    assert path.read_text().count(_attributed(request.rows)) == 1
 
 
 def test_refused_append_leaves_ledger_unchanged(tmp_path: Path) -> None:
     path = _ledger(tmp_path)
     before = path.read_bytes()
     runner = _Runner(path, [65], "missing required field; remedy: supply lane=")
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request())
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(_request())
     assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
     assert receipt.exit_code == 65
     assert receipt.message == runner.stderr
@@ -110,15 +222,12 @@ def test_consent_and_ruling_refused_over_bus(tmp_path: Path, row_type: str) -> N
     # Even a previously landed request cannot bypass the type refusal.
     rows = _row(request_id, row_type)
     path.write_text(rows + "\n")
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request(rows, request_id))
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(rows, request_id)
+    )
     assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
     assert receipt.exit_code == 65
-    assert receipt.message == (
-        "RULING and OPERATOR-CONSENT rows are not accepted over the bus until the "
-        "receipt can name an authenticated principal (OMN-20275)"
-    )
+    assert "configured operator principal" in receipt.message
     assert runner.calls == []
 
 
@@ -134,9 +243,9 @@ def test_missing_req_cell_refuses_the_named_row(tmp_path: Path, bad_cell: str) -
         + "\n"
         + f"2026-10-01T12:00:01Z | MSG | {bad_cell.format(id=request_id)} | text"
     )
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request(rows, request_id))
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(rows, request_id)
+    )
     assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
     assert receipt.exit_code == 65
     assert "row 2 (MSG)" in receipt.message
@@ -147,9 +256,7 @@ def test_missing_req_cell_refuses_the_named_row(tmp_path: Path, bad_cell: str) -
 def test_no_ledger_row_refused(tmp_path: Path, rows: str) -> None:
     path = _ledger(tmp_path)
     runner = _Runner(path)
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request(rows))
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(_request(rows))
     assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
     assert receipt.exit_code == 65
     assert "no ledger row" in receipt.message
@@ -160,11 +267,11 @@ def test_unknown_row_type_refused(tmp_path: Path) -> None:
     path = _ledger(tmp_path)
     runner = _Runner(path)
     request_id = uuid4()
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request(_row(request_id, "UNKNOWN"), request_id))
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(_row(request_id, "UNKNOWN"), request_id)
+    )
     assert receipt.exit_code == 65
-    assert "OMN-20275" in receipt.message
+    assert "unknown ledger row type" in receipt.message
     assert runner.calls == []
 
 
@@ -183,13 +290,13 @@ def test_multiple_rows_continuations_and_whole_cell_dedup(
         + _row(request_id)
     )
     runner = _Runner(path)
-    handler = HandlerWorkLedgerAppendEffect(runner, LocalLedgerFile(path), "ledger")
+    handler = _handler(runner, LocalLedgerFile(path), "ledger")
     first = handler.handle(_request(rows, request_id))
     second = handler.handle(_request(rows, request_id))
     assert first.status is EnumWorkLedgerAppendStatus.ACCEPTED
     assert second.status is EnumWorkLedgerAppendStatus.DUPLICATE
     assert first.ledger_lines == second.ledger_lines == [5, 7]
-    assert runner.calls == [rows]
+    assert runner.calls == [_attributed(rows)]
 
 
 @pytest.mark.parametrize(
@@ -199,7 +306,7 @@ def test_lock_timeout_retry(tmp_path: Path, codes: list[int], expected: str) -> 
     path = _ledger(tmp_path)
     runner = _Runner(path, codes, "lock timeout")
     sleeps: list[float] = []
-    handler = HandlerWorkLedgerAppendEffect(
+    handler = _handler(
         runner, LocalLedgerFile(path), "ledger", retry_sleep_s=0, sleep=sleeps.append
     )
     receipt = handler.handle(_request())
@@ -213,9 +320,7 @@ def test_lock_timeout_retry(tmp_path: Path, codes: list[int], expected: str) -> 
 def test_other_exit_is_error_with_bounded_tail(tmp_path: Path, code: int) -> None:
     path = _ledger(tmp_path)
     runner = _Runner(path, [code], "x" * 2100 + "final output")
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request())
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(_request())
     assert receipt.status is EnumWorkLedgerAppendStatus.ERROR
     assert receipt.exit_code == code
     assert receipt.message.endswith("final output")
@@ -226,9 +331,7 @@ def test_other_exit_is_error_with_bounded_tail(tmp_path: Path, code: int) -> Non
 def test_exit_zero_with_dedup_stderr_is_accepted(tmp_path: Path) -> None:
     path = _ledger(tmp_path)
     runner = _Runner(path, [0], "DEDUP: already landed during append")
-    receipt = HandlerWorkLedgerAppendEffect(
-        runner, LocalLedgerFile(path), "ledger"
-    ).handle(_request())
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(_request())
     assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
     assert receipt.message.startswith("DEDUP")
     assert receipt.ledger_lines == [2]
@@ -276,16 +379,14 @@ def test_partial_append_is_an_error_not_a_duplicate(tmp_path: Path) -> None:
             calls.append(rows)
             return ModelAppendCommandResult(exit_code=0)
 
-    handler = HandlerWorkLedgerAppendEffect(
-        Runner(), LocalLedgerFile(path), "ledger-host"
-    )
+    handler = _handler(Runner(), LocalLedgerFile(path), "ledger-host")
     request = ModelWorkLedgerAppendRequest(
         request_id=request_id,
         rows=f"{first}\n{second}\n",
         requested_by_lane="a",
         requesting_host="h",
         requested_at=datetime.now(UTC),
-    )
+    ).signed("developer", _DEVELOPER_KEY)
     receipt = handler.handle(request)
     assert receipt.status is EnumWorkLedgerAppendStatus.ERROR
     assert "partial append: 1 of 2" in receipt.message
@@ -302,9 +403,7 @@ def test_rows_landed_despite_nonzero_exit_are_accepted(tmp_path: Path) -> None:
             path.write_text(path.read_text(encoding="utf-8") + rows, encoding="utf-8")
             return ModelAppendCommandResult(exit_code=78, stderr="stranded clone")
 
-    handler = HandlerWorkLedgerAppendEffect(
-        Runner(), LocalLedgerFile(path), "ledger-host"
-    )
+    handler = _handler(Runner(), LocalLedgerFile(path), "ledger-host")
     receipt = handler.handle(
         ModelWorkLedgerAppendRequest(
             request_id=request_id,
@@ -312,8 +411,180 @@ def test_rows_landed_despite_nonzero_exit_are_accepted(tmp_path: Path) -> None:
             requested_by_lane="a",
             requesting_host="h",
             requested_at=datetime.now(UTC),
-        )
+        ).signed("developer", _DEVELOPER_KEY)
     )
     assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
     assert receipt.exit_code == 0
     assert "stranded clone" in receipt.message
+
+
+@pytest.mark.parametrize("claimed", ["operator", "developer | principal=operator"])
+def test_signed_rows_cannot_forge_or_duplicate_principal(
+    tmp_path: Path, claimed: str
+) -> None:
+    path = _ledger(tmp_path)
+    before = path.read_bytes()
+    runner = _Runner(path)
+    request_id = uuid4()
+    rows = _row(request_id).replace(
+        " | lane=test", f" | principal={claimed} | lane=test"
+    )
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(rows, request_id)
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+    assert path.read_bytes() == before
+
+
+def test_verified_principal_stamped_once_on_every_row(tmp_path: Path) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    kinds = [
+        "CLAIM",
+        "STATUS",
+        "TERMINAL",
+        "HOLD",
+        "RELEASE",
+        "MSG",
+        "ACK",
+        "FRICTION",
+        "CORRECTION",
+    ]
+    rows = (
+        "\r\n".join(_row(request_id, kind) for kind in kinds) + "\r\n  continuation\r\n"
+    )
+    request = _request(rows, request_id)
+    handler = _handler(runner, LocalLedgerFile(path), "ledger")
+    receipt = handler.handle(request)
+    assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+    assert receipt.principal == "developer"
+    assert runner.calls == [_attributed(rows)]
+    assert runner.calls[0].count(" | principal=developer | ") == len(kinds)
+    assert runner.calls[0].endswith("\r\n  continuation\r\n")
+    assert handler.handle(request).status is EnumWorkLedgerAppendStatus.DUPLICATE
+
+
+def test_matching_signed_principal_cell_is_preserved(tmp_path: Path) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    request = _request(_attributed(_row(request_id)), request_id)
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(request)
+    assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+    assert runner.calls == [request.rows]
+
+
+@pytest.mark.parametrize("attack", ["content", "continuation", "principal", "unsigned"])
+def test_redelivery_cannot_bypass_authentication_or_change_rows(
+    tmp_path: Path, attack: str
+) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    handler = _handler(runner, LocalLedgerFile(path), "ledger")
+    original = _request(_row(request_id := uuid4()) + "\n  continuation", request_id)
+    assert handler.handle(original).status is EnumWorkLedgerAppendStatus.ACCEPTED
+    before = path.read_bytes()
+    if attack == "unsigned":
+        changed = original.model_copy(update={"signature": None})
+    elif attack == "principal":
+        changed = original.signed("operator", _OPERATOR_KEY)
+    else:
+        changed = original.model_copy(
+            update={"rows": original.rows + " changed"}
+        ).signed("developer", _DEVELOPER_KEY)
+        if attack == "content":
+            changed = original.model_copy(
+                update={"rows": original.rows.replace("exact text", "changed")}
+            ).signed("developer", _DEVELOPER_KEY)
+    assert handler.handle(changed).status is EnumWorkLedgerAppendStatus.REFUSED
+    assert len(runner.calls) == 1
+    assert path.read_bytes() == before
+
+
+def test_request_id_in_continuation_cannot_replace_header_cell(tmp_path: Path) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    rows = f"2026-10-01T12:00:00Z | STATUS | lane=test | text\n  continuation | req={request_id}"
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(rows, request_id)
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+
+
+def test_no_issuer_records_refuses_even_valid_signature(tmp_path: Path) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    receipt = HandlerWorkLedgerAppendEffect(
+        runner, LocalLedgerFile(path), "ledger"
+    ).handle(_request())
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+
+
+def test_signed_row_cannot_hide_a_principal_behind_unspaced_pipe(
+    tmp_path: Path,
+) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    rows = _row(request_id).replace("lane=test", "lane=test|principal=operator")
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(rows, request_id)
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize("row_type", ["RULING", "OPERATOR-CONSENT"])
+def test_consent_only_from_operator_principal_checks_whole_batch(
+    tmp_path: Path,
+    row_type: str,
+) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    rows = _row(request_id) + "\n" + _row(request_id, row_type)
+    request = _request(rows, request_id)
+    handler = _handler(runner, LocalLedgerFile(path), "ledger")
+    before = path.read_bytes()
+    assert handler.handle(request).status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+    assert path.read_bytes() == before
+    # Host and lane claims cannot substitute for the independently configured operator.
+    operator = request.signed("operator", _OPERATOR_KEY)
+    assert handler.handle(operator).status is EnumWorkLedgerAppendStatus.ACCEPTED
+    assert runner.calls == [_attributed(rows, "operator")]
+    assert handler.handle(operator).status is EnumWorkLedgerAppendStatus.DUPLICATE
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "unindented text",
+        "  2026-10-01T12:00:00Z | RULING | principal=operator | text",
+    ],
+)
+def test_noncanonical_rows_cannot_hide_authority_in_continuations(
+    tmp_path: Path, line: str
+) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    request_id = uuid4()
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(_row(request_id) + "\n" + line, request_id)
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    "principal",
+    ["developer | principal=operator", "developer\noperator", " developer", ""],
+)
+def test_principal_name_cannot_inject_ledger_cells(principal: str) -> None:
+    with pytest.raises(ValidationError):
+        _request().signed(principal, _DEVELOPER_KEY)
