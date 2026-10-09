@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Reconcile Effect (OMN-20677)
+#
+# The I/O half of the ledger reconciliation. The decisions (what a dangling CLAIM
+# or a stale HOLD is, which row closes it, the report) are
+# node_ledger_reconcile_compute's; this node reads and acts, one operation per step:
+# read the ledger host, verify the cited pull requests and commits, append the
+# planned rows.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that holds the rolling ledger,
+# the archive beside it and the clone registry. Shared runtimes must NOT attach it:
+# an attached copy would read a runtime container's filesystem, not the operator's.
+# The contract declares runtime_dispatch and NO event_bus block, as
+# node_lab_fill_effect does; runtime auto-wiring attaches only contracts that
+# declare both.
+#
+# OVERLAY. Repository aliases, branch prefixes and the GitHub organisation are the
+# deployment's: the read operation loads them from the overlay file and hands them
+# to the decision in its sources.
+name: "node_ledger_reconcile_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Reads the rolling ledger, its archives, the clone registry and the live roster,
+  verifies cited pull requests and commits against live state, and appends the
+  rows a reconciliation decided through the ledger writer. Decides nothing about
+  which claim is dangling or what closes it.
+input_model:
+  name: "ModelReadSourcesRequest"
+  module: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops"
+  description: "Ledger path, registry root, roster (read_sources); each operation has its own request."
+output_model:
+  name: "ModelReadSourcesResult"
+  module: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops"
+  description: "The sources or the reason they could not be read (read_sources); each operation has its own result."
+handler:
+  module: "omnimarket.nodes.node_ledger_reconcile_effect.handlers.handler_read_sources"
+  class: "HandlerReadSources"
+  input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelReadSourcesRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_ledger_reconcile_effect.handlers.handler_read_sources:HandlerReadSources"
+  handlers:
+    - operation: "read_ledger_reconcile_sources"
+      handler:
+        name: "HandlerReadSources"
+        module: "omnimarket.nodes.node_ledger_reconcile_effect.handlers.handler_read_sources"
+      input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelReadSourcesRequest"
+      output_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelReadSourcesResult"
+    - operation: "verify_ledger_reconcile_evidence"
+      handler:
+        name: "HandlerVerifyEvidence"
+        module: "omnimarket.nodes.node_ledger_reconcile_effect.handlers.handler_verify_evidence"
+      input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelVerifyEvidenceRequest"
+      output_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelVerifyEvidenceResult"
+    - operation: "append_ledger_reconcile_rows"
+      handler:
+        name: "HandlerAppendRows"
+        module: "omnimarket.nodes.node_ledger_reconcile_effect.handlers.handler_append_rows"
+      input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelAppendRowsRequest"
+      output_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelAppendRowsResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 1800000
+  side_effects:
+    - reads the rolling ledger, its archives and the clone registry
+    - queries pull requests and commits
+    - appends rows through the ledger writer
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.ledger-reconcile-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.ledger-reconcile-effect-completed.v1"
+    failure: "onex.evt.omnimarket.ledger-reconcile-effect-failed.v1"
+published_events:
+  - event_type: ModelAppendRowsResult
+    topic: onex.evt.omnimarket.ledger-reconcile-effect-completed.v1
+    description: "The outcome of one ledger-reconcile effect operation, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-reconcile-effect-completed.v1
+  - onex.evt.omnimarket.ledger-reconcile-effect-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-20677
+  description: "Ledger-reconcile I/O: read the ledger host, verify cited work, append closing rows"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "ledger"
+    - "reconcile"
+    - "OMN-20677"
+  related_tickets:
+    - "OMN-20677"

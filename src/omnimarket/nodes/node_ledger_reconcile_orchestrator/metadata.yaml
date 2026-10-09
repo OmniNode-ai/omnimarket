@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_reconcile_orchestrator
+version: "1.0.0"
+description: "Orchestrator: mechanical reconciliation of dangling CLAIM rows and stale HOLD rows in the rolling work ledger. Carries one command through node_ledger_reconcile_effect and node_ledger_reconcile_compute and returns the report. Runs on the host that holds the ledger."
+pack: operator_tooling
+node_role: orchestrator
+display_name: "Ledger Reconcile Orchestrator"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ledger_reconcile_orchestrator: "omnimarket.nodes.node_ledger_reconcile_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["orchestrator", "ledger", "reconcile"]

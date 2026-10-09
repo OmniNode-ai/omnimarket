@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Reconcile Orchestrator (OMN-20677)
+#
+# One reconciliation command in, one terminal event out. The orchestrator carries
+# the command through node_ledger_reconcile_effect (read the ledger host, verify
+# cited work, append the closing rows) and node_ledger_reconcile_compute (decide,
+# report); it decides nothing and touches nothing itself.
+#
+# WHERE IT RUNS. On the host that holds the rolling ledger and the clone registry,
+# invoked by `python -m omnimarket.nodes.node_ledger_reconcile_orchestrator` (the
+# morning workflow, a launchd tick, an operator). The ledger and git evidence are
+# host-local, so the command is dispatched on that process's in-memory bus and the
+# effect node is never attached to a shared runtime. The reconciler reads the
+# ledger from ONEX_LEDGER_PATH and the clone registry from OMNI_HOME, both required
+# with no default.
+name: "node_ledger_reconcile_orchestrator"
+lifecycle: experimental
+node_type: "orchestrator"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >
+  Mechanical reconciliation of dangling CLAIM rows and stale HOLD rows in the
+  rolling work ledger: reads the ledger host, asks the compute node to decide,
+  gathers the live evidence it names, appends the rows it plans and returns the
+  report. Report mode appends nothing.
+input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileRequest"
+handler:
+  module: "omnimarket.nodes.node_ledger_reconcile_orchestrator.handlers.handler_ledger_reconcile_orchestrator"
+  class: "HandlerLedgerReconcileOrchestrator"
+  input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "reconcile"
+      handler:
+        name: "HandlerLedgerReconcileOrchestrator"
+        module: "omnimarket.nodes.node_ledger_reconcile_orchestrator.handlers.handler_ledger_reconcile_orchestrator"
+      input_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileRequest"
+      output_model: "omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileResult"
+published_events:
+  - event_type: "ModelReconcileResult"
+    topic: "onex.evt.omnimarket.ledger-reconciled.v1"
+terminal_event: "onex.evt.omnimarket.ledger-reconciled.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.ledger-reconcile-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.ledger-reconciled.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.ledger-reconcile-requested.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.ledger-reconciled.v1"
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 1800000
+  runtime_profiles:
+    - effects
+metadata:
+  ticket: OMN-20677
+  origin_tickets:
+    - OMN-17466
+    - OMN-19738
+  transport_type: kafka

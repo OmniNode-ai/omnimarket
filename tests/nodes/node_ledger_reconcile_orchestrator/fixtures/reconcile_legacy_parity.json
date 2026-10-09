@@ -1,0 +1,100 @@
+{
+  "source": "ledger/reconcile.py at dc1a1a6f; captured before deletion for OMN-20677",
+  "cases": [
+    {
+      "apply": false,
+      "max_appends": null,
+      "live_lanes": [],
+      "append_error": false,
+      "rows": [
+        "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+        "2026-09-22T10:05:00Z | CLAIM | lane=gone-lane | ticket=OMN-1 | scope=land omnimarket#12",
+        "2026-09-22T10:10:00Z | CLAIM | lane=unknown-lane | ticket=OMN-1 | scope=investigate issue"
+      ],
+      "exit_code": 1,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 REPORT mode\nrows parsed: 3  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 3, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 3 CLAIM rows parsed from 1 file(s) holding 3 '| CLAIM |' line(s); 3 CLAIM rows inside the window\n\nDANGLING CLAIMS: 3\nSTALE HOLDS: 0\nclaim ts               age(h) verdict    lane / detail\n------------------------------------------------------\n2026-09-22T10:00:00Z     10.0 COMPLETED  CLAIM landed-lane\n                               omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa\n                               source: ledger.md:2\n2026-09-22T10:05:00Z      9.9 ORPHANED   CLAIM gone-lane\n                               not landed: omnimarket#12 OPEN\n                               source: ledger.md:3\n2026-09-22T10:10:00Z      9.8 UNKNOWN    CLAIM unknown-lane\n                               no extractable evidence handles\n                               source: ledger.md:4\n",
+      "stderr": "",
+      "appends": []
+    },
+    {
+      "apply": true,
+      "max_appends": 60,
+      "live_lanes": [],
+      "append_error": false,
+      "rows": [
+        "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+        "2026-09-22T10:05:00Z | CLAIM | lane=gone-lane | ticket=OMN-1 | scope=land omnimarket#12",
+        "2026-09-22T10:10:00Z | CLAIM | lane=unknown-lane | ticket=OMN-1 | scope=investigate issue"
+      ],
+      "exit_code": 1,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 APPLY mode\nrows parsed: 3  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 3, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 3 CLAIM rows parsed from 1 file(s) holding 3 '| CLAIM |' line(s); 3 CLAIM rows inside the window\n\nDANGLING CLAIMS: 3\nSTALE HOLDS: 0\nclaim ts               age(h) verdict    lane / detail\n------------------------------------------------------\n2026-09-22T10:00:00Z     10.0 COMPLETED  CLAIM landed-lane [terminal-appended]\n                               omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa\n                               source: ledger.md:2\n2026-09-22T10:05:00Z      9.9 ORPHANED   CLAIM gone-lane [attention-appended]\n                               not landed: omnimarket#12 OPEN\n                               source: ledger.md:3\n2026-09-22T10:10:00Z      9.8 UNKNOWN    CLAIM unknown-lane\n                               no extractable evidence handles\n                               source: ledger.md:4\n",
+      "stderr": "",
+      "appends": [
+        "2026-09-22T20:00:00Z | TERMINAL | lane=landed-lane | ticket=OMN-1 | actor=script:ledger-reconciler | friction=none | **RECONCILER-AUTO-CLOSE (OMN-17466)** \u2014 closes the CLAIM row [landed-lane @ 2026-09-22T10:00:00Z]; the owning lane ended without appending its own TERMINAL (claim age 10.0h at reconcile time). Outcome: landed. Evidence verified against LIVE state by onex-ledger-reconcile \u2014 omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa. Read from gh pr view --json state,mergedAt,mergeCommit / git merge-base against the canonical clones, never from a lane self-report.",
+        "2026-09-22T20:00:00Z | STATUS | lane=ledger-reconciler | ticket=OMN-1 | claim-lane=gone-lane | **RECONCILER-NEEDS-ATTENTION (OMN-17466)** \u2014 the CLAIM row [gone-lane @ 2026-09-22T10:05:00Z] is stale (age 9.9h) and its cited evidence is verifiably NOT landed: not landed: omnimarket#12 OPEN. The work appears to have died mid-flight. The claim is left OPEN for adjudication by the owning lane or the operator \u2014 the reconciler never fabricates a completion. Verified live by onex-ledger-reconcile."
+      ]
+    },
+    {
+      "apply": true,
+      "max_appends": 1,
+      "live_lanes": [],
+      "append_error": false,
+      "rows": [
+        "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+        "2026-09-22T10:05:00Z | CLAIM | lane=gone-lane | ticket=OMN-1 | scope=land omnimarket#12",
+        "2026-09-22T10:10:00Z | CLAIM | lane=unknown-lane | ticket=OMN-1 | scope=investigate issue"
+      ],
+      "exit_code": 4,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 APPLY mode\nrows parsed: 3  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 3, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 3 CLAIM rows parsed from 1 file(s) holding 3 '| CLAIM |' line(s); 3 CLAIM rows inside the window\n\nDANGLING CLAIMS: 3\nSTALE HOLDS: 0\nclaim ts               age(h) verdict    lane / detail\n------------------------------------------------------\n2026-09-22T10:00:00Z     10.0 COMPLETED  CLAIM landed-lane [refused-by-cap]\n                               omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa\n                               source: ledger.md:2\n2026-09-22T10:05:00Z      9.9 ORPHANED   CLAIM gone-lane [refused-by-cap]\n                               not landed: omnimarket#12 OPEN\n                               source: ledger.md:3\n2026-09-22T10:10:00Z      9.8 UNKNOWN    CLAIM unknown-lane\n                               no extractable evidence handles\n                               source: ledger.md:4\n",
+      "stderr": "ledger_reconcile: REFUSED \u2014 this pass would append 2 rows, more than --max-appends 1. Nothing was appended.\n",
+      "appends": []
+    },
+    {
+      "apply": true,
+      "max_appends": 60,
+      "live_lanes": [
+        "landed-lane",
+        "gone-lane"
+      ],
+      "append_error": false,
+      "rows": [
+        "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+        "2026-09-22T10:05:00Z | CLAIM | lane=gone-lane | ticket=OMN-1 | scope=land omnimarket#12",
+        "2026-09-22T10:10:00Z | CLAIM | lane=unknown-lane | ticket=OMN-1 | scope=investigate issue"
+      ],
+      "exit_code": 1,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 APPLY mode\nrows parsed: 3  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 3, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 3 CLAIM rows parsed from 1 file(s) holding 3 '| CLAIM |' line(s); 3 CLAIM rows inside the window\n\nDANGLING CLAIMS: 3\nSTALE HOLDS: 0\nclaim ts               age(h) verdict    lane / detail\n------------------------------------------------------\n2026-09-22T10:00:00Z     10.0 COMPLETED  CLAIM landed-lane [HELD, nothing appended: lane is on the --live-lanes roster]\n                               omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa\n                               source: ledger.md:2\n2026-09-22T10:05:00Z      9.9 ORPHANED   CLAIM gone-lane [HELD, nothing appended: lane is on the --live-lanes roster]\n                               not landed: omnimarket#12 OPEN\n                               source: ledger.md:3\n2026-09-22T10:10:00Z      9.8 UNKNOWN    CLAIM unknown-lane\n                               no extractable evidence handles\n                               source: ledger.md:4\n",
+      "stderr": "",
+      "appends": []
+    },
+    {
+      "apply": true,
+      "max_appends": 60,
+      "live_lanes": [],
+      "append_error": true,
+      "rows": [
+        "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+        "2026-09-22T10:05:00Z | CLAIM | lane=gone-lane | ticket=OMN-1 | scope=land omnimarket#12",
+        "2026-09-22T10:10:00Z | CLAIM | lane=unknown-lane | ticket=OMN-1 | scope=investigate issue"
+      ],
+      "exit_code": 2,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 APPLY mode\nrows parsed: 3  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 3, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 3 CLAIM rows parsed from 1 file(s) holding 3 '| CLAIM |' line(s); 3 CLAIM rows inside the window\n\nDANGLING CLAIMS: 3\nSTALE HOLDS: 0\nclaim ts               age(h) verdict    lane / detail\n------------------------------------------------------\n2026-09-22T10:00:00Z     10.0 COMPLETED  CLAIM landed-lane [append-failed: fixture refusal]\n                               omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa\n                               source: ledger.md:2\n2026-09-22T10:05:00Z      9.9 ORPHANED   CLAIM gone-lane [append-failed: fixture refusal]\n                               not landed: omnimarket#12 OPEN\n                               source: ledger.md:3\n2026-09-22T10:10:00Z      9.8 UNKNOWN    CLAIM unknown-lane\n                               no extractable evidence handles\n                               source: ledger.md:4\n",
+      "stderr": "",
+      "appends": [
+        "2026-09-22T20:00:00Z | TERMINAL | lane=landed-lane | ticket=OMN-1 | actor=script:ledger-reconciler | friction=none | **RECONCILER-AUTO-CLOSE (OMN-17466)** \u2014 closes the CLAIM row [landed-lane @ 2026-09-22T10:00:00Z]; the owning lane ended without appending its own TERMINAL (claim age 10.0h at reconcile time). Outcome: landed. Evidence verified against LIVE state by onex-ledger-reconcile \u2014 omnimarket#11 MERGED 2026-09-22T11:00:00Z merge aaaaaaaaaaaa. Read from gh pr view --json state,mergedAt,mergeCommit / git merge-base against the canonical clones, never from a lane self-report.",
+        "2026-09-22T20:00:00Z | STATUS | lane=ledger-reconciler | ticket=OMN-1 | claim-lane=gone-lane | **RECONCILER-NEEDS-ATTENTION (OMN-17466)** \u2014 the CLAIM row [gone-lane @ 2026-09-22T10:05:00Z] is stale (age 9.9h) and its cited evidence is verifiably NOT landed: not landed: omnimarket#12 OPEN. The work appears to have died mid-flight. The claim is left OPEN for adjudication by the owning lane or the operator \u2014 the reconciler never fabricates a completion. Verified live by onex-ledger-reconcile."
+      ]
+    },
+    {
+      "apply": false,
+      "max_appends": null,
+      "live_lanes": [],
+      "append_error": false,
+      "rows": [],
+      "exit_code": 0,
+      "stdout": "ledger_reconcile (OMN-17466) \u2014 REPORT mode\nrows parsed: 0  unparseable: 0\nparsed by shape: CLAIM: pipe-led 0, ts-led 0, heading 0; TERMINAL/CLOSEOUT: pipe-led 0, ts-led 0, heading 0; other rows carrying an explicit close reference: 0\nholds parsed: 0 from 0 HOLD marker lines\npositive control: 0 CLAIM rows parsed from 1 file(s) holding 0 '| CLAIM |' line(s); 0 CLAIM rows inside the window\n\nNo dangling CLAIM rows inside the window: all 0 CLAIM rows there are closed; no stale HOLDs. Ledger is clean.\n",
+      "stderr": "",
+      "appends": []
+    }
+  ]
+}

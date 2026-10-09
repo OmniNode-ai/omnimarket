@@ -1,0 +1,80 @@
+{
+ "source": "the ledger writer's own claim_row_digest, captured for OMN-20677",
+ "cases": [
+  {
+   "id": "empty",
+   "row": "",
+   "digest": "e3b0c44298fc"
+  },
+  {
+   "id": "blank-lines",
+   "row": " \n\t\n",
+   "digest": "e3b0c44298fc"
+  },
+  {
+   "id": "unstamped",
+   "row": "| CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "timestamp-led",
+   "row": "2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "retry-stamp",
+   "row": "2026-09-20T10:06:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "dash-bullet",
+   "row": "  - 2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser  ",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "star-bullet",
+   "row": "* 2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "bold-stamp",
+   "row": "**2026-09-20T10:05:00Z** | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "table-cell-stamp",
+   "row": "| 2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser |",
+   "digest": "a8674023a3d1"
+  },
+  {
+   "id": "multiline",
+   "row": "\n  - 2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser  \n\n* **2026-09-20T10:06:00Z** continuation\n",
+   "digest": "09c3f96b2e77"
+  },
+  {
+   "id": "stamp-only-lines",
+   "row": "2026-09-20T10:05:00Z\n* **2026-09-20T10:05:00Z**\n| CLAIM | lane=token-lane | ticket=OMN-101 | fix parser",
+   "digest": "c36ff7af8fa6"
+  },
+  {
+   "id": "unicode",
+   "row": "2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser — repair §0a",
+   "digest": "da32c54b46f8"
+  },
+  {
+   "id": "mid-body-stamp",
+   "row": "2026-09-20T10:05:00Z | CLAIM | lane=token-lane | ticket=OMN-101 | fix parser | cites 2026-09-20T10:06:00Z",
+   "digest": "93bc2a412eb0"
+  },
+  {
+   "id": "real-ts-led",
+   "row": "2026-09-22T10:00:00Z | CLAIM | lane=landed-lane | ticket=OMN-1 | scope=land omnimarket#11",
+   "digest": "1cd2abbd4d3e"
+  },
+  {
+   "id": "real-pipe-led",
+   "row": "| 2026-08-31T23:15:00Z | wave2-omn17350-check8 | OMN-17350 | CLAIM | **Owning OMN-17350.** Scope: omninode_infra#1122 only. |",
+   "digest": "ce7cf9b55d79"
+  }
+ ]
+}

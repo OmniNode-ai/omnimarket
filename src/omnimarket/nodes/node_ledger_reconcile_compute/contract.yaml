@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_reconcile_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide a ledger reconciliation from supplied facts without I/O: parse the
+  rolling ledger and its archives, pair CLAIM rows with their closers, bind the
+  evidence a dangling claim cites, give each claim and each stale HOLD its verdict
+  and compose the rows that would close it and the report. A decision missing a
+  verified fact names it. Repository aliases, branch prefixes and the GitHub
+  organisation arrive in the request from the deployment overlay.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_ledger_reconcile
+    handler:
+      name: HandlerLedgerReconcileDecide
+      module: omnimarket.nodes.node_ledger_reconcile_compute.handlers.handler_ledger_reconcile_decide
+    input_model: omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelReconcileDecideRequest
+    output_model: omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileDecision
+  - operation: render_ledger_reconcile_result
+    handler:
+      name: HandlerLedgerReconcileRender
+      module: omnimarket.nodes.node_ledger_reconcile_compute.handlers.handler_ledger_reconcile_render
+    input_model: omnimarket.models.ledger_reconcile.model_ledger_reconcile_ops.ModelReconcileRenderRequest
+    output_model: omnimarket.models.ledger_reconcile.model_ledger_reconcile.ModelReconcileResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.ledger-reconcile-decide-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.ledger-reconcile-decided.v1
+terminal_event: onex.evt.omnimarket.ledger-reconcile-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-reconcile-decide-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.ledger-reconcile-decided.v1
+metadata:
+  ticket: OMN-20677
+  origin_tickets:
+  - OMN-17466
+  - OMN-19738
+  transport_type: kafka
+lifecycle: experimental

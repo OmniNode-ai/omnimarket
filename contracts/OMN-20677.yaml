@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20677"
+title: "Ledger reconciliation as contract-declared compute, effect and orchestrator nodes in omnimarket"
+summary: "Move the ledger reconciler's canonical node into omnimarket, split by kind: a pure compute node decides (parse, pair, evidence binding, verdicts, rows, report), an effect node reads the ledger host, verifies cited pull requests and commits and appends through the ledger writer, and an orchestrator carries one command through both. Deployment facts arrive from an overlay. Repointing the callers and deleting the previous entry point remain separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-nodes"
+    statement: "The reconciler is contract.yaml files, declarative nodes and handlers with the canonical handle(request) -> result signature, with topics declared in the contracts."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the compute, effect and orchestrator contracts resolve, declare their topics and terminal events, and a golden chain executes every operation through the contract's own handler and model bindings"
+  - id: "req-parity"
+    statement: "The nodes decide, report and append what the reconciler they replace did on the same ledger."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: six captured cases of the previous tool (report, apply, cap refusal, live roster, append failure, clean ledger) answer the same stdout, stderr, exit code and appended rows through the orchestrator, claim digests equal the ledger writer's, and a deliberately broken verdict rule fails the cases"
+  - id: "req-error-chain"
+    statement: "A command or host the nodes cannot serve is blocked and named; nothing is read as a clean ledger."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: invalid bounds, an unreadable ledger, a missing roster file, a missing overlay, a failed append and an over-cap pass each end in a typed result that says why, and every port failure is named in a result rather than raised or read as an empty answer"
+  - id: "req-bus"
+    statement: "A reconciliation command travels the contract's bus on the ledger host, with the local adapters as production wires them."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the orchestrator contract dispatches a command and its terminal over the in-process bus, report mode appends nothing, apply mode appends through the ledger writer, and the command line keeps its exits"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: golden chains pass."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_golden_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_golden_chain_ledger_reconcile_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: legacy parity and digest parity pass."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_legacy_parity.py tests/nodes/node_ledger_reconcile_compute/test_claim_digest_parity.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: error chains pass."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_error_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_error_chain_ledger_reconcile_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: the bus cycle and the command line pass."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20677-ac1-golden-chains"
+    description: "AC1: golden chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_golden_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_golden_chain_ledger_reconcile_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20677-ac2-parity"
+    description: "AC2: legacy parity and digest parity pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_legacy_parity.py tests/nodes/node_ledger_reconcile_compute/test_claim_digest_parity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20677-ac3-error-chains"
+    description: "AC3: error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_error_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_error_chain_ledger_reconcile_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20677-ac4-bus-cycle"
+    description: "AC4: the bus cycle and the command line pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
