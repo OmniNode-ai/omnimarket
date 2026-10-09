@@ -14,13 +14,24 @@
 #   merge-sweep — a finding, not a root entry. Fix or delete it; do not
 #     add it here.
 #
-# mode: report — the gate records every finding with a per-class count and
-# exits 0. It flips to enforce when the residue is FIXED, never by moving the
-# residue into this file: that is the recurrence mechanism the OMN-17992
-# programme exists to remove.
+# mode: report — the gate records every whole-tree finding with a per-class
+# count. Five classes fail the run on the lines a pull request or a commit ADDS
+# (OMN-20781): enforce_scope and enforce_classes below. The whole-tree residue
+# stays reported on every run and is cleared under OMN-19836. The whole-tree
+# gate flips to enforce when that residue is FIXED, never by moving the residue
+# into this file: that is the recurrence mechanism the OMN-17992 programme
+# exists to remove.
 
 mode: report
 suppression_registry: ".public-repo-hygiene-suppressions.yaml"
+
+enforce_scope: added-lines
+enforce_classes:
+  - "private-repo-name"
+  - "internal-kb-prose"
+  - "lab-config"
+  - "person-name"
+  - "private-network"
 
 allowed_top_level:
   - ".agents"

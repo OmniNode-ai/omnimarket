@@ -106,3 +106,9 @@ def test_queue_commit_reports_the_hygiene_context() -> None:
     )
     names = {job.get("name") for job in workflow["jobs"].values()}
     assert CONTEXT in names
+
+
+def test_hygiene_context_is_not_recorded_as_exempt() -> None:
+    from tests.unit.scripts.ci.test_ci_summary_gate import EXEMPT_CONTEXTS
+
+    assert ("public-repo-hygiene.yml", "public-repo-hygiene") not in EXEMPT_CONTEXTS

@@ -294,6 +294,20 @@ repos:
       - id: kb-doc-gate
         require_serial: true
 
+  # Public-repo hygiene gate (OMN-20781). Runs the same script, at the same
+  # omniclaude commit, as .github/workflows/public-repo-hygiene.yml, over the
+  # lines the commit adds, so the local and CI verdicts cannot diverge. The five
+  # classes in `enforce_classes` of .public-repo-hygiene.yaml fail the commit;
+  # the whole-tree residue is reported. The hook declares no `args`, `files` or
+  # `exclude` here: it is meant to run on every commit, over every file type.
+  # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
+  # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
+  - repo: https://github.com/OmniNode-ai/omniclaude
+    rev: 6e47aa311ac5d177d116d9597b07966a233d2463
+    hooks:
+      - id: public-repo-hygiene
+        require_serial: true
+
   # Essential file formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
