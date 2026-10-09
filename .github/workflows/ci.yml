@@ -2815,8 +2815,8 @@ jobs:
   # not. A planted violation in a touched file turns this job — and therefore
   # the required CI Summary rollup — red.
   #
-  # Uses the canonical scanner check_ai_slop.py from omnibase_core (cloned the
-  # same way the other omnimarket jobs clone it) so the rule set stays uniform
+  # Uses the canonical scanner node_ai_slop_check_compute from the installed
+  # omnibase_core package (the script form was removed in 0.47.36) so the rule set stays uniform
   # across repos rather than forking a second omnimarket-local copy.
   # ============================================================================
   aislop-sweep:
@@ -2828,12 +2828,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
-      - name: Clone omnibase_core (canonical aislop scanner)
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-      - name: Set up Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
-          python-version: "3.12"
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies (omnibase_core ships the canonical aislop scanner)
+        run: uv sync --locked
       - name: Compute changed Python/Markdown files vs PR base
         id: changed
         # BASE_REF is passed via env (not spliced into the script body) so an
@@ -2862,7 +2864,7 @@ jobs:
             exit 0
           fi
           # shellcheck disable=SC2086
-          python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
+          uv run python -m omnibase_core.nodes.node_ai_slop_check_compute.runtime_ai_slop_check --strict $FILES
 
   # ============================================================================
   # COVERAGE SWEEP GATE (OMN-14539; census cut over to shard artifacts OMN-18556)
