@@ -1,0 +1,158 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""A failed Credentials-page fold is recovered by the next ``onex secret`` command.
+
+``onex secret set`` / ``delete`` change the store first and fold the credential
+events into ``tenant_inference_credentials`` second. If the fold fails, the
+store change has already happened, so re-running the same command cannot redo
+it: a retried ``delete`` finds no stored value and emits no revoke, and the page
+shows the deleted key LIVE for good (independent review, 2026-10-09). The events
+that were not folded are therefore kept in a pending file beside the store, and
+every ``onex secret`` command folds that file first.
+
+Each test names the failure it exists to catch:
+
+* R1  a retried delete after a failed fold leaves the deleted key live;
+* R2  only the same command recovers: a later ``list`` leaves the page stale;
+* R3  a failed ``set --force`` loses the old key's revoke or the new key's row;
+* R4  the pending file holds the value, or is readable by others;
+* R5  a malformed pending file is dropped or ignored instead of refused;
+* R6  the pending file outlives a successful recovery, so it replays forever;
+* R7  the failure message points at a retry that cannot work.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import stat
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner, Result
+
+from omnimarket.cli import cli_secret
+from omnimarket.cli.cli_secret import secret_group
+
+pytestmark = pytest.mark.unit
+
+_REF = "llm.openrouter.api_key"
+_PLANTED = "sk-or-v1-planted-omn19985-retry-0123456789"
+_PLANTED_NEW = "sk-or-v1-planted-omn19985-retry-new-9876543210"
+_PENDING_NAME = "credential-events.pending.jsonl"
+
+
+@pytest.fixture(autouse=True)
+def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    db_path = tmp_path / "delegation.sqlite"
+    monkeypatch.setattr(
+        "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
+        lambda: db_path,
+    )
+    monkeypatch.setattr(
+        "omnimarket.cli.cli_secret._resolve_model", lambda *_args, **_kw: None
+    )
+    return db_path
+
+
+def _run(args: list[str], stdin: str | None = None) -> Result:
+    return CliRunner().invoke(secret_group, args, input=stdin, catch_exceptions=False)
+
+
+def _live_rows(path: Path) -> list[sqlite3.Row]:
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute(
+            "SELECT * FROM tenant_inference_credentials WHERE revoked_at IS NULL"
+        ).fetchall()
+
+
+def _break_fold(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.OperationalError("injected projection failure")
+
+    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", unavailable)
+
+
+def test_r1_r7_retried_delete_after_a_failed_fold_revokes_the_key(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    assert len(_live_rows(store)) == 1
+
+    original = cli_secret.SqliteDatabaseAdapter
+    _break_fold(monkeypatch)
+    failed = _run(["delete", _REF])
+    assert failed.exit_code != 0
+    # R7: the message must not promise that re-running delete repairs the page.
+    assert "Run the command again" not in failed.output
+    assert "onex secret list" in failed.output
+
+    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    _run(["delete", _REF])
+    assert _live_rows(store) == []
+
+
+def test_r2_r6_any_later_secret_command_recovers_and_clears_the_pending_file(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    original = cli_secret.SqliteDatabaseAdapter
+    _break_fold(monkeypatch)
+    assert _run(["delete", _REF]).exit_code != 0
+    pending = store.parent / _PENDING_NAME
+    assert pending.exists()
+
+    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    listed = _run(["list"])
+    assert listed.exit_code == 0, listed.output
+    assert _live_rows(store) == []
+    assert not pending.exists()
+
+
+def test_r3_failed_set_force_keeps_both_the_revoke_and_the_new_row(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    [first] = _live_rows(store)
+
+    original = cli_secret.SqliteDatabaseAdapter
+    _break_fold(monkeypatch)
+    assert _run(["set", _REF, "--force"], stdin=_PLANTED_NEW).exit_code != 0
+
+    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    assert _run(["list"]).exit_code == 0
+    [live] = _live_rows(store)
+    assert live["api_key_ref"] != first["api_key_ref"]
+    with sqlite3.connect(store) as conn:
+        revoked = conn.execute(
+            "SELECT revoked_at FROM tenant_inference_credentials WHERE api_key_ref = ?",
+            (first["api_key_ref"],),
+        ).fetchone()
+    assert revoked is not None
+    assert revoked[0] is not None
+
+
+def test_r4_the_pending_file_never_holds_a_value_and_is_owner_only(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    _break_fold(monkeypatch)
+    assert _run(["set", _REF, "--force"], stdin=_PLANTED_NEW).exit_code != 0
+
+    pending = store.parent / _PENDING_NAME
+    data = pending.read_bytes()
+    assert data, "the failed fold left no pending events"
+    assert _PLANTED.encode() not in data
+    assert _PLANTED_NEW.encode() not in data
+    assert stat.S_IMODE(pending.stat().st_mode) == 0o600
+
+
+def test_r5_a_malformed_pending_file_is_refused_and_kept(store: Path) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    pending = store.parent / _PENDING_NAME
+    pending.write_text("{not json\n")
+
+    result = _run(["list"])
+    assert result.exit_code != 0
+    assert str(pending) in result.output
+    assert pending.read_text() == "{not json\n"

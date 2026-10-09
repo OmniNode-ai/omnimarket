@@ -32,10 +32,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 import sys
 from getpass import getpass
 from pathlib import Path
+from typing import Any
 
 import click
 from pydantic import SecretStr, ValidationError
@@ -343,6 +345,92 @@ def register_tenant_key(
     )
 
 
+#: Credential events a failed fold could not apply, kept beside the store until
+#: the next ``onex secret`` command applies them. The store change happens before
+#: the fold, so re-running the same command cannot redo a lost fold: a retried
+#: delete finds no value and emits no revoke. Each line is one event, and an
+#: event carries a fingerprint prefix and a set time, never a value.
+PENDING_CREDENTIAL_EVENTS_NAME = "credential-events.pending.jsonl"
+_REGISTERED = "registered"
+_REVOKED = "revoked"
+
+
+def _pending_events_path(db_path: Path) -> Path:
+    return db_path.parent / PENDING_CREDENTIAL_EVENTS_NAME
+
+
+def _apply_events(lines: list[dict[str, Any]], db_path: Path) -> None:
+    """Apply ``{"kind", "payload"}`` records in order. Both folds are idempotent."""
+    db = SqliteDatabaseAdapter(db_path)
+    for line in lines:
+        if line["kind"] == _REGISTERED:
+            apply_credential_registered(line["payload"], db)
+        else:
+            apply_credential_revoked(line["payload"], db)
+
+
+def _write_pending(path: Path, lines: list[dict[str, Any]]) -> None:
+    """Replace the pending file with ``lines``, owner-only, in one rename."""
+    temp = path.with_name(path.name + ".tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        for line in lines:
+            handle.write(json.dumps(line, sort_keys=True) + "\n")
+    os.chmod(temp, 0o600)
+    os.replace(temp, path)
+
+
+def _read_pending(path: Path) -> list[dict[str, Any]]:
+    """The pending records, or a refusal naming the file. Never drops a line."""
+    refused = click.ClickException(
+        f"{path} holds Credentials-page updates that could not be read; nothing "
+        "was applied or dropped. Inspect the file, and remove it only if the "
+        "page already shows what it should."
+    )
+    lines: list[dict[str, Any]] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        raise refused from None
+    for raw in text.splitlines():
+        if not raw.strip():
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            raise refused from None
+        if (
+            not isinstance(record, dict)
+            or record.get("kind") not in (_REGISTERED, _REVOKED)
+            or not isinstance(record.get("payload"), dict)
+        ):
+            raise refused
+        lines.append(record)
+    return lines
+
+
+def _drain_pending_credential_events(db_path: Path) -> None:
+    """Apply Credentials-page updates an earlier command could not, then forget them.
+
+    Runs first in every ``onex secret`` command, so a fold lost to a transient
+    failure is recovered by whichever command comes next, in the order the
+    events were produced, before any new store change.
+    """
+    path = _pending_events_path(db_path)
+    if not path.exists():
+        return
+    lines = _read_pending(path)
+    try:
+        _apply_events(lines, db_path)
+    except sqlite3.Error as error:
+        raise click.ClickException(
+            f"the Credentials page still has updates waiting in {path} and they "
+            f"could not be applied ({type(error).__name__}: {error}); they are "
+            "kept. Run 'onex secret list' again once the store is readable."
+        ) from None
+    path.unlink()
+
+
 def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> None:
     """Fold the effect's credential events into the local projection store.
 
@@ -351,22 +439,41 @@ def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> No
     metering folds do. That store is the same file as the secret store (the
     2026-09-18 ruling: one local database), and the rows carry the fingerprint
     prefix and set time, never the value.
+
+    The store change has already happened, so a fold that fails keeps its events
+    in the pending file for the next ``onex secret`` command to apply.
     """
     if not result.events:
         return
+    lines: list[dict[str, Any]] = [
+        {
+            "kind": _REGISTERED
+            if isinstance(event, ModelCredentialRegisteredEvent)
+            else _REVOKED,
+            "payload": event.model_dump(mode="json"),
+        }
+        for event in result.events
+    ]
+    done = "removed" if result.operation == "delete" else "stored"
     try:
-        db = SqliteDatabaseAdapter(db_path)
-        for event in result.events:
-            payload = event.model_dump(mode="json")
-            if isinstance(event, ModelCredentialRegisteredEvent):
-                apply_credential_registered(payload, db)
-            else:
-                apply_credential_revoked(payload, db)
+        _apply_events(lines, db_path)
     except sqlite3.Error as error:
+        path = _pending_events_path(db_path)
+        cause = f"{type(error).__name__}: {error}"
+        try:
+            earlier = _read_pending(path) if path.exists() else []
+            _write_pending(path, earlier + lines)
+        except (OSError, click.ClickException):
+            raise click.ClickException(
+                f"{result.secret_ref} is {done}, but the Credentials page was not "
+                f"updated ({cause}), and the update could not be saved to {path} "
+                "either. The page may show this key wrongly until it is set or "
+                "deleted again."
+            ) from None
         raise click.ClickException(
-            f"{result.secret_ref} is {'removed' if result.operation == 'delete' else 'stored'}, "
-            f"but the Credentials page was not updated ({type(error).__name__}: {error}). "
-            "Run the command again to retry."
+            f"{result.secret_ref} is {done}, but the Credentials page was not "
+            f"updated ({cause}). The update is saved in {path}; run "
+            "'onex secret list' to apply it."
         ) from None
 
 
@@ -401,6 +508,7 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
     (which sends nothing).
     """
     store = LocalByokCredentialStore()
+    _drain_pending_credential_events(store.db_path)
     if not force and asyncio.run(store.get_secret(secret_ref)) is not None:
         raise click.ClickException(
             f"{secret_ref} already has a stored value. Pass --force to "
@@ -456,6 +564,7 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
 def list_secrets() -> None:
     """List the references this machine holds. Never prints a value."""
     store = LocalByokCredentialStore()
+    _drain_pending_credential_events(store.db_path)
     refs = asyncio.run(store.list_keys())
     if not refs:
         click.echo(
@@ -475,6 +584,7 @@ def list_secrets() -> None:
 def delete_secret(secret_ref: str) -> None:
     """Remove the stored value for SECRET_REF."""
     store = LocalByokCredentialStore()
+    _drain_pending_credential_events(store.db_path)
     try:
         result = HandlerLocalSecretStore().handle(
             ModelLocalSecretRequest(operation="delete", secret_ref=secret_ref)
