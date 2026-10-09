@@ -84,11 +84,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_disk_hygiene_effect",
-    # OMN-20673: hosted from the operator tooling repository, whose copy is
-    # still registered; its briefs and defaults arrive through a deployment
-    # overlay, so it has no onex.nodes entry point until the registration
-    # hand-over (nodes-to-market plan step B).
-    "node_morning_ground_state_orchestrator",
     # OMN-20674: hosted from the operator tooling repository, whose copy is
     # still registered; its briefs, paths and lanes arrive through a deployment
     # overlay, so it has no onex.nodes entry point until the registration
@@ -311,7 +306,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
     # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
     # the writer calls in process, so it has no handler_routing: 17 -> 18.
-    assert summary["skipped"] == 18
+    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
+    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    assert summary["skipped"] == 19
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

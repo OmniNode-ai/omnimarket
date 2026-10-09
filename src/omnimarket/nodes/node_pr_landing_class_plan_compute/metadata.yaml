@@ -1,0 +1,23 @@
+name: node_pr_landing_class_plan_compute
+version: "0.1.0"
+description: "the landing controller's stale-summary and retarget actions of one tick, inside the quota cap"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_class_plan_compute: "omnimarket.nodes.node_pr_landing_class_plan_compute"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the live controller still plans its own copy.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-landing", "landing-controller", "quota", "pure"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Class Plan"
+node_role: "compute"

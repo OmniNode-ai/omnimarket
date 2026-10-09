@@ -2,11 +2,18 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20672"
 title: "The landing-controller scripts become contract, node and handler over the bus"
-summary: "Shard 2 adds node_pr_landing_ledger_facts_compute: the landing controller's row-only ledger facts (fixer kill switch, cause owners, cause fixes, cause releases, lab PASS readbacks, live drain lane) derived from parsed ledger rows by a contract-declared COMPUTE node, equal to the live derivation on the recorded ledger. First shard: the landing tick's decision half, with the per-repository fair share the live controller applies on top of the decision node, becomes a contract-declared COMPUTE node, and an observe-mode COMPUTE node compares the node path's decision with the live controller's decision on a copied tick. The live controller is not changed."
+summary: "Shard 3 adds node_pr_landing_order_waits_compute: the merge-order waits of a landing tick (the PRs a lane parked behind another PR, the waits that fired, and the fired waits a lane already routed) derived from parsed ledger rows, the open PRs and the predecessors' states by a contract-declared COMPUTE node, equal to the live controller's read on the recorded ledger. Shard 2 adds node_pr_landing_ledger_facts_compute: the landing controller's row-only ledger facts (fixer kill switch, cause owners, cause fixes, cause releases, lab PASS readbacks, live drain lane) derived from parsed ledger rows by a contract-declared COMPUTE node, equal to the live derivation on the recorded ledger. First shard: the landing tick's decision half, with the per-repository fair share the live controller applies on top of the decision node, becomes a contract-declared COMPUTE node, and an observe-mode COMPUTE node compares the node path's decision with the live controller's decision on a copied tick. The live controller is not changed."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-landing-class-plan-node"
+    statement: "The class actions of a landing tick (stale CI Summary reruns and refreshes, copy reruns, retargets and the author comment) are planned inside the quota cap by a definition-B node with its topics declared in the contract, and its plan and sidecar memories equal the live controller's on the same candidates."
+    acceptance:
+      - id: "AC8"
+        statement: "node_pr_landing_class_plan_compute is a contract.yaml, a declarative node and a handle(ModelLandingClassPlanRequest) -> ModelLandingClassPlanResult handler with its command and terminal topics declared in the contract."
+      - id: "AC9"
+        statement: "On a fixed set of candidates that reaches a cap that defers a dearer action while a cheaper one after it still fits, an M4 delegation PR taking the cap first, a PR the decision acts on, a copy rerun, a retarget on a new head, and the memory of a merged PR, the node returns the plan, the deferred PRs, the next sidecar memories and the summary the live class_plan returned for the same input."
   - id: "req-landing-tick-node-observe"
     statement: "The landing tick decision, fair share included, is a definition-B node with its topics declared in the contract, and observe mode reports every path where the node path differs from the live controller's decision."
     acceptance:
@@ -23,18 +30,39 @@ requirements:
         statement: "node_pr_landing_ledger_facts_compute is a contract.yaml, a declarative node and a handle(ModelLandingLedgerRows) -> ModelLandingLedgerFacts handler with its command and terminal topics declared in the contract."
       - id: "AC5"
         statement: "On a fixed set of ledger rows that reaches the fixer kill switch, the cause owners, the declared fixes, the cause releases, the lab PASS readbacks and the drain lane, the node returns the facts the live derivation returned for the same rows and clock."
+  - id: "req-landing-order-waits-node"
+    statement: "The merge-order waits of a landing tick are derived by a definition-B node with its topics declared in the contract, and equal the live controller's read of the same rows, PRs and predecessor states."
+    acceptance:
+      - id: "AC6"
+        statement: "node_pr_landing_order_waits_compute is a contract.yaml, a declarative node and a handle(ModelLandingOrderWaitsRequest) -> ModelLandingOrderWaitsResult handler with its command and terminal topics declared in the contract."
+      - id: "AC7"
+        statement: "On a fixed set of ledger rows that reaches an open wait, a wait fired by its predecessors, a wait fired after two hours naming none, a wait ended by a new head, a TERMINAL older than six hours naming no head, and a fired wait a lane already routed, the node returns the waits the live read returned for the same rows, PRs, predecessor states and clock."
 evidence_requirements:
+  - kind: "tests"
+    description: "Execute the class plan node tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_class_plan_compute/test_landing_class_plan.py -q"
   - kind: "tests"
     description: "Execute the tick and observe node tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute tests/unit/nodes/node_pr_landing_tick_observe_compute -q"
   - kind: "tests"
     description: "Execute the ledger facts node tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q"
+  - kind: "tests"
+    description: "Execute the order waits node tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_order_waits_compute/test_landing_order_waits.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-class-plan-node"
+    description: "The class plan node's contract, handler signature and plan hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_class_plan_compute/test_landing_class_plan.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8", "AC9"]
   - id: "dod-tick-node-contract"
     description: "The tick node's contract, handler signature and fair share hold."
     source: "manual"
@@ -59,3 +87,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4", "AC5"]
+  - id: "dod-order-waits-node"
+    description: "The order waits node's contract, handler signature and waits hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_order_waits_compute/test_landing_order_waits.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6", "AC7"]

@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from urllib.parse import quote
 
-from omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate import (
+from omnimarket.models.model_handshake_policy_gate import (
     EnumPolicyGateDecisionKind,
     EnumPolicyGateVerdict,
     EnumReadOutcome,

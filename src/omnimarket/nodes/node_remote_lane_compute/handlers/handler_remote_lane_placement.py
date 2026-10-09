@@ -27,6 +27,10 @@ from ..models import (
 )
 
 
+def _rank(reading: ModelRemoteLaneHostReading) -> float:
+    return float("-inf") if reading.rank_free is None else reading.rank_free
+
+
 def _spread_key(
     reading: ModelRemoteLaneHostReading,
 ) -> tuple[bool, float, float, float, bool, str]:
@@ -35,7 +39,7 @@ def _spread_key(
     return (
         reading.placed == 0,
         -fill,
-        reading.rank_free,
+        _rank(reading),
         reading.mem_avail_gb,
         reading.local,
         reading.name,
@@ -43,7 +47,7 @@ def _spread_key(
 
 
 def _codex_key(reading: ModelRemoteLaneHostReading) -> tuple[float, float, str]:
-    return (reading.rank_free, reading.mem_avail_gb, reading.name)
+    return (_rank(reading), reading.mem_avail_gb, reading.name)
 
 
 class HandlerRemoteLanePlacement:

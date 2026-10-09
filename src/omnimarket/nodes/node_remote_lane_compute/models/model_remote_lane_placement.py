@@ -29,7 +29,9 @@ class ModelRemoteLaneHostReading(BaseModel):
     lane_slots: int = 0
     lane_cap: int = 0
     placed: int = Field(default=0, ge=0)
-    rank_free: float = 0.0
+    # None: the reader could not rank the host (an unreadable host, -inf to the reader,
+    # which a JSON bus envelope cannot carry as a number). It ranks below every host.
+    rank_free: float | None = 0.0
     mem_avail_gb: float = 0.0
 
 
