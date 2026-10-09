@@ -7,6 +7,13 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-landing-class-plan-node"
+    statement: "The class actions of a landing tick (stale CI Summary reruns and refreshes, copy reruns, retargets and the author comment) are planned inside the quota cap by a definition-B node with its topics declared in the contract, and its plan and sidecar memories equal the live controller's on the same candidates."
+    acceptance:
+      - id: "AC8"
+        statement: "node_pr_landing_class_plan_compute is a contract.yaml, a declarative node and a handle(ModelLandingClassPlanRequest) -> ModelLandingClassPlanResult handler with its command and terminal topics declared in the contract."
+      - id: "AC9"
+        statement: "On a fixed set of candidates that reaches a cap that defers a dearer action while a cheaper one after it still fits, an M4 delegation PR taking the cap first, a PR the decision acts on, a copy rerun, a retarget on a new head, and the memory of a merged PR, the node returns the plan, the deferred PRs, the next sidecar memories and the summary the live class_plan returned for the same input."
   - id: "req-landing-tick-node-observe"
     statement: "The landing tick decision, fair share included, is a definition-B node with its topics declared in the contract, and observe mode reports every path where the node path differs from the live controller's decision."
     acceptance:
@@ -25,6 +32,9 @@ requirements:
         statement: "On a fixed set of ledger rows that reaches the fixer kill switch, the cause owners, the declared fixes, the cause releases, the lab PASS readbacks and the drain lane, the node returns the facts the live derivation returned for the same rows and clock."
 evidence_requirements:
   - kind: "tests"
+    description: "Execute the class plan node tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_class_plan_compute/test_landing_class_plan.py -q"
+  - kind: "tests"
     description: "Execute the tick and observe node tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute tests/unit/nodes/node_pr_landing_tick_observe_compute -q"
   - kind: "tests"
@@ -35,6 +45,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-class-plan-node"
+    description: "The class plan node's contract, handler signature and plan hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_class_plan_compute/test_landing_class_plan.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8", "AC9"]
   - id: "dod-tick-node-contract"
     description: "The tick node's contract, handler signature and fair share hold."
     source: "manual"
