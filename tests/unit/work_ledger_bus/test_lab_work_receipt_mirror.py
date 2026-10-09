@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
@@ -43,15 +44,32 @@ class _Ledger:
         return ModelAppendCommandResult(exit_code=0, stdout="appended", stderr="")
 
 
+_KEY = Ed25519PrivateKey.generate()
+
+
+def _host(bus: EventBusInmemory, ledger: _Ledger) -> WorkLedgerAppendHost:
+    # The serve process signs mirrored rows as its operator identity.
+    return WorkLedgerAppendHost(
+        bus,
+        HandlerWorkLedgerAppendEffect(
+            ledger,
+            ledger,
+            "ledger-host",
+            public_keys={"operator": _KEY.public_key()},
+            operator_principal="operator",
+        ),
+        mirror_principal="operator",
+        mirror_signing_key=_KEY,
+    )
+
+
 @pytest.mark.parametrize("failed", [False, True])
 def test_lab_work_receipt_redelivery_appends_once(failed: bool) -> None:
     async def scenario() -> None:
         bus = EventBusInmemory(environment="local", group="lab-ledger-test")
         await bus.start()
         ledger = _Ledger()
-        host = WorkLedgerAppendHost(
-            bus, HandlerWorkLedgerAppendEffect(ledger, ledger, "ledger-host")
-        )
+        host = _host(bus, ledger)
         seen: list[dict[str, object]] = []
 
         async def on_receipt(message: ProtocolBusMessage) -> None:
@@ -86,9 +104,7 @@ def test_lab_work_receipt_redelivery_appends_once(failed: bool) -> None:
                 await bus.publish(topic, b"unit", envelope.model_dump_json().encode())
                 # A restarted serve process has no in-memory dedup state.
                 await host.stop()
-                host = WorkLedgerAppendHost(
-                    bus, HandlerWorkLedgerAppendEffect(ledger, ledger, "ledger-host")
-                )
+                host = _host(bus, ledger)
                 await host.start()
             await host.drain()
             assert ledger.calls == 1
@@ -118,9 +134,7 @@ def test_append_failure_keeps_mirror_callback_failed_until_redelivery() -> None:
         bus = EventBusInmemory(environment="local", group="lab-ledger-retry-test")
         await bus.start()
         ledger = FailingLedger()
-        host = WorkLedgerAppendHost(
-            bus, HandlerWorkLedgerAppendEffect(ledger, ledger, "ledger-host")
-        )
+        host = _host(bus, ledger)
         await host.start()
         envelope = ModelEventEnvelope[dict[str, object]](
             payload={
@@ -172,9 +186,7 @@ def test_refused_mirror_append_answers_once_and_releases_the_offset() -> None:
         bus = EventBusInmemory(environment="local", group="lab-ledger-refuse-test")
         await bus.start()
         ledger = RefusingLedger()
-        host = WorkLedgerAppendHost(
-            bus, HandlerWorkLedgerAppendEffect(ledger, ledger, "ledger-host")
-        )
+        host = _host(bus, ledger)
         seen: list[dict[str, object]] = []
 
         async def on_receipt(message: ProtocolBusMessage) -> None:
@@ -210,9 +222,7 @@ def test_mirror_write_path_error_publishes_no_receipt_per_retry() -> None:
         bus = EventBusInmemory(environment="local", group="lab-ledger-noise-test")
         await bus.start()
         ledger = FailingLedger()
-        host = WorkLedgerAppendHost(
-            bus, HandlerWorkLedgerAppendEffect(ledger, ledger, "ledger-host")
-        )
+        host = _host(bus, ledger)
         seen: list[dict[str, object]] = []
 
         async def on_receipt(message: ProtocolBusMessage) -> None:

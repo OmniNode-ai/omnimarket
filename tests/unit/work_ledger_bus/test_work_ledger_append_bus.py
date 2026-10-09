@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
@@ -97,7 +98,12 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
         bus = _Bus()
         await bus.start()
         handler = _Handler()
-        host = WorkLedgerAppendHost(bus, handler)
+        host = WorkLedgerAppendHost(
+            bus,
+            handler,
+            mirror_principal="operator",
+            mirror_signing_key=Ed25519PrivateKey.generate(),
+        )
         caller = WorkLedgerAppendCaller(bus)
         await host.start()
         try:

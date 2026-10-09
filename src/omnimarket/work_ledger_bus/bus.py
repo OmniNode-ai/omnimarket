@@ -116,9 +116,15 @@ class WorkLedgerAppendHost:
         handler: ProtocolLedgerAppendHandler,
         *,
         topics: ModelWorkLedgerAppendTopics | None = None,
+        mirror_principal: str | None = None,
+        mirror_signing_key: Ed25519PrivateKey | None = None,
     ) -> None:
+        if (mirror_principal is None) != (mirror_signing_key is None):
+            raise ValueError("mirror principal and signing key are set together")
         self._bus = bus
         self._handler = handler
+        self._mirror_principal = mirror_principal
+        self._mirror_signing_key = mirror_signing_key
         self._topics = topics or load_work_ledger_append_topics()
         self._mirror = HandlerWorkLedgerBusMirror()
         self._queue: asyncio.Queue[
@@ -145,6 +151,11 @@ class WorkLedgerAppendHost:
                 "earliest",
             )
         )
+        if self._mirror_signing_key is None:
+            logger.warning(
+                "work-ledger host: no signing identity, lab terminals not mirrored"
+            )
+            return
         group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
         for topic in load_work_ledger_mirror_topics():
             self._unsubscribes.append(
@@ -244,6 +255,15 @@ class WorkLedgerAppendHost:
                     }
                 )
                 request = self._mirror.handle(mapped)
+                # The serve process signs as its own operator identity; the
+                # append handler verifies it like any other request (OMN-20282).
+                if (
+                    self._mirror_principal is not None
+                    and self._mirror_signing_key is not None
+                ):
+                    request = request.signed(
+                        self._mirror_principal, self._mirror_signing_key
+                    )
             else:
                 request = ModelWorkLedgerAppendRequest.model_validate(
                     raw.get("payload", raw)
