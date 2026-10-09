@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-name: node_merge_sweep_plan_compute
+name: node_merge_sweep_reading_compute
 version: 0.1.0
-description: Decide a merge sweep from supplied facts - the lanes one sweep dispatches,
-  the retry of a lane whose runner exited without a host and each lane's brief.
+description: Evaluate one reading of the fleet for a merge sweep from the PR watcher's
+  state, and the claim-time recheck of one PR.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:
-    node_merge_sweep_plan_compute: omnimarket.nodes.node_merge_sweep_plan_compute
+    node_merge_sweep_reading_compute: omnimarket.nodes.node_merge_sweep_reading_compute
 capabilities:
   standalone: true
   full_runtime: false
@@ -26,5 +26,5 @@ tags:
 - lab
 - merge-sweep
 pack: operator_tooling
-display_name: Merge Sweep Plan Compute
+display_name: Merge Sweep Reading Compute
 node_role: compute

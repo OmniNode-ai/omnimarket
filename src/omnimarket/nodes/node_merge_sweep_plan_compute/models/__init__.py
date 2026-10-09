@@ -3,8 +3,11 @@
 """Models of the merge-sweep decision node (OMN-20676)."""
 
 from .model_merge_sweep_plan import (
+    DEFAULT_CLAIM_CHECK_COMMAND,
     DEFAULT_MAX_LANES,
     MAX_LANES_CEILING,
+    ModelMergeSweepBrief,
+    ModelMergeSweepBriefRequest,
     ModelMergeSweepChainHead,
     ModelMergeSweepController,
     ModelMergeSweepEscalation,
@@ -31,6 +34,7 @@ from .model_merge_sweep_retry import (
 )
 
 __all__ = [
+    "DEFAULT_CLAIM_CHECK_COMMAND",
     "DEFAULT_MAX_LANES",
     "DEFAULT_RETRIES",
     "DEFAULT_RETRY_WAIT_MIN",
@@ -40,6 +44,8 @@ __all__ = [
     "MAX_LANES_CEILING",
     "RETRIES_CEILING",
     "RETRY_WAIT_CEILING_MIN",
+    "ModelMergeSweepBrief",
+    "ModelMergeSweepBriefRequest",
     "ModelMergeSweepChainHead",
     "ModelMergeSweepController",
     "ModelMergeSweepEscalation",
