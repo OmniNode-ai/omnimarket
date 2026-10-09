@@ -105,3 +105,7 @@ runtime_dispatch:
 
 externally_consumed_topics:
   - onex.evt.omnimarket.delegation-eval-sampled.v1
+
+published_events:
+  - event_type: DelegationEvalManifest
+    topic: onex.evt.omnimarket.delegation-eval-sampled.v1
