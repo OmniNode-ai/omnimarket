@@ -97,6 +97,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # secret delete`; it returns credential events for the CLI shim to fold and
     # subscribes to no topic, so it has no onex.nodes entry point.
     "node_local_secret_store_effect",
+    # OMN-20817: the model setup effect runs from `onex models`; it returns its
+    # status and test results to the CLI shim and subscribes to no topic, so it
+    # has no onex.nodes entry point.
+    "node_model_setup_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
