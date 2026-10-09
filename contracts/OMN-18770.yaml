@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18770"
+title: "Refuse success when a runtime-error snapshot is unpublished"
+summary: "RuntimeErrorFingerprintProjectionWriter raises when publish_snapshot_delta reports the snapshot was not published, so an event whose keyed fingerprint snapshot was never emitted is not acknowledged. The fingerprint row stays durable and an immediate redelivery republishes the snapshot without counting the occurrence twice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-snapshot-publication"
+    statement: |-
+      A runtime error is acknowledged only after its fingerprint snapshot was published.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: When the snapshot publisher is unavailable the writer raises RuntimeError instead of reporting success, and a retry of the same event publishes the snapshot with the fingerprint key without adding its occurrences again -- falsifier: the writer returns success after publish_snapshot_delta returned false, or the retry double counts
+      - id: "AC2"
+        statement: |-
+          AC2: Successive runtime errors advance the snapshot to the latest correlation id and timestamp, and a retry after the database upsert against real PostgreSQL leaves the persisted count at one -- falsifier: the snapshot keeps an older correlation id, or the persisted count exceeds one
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the unavailable-publisher refusal and the successful retry."
+    command: "uv run pytest tests/test_omn19721_runtime_error_fingerprint_regressions.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: successive updates and the real-PostgreSQL retry."
+    command: "uv run pytest tests/test_omn19721_runtime_error_fingerprint_regressions.py tests/test_omn18770_real_postgres_fingerprint_write_path.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18770-ac1-refusal-retry"
+    description: "AC1: the writer refuses success for an unpublished snapshot and a retry publishes it once."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19721_runtime_error_fingerprint_regressions.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18770-ac2-advance-and-retry"
+    description: "AC2: successive updates advance the snapshot and the real-PostgreSQL retry counts once."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19721_runtime_error_fingerprint_regressions.py tests/test_omn18770_real_postgres_fingerprint_write_path.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

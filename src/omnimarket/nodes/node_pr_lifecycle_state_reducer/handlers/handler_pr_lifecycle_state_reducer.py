@@ -30,6 +30,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
+from omnimarket.events.topics import CI_RED_TRIAGE_DECIDED_TOPIC_V1
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_bus_observation import (
     PR_LIFECYCLE_FIX_COMPLETED_TOPIC,
     ModelPrLifecycleBusObservation,
@@ -271,6 +272,7 @@ _RUNTIME_LOCAL_REQUIRED_KEYS = ("state", "event")
 #: can never be accepted here without an action to record for it.
 _BUS_TOPIC_LEDGER_ACTION: dict[str, EnumPrLedgerAction] = {
     PR_LIFECYCLE_FIX_COMPLETED_TOPIC: EnumPrLedgerAction.FIX,
+    CI_RED_TRIAGE_DECIDED_TOPIC_V1: EnumPrLedgerAction.FIX,
 }
 
 #: Ledger outcome per action, split on whether the producer actually dispatched

@@ -13,6 +13,7 @@ class EnumOccVerdictDifferenceReason(StrEnum):
     CIRCULAR_CONTRACT = "circular_contract"
     FINAL_NEWLINE = "final_newline"
     PR_NUMBER_ONLY_BINDING = "PR_number_only_binding"
+    CONTRACT_IN_ANOTHER_REPO = "contract_in_another_repo"
     FOREIGN_POLICY_OUTSIDE_DECLARED_MANIFEST = (
         "foreign_policy_outside_declared_manifest"
     )

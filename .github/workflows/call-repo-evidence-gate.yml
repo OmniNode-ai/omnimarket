@@ -18,9 +18,9 @@
 # released verifier used to read the caller's contracts.
 #
 # The job id is the context prefix: repo-evidence / dod-verify carries the
-# verdict, so do not add a job name. The reusable also reports a skipped
-# repo-evidence / verify job in this mode (the OCC path, switched off by the
-# input); only repo-evidence / dod-verify carries a verdict.
+# verdict, so do not add a job name. The reusable also reports a
+# repo-evidence / verify job in this mode as a success no-op (the OCC path,
+# switched off by the input); only repo-evidence / dod-verify carries a verdict.
 #
 # OMN-20072 and OMN-20073 (S5 pilot, then the S6 cut-over): repo-evidence /
 # dod-verify is required on dev by its own ruleset. During the pilot it was
@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@39ad8e5c88f607aed6a035a3241c96ed36d547a0 # OMN-20543: immutable full-SHA pin, the squash commit of omnibase_core#1886 on that repo's dev branch. Over omnibase_core#1884 (the dependency-bot and pin-only writer-app exemption, OMN-20073), the dod-verify job gives every bound test a Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, at the head and in the merge-base control, so a database test is bound with the default scope instead of local_done_gate.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@81b34fe91f995e75acd65694e81ecf2c385456a4 # OMN-17427: immutable full-SHA pin, the squash commit of omnibase_core#1912 on that repo's dev branch, the pin omnibase_core's own caller uses. It descends from omnibase_core#1884 (the dependency-bot and pin-only writer-app exemption, OMN-20073), #1886 (Postgres for bound tests, OMN-20543) and #1911, whose dod-verify job derives the writer app's dependency-pin-only exemption from the head's diff with the pinned verifier, because omnimarket no longer produces the occ-autobind outcome that exemption used to read.
     with:
       evidence-source: caller
       verifier-version: 0.4.294

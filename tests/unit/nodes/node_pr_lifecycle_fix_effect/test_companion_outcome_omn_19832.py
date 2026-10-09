@@ -384,7 +384,7 @@ class TestRuntimeHandlerEmitsTheOutcome:
         # The check-run marker is still posted, on the same head.
         assert len(reporter.calls) == 1
         assert reporter.calls[0]["head_sha"] == _HEAD
-        assert reporter.calls[0]["outcome"] is EnumAutobindOutcome.DECLINED
+        assert reporter.calls[0]["outcome"] is EnumAutobindOutcome.MINTED
 
     async def test_a_raising_producer_is_answered_with_error(
         self, reporter: _Reporter

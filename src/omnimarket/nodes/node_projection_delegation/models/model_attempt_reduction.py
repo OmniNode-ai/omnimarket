@@ -34,6 +34,7 @@ from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.delegation.deciding_cause import ladder_is_gate_decided
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
 )
@@ -122,6 +123,27 @@ class ModelDelegationAttemptReduction(BaseModel):
         return self.terminal_failure_cause is not None
 
 
+def _ladder_cause(
+    ladder: tuple[ModelDelegateSkillAttemptRecord, ...],
+    *,
+    has_quota_refusal: bool,
+) -> EnumDelegationTerminalFailureCause | None:
+    """The cause a failed ladder shows when its terminal declared none.
+
+    The gate reading comes first and matches the producers' one rule: a
+    capacity refusal on a later rung did not decide a run the gate had already
+    refused (OMN-19004). A rung that records no typed decision never reached
+    the gate and is not read as a refusal.
+    """
+    if not any(a.quality_gate_passed for a in ladder) and ladder_is_gate_decided(
+        [(a.acceptance_decision, a.acceptance_reason) for a in ladder]
+    ):
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    if has_quota_refusal:
+        return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    return None
+
+
 def reduce_delegation_attempts(
     *,
     declared_status: str,
@@ -142,7 +164,11 @@ def reduce_delegation_attempts(
     1. The **ladder** decides. If every attempt is a provider capacity
        refusal and none succeeded, the outcome is
        ``terminal_ok=False`` + ``PROVIDER_QUOTA_EXHAUSTED`` — no matter what
-       ``declared_status`` says.
+       ``declared_status`` says. A ladder the quality gate decided (at least
+       one rung answered and refused by the gate, none accepted) is
+       ``QUALITY_GATE_REFUSED`` first, which is the rule the producers apply
+       (OMN-19004), so a terminal that named no cause still lands the row with
+       the one the ladder shows (OMN-19448 AC3).
     2. Only when the ladder is empty (bus dispatch paths that do not report
        per-attempt detail) does the declared status decide ``terminal_ok``;
        a quota signal in ``error_message`` can still type the cause.
@@ -172,11 +198,7 @@ def reduce_delegation_attempts(
                 attempt_history=ladder,
                 quota_refusal_count=len(quota_refusals),
             )
-        cause = (
-            EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
-            if quota_refusals
-            else None
-        )
+        cause = _ladder_cause(ladder, has_quota_refusal=bool(quota_refusals))
         return ModelDelegationAttemptReduction(
             terminal_ok=False,
             terminal_failure_cause=cause,

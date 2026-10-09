@@ -25,8 +25,10 @@ head SHA -- the one surface a human and the merge gate both already read:
   is red, and it also gets a PR comment (a check-run alone is a line in a
   rollup; a comment is a notification).
 * ``DECLINED`` -> ``conclusion: neutral``. A policy decision the emitter made on
-  purpose (lease held, mergeability suppression, already bound, dry run). It
+  purpose (lease held, mergeability suppression, dry run). It
   must be legible, but it must never newly block a merge.
+* ``NOOP``     -> ``conclusion: neutral``. The companion was already bound or
+  the stamp was repaired; no new companion was needed (OMN-18939).
 * ``MINTED``   -> ``conclusion: success``. Recorded so a *missing* outcome is
   distinguishable from a passing one: a check surface that only ever appears on
   failure cannot tell "it worked" from "nobody ran it", and telling those apart
@@ -78,12 +80,14 @@ class EnumAutobindOutcome(StrEnum):
     """Terminal disposition of one consumed occ-autobind command."""
 
     MINTED = "MINTED"
+    NOOP = "NOOP"
     DECLINED = "DECLINED"
     ERROR = "ERROR"
 
 
 _CONCLUSION_BY_OUTCOME: dict[EnumAutobindOutcome, str] = {
     EnumAutobindOutcome.MINTED: "success",
+    EnumAutobindOutcome.NOOP: "neutral",
     EnumAutobindOutcome.DECLINED: "neutral",
     EnumAutobindOutcome.ERROR: "failure",
 }
@@ -115,6 +119,9 @@ def render_outcome_summary(
         f"and handled by the effects runtime. Its terminal disposition was "
         f"**{outcome.value}**.\n\n"
         f"Reason: {flat_reason}\n\n"
+        f"`MINTED` records companion authoring, independently of stamp "
+        f"verification. `NOOP` records an existing binding or stamp repair. "
+        f"Read-back verification remains a separate landing requirement. "
         f"An `ERROR` outcome means the OCC evidence companion will NOT appear "
         f"without intervention -- do not wait on it. A `DECLINED` outcome is a "
         f"deliberate policy decision and never blocks a merge (OMN-18069)."
