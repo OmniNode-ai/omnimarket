@@ -1,0 +1,81 @@
+
+ROUTE: band=B4 score=15 dims=S2A2R3V3N1C2J2 dest=opus-lane model=opus effort=high
+{{common}}
+LANE: arch-discovery-report. Run date: {{date}}.
+INPUTS: linear {{linear}}; marketplace {{marketplace}}; plans {{plans}}; process {{process}}; adjudication {{adjudication}}.
+The output format is a CONTRACT — read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md and
+reproduce its section spec EXACTLY, in order. A section with nothing in it prints its heading and the
+literal "none this run" — never omit a heading, because a missing heading is indistinguishable from a
+missed scan.
+
+{{kb_root}}
+
+WORKTREE SETUP (OMN-18071)
+  KB_CLONE="$KB"
+  KB="$OMNI_HOME/omni_worktrees/OMN-17235-arch-discovery-{{date}}/knowledge-base-internal"
+  python3 "$OMNI_HOME/omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py" refresh OmniNode-ai/knowledge-base-internal --branch main --wait || exit 1
+  KB_BASE=$(git -C "$KB_CLONE" rev-parse refs/remotes/origin/main) || exit 1
+  if [ -e "$KB" ]; then
+    [ -f "$KB/.git" ] && [ "$(git -C "$KB" rev-parse --show-toplevel)" = "$KB" ] &&
+      [ "$(git -C "$KB" rev-parse --path-format=absolute --git-common-dir)" = "$(git -C "$KB_CLONE" rev-parse --path-format=absolute --git-common-dir)" ] || { echo "BLOCKED: existing path is not this clone's linked worktree"; exit 1; }
+    KB_STATUS=$(git -C "$KB" status --porcelain --untracked-files=all) || exit 1
+    [ -z "$KB_STATUS" ] || { echo "BLOCKED: existing worktree is dirty; preserve it and report its owner"; exit 1; }
+    if [ "$(git -C "$KB" branch --show-current)" != "automation/omn-17235-arch-discovery-{{date}}" ]; then
+      git -C "$KB" merge-base --is-ancestor HEAD "$KB_BASE" || { echo "BLOCKED: prior branch has unmerged work; preserve it and report its owner"; exit 1; }
+      if git -C "$KB" show-ref --verify --quiet refs/heads/automation/omn-17235-arch-discovery-{{date}}; then
+        git -C "$KB" merge-base --is-ancestor automation/omn-17235-arch-discovery-{{date}} "$KB_BASE" || { echo "BLOCKED: target branch has unmerged work"; exit 1; }
+      fi
+      git -C "$KB" switch -C automation/omn-17235-arch-discovery-{{date}} "$KB_BASE" || exit 1
+    fi
+  else
+    git -C "$KB_CLONE" worktree add "$KB" -b automation/omn-17235-arch-discovery-{{date}} "$KB_BASE" || exit 1
+  fi
+  cd "$KB" || exit 1
+END WORKTREE SETUP
+Run this setup BEFORE generating or writing artifacts. $KB now means the isolated worktree for every artifact path, scrub, commit and push. $KB_CLONE is read-only except for sanctioned refresh and worktree registration; its checkout and index stay unchanged. A clean same-run branch keeps prior phases' commits. A clean prior-date branch is re-branched from the refreshed revision only after its commits are proven merged; dirty, unmerged or foreign work is BLOCKED and preserved. Never silently reuse a prior date's branch. Check ledger ownership before using an existing worktree; a live peer owner is BLOCKED.
+
+TASK 1 — write $KB/beta/tracking/{{date}}-architecture-work-discovery.md. Sections, in this order:
+  1. "## Run header" — run date; whether the sprint resolved live (and the failing command if not);
+     each source scanned with what was actually read (resolved paths, dereferenced symlinks, tick
+     ids, inventory counts); for plans, the RULE 4 read-set numbers — total enumerated, read set
+     size, unread tail size, and the literal R1 command — so the read boundary is legible rather
+     than implied; the substrate probe result; unreadable sources with their failing commands. Full
+     scan every run — state that plainly, and state the one bounded exception: RULE 4 opens a
+     DEFINED plan read set (recency window + candidate-named), never all 643, with the tail safe by
+     fail-closed default. A reader must never have to wonder what was skipped.
+  2. "## Built-but-unintegrated inventory" — artifact | kind | verdict | signal that fired (S1/S2/S3,
+     and for S2 whether the topic is unconsumed or never-emitted) | citation (file:line) |
+     integration delta (the file and the missing declaration) | executability verdict. Carry RULE 1's
+     hard rule as a one-line note under the heading: this is a DECLARATION fact, not an event-flow
+     fact, and no row claims the thing does or does not run.
+  3. "## Non-beta architecture backlog" — ticket(s) | title | state | owner (OWNERLESS called out) |
+     age | executability verdict | failing clause if not executable | citation. Sorted OWNERLESS
+     first, then oldest first.
+  4. "## Process-automation candidates" — sweep row | citation | DELEGABLE/NOT-DELEGABLE | failing
+     clause | task_type | the machine verification that closes the loop. Then a short
+     "### Automation delta" subsection: what would have to change for the sweep to DISPATCH rather
+     than LIST, naming the file and the seam. That subsection is the operator's actual ask; do not
+     bury it.
+  5. "## Collaborator slate" — one subsection per lane, in the order {{slate_order}}. When
+     args.profiles is empty this section IS the unassigned inventory: say so explicitly in the
+     section intro rather than printing an empty table. Per row: item | why it suits them (matched
+     surface, or the exclusion clause) | acceptance check | citations. An empty profile lane prints
+     "none this run" plus the one-line reason the eligible items failed that profile's suitability
+     test.
+  6. "## Gated and excluded" — gated plans with their quoted gate sentence, then excluded items with
+     the rule that excluded them. Nothing disappears silently: an item that was gathered and not
+     slated appears here with its reason.
+Hard rules: under 250 lines; tables over prose; every row carries its citation; no speculation — an
+unread source is UNKNOWN with its failing command, never an empty section implying "nothing found".
+Do not restate the classification rules in the report — link to the format contract instead. The
+report is findings; the contract is rules.
+
+TASK 2 — state file. {{state_instruction}}
+
+TASK 3 — commit, in the isolated kb-internal worktree:
+  uv run --project "$OMNI_HOME/../omnibase_internal" onex-shared-doc-scrub --write <every path you just wrote>
+    MANDATORY, and it runs BEFORE the commit, not after a hook rejects you (OMN-17235). Exit 0 = clean or repaired. Exit 1 = a local path with no portable form — fix the citation, never commit around it. Exit 2 = REFUSED on the register rule: the document quotes heated or profane operator language verbatim. Re-render that passage as an attributed professional paraphrase carrying its date and its firmness, then re-run. Nothing was written on a refusal, so the file you hold is the file you wrote. Never edit the helper, its wordlist or its patterns to make a document pass.
+  git -C "$KB" commit --only beta/tracking/{{date}}-architecture-work-discovery.md{{state_commit_path}} -m "docs(OMN-17235): architecture work discovery {{date}} — <n> unintegrated, <n> non-beta, <n> delegable, <n> slated"
+Full pre-commit hooks, no bypass flags, no --no-verify — knowledge-base-internal runs check_no_local_paths.py and check_beta_layout.py as hooks and as required checks. If a hook rejects the commit, report its output verbatim rather than working around it.
+Then run git -C "$KB" push -u origin automation/omn-17235-arch-discovery-{{date}} and open ONE PR. Hand the PR to landing-controller through /omni:pr-handoff; never merge, arm, rerun or poll CI. Return the commit SHA.
+Ledger rows (CLAIM then TERMINAL). Return per schema.

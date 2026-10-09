@@ -6,21 +6,10 @@ There was NO same-tier fallback. If the selected local backend's endpoint
 failed (a TRANSPORT/inference error, not a quality-gate rejection), the
 router escalated the ENTIRE ``local`` tier straight to ``cheap_cloud`` without
 ever trying a sibling local backend that also declares the task type.
-``routing_tiers.yaml``'s ``local`` tier carries TWO backends for
-``research`` (``local-heavy-reasoning``, ``local-ds-v4-flash``) — before this
-fix, a failure on whichever one ``delta()`` picked first
-(``local-heavy-reasoning``, per the OMN-14396 id-collision fix) escalated
-straight past the healthy local sibling.
-
-OMN-16442: this chain was THREE backends until ``local-reasoner`` (.201:8001)
-was retired — that endpoint is the RTX 4090 slot physically removed from .201
-for RMA (OMN-16407; re-probed 2026-08-28, curl exit 7 "Couldn't connect to
-server"). The chain is one hop shorter but every remaining hop now reaches a
-LIVE endpoint, which is the property these tests actually protect.
-
-This is acute right now: z.ai is 429-exhausted until 2026-07-16, so a single
-local-backend transport failure used to fail the delegation outright while a
-healthy local sibling sat idle.
+The fixture tier carries two distinct research backends. A transport failure
+must retry the sibling before escalating to the metered tier. The product's
+local backends share one physical endpoint; the distinct sibling here is
+synthetic and supplied only by the test contract.
 
 Two test tiers:
 
@@ -30,7 +19,7 @@ Two test tiers:
     ``test_retry_local_omn14234.py``'s ``retry_local_env`` fixture style).
   * ``TestSameTierBackendFallbackRealDispatchChain`` — drives the REAL
     dispatch path (routing reducer's ``delta()`` via ``HandlerRoutingIntent``)
-    against the committed ``routing_tiers.yaml`` + ``task_class_contracts.v1.
+    against the synthetic ``routing_tiers.yaml`` + ``task_class_contracts.v1.
     yaml``, task_type ``research``, proving the sibling selection + the
     "no cloud call until every local sibling is exhausted" bound end to end —
     the real regression this ticket closes (memory
@@ -239,11 +228,11 @@ class TestSelectModelForTaskExcludesBackends:
 _LADDER_NEXT: dict[str, str] = {"local": "cheap_cloud", "cheap_cloud": "claude"}
 # Deterministic, config-declared ordering (routing_tiers.yaml declaration
 # order for "research"): local-heavy-reasoning is selected first (OMN-14396
-# id-collision pin), then local-ds-v4-flash.
+# id-collision pin), then local-fixture-sibling.
 # OMN-16442: local-reasoner removed from this order — retired dead endpoint.
 _LOCAL_RESEARCH_BACKEND_ORDER: tuple[str, ...] = (
     "local-heavy-reasoning",
-    "local-ds-v4-flash",
+    "local-fixture-sibling",
 )
 
 
@@ -418,7 +407,7 @@ class TestSiblingFallbackFsmMechanics:
         handler.handle_routing_decision(_make_routing_decision(cid, "local-reasoner"))
         handler.handle_inference_response(_error_response(cid))
         handler.handle_routing_decision(
-            _make_routing_decision(cid, "local-ds-v4-flash")
+            _make_routing_decision(cid, "local-fixture-sibling")
         )
 
         events = handler.handle_inference_response(_error_response(cid))
@@ -429,7 +418,7 @@ class TestSiblingFallbackFsmMechanics:
             "every local sibling failed -- NOW it must escalate off the tier"
         )
         assert routing[0].excluded_backend_refs == (
-            "local-ds-v4-flash",
+            "local-fixture-sibling",
             "local-heavy-reasoning",
             "local-reasoner",
         ), "a cross-tier re-route must not forget transport-failed backends"
@@ -610,26 +599,11 @@ def _real_request(task_type: str = "research") -> ModelDelegationRequest:
 
 @pytest.mark.unit
 class TestSameTierBackendFallbackRealDispatchChain:
-    """Drives the REAL routing reducer (delta() via HandlerRoutingIntent)
-    against routing_tiers.yaml + task_class_contracts.v1.yaml — the live
-    regression this ticket closes, not handler isolation (memory
-    feedback_real_dispatch_path_tests).
+    """Exercise the real routing reducer and workflow with a synthetic sibling.
 
-    OMN-16833: the two tests below now bind ``routing_tiers_with_local_sibling``
-    rather than the committed tiers file, because the committed file no longer
-    gives ANY task class two distinct local backends. The fleet's only second
-    local endpoint (local-ds-v4-flash at .200:8101) is stopped — every lane
-    overlay marks it ``serving: false`` (OMN-16999), every lane renders it
-    ``endpoint_url: null``, and ``_load_bifrost_endpoints`` drops it — and
-    local-coder / local-heavy-reasoning are two backend_ids on the SAME physical
-    endpoint, so they were never a real retry sibling for each other.
-
-    These tests were previously green against the committed config purely
-    because it still DECLARED that dropped rung, so they were proving a routing
-    path the fleet does not have. The fixture supplies the world in which
-    .200:8101 is back, which is the only world where OMN-14402's guarantee is
-    meaningful; the committed config's honest state is asserted separately by
-    tests/test_routing_tiers_contract.py.
+    The packaged tier has one physical chat endpoint. The fixture supplies a
+    distinct backend on a .test host so transport fallback remains exercised
+    without declaring a nonexistent endpoint in the product.
     """
 
     def test_transport_failure_falls_back_to_local_sibling_not_cloud(
@@ -677,8 +651,8 @@ class TestSameTierBackendFallbackRealDispatchChain:
             "cloud tier -- this is the live regression proof"
         )
         # OMN-16442: was "local-reasoner" (retired, dead endpoint); the next
-        # live sibling for "research" is local-ds-v4-flash (.200:8101).
-        assert sibling_decision.selected_backend_ref == "local-ds-v4-flash"
+        # synthetic sibling for "research" is local-fixture-sibling.
+        assert sibling_decision.selected_backend_ref == "local-fixture-sibling"
         assert sibling_decision.endpoint_url != decision.endpoint_url
 
     def test_all_local_siblings_exhausted_then_escalates_to_cheap_cloud(
@@ -699,9 +673,9 @@ class TestSameTierBackendFallbackRealDispatchChain:
         workflow.handle_routing_decision(decision)
 
         # Failure 1: local-heavy-reasoning -> retry excludes it, lands on
-        # local-ds-v4-flash.
+        # local-fixture-sibling.
         # OMN-16442: this used to land on local-reasoner first; that backend
-        # was retired with the removed .201 GPU1, so local-ds-v4-flash is now
+        # was retired with the removed .201 GPU1, so local-fixture-sibling is now
         # the second and LAST local rung for "research".
         events = workflow.handle_inference_response(
             _error_response(
@@ -712,10 +686,10 @@ class TestSameTierBackendFallbackRealDispatchChain:
         assert retry_1.min_tier_name == "local"
         decision_2 = routing_handler.handle(retry_1)
         assert decision_2.tier_name == "local"
-        assert decision_2.selected_backend_ref == "local-ds-v4-flash"
+        assert decision_2.selected_backend_ref == "local-fixture-sibling"
         workflow.handle_routing_decision(decision_2)
 
-        # Failure 2: local-ds-v4-flash -- every local sibling for "research"
+        # Failure 2: local-fixture-sibling -- every local sibling for "research"
         # has now failed. THIS is where cross-tier escalation must fire.
         events = workflow.handle_inference_response(
             _error_response(

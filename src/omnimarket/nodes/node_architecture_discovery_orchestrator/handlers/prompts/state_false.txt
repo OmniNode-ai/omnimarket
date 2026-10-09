@@ -1,0 +1,1 @@
+writeState=false: do NOT write beta/tracking/architecture-work-discovery-state.json. Return state_path as the literal string "not written (writeState=false)". The state file is optional by design — this process full-scans every run and carries no watermark.

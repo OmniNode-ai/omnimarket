@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_throughput_tick_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the merge-throughput tick (OMN-20686). Turns the
+  facts a caller read (launchd state and the PID's elapsed time, the landing controller's
+  last tick lines, heartbeat and state.json, the PR watcher's state, the per-repo landing
+  floors and the landing policy's land-like-operator logins) into the tick's finding lines
+  and status line: controller liveness, merges per hour, repositories under their landing
+  floor, and escalated PRs with the cause lease or park that covers them. Reads no files,
+  runs no process, has no clock (the caller supplies now), mutates nothing. Behaviour-preserving
+  port of the controller, merges, floors and escalation findings of the retired
+  throughput_tick.py; the lab-headroom finding is not ported by this node yet.
+input_model:
+  name: ModelThroughputTickRequest
+  module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
+output_model:
+  name: ModelThroughputTickResult
+  module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
+handler:
+  module: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision
+  class: HandlerThroughputTickDecision
+  input_model: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision.ModelThroughputTickRequest
+  output_model: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision.ModelThroughputTickResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision:HandlerThroughputTickDecision
+  handlers:
+    - operation: decide_throughput_tick
+      handler:
+        name: HandlerThroughputTickDecision
+        module: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: ISO-Z time of the tick.}
+  controller_max_minutes: {type: int, required: false}
+  controller_run_max_minutes: {type: int, required: false}
+  watcher_max_minutes: {type: int, required: false}
+  min_merges_per_hour: {type: int, required: false}
+  launchctl: {type: str, required: true, enum: [loaded, not_loaded, unavailable]}
+  launchctl_error: {type: str, required: false}
+  launchctl_stdout: {type: str, required: false}
+  pid_etime: {type: str, required: false, description: Stripped ps etime output for the launchd PID.}
+  ticks: {type: list, required: false, description: Newest complete controller tick lines, newest first, at most two.}
+  ticks_error: {type: str, required: false}
+  heartbeat_text: {type: str, required: false}
+  state_json: {type: object, required: false}
+  watcher_path: {type: str, required: false}
+  watcher_state: {type: object, required: false}
+  watcher_read_error: {type: str, required: false}
+  floors_per_repo: {type: object, required: false}
+  floors_error: {type: str, required: false}
+  policy_load_error: {type: str, required: false}
+  policy_error: {type: str, required: false}
+  land_like_operator: {type: list, required: false}
+outputs:
+  lines: {type: list}
+  status_line: {type: str}
+  missing: {type: list}
+  unknown: {type: list}
+  checked: {type: list}
+  exit_code: {type: int}
+terminal_event: onex.evt.omnimarket.throughput-tick-decision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.throughput-tick-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.throughput-tick-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.throughput-tick-decision-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.throughput-tick-decision-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Merge-throughput tick decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20686]

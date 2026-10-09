@@ -515,6 +515,7 @@ class TestGateOutcomePair:
 
 class TestOperationalOutcomeMaps:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("artifact", [None, {}])
     @pytest.mark.parametrize(
         ("lifecycle", "outcome"),
         [
@@ -528,6 +529,7 @@ class TestOperationalOutcomeMaps:
         self,
         lifecycle: EnumAgentTaskLifecycleType,
         outcome: EnumDelegationOperationalOutcome,
+        artifact: dict[str, ModelSchemaValue] | None,
     ) -> None:
         cid = uuid4()
         handler = HandlerDelegationWorkflow()
@@ -566,6 +568,7 @@ class TestOperationalOutcomeMaps:
                     task_id=uuid4(),
                     correlation_id=cid,
                     lifecycle_type=lifecycle,
+                    artifact=artifact,
                     error="remote agent returned no final artifact",
                     occurred_at=datetime.now(UTC),
                 )
@@ -601,8 +604,10 @@ class TestOperationalOutcomeMaps:
         assert await handler.handle(event) == []
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("artifact", [None, {}])
     async def test_remote_completion_without_artifact_is_not_a_quality_score(
         self,
+        artifact: dict[str, ModelSchemaValue] | None,
     ) -> None:
         cid = uuid4()
         handler = _routed_workflow(cid)
@@ -610,15 +615,21 @@ class TestOperationalOutcomeMaps:
             task_id=uuid4(),
             correlation_id=cid,
             lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+            artifact=artifact,
             occurred_at=datetime.now(UTC),
         )
 
-        terminal = _only_terminal(await handler.handle(event))
+        output = await handler.handle_async(event)
+        assert output.correlation_id == cid
+        terminal = _only_terminal(list(output.events))
 
         _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
         assert terminal.content == ""
+        assert (
+            terminal.failure_reason == "remote agent completed without a final artifact"
+        )
         assert handler.workflows[cid].state is EnumDelegationState.FAILED
-        assert await handler.handle(event) == []
+        assert (await handler.handle_async(event)).events == ()
 
     @pytest.mark.asyncio
     async def test_remote_completion_with_artifact_remains_usable(self) -> None:
@@ -632,7 +643,9 @@ class TestOperationalOutcomeMaps:
             occurred_at=datetime.now(UTC),
         )
 
-        terminal = _only_terminal(await handler.handle(event))
+        output = await handler.handle_async(event)
+        assert output.correlation_id == cid
+        terminal = _only_terminal(list(output.events))
 
         assert isinstance(terminal, ModelDelegationCompleted)
         assert terminal.operational_outcome is _OUTCOME.COMPLETED
@@ -640,7 +653,7 @@ class TestOperationalOutcomeMaps:
         assert terminal.quality_score == 1.0
         assert terminal.content == '{"answer": "valid artifact"}'
         assert handler.workflows[cid].state is EnumDelegationState.COMPLETED
-        assert await handler.handle(event) == []
+        assert (await handler.handle_async(event)).events == ()
 
     @pytest.mark.parametrize(
         ("failure_class", "outcome"),

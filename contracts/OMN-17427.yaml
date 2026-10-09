@@ -128,6 +128,13 @@ requirements:
       - id: "AC22"
         statement: |-
           AC22: node_branch_claim_check_effect declares runtime_profiles [main] and every contract declaring runtime_lanes is owned by main only -- falsifier: uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q fails at the merge base
+  - id: "req-bound-selector-names-file"
+    statement: |-
+      Every pytest check bound to an acceptance criterion in a repo contract names its target by a test file (or a tests directory), because the repo evidence gate refuses a bare directory selector and that refusal turns Tests (Split 2/20) red on every open pull request.
+    acceptance:
+      - id: "AC23"
+        statement: |-
+          AC23: every binds_ac pytest check in contracts/OMN-*.yaml names an existing .py file or a /tests directory, and dod-omn-20429-ac4 names the golden chain test file -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
@@ -186,6 +193,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Every lane-scoped node contract is owned by the main runtime profile only."
     command: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+  - kind: "tests"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    command: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -343,3 +353,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC22"]
+  - id: "dod-omn17427-ac23-bound-selector-names-file"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC23"]

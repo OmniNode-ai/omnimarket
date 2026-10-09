@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20474"
+title: "delegation judged acceptance: a pure fold turns judged verdicts into per model, task type and kind cells with n, accepts and a Wilson interval"
+summary: "A pure fold in node_projection_delegation_judged_acceptance turns judged verdicts into per model, task type and kind cells with n, accepts and a Wilson interval. Underpowered cells have no row, uncalibrated judge runs are refused and counted, liveness probes never enter a cell, edit-loop turns fold under their own kind, and the rows do not depend on arrival order."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-cell-rate"
+    statement: "A cell's rate is accepts over judged items."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: accepts over judged items is the cell rate and terminal_ok never contributes"
+  - id: "req-power-and-calibration"
+    statement: "Underpowered cells and uncalibrated judge runs never produce a rate."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a cell under 15 verdicts has no row, and a verdict from a judge run with agreement under 0.75 or kappa under 0.60 is refused and counted"
+  - id: "req-kinds"
+    statement: "Liveness probes are excluded and edit-loop turns keep their own kind."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: liveness probes never enter a cell and edit-loop turns fold under their own kind"
+  - id: "req-order-independence"
+    statement: "The fold's rows do not depend on event arrival order."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: every permutation and redelivery of a fixed event set gives the same rows, and a last-write-by-arrival mutant fails that test"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the cell rate is accepts over judged items and terminal_ok never contributes."
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k judged_acceptance_fold -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: underpowered cells have no row and uncalibrated judge runs are refused."
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: probes are excluded and loop turns fold under their own kind."
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: permutations and redeliveries give the same rows and the arrival-order mutant fails."
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20474-ac1-cell-rate"
+    description: "AC1: the cell rate is accepts over judged items and terminal_ok never contributes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k judged_acceptance_fold -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20474-ac2-power-and-calibration"
+    description: "AC2: underpowered cells have no row and uncalibrated judge runs are refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20474-ac3-kinds"
+    description: "AC3: probes are excluded and loop turns fold under their own kind."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20474-ac4-order-independence"
+    description: "AC4: permutations and redeliveries give the same rows and the arrival-order mutant fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

@@ -1,0 +1,22 @@
+name: node_delegate_fanout_effect
+version: "1.0.0"
+description: "Effect: admit labeled delegation tasks, publish each admitted task once through the delegation client, and render every receipt or refusal with no caller retries."
+pack: pipeline
+node_role: effect
+display_name: "Delegate Fanout Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegate_fanout_effect: "omnimarket.nodes.node_delegate_fanout_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: network
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "delegation", "fanout"]

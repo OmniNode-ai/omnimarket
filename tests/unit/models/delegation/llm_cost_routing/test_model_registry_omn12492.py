@@ -6,7 +6,6 @@
 Verifies that the 2026-05-30 registry refresh correctly contains:
 - Updated local model facts for Qwen3.6-35B-A3B (.201:8000) and
   Qwen3.6-27B-MTP (.201:8001) under the stable routing keys
-- New ds-v4-flash entry (DeepSeek V4 Flash on .200:8101)
 - Cloud Gemini Flash entry, retargeted to gemini-2.5-flash-lite (OMN-12937)
 - New openrouter-nemotron-ultra entry (cheap frontier direct)
 - All new entries pass existing registry invariants
@@ -75,20 +74,6 @@ class TestOmn12492LocalModelFacts:
         assert model.model_name == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
         assert model.endpoint_env == "LLM_CODER_FAST_URL"
         assert model.context_window == 114688
-
-    def test_ds_v4_flash_present(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """ds-v4-flash entry present for DeepSeek V4 Flash on .200:8101."""
-        model = registry.get_model("ds-v4-flash")
-        assert model.provider == "local"
-        assert model.endpoint_env == "LLM_DS_V4_FLASH_URL"
-        assert model.model_name == "deepseek-v4-flash"
-        assert model.context_window == 65536
-        assert model.cost_basis == EnumCostBasis.ZERO_MARGINAL_API_COST
-
-    def test_ds_v4_flash_zero_cost(self, registry) -> None:  # type: ignore[no-untyped-def]
-        model = registry.get_model("ds-v4-flash")
-        assert model.pricing_per_1m_input == Decimal("0.00")
-        assert model.pricing_per_1m_output == Decimal("0.00")
 
 
 @pytest.mark.unit
@@ -190,7 +175,6 @@ class TestOmn12492RegistryInvariants:
     """All new models satisfy the existing registry invariants."""
 
     NEW_MODEL_IDS = [
-        "ds-v4-flash",
         "gemini-2.5-flash-lite",
         "openrouter-nemotron-ultra",
     ]
