@@ -1,0 +1,475 @@
+{
+  "source_commit": "fb45651168a1bb5390f5120ceee0fe61b36111d3",
+  "source_sha256": "0a69cc9f13dcd2ce8d9a0192368906f32c8357857f15825d96d7a3b6a81badbc",
+  "items": [
+    {},
+    {
+      "label": "empty"
+    },
+    {
+      "label": "a",
+      "prompt": "Name one thing."
+    },
+    {
+      "label": "a",
+      "prompt": "The answer is Paris"
+    },
+    {
+      "label": "a",
+      "prompt": "Write a report"
+    },
+    {
+      "label": "a",
+      "prompt": "Write an outline",
+      "task_type": "document"
+    },
+    {
+      "label": "a",
+      "prompt": "List tests",
+      "test_shaped": true
+    },
+    {
+      "label": "a",
+      "prompt": "List tests",
+      "test_shaped": true,
+      "task_type": "planning"
+    },
+    {
+      "label": "a",
+      "prompt": "Reply with exactly the word READY"
+    },
+    {
+      "label": "a",
+      "prompt": "Summarize x",
+      "criteria": "free text"
+    },
+    {
+      "label": "a",
+      "prompt": "Summarize x",
+      "criteria": [
+        "comma,joined"
+      ]
+    },
+    {
+      "label": "a",
+      "prompt": "Summarize x",
+      "criteria": [
+        "valid-slug",
+        "other:slug"
+      ]
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": 0
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": -1
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": 1
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": 240
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": 1.2
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": "30"
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": true
+    },
+    {
+      "label": "t",
+      "prompt": "Name x",
+      "timeout_s": null
+    },
+    {
+      "label": "a",
+      "prompt": "  WRITE A report"
+    },
+    {
+      "label": "a",
+      "prompt": "123 Invalid"
+    }
+  ],
+  "reads": [
+    {},
+    {
+      "terminal": "completed",
+      "correlation_id": "c-1",
+      "run_id": "r-1",
+      "quality": 0.9,
+      "model": "model",
+      "cost_usd": 0,
+      "wall_ms": 16751,
+      "response": "Paris",
+      "artifacts": "artifacts"
+    },
+    {
+      "terminal": "failed",
+      "correlation_id": "c-2",
+      "run_id": "r-2",
+      "terminal_failure_cause": "provider_quota_exhausted",
+      "response": ""
+    },
+    {
+      "terminal": "NO_RECEIPT",
+      "last_stdout_line": "refused"
+    },
+    {
+      "terminal": "cancelled",
+      "response": "not done"
+    }
+  ],
+  "texts": [
+    "plain response",
+    "ONEX_FANOUT_ROW {\"response\":\"The answer\"}",
+    "prefix ONEX_FANOUT_ROW {\"response\":\" inside  |  answer \\n next\"}",
+    "ONEX_FANOUT_ROW {broken",
+    "ONEX_FANOUT_ROW {\"terminal\":\"failed\"}",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "ONEX_FANOUT_ROW {\"response\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  ],
+  "expected": {
+    "admission": [
+      {
+        "ok": false,
+        "reason": "item carries no label; a row with no label cannot be reported"
+      },
+      {
+        "ok": false,
+        "reason": "item empty carries an empty prompt"
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item a: the prompt opens with \"the\", which is not in the declared imperative-verb allowlist. A delegated prompt states a task; open it with a verb. If \"the\" is a legitimate imperative, add it to IMPERATIVE_VERBS -- do not loosen the check."
+      },
+      {
+        "ok": false,
+        "reason": "item a: the prompt opens with \"write a\"/\"write an\" and declares no task_type. With the class unstated it resolves from the contract's selection predicates, and that opener claims the prompt for code_generation, so prose is then graded against a code rubric. State task_type (e.g. document, summarization, planning) and re-run."
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item a: the item is marked test_shaped and declares no task_type. The auto-classifier currently routes test-shaped prose to code_generation and grades it against a code rubric (four measured failures, 2026-09-21). State the class you want -- planning and document both work for prose about tests; test is for producing the tests themselves."
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item a: criteria must be an array of declared slugs"
+      },
+      {
+        "ok": false,
+        "reason": "item a: criterion \"comma,joined\" is not a declared slug. --criteria is repeatable and takes one slug per occurrence; comma-joined free text is a CLI usage error that produces no correlation id."
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item t: timeout_s must be a positive integer number of seconds"
+      },
+      {
+        "ok": false,
+        "reason": "item t: timeout_s must be a positive integer number of seconds"
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item t: timeout_s must be a positive integer number of seconds"
+      },
+      {
+        "ok": false,
+        "reason": "item t: timeout_s must be a positive integer number of seconds"
+      },
+      {
+        "ok": false,
+        "reason": "item t: timeout_s must be a positive integer number of seconds"
+      },
+      {
+        "ok": true
+      },
+      {
+        "ok": false,
+        "reason": "item a: the prompt opens with \"write a\"/\"write an\" and declares no task_type. With the class unstated it resolves from the contract's selection predicates, and that opener claims the prompt for code_generation, so prose is then graded against a code rubric. State task_type (e.g. document, summarization, planning) and re-run."
+      },
+      {
+        "ok": false,
+        "reason": "item a: the prompt opens with no word, which is not in the declared imperative-verb allowlist. A delegated prompt states a task; open it with a verb. If this word is a legitimate imperative, add it to IMPERATIVE_VERBS -- do not loosen the check."
+      }
+    ],
+    "rows": [
+      {
+        "label": "probe",
+        "lane": "dev",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal": "NO_RECEIPT",
+        "terminal_failure_cause": null,
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "result_excerpt": "",
+        "last_stdout_line": null
+      },
+      {
+        "label": "probe",
+        "lane": "dev",
+        "correlation_id": "c-1",
+        "run_id": "r-1",
+        "terminal": "completed",
+        "terminal_failure_cause": null,
+        "quality": 0.9,
+        "model": "model",
+        "cost_usd": 0,
+        "wall_ms": 16751,
+        "artifacts": "artifacts",
+        "result_excerpt": "Paris",
+        "last_stdout_line": null
+      },
+      {
+        "label": "probe",
+        "lane": "dev",
+        "correlation_id": "c-2",
+        "run_id": "r-2",
+        "terminal": "failed",
+        "terminal_failure_cause": "provider_quota_exhausted",
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "result_excerpt": "",
+        "last_stdout_line": null
+      },
+      {
+        "label": "probe",
+        "lane": "dev",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal": "NO_RECEIPT",
+        "terminal_failure_cause": null,
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "result_excerpt": "",
+        "last_stdout_line": "refused"
+      },
+      {
+        "label": "probe",
+        "lane": "dev",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal": "cancelled",
+        "terminal_failure_cause": null,
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "result_excerpt": "not done",
+        "last_stdout_line": null
+      }
+    ],
+    "excerpts": [
+      "plain response",
+      "The answer",
+      "inside | answer next",
+      "ONEX_FANOUT_ROW {broken",
+      "ONEX_FANOUT_ROW {\"terminal\":\"failed\"}",
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2026",
+      "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\u2026"
+    ],
+    "refusal": {
+      "label": "bad",
+      "lane": "dev",
+      "correlation_id": null,
+      "run_id": null,
+      "terminal": "REFUSED_PRECHECK",
+      "terminal_failure_cause": "reason",
+      "quality": null,
+      "model": null,
+      "cost_usd": null,
+      "wall_ms": null,
+      "artifacts": null,
+      "result_excerpt": "",
+      "last_stdout_line": null
+    },
+    "closeout": "delegate_receipts=2 correlation_ids=c-1,c-2 failed=4",
+    "table": "| label | correlation_id | run_id | terminal | terminal_failure_cause | quality | model | cost_usd | wall_ms | artifacts | result_excerpt |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| probe | -- | -- | NO_RECEIPT | -- | -- | -- | -- | -- | -- |  |\n| probe | c-1 | r-1 | completed | -- | 0.9 | model | 0 | 16751 | artifacts | Paris |\n| probe | c-2 | r-2 | failed | provider_quota_exhausted | -- | -- | -- | -- | -- |  |\n| probe | -- | -- | NO_RECEIPT | -- | -- | -- | -- | -- | -- |  |\n| probe | -- | -- | cancelled | -- | -- | -- | -- | -- | -- | not done |"
+  },
+  "reader_cases": [
+    {
+      "receipt": null,
+      "marker": "",
+      "stdout": "one\nlast\n",
+      "stderr": "err",
+      "expected": {
+        "terminal": "NO_RECEIPT",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal_failure_cause": "no run directory was created",
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "response": "",
+        "last_stdout_line": "last"
+      }
+    },
+    {
+      "receipt": null,
+      "marker": "",
+      "stdout": "",
+      "stderr": "err",
+      "expected": {
+        "terminal": "NO_RECEIPT",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal_failure_cause": "no run directory was created",
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "response": "",
+        "last_stdout_line": "err"
+      }
+    },
+    {
+      "receipt": null,
+      "marker": "",
+      "stdout": "",
+      "stderr": "",
+      "expected": {
+        "terminal": "NO_RECEIPT",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal_failure_cause": "no run directory was created",
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "response": "",
+        "last_stdout_line": "(no output on stdout or stderr)"
+      }
+    },
+    {
+      "receipt": null,
+      "marker": "hard timeout after 360s: wrapper did not return",
+      "stdout": "last",
+      "stderr": "",
+      "expected": {
+        "terminal": "NO_RECEIPT",
+        "correlation_id": null,
+        "run_id": null,
+        "terminal_failure_cause": "hard timeout: the wrapper did not return within the bound",
+        "quality": null,
+        "model": null,
+        "cost_usd": null,
+        "wall_ms": null,
+        "artifacts": null,
+        "response": "",
+        "last_stdout_line": "hard timeout after 360s: wrapper did not return"
+      }
+    },
+    {
+      "receipt": {
+        "status": "failed",
+        "run_id": "r-1",
+        "correlation_id": "c-1",
+        "model": "fallback",
+        "cost_usd": 3
+      },
+      "marker": "",
+      "stdout": "",
+      "stderr": "",
+      "expected": {
+        "terminal": "failed",
+        "correlation_id": "c-1",
+        "run_id": "r-1",
+        "terminal_failure_cause": null,
+        "quality": null,
+        "model": "fallback",
+        "cost_usd": 3,
+        "wall_ms": null,
+        "artifacts": "<root>/artifacts",
+        "response": "",
+        "last_stdout_line": null
+      }
+    },
+    {
+      "receipt": {
+        "status": "failed",
+        "receipt": {
+          "duration_ms": 12,
+          "result": {
+            "terminal_payload": {
+              "payload": {
+                "status": "completed",
+                "correlation_id": "payload-c",
+                "quality_score": 0.9,
+                "metrics": {
+                  "cost_usd": 0
+                },
+                "response": "answer"
+              }
+            }
+          }
+        }
+      },
+      "marker": "hard timeout after 360s: wrapper did not return",
+      "stdout": "",
+      "stderr": "",
+      "expected": {
+        "terminal": "completed",
+        "correlation_id": "payload-c",
+        "run_id": "r-1",
+        "terminal_failure_cause": " | hard timeout after 360s: wrapper did not return",
+        "quality": 0.9,
+        "model": null,
+        "cost_usd": 0,
+        "wall_ms": 12,
+        "artifacts": "<root>/artifacts",
+        "response": "answer",
+        "last_stdout_line": null
+      }
+    }
+  ]
+}

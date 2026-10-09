@@ -123,7 +123,7 @@ def test_large_output_backends_carry_realistic_timeout() -> None:
     backends, but their ``timeout_ms`` stayed at 60000. OMN-13170 then deleted the
     hardcoded 120s transport cap so the contract value is honored end-to-end —
     which exposed that the *value* (60000) is too short: a 64k-token generation on
-    local throughput (ds-v4-flash 284B codegen, glm-4.5 large reads) exceeds 60s
+    large local or cloud generations exceeds 60s
     and fails with ``error=timed out`` / ``output_tokens=0``.
 
     Invariant: every HTTP backend advertising a >=64k output budget must allow at
@@ -153,7 +153,7 @@ def test_large_output_backends_carry_realistic_timeout() -> None:
 @pytest.mark.unit
 def test_named_timeout_regression_backends_are_tuned() -> None:
     """OMN-13170 follow-up: explicit guard on the backends named in the binding
-    decision — ds-v4-flash codegen and glm-4.5 large reads timed out at 60000.
+    decision — long local and cloud generations timed out at 60000.
 
     Pins the tuned values so a future edit cannot silently regress the two
     backends the runtime evidence flagged as failing.
@@ -162,7 +162,7 @@ def test_named_timeout_regression_backends_are_tuned() -> None:
     data = yaml.safe_load(path.read_text())
     by_id = {backend["backend_id"]: backend for backend in data["backends"]}
 
-    assert by_id["local-ds-v4-flash"]["timeout_ms"] >= 300000
+    assert by_id["local-heavy-reasoning"]["timeout_ms"] >= 300000
     assert by_id["cloud-glm"]["timeout_ms"] >= 300000
 
 

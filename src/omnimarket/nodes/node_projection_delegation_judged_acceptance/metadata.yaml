@@ -1,0 +1,20 @@
+name: node_projection_delegation_judged_acceptance
+version: "1.0.0"
+description: "Pure rule-7a fold of judged delegation verdicts into per model, task type and kind acceptance cells with a Wilson interval"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_delegation_judged_acceptance: "omnimarket.nodes.node_projection_delegation_judged_acceptance"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["projection", "delegation", "evaluation", "judged-acceptance", "deterministic"]
+pack: "core"
+display_name: "Projection: Delegation Judged Acceptance"
+node_role: "compute"

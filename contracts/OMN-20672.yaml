@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20672"
+title: "The landing-controller scripts become contract, node and handler over the bus"
+summary: "First shard: the landing tick's decision half, with the per-repository fair share the live controller applies on top of the decision node, becomes a contract-declared COMPUTE node, and an observe-mode COMPUTE node compares the node path's decision with the live controller's decision on a copied tick. The live controller is not changed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-landing-tick-node-observe"
+    statement: "The landing tick decision, fair share included, is a definition-B node with its topics declared in the contract, and observe mode reports every path where the node path differs from the live controller's decision."
+    acceptance:
+      - id: "AC1"
+        statement: "node_pr_landing_tick_compute is a contract.yaml, a declarative node and a handle(ModelLandingFacts) -> ModelLandingDecision handler with its command and terminal topics declared in the contract."
+      - id: "AC2"
+        statement: "With free worker slots fewer than the dispatch candidates, the tick node shares the slots across repositories, and on every reviewed one-repository scenario tick it returns the decision node's decision byte for byte."
+      - id: "AC3"
+        statement: "node_pr_landing_tick_observe_compute reports equal for a copied tick whose controller decision is the node path's, and names each differing path for a controller decision that did not share the slots."
+evidence_requirements:
+  - kind: "tests"
+    description: "Execute the tick and observe node tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute tests/unit/nodes/node_pr_landing_tick_observe_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tick-node-contract"
+    description: "The tick node's contract, handler signature and fair share hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_compute/test_landing_tick_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-tick-observe"
+    description: "Observe mode reports equal and names a drift."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_tick_observe_compute/test_landing_tick_observe.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

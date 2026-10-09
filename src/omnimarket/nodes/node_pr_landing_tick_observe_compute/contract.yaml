@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingTickObserveCompute
+#
+# Observe mode of the landing tick as a pure definition-B compute:
+#
+#   handle(ModelLandingTickObservation) -> ModelLandingTickComparison
+#
+# The live landing controller keeps landing every PR. A copy of one real tick (its
+# facts, and the decision it made from them) is replayed through the node path
+# (node_pr_landing_tick_compute, or the plain decision node when the observation
+# says the live tick shared no slots) and every path where the two decisions
+# differ is reported. Equal on every copied tick is the proof that comes before
+# any caller moves. No clock, no I/O, no model.
+name: "node_pr_landing_tick_observe_compute"
+contract_name: "node_pr_landing_tick_observe_compute"
+node_name: "node_pr_landing_tick_observe_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B comparison of the node path's decision with the live
+  landing controller's decision on one copied tick. Returns equal when the two
+  decisions are identical, and otherwise every differing path with both values.
+input_model:
+  name: "ModelLandingTickObservation"
+  module: "omnimarket.nodes.node_pr_landing_tick_observe_compute.models.model_landing_tick_observation"
+  description: "A copy of one live tick: its facts and the live controller's decision."
+output_model:
+  name: "ModelLandingTickComparison"
+  module: "omnimarket.nodes.node_pr_landing_tick_observe_compute.models.model_landing_tick_observation"
+  description: "Equal or not, and every differing path."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_tick_observe_compute.handlers.handler_pr_landing_tick_observe"
+  class: "HandlerPrLandingTickObserve"
+  input_model: "omnimarket.nodes.node_pr_landing_tick_observe_compute.models.model_landing_tick_observation.ModelLandingTickObservation"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_tick_observe_compute.handlers.handler_pr_landing_tick_observe:HandlerPrLandingTickObserve"
+  handlers:
+    - operation: "observe_landing_tick"
+      handler:
+        name: "HandlerPrLandingTickObserve"
+        module: "omnimarket.nodes.node_pr_landing_tick_observe_compute.handlers.handler_pr_landing_tick_observe"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-tick-observe-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-tick-observe-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-tick-observe-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Observe mode of the landing tick: node path against the live controller."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - observe
+    - pure

@@ -4,7 +4,7 @@
 """Delegation graded ladder benchmark report (OMN-13935, operator plan §3.6).
 
 Escalating-complexity graded benchmark across the EXISTING delegation ladder —
-the local 5090/4090 AI-PC rungs and the DeepSeek-V4-Flash 284B local ceiling, up
+the local 5090/4090 AI-PC rungs, up
 to the paid-cloud ceiling (GLM-5.2 via z.ai + the OpenRouter free-tier frontier
 model). This SUPERSEDES the earlier fixture-content smoke replay: instead of
 scoring hand-authored attempt text through the quality gate, it grades GENUINE
