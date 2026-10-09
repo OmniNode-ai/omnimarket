@@ -8,8 +8,8 @@
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
 # HandlerLlmCliSubprocess / adapter_codex_reviewer) with two different LAB
 # models (OMN-17492, operator rulings 2026-09-25): qwen3-review (Qwen3.8-27B
-# on .201:8000) and gpt-oss-review (Qwen3.6-35B-A3B on the .200 Mac Studio,
-# :8131 via LLM_GPT_OSS_REVIEW_URL, OMN-20422). Private diffs go only to lab models, never to a third-party cloud
+# on .201:8000) and local-studio-planner (Qwen3.6-35B-A3B on the .200 Mac Studio,
+# :8131 via LLM_LOCAL_STUDIO_PLANNER_URL, OMN-20422). Private diffs go only to lab models, never to a third-party cloud
 # reviewer (OPERATOR-CONSENT, rolling ledger row 4842). qwen3-review-b is
 # no longer a voter: it named the same .201:8000 model as qwen3-review, so
 # their "agreement" was one model agreeing with itself. .200 is always on
@@ -77,7 +77,7 @@ jobs:
     #   qwen3-review:   4 x 120s + 14s backoff =  494s
     #   qwen3-review-b: 4 x 600s + 14s backoff = 2414s
     #   sequential sum                         = 2908s
-    # (OMN-17492: the roster is now qwen3-review + gpt-oss-review, whose
+    # (OMN-17492: the roster is now qwen3-review + local-studio-planner, whose
     # registry entry is 300s x (1 + max_retries 1) = 600s + backoff, so the
     # sum is ~1100s; the ceiling below is unchanged and the invariant step
     # re-derives the sum from the live registry on every run.)
@@ -99,12 +99,12 @@ jobs:
     # LLM_ENDPOINT_CIDR_ALLOWLIST: the transport fail-closes if it is unset (there
     # is no code default). It moved here from the two step-level env blocks
     # (OMN-20422) so the job carries one annotated line per address, not two.
-    # LLM_GPT_OSS_REVIEW_URL: OMN-20422, RULING 2026-10-09T04:15:56Z. The
-    # gpt-oss-review key now names the Studio's Qwen3.6-35B-A3B on :8131; the
+    # LLM_LOCAL_STUDIO_PLANNER_URL: OMN-20422, RULING 2026-10-09T04:15:56Z. The
+    # local-studio-planner key now names the Studio's Qwen3.6-35B-A3B on :8131; the
     # registry default :8130 stays Qwen3.8-27B for delegation.
     env:
       LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200"
-      LLM_GPT_OSS_REVIEW_URL: "http://192.168.86.200:8131"  # onex-allow-internal-ip OMN-20422 reason="gpt-oss-review resolves its URL from this env var: the second voter is Qwen3.6-35B-A3B on the Studio's :8131"
+      LLM_LOCAL_STUDIO_PLANNER_URL: "http://192.168.86.200:8131"  # onex-allow-internal-ip OMN-20422 reason="local-studio-planner resolves its URL from this env var: the second voter is Qwen3.6-35B-A3B on the Studio's :8131"
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -145,7 +145,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 51e1cb356453ad325d76aea57ab371cf975df3a4
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 33a29cdfba6f14be6f94c3c77a05e29f345c692b
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -230,18 +230,18 @@ jobs:
         env:
           # Resolve the SAME registry the reviewer loads (model_registry_loader)
           # for the SAME models the review step runs
-          # (`--model qwen3-review --model gpt-oss-review`). We flip
+          # (`--model qwen3-review --model local-studio-planner`). We flip
           # reachable=false ONLY when EVERY requested model is unreachable AND the
           # codex api-fallback is unavailable — the exact condition under which the
           # reviewer itself yields verdict=degraded + exit 0.
-          REVIEW_MODEL_KEYS: "qwen3-review gpt-oss-review"
+          REVIEW_MODEL_KEYS: "qwen3-review local-studio-planner"
           REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
           # Wired from a GitHub Actions secret (OMN-14176): the LLM HTTP transport
           # HMAC-signs every call with LOCAL_LLM_SHARED_SECRET and fail-closes if it
           # is absent. The old assumption that the runner env provided it
           # (Infisical / shell profile) never held on this fleet.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_GPT_OSS_REVIEW_URL come from the
+          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_LOCAL_STUDIO_PLANNER_URL come from the
           # job-level env block above (OMN-20422), not from this step.
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
@@ -464,7 +464,7 @@ jobs:
           # if/while/until condition, regardless of ambient -e state.
           if OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
             --model qwen3-review \
-            --model gpt-oss-review \
+            --model local-studio-planner \
             --job-timeout-seconds 3600 \
             --setup-overhead-seconds 300 2>&1); then
             STATUS=0
@@ -510,7 +510,7 @@ jobs:
           # on this fleet — that gap is why every review DEGRADED with "all models
           # failed" despite a reachable endpoint.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_GPT_OSS_REVIEW_URL come from the
+          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_LOCAL_STUDIO_PLANNER_URL come from the
           # job-level env block above (OMN-20422), not from this step.
         working-directory: ../omniintelligence
         run: |
@@ -525,7 +525,7 @@ jobs:
           # command substitution, and the command's exit code is still preserved via
           # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
           # Two different lab models (OMN-17492): qwen3-review (Qwen3.8-27B,
-          # .201:8000) + gpt-oss-review (Qwen3.6-35B-A3B, .200:8131). Both must
+          # .201:8000) + local-studio-planner (Qwen3.6-35B-A3B, .200:8131). Both must
           # answer for a verdict (OMN-14176 made >=2 the exit-0 condition);
           # one is no quorum, and the enforce step below fails the job.
           #
@@ -536,7 +536,7 @@ jobs:
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
             --model qwen3-review \
-            --model gpt-oss-review \
+            --model local-studio-planner \
             2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0

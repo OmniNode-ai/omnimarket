@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide a remote lane from supplied facts without I/O: which pool host takes the
+  lane (usage-limit and auth-expired marks, the admission bar, a pinned host, lab
+  hosts before the launching host, the spread rank, the Codex bar), and how a
+  finished lane closes (failed, rejected-no-delegation, or the outcome its final
+  report declares). Host readings arrive evaluated by the placement reader.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_remote_lane_placement
+    handler:
+      name: HandlerRemoteLanePlacement
+      module: omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement
+    input_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_placement.ModelRemoteLanePlacementRequest
+    output_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_placement.ModelRemoteLanePlacementResult
+  - operation: decide_remote_lane_result
+    handler:
+      name: HandlerRemoteLaneResult
+      module: omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_result
+    input_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_result.ModelRemoteLaneResultRequest
+    output_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_result.ModelRemoteLaneResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.remote-lane-decision-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.remote-lane-decided.v1
+terminal_event: onex.evt.omnimarket.remote-lane-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.remote-lane-decision-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.remote-lane-decided.v1
+metadata:
+  ticket: OMN-20669
+  transport_type: kafka
+lifecycle: experimental
