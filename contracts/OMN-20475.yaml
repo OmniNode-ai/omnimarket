@@ -11,11 +11,11 @@ requirements:
     statement: "A judged verdict is published through the emit daemon, never a direct database write, and a run that cannot reach the daemon does not report success. The criterion below is the node-level half of the ticket's AC1; its id is the label the binding item claims through binds_ac. AC2 is not bound here: it reads the dev-lane topic, which this repository's hosted check cannot reach."
     acceptance:
       - id: "AC1"
-        statement: "AC1: publishing judged-acceptance events with the emit socket absent returns a failed result that names the socket path and publishes nothing, and a daemon that refuses an event fails the run with the count that got through -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q in omnimarket"
+        statement: "AC1: publishing judged-acceptance events with the emit socket absent returns a failed result that names the socket path and publishes nothing, and a daemon that refuses an event fails the run with the count that got through -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect/test_publish.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The publish tests prove a failed result naming the socket for an absent, unset-default and stale socket, delivery of every event to a daemon, and a stop at the first daemon refusal. They pass at the head and fail at the merge base, where the node does not exist."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q"
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect/test_publish.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -26,6 +26,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect -q"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judged_publish_effect/test_publish.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
