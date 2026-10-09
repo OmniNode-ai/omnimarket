@@ -521,6 +521,7 @@ node_ticket_research_enrichment_compute = "omnimarket.nodes.node_ticket_research
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets"
 node_release = "omnimarket.nodes.node_release"
+node_reject_skip_token_compute = "omnimarket.nodes.node_reject_skip_token_compute"
 node_recall_compute = "omnimarket.nodes.node_recall_compute"
 node_redeploy_orchestrator = "omnimarket.nodes.node_redeploy_orchestrator"
 node_runtime_closeout_orchestrator = "omnimarket.nodes.node_runtime_closeout_orchestrator"
