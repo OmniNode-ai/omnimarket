@@ -18,11 +18,17 @@ Each test names the failure it exists to catch:
 * R4  the pending file holds the value, or is readable by others;
 * R5  a malformed pending file is dropped or ignored instead of refused;
 * R6  the pending file outlives a successful recovery, so it replays forever;
-* R7  the failure message points at a retry that cannot work.
+* R7  the failure message points at a retry that cannot work;
+* R8  a pending record that is not a whole event (a missing or empty id) is
+      applied as a no-op and dropped, instead of refused and kept;
+* R9  a valid record before an invalid one is applied before the refusal, so
+      the file is half-applied;
+* R10 a pending file that is not UTF-8 crashes instead of being refused and kept.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import stat
 from pathlib import Path
@@ -156,3 +162,59 @@ def test_r5_a_malformed_pending_file_is_refused_and_kept(store: Path) -> None:
     assert result.exit_code != 0
     assert str(pending) in result.output
     assert pending.read_text() == "{not json\n"
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        {"kind": "revoked", "payload": {}},
+        {"kind": "revoked", "payload": {"tenant_id": "", "api_key_ref": "ref"}},
+        {"kind": "revoked", "payload": {"tenant_id": "t", "api_key_ref": ""}},
+        {"kind": "registered", "payload": {"tenant_id": "t", "api_key_ref": "ref"}},
+        {"kind": "revoked", "payload": {"tenant_id": "t", "api_key_ref": "r", "x": 1}},
+    ],
+    ids=["empty", "blank-tenant", "blank-ref", "registered-partial", "extra-field"],
+)
+def test_r8_a_pending_record_that_is_not_a_whole_event_is_refused_and_kept(
+    store: Path, record: dict[str, object]
+) -> None:
+    pending = store.parent / _PENDING_NAME
+    pending.write_text(json.dumps(record) + "\n")
+    before = pending.read_bytes()
+
+    result = _run(["list"])
+    assert result.exit_code != 0, result.output
+    assert str(pending) in result.output
+    assert pending.read_bytes() == before
+
+
+def test_r9_a_valid_record_before_an_invalid_one_is_not_applied(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
+    [live] = _live_rows(store)
+    pending = store.parent / _PENDING_NAME
+    valid = {
+        "kind": "revoked",
+        "payload": {"tenant_id": live["tenant_id"], "api_key_ref": live["api_key_ref"]},
+    }
+    pending.write_text(
+        json.dumps(valid) + "\n" + json.dumps({"kind": "revoked"}) + "\n"
+    )
+
+    result = _run(["list"])
+    assert result.exit_code != 0
+    assert len(_live_rows(store)) == 1, (
+        "the valid record was applied before the refusal"
+    )
+    assert pending.exists()
+
+
+def test_r10_a_pending_file_that_is_not_utf8_is_refused_and_kept(store: Path) -> None:
+    pending = store.parent / _PENDING_NAME
+    pending.write_bytes(b"\xff\xfe not utf-8\n")
+
+    result = _run(["list"])
+    assert result.exit_code != 0
+    assert str(pending) in result.output
+    assert pending.read_bytes() == b"\xff\xfe not utf-8\n"

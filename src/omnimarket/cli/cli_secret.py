@@ -65,6 +65,7 @@ from omnimarket.projection.credential_publisher import (
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
+    ModelCredentialRevokedEvent,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
     register_inference_credential,
@@ -353,6 +354,8 @@ def register_tenant_key(
 PENDING_CREDENTIAL_EVENTS_NAME = "credential-events.pending.jsonl"
 _REGISTERED = "registered"
 _REVOKED = "revoked"
+_REGISTERED_IDS = ("tenant_id", "provider", "name", "api_key_ref")
+_REVOKED_IDS = ("tenant_id", "api_key_ref")
 
 
 def _pending_events_path(db_path: Path) -> Path:
@@ -389,8 +392,9 @@ def _read_pending(path: Path) -> list[dict[str, Any]]:
     )
     lines: list[dict[str, Any]] = []
     try:
+        # A decode error is a ValueError, so a file that is not UTF-8 is refused too.
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, ValueError):
         raise refused from None
     for raw in text.splitlines():
         if not raw.strip():
@@ -399,14 +403,34 @@ def _read_pending(path: Path) -> list[dict[str, Any]]:
             record = json.loads(raw)
         except ValueError:
             raise refused from None
-        if (
-            not isinstance(record, dict)
-            or record.get("kind") not in (_REGISTERED, _REVOKED)
-            or not isinstance(record.get("payload"), dict)
-        ):
+        if not _whole_event(record):
             raise refused
         lines.append(record)
     return lines
+
+
+def _whole_event(record: object) -> bool:
+    """True for a ``{"kind", "payload"}`` record whose payload is a whole event.
+
+    Every record is checked before any is applied, so a damaged line refuses the
+    file instead of being folded as a no-op (the folds return quietly on a
+    missing id) and then dropped with the rest.
+    """
+    if not isinstance(record, dict) or set(record) != {"kind", "payload"}:
+        return False
+    model: type[ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent]
+    required: tuple[str, ...]
+    if record["kind"] == _REGISTERED:
+        model, required = ModelCredentialRegisteredEvent, _REGISTERED_IDS
+    elif record["kind"] == _REVOKED:
+        model, required = ModelCredentialRevokedEvent, _REVOKED_IDS
+    else:
+        return False
+    try:
+        event = model.model_validate(record["payload"])
+    except ValidationError:
+        return False
+    return all(str(getattr(event, field)).strip() for field in required)
 
 
 def _drain_pending_credential_events(db_path: Path) -> None:
