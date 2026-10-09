@@ -150,6 +150,29 @@ def test_apply_refuses_a_path_that_escapes_the_vendored_tree_through_a_symlink(
     assert not (outside / "0001.sql").exists()
 
 
+def test_apply_does_not_write_through_a_symlink_at_the_target(tmp_path: Path) -> None:
+    dest = tmp_path / "dest"
+    (dest / "n").mkdir(parents=True)
+    other = dest / "n" / "other.sql"
+    other.write_text("keep")
+    (dest / "n" / "0001.sql").symlink_to(other)
+    source = tmp_path / "s.sql"
+    source.write_text("new")
+    result = HandlerMigrationSyncApply().handle(
+        ModelMigrationSyncApplyRequest(
+            dest_root=str(dest),
+            actions=(
+                ModelMigrationSyncAction(
+                    kind="copy", relative_path="n/0001.sql", source_path=str(source)
+                ),
+            ),
+        )
+    )
+    assert result.applied == ()
+    assert [f.relative_path for f in result.failed] == ["n/0001.sql"]
+    assert other.read_text() == "keep"
+
+
 def test_apply_names_a_missing_source_and_continues_with_the_rest(
     tmp_path: Path,
 ) -> None:

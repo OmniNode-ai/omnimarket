@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 from pathlib import Path
 
 from omnimarket.models.migration_sync import ModelMigrationSyncAction
@@ -20,6 +21,15 @@ from ..models import (
     ModelMigrationSyncApplyResult,
     ModelMigrationSyncFailure,
 )
+
+
+def _copy_no_follow(source: str | Path, target: Path) -> None:
+    """Copy ``source`` to ``target``, refusing to open a symlink at ``target``."""
+    mode = stat.S_IMODE(os.stat(source).st_mode)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, "wb") as out, open(source, "rb") as src:
+        os.fchmod(out.fileno(), mode)
+        shutil.copyfileobj(src, out)
 
 
 class HandlerMigrationSyncApply:
@@ -47,7 +57,14 @@ class HandlerMigrationSyncApply:
             try:
                 if action.kind == "copy":
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy(action.source_path, target)
+                    # Re-check after mkdir and refuse a final-component symlink: the
+                    # path may have changed since the check above.
+                    if os.path.commonpath(
+                        [root, os.path.realpath(target.parent)]
+                    ) != root or os.path.islink(target):
+                        fail(action, f"resolves outside the vendored root {root}")
+                        continue
+                    _copy_no_follow(action.source_path, target)
                 else:
                     target.unlink(missing_ok=True)
             except OSError as exc:
