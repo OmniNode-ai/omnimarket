@@ -14,27 +14,32 @@
 # passes a command only after its receipt is published. A lock beside the ledger
 # file admits one serve process per ledger. The handler dedups on the request's
 # req= cell, so a command redelivered after a crash is answered, never appended
-# twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append). RULING
-# and OPERATOR-CONSENT rows are refused until requests carry a verifiable
-# principal (OMN-20282). The ledger host and append argv are deployment facts
+# twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append).
+# OMN-20282: every request is signed with its principal's Ed25519 key and
+# verified against the issuer-owned public records supplied to serve. Unsigned,
+# forged and unknown identities fail before the append command. Every row is
+# stamped with the verified principal; RULING and OPERATOR-CONSENT require the
+# operator identity configured locally on the ledger host. Keys and that identity
+# are never trusted from the command envelope. Issuance and rollout stay gated.
+# The ledger host and append argv are deployment facts
 # given on the serve command line; nothing here names a machine.
 name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 1, patch: 0}
-node_version: "0.1.0"
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: "0.2.0"
 description: >
-  Appends exact rows built on a requesting lab host to the rolling ledger on
-  the ledger host, deduplicating by request id and returning line numbers.
+  Verifies signed lab-host rows, stamps their authenticated principal and appends
+  them on the ledger host, deduplicating by request id and returning line numbers.
 input_model:
   name: "ModelWorkLedgerAppendRequest"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
-  description: "Request id, exact rows, ledger id, requesting lane, host and time."
+  description: "Request id, rows, ledger id, lane, host, time, principal and Ed25519 signature."
 output_model:
   name: "ModelWorkLedgerAppendReceipt"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
-  description: "Status, command exit code, output tail, ledger lines, host and duration."
+  description: "Status, exit code, output tail, ledger lines, host, duration and verified principal."
 handler:
   module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
   class: "HandlerWorkLedgerAppendEffect"
