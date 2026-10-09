@@ -7,8 +7,6 @@ from __future__ import annotations
 import ast
 import importlib
 import json
-import tempfile
-from collections.abc import Iterator
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
@@ -253,12 +251,6 @@ def test_handler_imports_and_calls_stay_pure() -> None:
                     }
 
 
-@pytest.fixture
-def scratch_path() -> Iterator[Path]:
-    with tempfile.TemporaryDirectory(dir=ROOT / ".claude_scratch") as directory:
-        yield Path(directory)
-
-
 async def _run(tmp_path: Path, payload: dict[str, Any]) -> RuntimeLocal:
     input_path = tmp_path / "request.json"
     input_path.write_text(json.dumps(payload))
@@ -274,23 +266,23 @@ async def _run(tmp_path: Path, payload: dict[str, Any]) -> RuntimeLocal:
 
 
 @pytest.mark.asyncio
-async def test_golden_chain_over_bus_matches_capture(scratch_path: Path) -> None:
+async def test_golden_chain_over_bus_matches_capture(tmp_path: Path) -> None:
     case = next(c for c in PARITY["cases"] if c["name"] == "cost-variants")
-    runtime = await _run(scratch_path, case["request"])
+    runtime = await _run(tmp_path, case["request"])
     assert isinstance(runtime.handler_result, ModelFrictionRollupResult)
     assert _as_old(runtime.handler_result) == case["expected"]
 
 
 @pytest.mark.asyncio
-async def test_error_chain_over_bus_has_no_result(scratch_path: Path) -> None:
-    runtime = await _run(scratch_path, {})
+async def test_error_chain_over_bus_has_no_result(tmp_path: Path) -> None:
+    runtime = await _run(tmp_path, {})
     assert runtime.handler_result is None
-    bad = scratch_path / "bad.json"
+    bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({**PARITY["cases"][0]["request"], "aliases": ["bad"]}))
     refused = RuntimeLocal(
         workflow_path=NODE_DIR / "contract.yaml",
         input_path=bad,
-        state_root=scratch_path / "state2",
+        state_root=tmp_path / "state2",
         backend_overrides={"event_bus": "inmemory"},
         timeout=10,
     )
