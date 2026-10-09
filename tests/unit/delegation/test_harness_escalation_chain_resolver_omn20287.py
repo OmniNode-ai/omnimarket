@@ -29,17 +29,11 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationHarness,
     ModelDelegationBackendConfig,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
-    handler_delegation_routing as routing,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_harness_escalation_chain import (
     resolve_class_escalation_chain,
 )
 from omnimarket.routing.routing_tiers_path import load_harness_tiers
 
-_CONFIGS = Path(__file__).resolve().parents[3] / "src/omnimarket/configs"
-_TIERS = _CONFIGS / "routing_tiers.yaml"
-_CONTRACT = _CONFIGS / "task_class_contracts.v1.yaml"
 _GOLDEN = {
     "summarization": (("local", None), ("harness_sonnet", "claude-sonnet-5-5")),
     "document": (
@@ -72,7 +66,7 @@ _GOLDEN = {
 }
 
 
-# These inputs belong to the consumer tests; the shipped configs declare no chains.
+# These forged inputs keep the consumer tests independent of shipped configs.
 _FORGED_BACKENDS = tuple(
     ModelDelegationBackendConfig(
         backend_id=backend_id,
@@ -527,25 +521,3 @@ def test_harness_tier_cannot_name_endpoint_backend(
         _resolve(
             "summarization", (endpoint,), forged_tiers, forged_contract, ladder_names
         )
-
-
-@pytest.mark.unit
-def test_shipped_configs_have_no_escalation_chains_or_harness_tiers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(_CONTRACT))
-    monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(_TIERS))
-    routing._get_task_class_contract.cache_clear()
-    try:
-        for task_type in _GOLDEN:
-            assert (
-                resolve_class_escalation_chain(
-                    task_type,
-                    tenant_id="omninode",
-                    surface=EnumDelegationBackendSurface.INTERNAL,
-                )
-                is None
-            ), task_type
-        assert load_harness_tiers() == ()
-    finally:
-        routing._get_task_class_contract.cache_clear()

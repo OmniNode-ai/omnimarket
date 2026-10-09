@@ -273,7 +273,9 @@ backends:
   # applications, bots, websites, SaaS products or other systems". Operator
   # direction 2026-09-30 about 18:10Z: GLM is used only from Claude Code,
   # through the internal harness-delegate skill (operator tooling, never a
-  # routing tier: INV-064, INV-068).
+  # routing tier: INV-064, INV-068). Since RULING 2026-10-05T22:27:48Z amended
+  # INV-064 (decision D1), GLM may be a delegation rung only as the internal,
+  # house-only `claude-glm` harness backends declared below (OMN-20287).
   #
   # How they are disabled ("parked", in the bindability validator's words):
   # `endpoint_url: null`, the shape the routing reducer's `_load_bifrost_endpoints`
@@ -656,6 +658,119 @@ backends:
   # OMN-13351: the ceiling backend is `cloud-gemini-2-5-flash` (secret_ref
   # llm.gemini.api_key, model gemini-2.5-flash) — NOT the former `cloud-sonnet`,
   # which was deleted because llm.anthropic.api_key resolves to None in every lane.
+  # OMN-20287: harness backends, plan step 7 of the delegation canonical
+  # workflow (knowledge-base-internal beta/plans/2026-10-05-delegation-canonical-workflow.md).
+  # RULING 2026-10-05T22:27:48Z (decision D1) amends INV-064: Codex, GLM through
+  # Claude Code and Claude Code may be delegation backends, run by the existing
+  # harness adapters, internal surface and house tenant only (INV-068), checked
+  # at routing and at execution. RULING 2026-10-09T00:33:15Z (OMN-20477) orders
+  # them per task class. Each backend declares `kind: harness`, the harness it
+  # runs, `surface: internal` and `tenant_scope: house`, and no endpoint and no
+  # secret_ref: the harness owns its own login. GLM stays inside Claude Code,
+  # which its Coding Plan terms require (OMN-20173), so the GLM rungs are
+  # `claude-glm` harness backends, never the parked `cloud-glm` HTTP rungs above.
+  #
+  # Inert in this change: every harness backend is `explicit_pin_only` and no
+  # tier in routing_tiers.yaml places one, so ordinary routing is unchanged.
+  # Per-class tier orders and the executor land in later changes.
+  # Enforced by tests/unit/delegation/test_omn20287_harness_backend_contract.py.
+  # Codex on the operator subscription; the model is the account's config default,
+  # never pinned here (the lane rules forbid a Codex model flag).
+  - backend_id: harness-codex
+    provider: openai
+    kind: harness
+    harness: codex
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - test
+      - code_review
+      - refactor
+  - backend_id: harness-claude-glm-flash
+    provider: glm
+    kind: harness
+    harness: claude-glm
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: "glm-5.3-flash"
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - document
+      - reasoning
+      - summarization
+  - backend_id: harness-claude-glm
+    provider: glm
+    kind: harness
+    harness: claude-glm
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: "glm-5.3"
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - document
+      - reasoning
+      - code_review
+  - backend_id: harness-claude-haiku
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: "claude-haiku-5-5"
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - document
+      - test
+  - backend_id: harness-claude-sonnet
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: "claude-sonnet-5-5"
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - summarization
+      - document
+      - code_review
+      - test
+      - code_generation
+      - reasoning
+  - backend_id: harness-claude-opus
+    provider: anthropic
+    kind: harness
+    harness: claude
+    surface: internal
+    tenant_scope: house
+    explicit_pin_only: true
+    model_name: "claude-opus-5-5"
+    tier: harness
+    timeout_ms: 600000
+    max_tokens: 65536
+    capabilities:
+      - summarization
+      - document
+      - code_review
+      - test
+      - code_generation
+      - reasoning
 # Routing rules — evaluated in ascending priority order.
 # First matching rule wins. Each rule maps a task_class to an ordered
 # list of backends to try.

@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: forged harness declarations parse or are refused as stated, and forged chains resolve with the stated refusals -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q in omnimarket"
+  - id: "req-harness-rungs-escalation-chain"
+    statement: "The shipped bifrost_delegation.yaml declares six kind: harness backends (Codex, GLM flash and GLM through Claude Code, Claude Haiku, Sonnet and Opus), each internal surface, house tenant, keyless and explicit_pin_only; routing_tiers.yaml declares harness tiers outside the ladder; six task classes declare the per-class escalation chain of RULING 2026-10-09T00:33:15Z; every escalation_policy.tier_order is unchanged and no ladder tier or routing rule names a harness backend."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the six shipped chains resolve in the ruled order, every shipped harness rung is refused explicit_pin_only, and the live ladder names no harness backend -- falsifier: uv run pytest tests/unit/delegation/test_harness_escalation_chain_omn20287.py tests/unit/delegation/test_omn20287_harness_backend_contract.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
@@ -42,3 +47,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20287-ac4-harness-rungs-escalation-chain"
+    description: "AC4 hosted probe. The shipped-config chain and backend tests pass at the head and fail at the merge base, where no harness backend or chain is declared."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_escalation_chain_omn20287.py tests/unit/delegation/test_omn20287_harness_backend_contract.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
