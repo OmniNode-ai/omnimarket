@@ -52,20 +52,10 @@ rungs:
     host_label: ai-pc
     tier_name: local
 
-  # LOCAL-CEILING — DeepSeek V4 Flash, 284B MoE on the Mac Studio.
-  - rung_id: rung_ds_v4_flash
-    order: 3
-    model_name: ds-v4-flash
-    backend_id: local-ds-v4-flash
-    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
-    gpu: mac_studio_m3_ultra
-    host_label: mac-studio
-    tier_name: local
-
   # PAID-CLOUD — GLM-5.2 via z.ai direct (backend cloud-glm; cheap_cloud primary
   # AND the current claude-ceiling default, OMN-13667). secret_ref llm.glm.api_key.
   - rung_id: rung_cloud_glm
-    order: 4
+    order: 3
     model_name: glm-5.2
     backend_id: cloud-glm
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"

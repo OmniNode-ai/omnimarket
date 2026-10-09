@@ -54,7 +54,7 @@ class TestInstructionEvalProjectionGoldenChain:
             runner.project_event(
                 INPUT_TOPIC,
                 {
-                    "model": "ds4-flash",
+                    "model": "fixture-model-a",
                     "task": "python-version",
                     "context_mode": "chunk",
                     "pass_rate": 1.0,
@@ -128,7 +128,7 @@ class TestInstructionEvalProjectionGoldenChain:
             runner.project_event(
                 INPUT_TOPIC,
                 {
-                    "model": "ds4-flash",
+                    "model": "fixture-model-a",
                     "task": "no-hardcoded-paths",
                     "context_mode": "full-claude-md",
                     "pass_rate": 0.4666,
@@ -140,17 +140,25 @@ class TestInstructionEvalProjectionGoldenChain:
         )
 
         params = captured[0][1:]
-        assert "ds4-flash" in params
+        assert "fixture-model-a" in params
         assert "no-hardcoded-paths" in params
         assert "full-claude-md" in params
         assert 557 in params
         assert 5 in params
 
     def test_event_bus_wiring(self) -> None:
-        """Contract subscribes to the canonical instruction-eval-result topic."""
+        """The projection declares its input and canonical snapshot sink."""
         with open(CONTRACT_PATH) as f:
             contract = yaml.safe_load(f)
         assert INPUT_TOPIC in contract["event_bus"]["subscribe_topics"]
+        assert contract["event_bus"]["publish_topics"] == [
+            "onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1"
+        ]
+        assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+        assert (
+            contract["externally_consumed_topics"]
+            == contract["event_bus"]["publish_topics"]
+        )
 
     def test_projection_api_topic_declared(self) -> None:
         """Contract projection_api exposes the canonical snapshot topic."""

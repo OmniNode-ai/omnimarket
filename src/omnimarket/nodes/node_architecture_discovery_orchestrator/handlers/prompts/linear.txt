@@ -1,0 +1,45 @@
+
+ROUTE: band=B3 score=10 dims=S2A2R1V2N1C1J1 dest=sonnet-lane model=sonnet effort=high
+{{common}}
+LANE: arch-discovery-linear. Run date: {{date}}. Read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md before you start.
+READ-ONLY on Linear. You create nothing, comment nothing, and flip no state.
+
+{{rules}}
+
+TASK: gather the Linear half of the discovery. Load the linear-server tools via ToolSearch in ONE call.
+
+STEP 1 — RESOLVE THE SPRINT LIVE. Find the dated Linear PROJECT covering {{date}} (a PROJECT, not a
+Cycle — reference_linear_sprint_target). Paginate; project filters truncate
+(reference_linear_project_filter_truncation). Record the project id and name. If you cannot resolve
+it, say so with the exact failing call — RULE 2 then makes every item BETA-CRITICAL for this run and
+the report must print that fact rather than a guessed sprint.
+
+STEP 2 — GATHER. Backlog and non-sprint tickets whose labels, title, or description put them in the
+architecture / integration / marketplace / skills space. Search each term SEPARATELY — a single
+joined query misses — and paginate every result set. Select unstarted work by state TYPE, never by
+state display name: include every state whose type is 'unstarted' (read the team's states and filter
+on state.type), so the query survives a state being renamed or archived. NEVER hardcode a state
+display name in a Linear filter. Include unassigned tickets explicitly, they are the point.
+
+STEP 3 — EXCLUDE beta-sprint-critical items per RULE 2, and record WHY each exclusion fired (in the
+sprint project / named blocking edge / needs a governed-lane deploy / needs an ungranted approval).
+An item excluded without a stated reason is a defect.
+
+STEP 4 — per surviving ticket, record: id, title, state, assignee (or the literal "OWNERLESS"), team,
+age in days from its live createdAt, last-activity age from its live updatedAt, labels, any named
+blocking edge, and the one sentence of its description that says what would actually be built.
+Flag OWNERLESS items — an unowned architecture ticket is the highest-value slate candidate and the
+report has a column for it.
+
+STEP 5 — HANDOFF. Mint a scratch path (lane_scratch.py --label "arch-discovery linear" --suffix .json):
+{ "run_date": "{{date}}",
+  "sprint": {"resolved": <bool>, "project_id": "...", "project_name": "...", "failing_command": null},
+  "unreadable_sources": [ {"source":"...","command":"...","error":"..."} ],
+  "tickets": [ {"id":"OMN-XXXX","title":"...","state":"...","assignee":"...|OWNERLESS","team":"...",
+                "age_days":<n>,"last_activity_days":<n>,"labels":[...],"blocking_edges":[...],
+                "what_would_be_built":"<one sentence>","beta_dependence":"BETA-CRITICAL|BETA-ADJACENT|NON-BETA",
+                "beta_dependence_reason":"<which RULE 2 clause fired>"} ],
+  "excluded_beta_critical": [ {"id":"OMN-XXXX","reason":"<clause>"} ],
+  "searches_run": [ "<the literal queries you ran>" ] }
+Return handoff_path as the ABSOLUTE path.
+Ledger rows (CLAIM then TERMINAL). Return per schema (item_count = surviving ticket count).

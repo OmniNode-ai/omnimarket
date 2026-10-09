@@ -1,0 +1,44 @@
+
+ROUTE: band=B3 score=10 dims=S2A2R1V2N1C1J1 dest=sonnet-lane model=sonnet effort=high
+{{common}}
+LANE: arch-discovery-plans. Run date: {{date}}. Read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md before you start.
+
+{{rules}}
+
+TASK: give every plan under $OMNI_HOME/docs/plans/ an execution-gate verdict per RULE 4 and mark
+whether its executable work is beta-dependent per RULE 2.
+
+STEP 1 — ENUMERATE docs/plans/*.md and record the TOTAL count. Skip docs/plans/archive/ and
+docs/plans/research/ unless a file there is referenced as active by a live ticket. Then RESOLVE THE
+READ SET per RULE 4's read-set definition: R1 by the git log --since command given there, R2 by
+collecting every plan path named by a candidate. Record read_set_size and unread_tail_size
+separately. Do NOT attempt a header pass over all 643 — that is the defect this read set replaces.
+
+STEP 2 — Read the header block (title, Status line, Ticket line, Revision lines) of every plan IN
+THE READ SET. A gate verdict needs only the header block plus a grep for gate language ("execution
+gate", "authorizes nothing", "presented for review", "gate STANDS", "plan-review gate", "PROPOSAL").
+Read the body only for read-set plans that come back OPEN or PARTIAL, since those are the only ones
+with slateable work. Plans outside the read set get NO verdict of their own: they are reported in
+aggregate as the unread tail, UNSTATED-by-default and therefore CLOSED for slating.
+
+STEP 3 — Per plan record: filename, title, the ticket(s) it cites, gate verdict (CLOSED / OPEN /
+PARTIAL / UNSTATED), the QUOTED gate sentence for CLOSED (verbatim, one sentence — this is what the
+report prints to justify excluding it), and for OPEN/PARTIAL the specific executable work items with
+their beta-dependence verdict and the RULE 2 clause that decided it.
+
+STEP 4 — Apply the RULE 4 fail-closed rule explicitly: UNSTATED is treated as CLOSED for slating.
+Say so per read-set plan, and once in aggregate for the unread tail, rather than leaving it implied. Do not "read the room" and infer that a plan is
+obviously fine to work on — the whole point of this rule is that absence of a gate sentence is a
+missing fact, not permission.
+
+STEP 5 — HANDOFF. Mint a scratch path (lane_scratch.py --label "arch-discovery plans" --suffix .json):
+{ "run_date": "{{date}}", "plans_enumerated": <n>, "read_set_size": <n>, "unread_tail_size": <n>,
+  "read_set_resolution": {"r1_command":"<the literal git log command you ran>","r1_count":<n>,"r2_paths":[...]},
+  "plans_body_read": <n>,
+  "unreadable_sources": [ {"source":"...","command":"...","error":"..."} ],
+  "plans": [ {"file":"docs/plans/....md","title":"...","tickets":["OMN-XXXX"],
+              "gate":"CLOSED|OPEN|PARTIAL|UNSTATED","gate_quote":"<verbatim sentence, or null>",
+              "slateable":<bool>,"slateable_blocked_by_rule":"RULE4-CLOSED|RULE4-UNSTATED|null",
+              "work_items":[ {"what":"...","beta_dependence":"...","reason":"<RULE 2 clause>"} ]} ] }
+Return handoff_path as the ABSOLUTE path.
+Ledger rows (CLAIM then TERMINAL). Return per schema (item_count = plans enumerated).

@@ -1,0 +1,35 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20686"
+title: "The merge-throughput tick decisions run as an omnimarket compute node"
+summary: "node_throughput_tick_decision_compute ports the controller, merges, floors and escalation findings of the throughput tick (throughput_tick.py with the loops_check.py checks it calls) as a contract-declared COMPUTE node dispatched over the bus, with parity against the old code's captured output. The lab-headroom finding, the caller that reads the files and processes, repointing callers and deleting the old script are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-throughput-tick-decision-node"
+    statement: |-
+      The throughput tick's controller, merges, floors and escalation findings run in node_throughput_tick_decision_compute, with no clock, no file reads and no process calls, and match the old tick.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: For every captured case the node returns the old tick's finding lines, status line, missing, unknown and checked lists and exit code from the facts a caller read from the same fixtures -- falsifier: tests/nodes/node_throughput_tick_decision_compute/test_golden_chain_throughput_tick_decision_compute.py against tests/fixtures/throughput_tick_parity.json, which fails on any differing finding
+      - id: "AC2"
+        statement: |-
+          AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and a malformed request is refused with no result -- falsifier: the same test file, test_golden_chain_over_the_bus_matches_a_captured_case and test_error_chain_over_the_bus_fails_without_a_result
+evidence_requirements:
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20686-throughput-tick-decision"
+    description: "node_throughput_tick_decision_compute matches the captured output of the old tick and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_golden_chain_throughput_tick_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

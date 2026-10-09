@@ -308,7 +308,7 @@ def test_report_main_returns_zero() -> None:
 def test_fixture_source_is_committed() -> None:
     assert DEFAULT_FIXTURES_PATH.exists()
     packet = build_benchmark_packet()
-    assert packet.fixture_source.endswith("recorded_rung_outputs.json")
+    assert packet.fixture_source.endswith("recorded_rung_outputs.json.captured")
 
 
 # ---------------------------------------------------------------------------

@@ -593,8 +593,8 @@ class TestDeltaContractRouting:
         bifrost_delegation.yaml's long-standing ``test`` routing_rule
         (``backend_ids: [local-coder, cloud-gemini-2-5-flash]``).
 
-        ``research`` is a different case and the guard still holds for it: two
-        LIVE local rungs (local-heavy-reasoning, local-ds-v4-flash) serve it, so
+        ``research`` is a different case and the guard still holds for it: the
+        live local-heavy-reasoning rung serves it, so
         adding it to local-coder would genuinely hijack it away from the
         reasoning-shaped backends. That half is asserted unchanged.
         """

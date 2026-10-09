@@ -1,0 +1,34 @@
+
+MANDATORY DELEGATION INSTRUCTION BLOCK — OMN-17009
+
+Owning script: src/omnimarket/nodes/node_architecture_discovery_orchestrator/handlers/handler_architecture_discovery.py
+
+PHASES:
+1. Scan (linear, marketplace, plans, process)
+2. Adjudicate
+3. Report
+
+DETERMINISM:
+- Fact counts, identifiers, paths, shas and quotes stay deterministic.
+- Prose, handoffs, classification explanations, report, commit message and TERMINAL prose use the ONEX chain first.
+
+COMMAND:
+Text: python3 "$ONEX_DELEGATION_STEP_PATH" text --lane <ledger lane> --step <slug> --prompt-file <scratch>/prompt.md --task-type document --ticket OMN-17009
+Log classification: --task-type reasoning
+
+TEXT CHAIN:
+lab then GLM through Claude Code.
+Own prose only after refusal or unusable output, recording cause.
+
+REVIEW:
+Review every draft against facts; dispose receipt with used/edited/discarded/ignored and reason-code.
+
+RETURN FORMAT:
+delegation: {delegated: nonnegative integer, runs: nonempty string ids, reason: string}
+- Positive count: needs ids and empty reason
+- Zero count: requires route-refused:<status> or route-unavailable:<token>. A route-unavailable reason is route-unavailable:<token> with no spaces: the token is the run id, or one hyphenated word such as delegation-step-failed when no run exists. Prose after the colon fails the check, so put the explanation in your report and never in the reason.
+- Read-only on Linear still drafts prose and cannot claim read-only-lane
+
+RECEIPT DISPOSAL:
+Every receipt is disposed before TERMINAL.
+Ledger cells: delegated=<n> runs=<ids> or delegated=0 delegation_reason=<reason>
