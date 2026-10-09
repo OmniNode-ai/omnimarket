@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_evidence_bundle
+contract_name: node_evidence_bundle
+node_name: node_evidence_bundle
+
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: compute
+# Invoked in process; event-bus activation is a separate step.
+lifecycle: experimental
+description: Generate immutable execution evidence and save it to an injected store
+
+input_model:
+  name: ModelBundleGenerateRequest
+  module: omnimarket.nodes.node_evidence_bundle.models
+output_model:
+  name: ModelEvidenceBundle
+  module: omnimarket.nodes.node_evidence_bundle.models
+
+capabilities:
+  - name: nl.evidence.bundle.compute
+    description: Generate immutable execution evidence and save it to an injected store
+    version: 0.1.0
+
+io_operations:
+  - operation: generate
+    description: Generate immutable execution evidence and save it to an injected store
+    protocol_method: handle
+    input_fields:
+      - request: ModelBundleGenerateRequest
+    output_fields:
+      - result: ModelEvidenceBundle
+    idempotent: false  # mints a uuid4 id per call
+
+handler:
+  module: omnimarket.nodes.node_evidence_bundle.handlers.handler_evidence_bundle_default
+  class: HandlerEvidenceBundleDefault
+  input_model: omnimarket.nodes.node_evidence_bundle.models.ModelBundleGenerateRequest
+  output_model: omnimarket.nodes.node_evidence_bundle.models.ModelEvidenceBundle
+
+# The bundle store is injected by the caller; it is not auto-wired.
+dependencies:
+  - name: store
+    dependency_type: protocol
+    description: ProtocolBundleStore backend injected into the handler constructor
+    required: true
+
+descriptor:
+  node_archetype: compute
+  purity: impure  # saves the bundle through the injected ProtocolBundleStore
+  idempotent: false  # mints a uuid4 id per call
+  timeout_ms: 1000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18008
+  maturity: alpha
+  tags: [compute, pipeline, nl-to-ticket]

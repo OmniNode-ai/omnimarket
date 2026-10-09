@@ -128,12 +128,23 @@ jobs:
 
       # Same as ci.yml's `test` job (OMN-18693): the shadow-comparison
       # migration proof starts a private PG16 cluster and fails closed when
-      # initdb/pg_ctl are absent.
+      # initdb/pg_ctl are absent. apt runs only when the runner image lacks
+      # PG16, bounded the same way as ci.yml's step.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done

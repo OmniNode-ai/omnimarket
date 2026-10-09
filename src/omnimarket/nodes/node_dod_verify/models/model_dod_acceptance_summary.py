@@ -47,6 +47,8 @@ class ModelDodAcceptanceSummary(BaseModel):
             "in contract order."
         ),
     )
+    retired_bindings: tuple[str, ...] = Field(default=())
+    refused_retirements: tuple[str, ...] = Field(default=())
     unbound_criteria: tuple[str, ...] = Field(
         default=(),
         description=(

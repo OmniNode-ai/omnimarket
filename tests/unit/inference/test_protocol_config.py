@@ -59,7 +59,7 @@ def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> No
     system_prompt, prompt, request_options = apply_inference_protocol(
         system_prompt="You are a production-quality code generation assistant.",
         prompt="Create a hello world effect node.",
-        model="Qwen3.6-35B-A3B",
+        model="Qwen3.8-27B",
         task_type="code_generation",
         backend_id="local-coder",
     )
@@ -201,7 +201,7 @@ def test_qwen_no_think_task_types_gate_code_generation_independent_of_prompt() -
     system_prompt, prompt, request_options = apply_inference_protocol(
         system_prompt="You are a helpful assistant.",
         prompt="Write a fibonacci function.",
-        model="Qwen3.6-35B-A3B",
+        model="Qwen3.8-27B",
         task_type="code_generation",
         backend_id="local-coder",
     )
@@ -233,7 +233,7 @@ def test_qwen_no_think_task_types_gate_agent_delegation_independent_of_prompt() 
     system_prompt, prompt, request_options = apply_inference_protocol(
         system_prompt="You are a tactical decision assistant.",
         prompt="Decide the next battle action given the current game state.",
-        model="Qwen3.6-35B-A3B",
+        model="Qwen3.8-27B",
         task_type="agent_delegation",
         backend_id="local-coder-mlx",
     )
@@ -268,7 +268,7 @@ def test_qwen_no_think_task_types_allowlist_unchanged_members_still_match() -> N
         _, prompt, request_options = apply_inference_protocol(
             system_prompt="You are a helpful assistant.",
             prompt=f"Do the {task_type} task.",
-            model="Qwen3.6-35B-A3B",
+            model="Qwen3.8-27B",
             task_type=task_type,
             backend_id="local-coder",
             config=config,

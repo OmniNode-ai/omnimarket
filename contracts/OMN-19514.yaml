@@ -30,3 +30,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-verdict-storage-fixture-ac1"
+    description: "The linked-UUID and unlinked-NULL verdict storage tests run against the shared module-scoped Postgres fixture and execute rather than skip."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -k 'linked_verdict or unlinked_verdict'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

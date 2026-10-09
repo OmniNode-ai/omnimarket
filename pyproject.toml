@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.303"
+version = "0.4.308"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -265,9 +265,15 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
+node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
+node_lab_fill_effect = "omnimarket.nodes.node_lab_fill_effect"
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
+node_linear_comments_decision_compute = "omnimarket.nodes.node_linear_comments_decision_compute"
+node_handshake_policy_gate_compute = "omnimarket.nodes.node_handshake_policy_gate_compute"
+node_hourly_tick_decision_compute = "omnimarket.nodes.node_hourly_tick_decision_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
@@ -275,6 +281,8 @@ node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
+node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"
+node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
@@ -356,6 +364,12 @@ node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effect"
 node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
+node_manifest_fetch_effect = "omnimarket.nodes.node_manifest_fetch_effect"
+node_nl_intent_pipeline = "omnimarket.nodes.node_nl_intent_pipeline"
+node_ambiguity_gate = "omnimarket.nodes.node_ambiguity_gate"
+node_plan_dag_generator = "omnimarket.nodes.node_plan_dag_generator"
+node_ticket_compiler = "omnimarket.nodes.node_ticket_compiler"
+node_evidence_bundle = "omnimarket.nodes.node_evidence_bundle"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
@@ -369,6 +383,7 @@ node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
 node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
 node_platform_diagnostics = "omnimarket.nodes.node_platform_diagnostics"
+node_branch_claim_check_effect = "omnimarket.nodes.node_branch_claim_check_effect"
 node_build_loop = "omnimarket.nodes.node_build_loop"
 node_ticket_pipeline = "omnimarket.nodes.node_ticket_pipeline"
 node_close_out = "omnimarket.nodes.node_close_out"
@@ -1046,7 +1061,33 @@ packages = ["src/omnimarket"]
 # installed package resource (omnimarket/config/ci_bus_lanes.yaml), so the
 # one checked-in copy at the repository root ships inside the wheel. There is
 # deliberately no second copy under src/.
-force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml" }
+# OMN-19917 (plan task T2.9, decision D8 (a)): `onex dashboard` downloads a
+# prebuilt OmniDash bundle and refuses any copy whose sha256 is not the one
+# pinned below. The pin has to travel with the installed package, and the
+# wheel ships only `src/omnimarket`, so a pin read from the source tree would
+# verify nothing on a `uv tool install` copy. This maps the same file a human
+# edits to the resource the runtime reads, so there is exactly one source of
+# truth -- the mechanism `config/ci_bus_lanes.yaml` already uses above.
+force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml", "pyproject.toml" = "omnimarket/dashboard_bundle_pin.toml" }
+
+[tool.onex.dashboard_bundle]
+# The OmniDash static build `onex dashboard` serves. Published by
+# OmniNode-ai/omnidash's publish-dashboard-bundle.yml on a vX.Y.Z tag, which
+# packs `dist/` with a fixed member order, mtime and ownership so two builds of
+# one tree produce one digest.
+#
+# `sha256` is the security boundary and it lives HERE, in our own tree, on
+# purpose. The release also publishes `<asset>.sha256` beside the archive; that
+# file is NOT consulted, because anyone able to replace the bundle can replace
+# it too. The digest below was computed from the downloaded bytes.
+#
+# To move the pin: bump `version`, download the new asset, compute its sha256
+# locally, and paste it. A mismatch is refused, never repaired -- re-downloading
+# on mismatch would turn an attack into a cache miss.
+version = "v1.1.9"
+sha256 = "41c54ad3523ce2c228083d10474391fc77dc4d5ccce3ef57d3bd8e69de358024"
+asset = "omnidash-bundle-v1.1.9.tar.gz"
+repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]

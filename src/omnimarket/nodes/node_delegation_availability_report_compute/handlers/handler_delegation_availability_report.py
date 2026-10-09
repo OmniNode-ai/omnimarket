@@ -53,7 +53,8 @@ def summarize_single_hop_cohort(
 ) -> ModelDelegationAvailabilityReport:
     """Report typed availability separately from evaluated final content.
 
-    A missing terminal is operational evidence with no content verdict or score.
+    A missing terminal or zero attempts is operational evidence with no content
+    verdict or score.
     Retried requests are excluded pending OMN-18916; duplicate requests are
     refused so a repeated receipt cannot change either denominator.
     """
@@ -65,7 +66,7 @@ def summarize_single_hop_cohort(
             raise ValueError("cohort contains a duplicate request")
         seen.add(observation.correlation_id)
         terminal = observation.terminal
-        if observation.attempts_count != 1 or (
+        if observation.attempts_count > 1 or (
             terminal is not None and terminal.escalation_count != 0
         ):
             excluded.append(observation.correlation_id)

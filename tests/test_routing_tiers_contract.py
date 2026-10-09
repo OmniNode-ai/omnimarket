@@ -29,8 +29,7 @@ _ROUTING_TIERS_PATH = Path("src/omnimarket/configs/routing_tiers.yaml")
 #   local-reasoner   -> .201:8001, the RTX 4090 slot physically removed for RMA
 #                       (OMN-16407); curl exit 7 "Couldn't connect to server".
 #   local-coder-mlx  -> .200:8401, gone; the Mac Studio's MLX server now serves
-#                       Qwen3.8-27B-8bit on 127.0.0.1:8099, LOCALHOST-ONLY and
-#                       therefore not reachable from the .201 runtime.
+#                       a workstation service that has also been removed.
 _RETIRED_BACKEND_REFS: frozenset[str] = frozenset({"local-reasoner", "local-coder-mlx"})
 _RETIRED_MODEL_IDS: frozenset[str] = frozenset(
     {MODEL_QWEN3_27B_MTP, "mlx-community/Qwen3.6-35B-A3B-8bit"}
@@ -87,36 +86,8 @@ def test_routing_tiers_declares_live_local_served_model_ids() -> None:
 
 
 def test_local_tier_keeps_a_same_tier_sibling_for_code_generation() -> None:
-    """OMN-16833 (re-expresses OMN-16442's re-expression of OMN-15180).
-
-    OMN-15180 registered a second local ``code_generation`` backend so the
-    OMN-14402 same-tier fallback (``sibling_backend_available_in_tier``) had a
-    sibling to retry before escalating to the metered cheap_cloud tier.
-    OMN-16442 turned that membership pin into the property: >= 2 DISTINCT local
-    code_generation backends.
-
-    That property is currently NOT deliverable by the fleet, and asserting it
-    over DECLARED entries was measuring the config rather than the fleet. The
-    second declarant was ``local-ds-v4-flash`` at .200:8101, which every lane
-    overlay marks ``serving: false`` (OMN-16999) and every lane therefore
-    renders as ``endpoint_url: null`` — so ``_load_bifrost_endpoints`` dropped
-    it and the retry sibling did not exist in fact. The old assertion was green
-    on a rung the whole fleet skips, which is the exact defect OMN-16833 is
-    about; keeping it green by re-declaring an unbindable entry would be
-    circular.
-
-    Asserted here in two halves, so the guarantee is honest today and restores
-    itself the moment the endpoint comes back:
-
-    1. UNCONDITIONAL — code_generation keeps at least one local rung, and every
-       local rung a tier references is one a lane actually binds. This is what
-       stops the class falling straight to the metered tier.
-    2. CONDITIONAL — every lane-bound local backend whose contract declares the
-       ``code_generation`` capability must be referenced by the local tier. So
-       when ds-v4-flash is restarted and moves into
-       ``LANE_BOUND_LOCAL_BACKENDS``, this fails until its tier entry is
-       restored, and OMN-15180's >= 2 sibling guarantee returns with it. The
-       ratchet is deferred, not dropped.
+    """Local code generation remains bindable, and all capable local bindings
+    stay represented in the tier even when the fleet gains a second endpoint.
     """
     config = _load_config()
 
@@ -202,7 +173,7 @@ def test_no_tier_references_a_backend_no_lane_can_bind() -> None:
     ``omnimarket.validators.routing_tier_backend_bindability`` so the pre-commit
     hook, the CI job and this test all decide from one implementation. This
     failed on the pre-change tree naming ``cloud-vertex-gemini``
-    (cloud_endpoint_url_null) and ``local-ds-v4-flash`` (local_bound_by_no_lane).
+    (cloud_endpoint_url_null) and a parked local backend (local_bound_by_no_lane).
     """
     findings = find_unbindable_tier_backends()
 

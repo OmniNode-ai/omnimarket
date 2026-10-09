@@ -3,12 +3,11 @@
 
 """NodeLogPersistenceEffect — persists log events to Postgres.
 
-Subscribes to onex.evt.platform.log-entry.v1 events and INSERTs each into
-the log_entries table. Idempotent on entry_id via ON CONFLICT DO NOTHING.
+Subscribes to structured log and delegation terminal events and materializes
+log_entries through the runtime database adapter. Replay-safe on entry_id.
 
-If the asyncpg pool is None (no DB configured), the handler logs a warning
-and skips the write rather than raising — graceful degradation for
-environments without Postgres.
+The bus handler uses the database supplied by contract-driven runtime wiring.
+The legacy async persist API remains available for direct callers.
 """
 
 from __future__ import annotations
@@ -16,12 +15,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import yaml
+from omnibase_core.models.logging.model_structured_log_entry import (
+    ModelStructuredLogEntry,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillCompleted,
+    ModelDelegateSkillFailed,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
@@ -29,6 +37,8 @@ from omnimarket.nodes.contract_topics import (
 from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
     ModelLogEntry,
 )
+from omnimarket.projection.envelope import envelope_event_timestamp
+from omnimarket.projection.handler_shim import split_projection_input
 
 if TYPE_CHECKING:
     import asyncpg
@@ -38,6 +48,36 @@ logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 _SUBSCRIBE_TOPICS = contract_subscribe_topics(_CONTRACT_PATH)
 _PUBLISH_TOPICS = contract_publish_topics(_CONTRACT_PATH)
+_SUPPORTED_EVENT_MODELS: dict[
+    str,
+    type[ModelStructuredLogEntry]
+    | type[ModelDelegateSkillCompleted]
+    | type[ModelDelegateSkillFailed],
+] = {
+    f"{cls.__module__}.{cls.__qualname__}": cls
+    for cls in (
+        ModelStructuredLogEntry,
+        ModelDelegateSkillCompleted,
+        ModelDelegateSkillFailed,
+    )
+}
+
+
+def _load_handler_event_models(contract_path: Path) -> dict[str, str]:
+    """Map each contract-routed topic to its declared event_model path."""
+    contract = yaml.safe_load(contract_path.read_text())
+    routes: dict[str, str] = {}
+    for route in contract["handler_routing"]["handlers"]:
+        if route["event_model"] not in _SUPPORTED_EVENT_MODELS:
+            raise ValueError(
+                "unsupported log persistence contract event_model: "
+                f"{route['event_model']!r}"
+            )
+        routes[route["topic"]] = route["event_model"]
+    return routes
+
+
+_HANDLER_EVENT_MODELS = _load_handler_event_models(_CONTRACT_PATH)
 
 _DEFAULT_PG_DSN = os.environ.get("ONEX_PG_DSN", "")  # contract-config-ok: config  # fmt: skip
 
@@ -56,9 +96,8 @@ class ModelLogPersistenceResult(BaseModel):
 class NodeLogPersistenceEffect:
     """EFFECT node: persists log events from Kafka to Postgres.
 
-    Accepts an optional asyncpg pool for dependency injection (enables unit
-    testing without a real database). When pool is None and no DSN is
-    configured, operates in no-op mode with a logged warning.
+    Bus dispatch requires the contract-resolved database adapter. Direct
+    legacy persist() calls may supply an asyncpg pool or DSN separately.
     """
 
     handler_type: Literal["node_handler"] = "node_handler"
@@ -89,7 +128,89 @@ class NodeLogPersistenceEffect:
         )
         return self._pool
 
-    async def handle(self, entry: ModelLogEntry) -> ModelLogPersistenceResult:
+    def handle(self, request: object) -> dict[str, object]:
+        """Persist bus activity through the contract-resolved projection database.
+
+        Synchronous by design: callers must not await it. The runtime db_io
+        projection dispatch calls this method without awaiting, and
+        DatabaseAdapter.upsert is synchronous; the async direct-write API is
+        persist(). This dispatch shape avoids the legacy async path's optional
+        ONEX_PG_DSN and silent skipped writes.
+        Delegation terminals produce execution logs, never copies of model text.
+
+        ``request`` is the runtime-injected payload mapping (with ``_db``,
+        ``_topic`` and envelope metadata), the shape the db_io projection
+        dispatch arm sends; see node_hook_event_capture for the same contract.
+        """
+        if not isinstance(request, Mapping):
+            raise TypeError(
+                "NodeLogPersistenceEffect.handle() expects the runtime-injected "
+                f"payload mapping (with _db/_topic), got {type(request).__name__}"
+            )
+        db, payload, meta = split_projection_input(dict(request))
+        topic = meta.get("_topic")
+        if not isinstance(topic, str) or topic not in _HANDLER_EVENT_MODELS:
+            raise ValueError(
+                f"log persistence topic is not routed by contract: {topic!r}"
+            )
+        event_cls = _SUPPORTED_EVENT_MODELS[_HANDLER_EVENT_MODELS[topic]]
+        event = event_cls.model_validate(payload)
+        if isinstance(event, (ModelDelegateSkillCompleted, ModelDelegateSkillFailed)):
+            terminal = event
+            # Source identity and event time must survive replay unchanged.
+            if "_envelope_id" not in meta:
+                raise ValueError("delegation execution log requires source envelope id")
+            entry_id = UUID(str(meta["_envelope_id"]))
+            timestamp = envelope_event_timestamp(meta)
+            if timestamp is None:
+                raise ValueError(
+                    "delegation execution log requires source envelope timestamp"
+                )
+            row: dict[str, object] = {
+                "entry_id": entry_id,
+                "timestamp": timestamp,
+                "node_name": "node_delegate_skill_orchestrator",
+                "function_name": "delegate_skill",
+                "level": "info" if terminal.status == "completed" else "error",
+                "message": f"Delegation {terminal.status}",
+                "correlation_id": str(terminal.correlation_id),
+                "duration_ms": terminal.execution_duration_ms,
+                "metadata": {
+                    "task_type": terminal.task_type,
+                    "model_name": terminal.model_name,
+                },
+            }
+        else:
+            entry = event
+            duration_ms = None
+            if "duration_ms" in entry.metadata:
+                try:
+                    duration_ms = float(entry.metadata["duration_ms"])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "structured log metadata duration_ms must be convertible to float"
+                    ) from exc
+            row = {
+                "entry_id": entry.entry_id,
+                "timestamp": entry.timestamp,
+                "node_name": entry.source_system,
+                "function_name": entry.operation,
+                "level": entry.level.value.lower(),
+                "message": entry.message,
+                "correlation_id": None
+                if entry.correlation_id is None
+                else str(entry.correlation_id),
+                "duration_ms": duration_ms,
+                "metadata": entry.metadata,
+            }
+        written = db.upsert("log_entries", "entry_id", row)
+        return {
+            "entry_id": str(row["entry_id"]),
+            "status": "written" if written else "idempotent",
+            "rows_upserted": int(written),
+        }
+
+    async def persist(self, entry: ModelLogEntry) -> ModelLogPersistenceResult:
         """Persist a single log entry to Postgres.
 
         Args:
@@ -172,7 +293,7 @@ class NodeLogPersistenceEffect:
         return {
             "entry_id": entry.entry_id,
             "status": "skipped",
-            "error_message": "use async handle() for live persistence",
+            "error_message": "use persist() for legacy direct persistence",
         }
 
 

@@ -57,8 +57,7 @@ BIFROST_CONTRACT_PATH: Final[Path] = _CONFIGS_DIR / "bifrost_delegation.yaml"
 #: endpoint becomes concrete, and a rung bound nowhere routes nowhere.
 #:
 #: Every entry carries the live readback that admitted it. Re-probe before
-#: adding one; a backend whose endpoint refuses a connection belongs in
-#: ``NOT_SERVING_LOCAL_BACKENDS`` below, not here.
+#: adding one; a backend whose endpoint refuses a connection cannot join it.
 #:
 #:   local-coder / local-heavy-reasoning -> .201:8000, the SGLang slot. Probed
 #:   2026-09-10: ``GET .201:8000/v1/models`` -> HTTP 200. Bound
@@ -66,26 +65,6 @@ BIFROST_CONTRACT_PATH: Final[Path] = _CONFIGS_DIR / "bifrost_delegation.yaml"
 LANE_BOUND_LOCAL_BACKENDS: Final[frozenset[str]] = frozenset(
     {"local-coder", "local-heavy-reasoning"}
 )
-
-#: ``tier: local`` backends every lane overlay in the fleet currently marks
-#: ``serving: false``, so the renderer writes ``endpoint_url: null`` and
-#: ``_load_bifrost_endpoints`` skips them. Declared, dark, and therefore not
-#: referenceable from a tier. Kept as a NAMED set rather than an absence so the
-#: reason and the restore procedure survive with the id.
-#:
-#:   local-ds-v4-flash -> .200:8101. Probed 2026-09-10:
-#:   ``GET .200:8101/v1/models`` -> curl exit 7 "Couldn't
-#:   connect to server", http=000. Controls proving the probe ran and the host
-#:   is up: ``ping .200`` -> 2/2 packets, 0.0% loss, and the same
-#:   probe against .201:8000 -> HTTP 200. All three lab lane overlays (dev,
-#:   judge, lakshman) declare ``serving: false`` per OMN-16999 — a stopped
-#:   operator-started service on the workstation, not retired hardware.
-#:   RESTORE by starting the ds4 server, re-probing, updating omnibase_infra's
-#:   ``tests/fixtures/bifrost_served_models_probe.json``, flipping ``serving``
-#:   to true in the lane overlays, then moving this id into
-#:   ``LANE_BOUND_LOCAL_BACKENDS`` and restoring the tier entry — in that
-#:   order, endpoint first and tier reference last.
-NOT_SERVING_LOCAL_BACKENDS: Final[frozenset[str]] = frozenset({"local-ds-v4-flash"})
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, object]:

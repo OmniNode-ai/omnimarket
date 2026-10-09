@@ -112,7 +112,7 @@ jobs:
   # there.
   route:
     name: Runner Route (OMN-18031)
-    uses: OmniNode-ai/omniclaude/.github/workflows/route-runner-reusable.yml@b6ba84ef6c9ba3f220204c3d672de1da5131132c
+    uses: OmniNode-ai/omnimarket/.github/workflows/route-runner-reusable.yml@01a0d1b3e7d7ba1a09012f9af245ba29afa000b5
     with:
       workflow_path: .github/workflows/ci.yml
     secrets:
@@ -305,6 +305,10 @@ jobs:
         run: uv run ruff check src/ tests/ benchmarks/
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
+      # OMN-18963: SYNC with the ci-summary-event-scope pre-commit hook.
+      # This strict lint job already gates CI Summary, including docs-only PRs.
+      - name: CI Summary external producer trigger parity
+        run: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
       - name: Stub implementation check
         run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
       - name: TODO format check
@@ -482,6 +486,24 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
+      - name: Typed decision shadow calibration (OMN-19136)
+        run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
+      # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
+      - name: Same-model sibling quality gate (OMN-19215)
+        run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
+      # OMN-19032: paired with the non-dev-base-guard-regression pre-commit hook.
+      - name: Feature-base auto-merge refusal regression (OMN-19032)
+        run: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+      # OMN-18932: keep the release bar paired with its pre-commit hook.
+      - name: D1 output-only release acceptance (OMN-18932)
+        run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-20282: paired with the work-ledger-principal-auth pre-commit hook.
+      - name: Work-ledger signature and operator-only consent
+        run: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
+      # OMN-20282: paired with the work-ledger-principal-cli pre-commit hook.
+      - name: Work-ledger signing configuration and bus round-trip
+        run: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.
@@ -953,11 +975,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
@@ -1385,11 +1421,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
@@ -3021,7 +3071,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.67
+          ref: v0.38.68
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -3618,6 +3668,8 @@ jobs:
           # commit that never carries other workflows' check-runs.
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
           ACTOR: ${{ github.actor }}
+          # OMN-18963: external producers have different push branch filters.
+          REF_NAME: ${{ github.ref_name }}
           # Bounded poll window (minutes) — kept under the run-cancel window so
           # the required context always reaches a terminal state first.
           DEADLINE_MINUTES: "90"
@@ -3676,7 +3728,7 @@ jobs:
                 rm -f workflow_runs.json
               fi
             fi
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
@@ -3686,7 +3738,7 @@ jobs:
             esac
             if [ "$(date +%s)" -ge "${deadline}" ]; then
               echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
-              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}" --report-only || true
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}" --report-only || true
               exit 1
             fi
             sleep "${POLL_INTERVAL_SECONDS}"

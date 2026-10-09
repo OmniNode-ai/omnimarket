@@ -67,14 +67,25 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
-    # OMN-19432: the typed-decision effect is unwired on purpose (no event_bus,
-    # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
-    # until a decision contract composes it.
-    "node_typed_decision_effect",
     # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_fill_selection_compute",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_disk_hygiene_effect",
+    # OMN-20673: hosted from the operator tooling repository, whose copy is
+    # still registered; its briefs and defaults arrive through a deployment
+    # overlay, so it has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_morning_ground_state_orchestrator",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
@@ -284,7 +295,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # by the submit CLI and has no handler_routing either: 9 -> 10.
     # node_prune_binding_effect is called in process by the two prune effects,
     # so it is experimental with no handler_routing: 10 -> 11.
-    assert summary["skipped"] == 11
+    # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
+    # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
+    assert summary["skipped"] == 17
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

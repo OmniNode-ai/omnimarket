@@ -15,9 +15,10 @@ Two paths, one projection (spec amendment 1):
   calls that same entry point with ``data_source="fixture"``. It is not a
   direct database write.
 * A lane's broker. :meth:`wire_messages` returns the same terminals as envelope
-  bytes carrying ``metadata.tags["data_source"] = "fixture"``. The ``onex seed``
-  shim publishes them on the delegate-skill completed topic, and the standalone
-  projection runner reads the tag through ``envelope_data_source``.
+  bytes carrying ``data_source = "fixture"`` on the payload and in metadata
+  tags. The ``onex seed`` shim publishes them on the delegate-skill completed
+  topic. The runtime handler reads the payload marker; the standalone runner
+  can also read the envelope tag through ``envelope_data_source``.
 
 Correlation ids are ``uuid5`` of (fixture-set version, run key), and the
 projection upserts on ``correlation_id``, so seeding twice writes the same rows.
@@ -175,6 +176,9 @@ class HandlerDevSeed:
         completed = run.status == "completed"
         payload: dict[str, object] = {
             "status": run.status,
+            # The kernel dispatches payload fields, without envelope tags.
+            # Keep the same provenance on both transport shapes.
+            DATA_SOURCE_TAG: DATA_SOURCE_FIXTURE,
             "correlation_id": str(fixture_correlation_id(version, run.key)),
             "task_type": run.task_type,
             "provider": run.provider,

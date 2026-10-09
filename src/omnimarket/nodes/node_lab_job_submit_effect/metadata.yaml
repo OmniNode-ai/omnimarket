@@ -19,6 +19,7 @@ capabilities:
   side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.67"
   - "click>=8.1.0"
   - "pydantic>=2.0.0"
   - "pyyaml>=6.0"

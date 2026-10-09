@@ -294,6 +294,7 @@ def _apply_migrations(dsn: str) -> None:
                 "0001_grant_omninode_runtime_dod_verify_runs.sql",
                 "0002_dod_verify_runs_delegation_correlation_id.sql",
                 "0003_dod_verify_runs_goal.sql",
+                "0004_dod_verify_runs_contract_subject.sql",
             ):
                 await connection.execute(
                     (_MIGRATIONS / filename).read_text(encoding="utf-8")

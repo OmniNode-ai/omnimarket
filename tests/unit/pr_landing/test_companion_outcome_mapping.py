@@ -217,6 +217,7 @@ def test_every_outcome_the_live_renderer_can_write_maps_back(
             "auto/omninode-ai-omnimarket-pr-2974-occ-autobind)"
         ),
         EnumAutobindOutcome.DECLINED: "skip:PR_DRAFT — not a mergeable product PR",
+        EnumAutobindOutcome.NOOP: "no-op: OmniNode-ai/omnimarket#2974 already bound to OCC#11546",
         EnumAutobindOutcome.ERROR: "failed: git push rejected",
     }[legacy]
     line = render_outcome_summary(
@@ -227,7 +228,9 @@ def test_every_outcome_the_live_renderer_can_write_maps_back(
         correlation_id=None,
     ).splitlines()[0]
     outcome = companion_outcome_from_autobind_marker(line, head_sha=_HEAD)
-    assert outcome.kind.value == legacy.value
+    assert outcome.kind.value == (
+        "DECLINED" if legacy is EnumAutobindOutcome.NOOP else legacy.value
+    )
     assert outcome.correlation_id is None
     if legacy is EnumAutobindOutcome.MINTED:
         assert outcome.occ_pr == 11546

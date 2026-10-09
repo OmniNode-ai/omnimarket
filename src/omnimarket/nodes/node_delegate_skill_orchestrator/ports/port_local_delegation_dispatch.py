@@ -67,6 +67,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationDeliverableEvidence,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
+    ModelDelegationRawResponse,
     ModelQualityGateInput,
 )
 
@@ -146,6 +147,13 @@ from omnimarket.models.delegation.delegation_attempt_lineage import (
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
+from omnimarket.models.delegation.delegation_caller_lane import (
+    DELEGATION_CALLER_LANE_METADATA_KEY,
+)
+from omnimarket.models.delegation.delegation_lineage import LINEAGE_KEYS
+from omnimarket.models.delegation.delegation_ticket_id import (
+    DELEGATION_TICKET_METADATA_KEY,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
 )
@@ -528,6 +536,7 @@ def _response_contract_evidence_for_attempt(
     deliverable_contract: ModelDeliverableContract,
     outbound_system_prompt: str | None,
     validated: bool,
+    raw_response: ModelDelegationRawResponse | None,
 ) -> ModelDelegationContractEvidence | None:
     """Record the response contract this attempt conveyed and graded (OMN-19201).
 
@@ -563,6 +572,7 @@ def _response_contract_evidence_for_attempt(
         output_shape=output_shape,
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
+        raw_response=raw_response,
     )
 
 
@@ -1124,6 +1134,7 @@ class LocalDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
@@ -1231,6 +1242,9 @@ class LocalDelegationDispatchPort:
         # tiers that declare the same concrete backend for a task type made
         # escalation a functional no-op (identical backend+model re-attempted).
         excluded_backend_refs: set[str] = set()
+        # OMN-19215: a sibling hop must remember every exhausted quality
+        # rejection, including when the intervening sibling fails transport.
+        quality_rejected_model_ids: set[str] = set()
         # Cumulative metered spend banked across every attempted tier (OMN-13849):
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
@@ -1497,6 +1511,7 @@ class LocalDelegationDispatchPort:
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        excluded_model_ids=frozenset(quality_rejected_model_ids),
                         quota_state=self._quota_snapshot(quota_observations),
                     )
                 if transport_sibling is None and not byok_same_backend_retry:
@@ -1632,6 +1647,7 @@ class LocalDelegationDispatchPort:
                     result=transport_result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=transport_failure_message,
@@ -1912,6 +1928,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=True,
                     failure_message="",
@@ -2050,6 +2067,7 @@ class LocalDelegationDispatchPort:
                 continue
 
             excluded_backend_refs.add(backend.backend_id)
+            quality_rejected_model_ids.add(backend.model_id)
 
             # OMN-13640: same posture as the transport branch above — the tier
             # is only abandoned once the routing authority reports no untried
@@ -2068,7 +2086,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
-                    excluded_model_ids=frozenset({backend.model_id}),
+                    excluded_model_ids=frozenset(quality_rejected_model_ids),
                     quota_state=self._quota_snapshot(quota_observations),
                 )
             )
@@ -2133,6 +2151,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=gate_failure_message,
@@ -3126,6 +3145,7 @@ class LocalDelegationDispatchPort:
                 deliverable_contract=deliverable_contract,
                 outbound_system_prompt=outbound_system_prompt,
                 validated=gate_result.passed,
+                raw_response=result.raw_response,
             ),
         )
 
@@ -3228,6 +3248,7 @@ class LocalDelegationDispatchPort:
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
         required_bar: float | None,
+        attribution: Mapping[str, str] | None = None,
         attempt_usage: Sequence[_AttemptUsage] = (),
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
@@ -3330,6 +3351,15 @@ class LocalDelegationDispatchPort:
                     "non-UUID session id %r omitted from evidence row",
                     source_session_id,
                 )
+        # OMN-20606: who issued the run and what it follows. The handler's own
+        # terminal carries the caller lane and ticket, but on this in-process
+        # path only THIS payload reaches the bus, and it named neither, so every
+        # in-process fallback row on the dev lane had an empty caller_lane and
+        # nothing linking it to the failed delegation it answered. The handler
+        # has already validated each value; only the named keys are copied.
+        for key, value in (attribution or {}).items():
+            if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
+                payload[key] = value
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
         # tenant_id so the evidence row stamps a real tenant.
         #
@@ -3586,6 +3616,14 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation or None,
             partition_key=correlation or None,
         )
+
+
+#: The attribution keys the in-process evidence terminal carries (OMN-20606):
+#: the caller lane, the ticket, and the delegation lineage. Each key is the
+#: terminal key and the delegation_events column of the same name.
+_EVIDENCE_ATTRIBUTION_KEYS: frozenset[str] = frozenset(
+    {DELEGATION_CALLER_LANE_METADATA_KEY, DELEGATION_TICKET_METADATA_KEY} | LINEAGE_KEYS
+)
 
 
 def _local_terminal_topic(*, success: bool) -> str | None:

@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19079"
+title: "node_projection_open_obligations exposure loads at projection-api boot"
+summary: "The node_projection_open_obligations contract declared projection_api.schema omninode_internal, outside discovery.ALLOWED_SCHEMAS, so the exposure was excluded at every projection-api boot. The contract now declares omnidash_analytics and the physical relation omninode_internal.open_obligations resolves from db_io."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-open-obligations-exposure-loads"
+    statement: "The open-obligations projection exposure loads during discovery. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: projection discovery loads the onex.snapshot.projection.work.open-obligations.v1 exposure with schema_name omnidash_analytics -- falsifier: uv run pytest tests/unit/projection/test_projection_discovery.py -q in omnimarket fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The projection discovery tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/projection/test_projection_discovery.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19079-ac1-open-obligations-exposure-loads"
+    description: "AC1 hosted probe. The projection discovery tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_projection_discovery.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

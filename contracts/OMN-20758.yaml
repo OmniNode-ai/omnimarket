@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20758"
+title: "The local dashboard Overview titles three metrics differently from the demo mockup: Spend, Measured runs and Tokens in and out"
+summary: "omnidash v1.1.8 retitles the Overview's Spend, Measured runs and Tokens in and out cards as Actual spend, Agent calls and Tokens processed over the same served figures. onex dashboard pins a bundle at or above v1.1.8 (v1.1.9)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-overview-mockup-titles"
+    statement: |-
+      The bundle onex dashboard serves titles the three Overview cards as the demo mockup does.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The local Overview's cards are titled Actual spend, Agent calls and Tokens processed, each showing the same served figure as today -- falsifier: a vitest page test rendering the Overview from a served metering-summary row that fails unless each of the three titles is present and bound to the same value the current Spend, Measured runs and Tokens in and out cards show
+      - id: "AC2"
+        statement: |-
+          AC2: No card on the local Overview is still titled Spend, Measured runs or Tokens in and out -- falsifier: the same vitest suite failing when any of the three old titles renders
+evidence_requirements:
+  - kind: "tests"
+    description: "onex dashboard pins an omnidash bundle with the mockup's Overview titles (v1.1.8 or later)."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20758.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20758-bundle-pin"
+    description: "onex dashboard pins omnidash v1.1.9, which carries v1.1.8's retitled Actual spend, Agent calls and Tokens processed cards and none of the old titles."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20758.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

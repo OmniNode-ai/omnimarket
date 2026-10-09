@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20472"
+title: "A calibrated judged acceptance event for delegated output"
+summary: "ModelDelegationAcceptanceJudgedEvent carries the delegated call, model, tier and kind, the judge, the calibration identity and the verdict. It requires a non-empty calibration_run_id, restricts quality to integers 0 to 3, derives its event id from judge_run_id and correlation_id, and is exported with its topic constant."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-judged-acceptance-event"
+    statement: "A judged verdict on a delegated output has a typed event with calibration identity. The criteria below are labeled AC1 and AC2 so the binding items can claim them through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the judged acceptance event requires a non-empty calibration_run_id, restricts quality to integers 0 to 3 and kind to task or edit_loop_turn, and round-trips through JSON -- falsifier: uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q in omnimarket fails at the merge base because the event export is absent"
+      - id: "AC2"
+        statement: "AC2: the event id is the UUID5 of judge_run_id and correlation_id, and a supplied event_id that disagrees with that pair is refused -- falsifier: the named tests do not exist at the merge base, so the run fails there"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The judged acceptance event schema tests pass at the head."
+    command: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q"
+  - kind: "tests"
+    description: "AC2 hosted probe. The event id is deterministic and a forged id is refused."
+    command: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q -k judged_acceptance_event_id_deterministic"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20472-ac1-judged-event-schema"
+    description: "AC1 hosted probe. The judged acceptance event schema tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20472-ac2-deterministic-event-id"
+    description: "AC2 hosted probe. The event id is deterministic and a forged id is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q -k judged_acceptance_event_id_deterministic"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

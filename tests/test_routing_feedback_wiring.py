@@ -94,7 +94,7 @@ def _all_tiers_failed() -> dict[str, Any]:
         "request_id": "req-3",
         "task_type": "codegen",
         "task_id": None,
-        "attempted_models": ("ds-v4-flash", "qwen3-coder-30b"),
+        "attempted_models": ("fixture-model-a", "qwen3-coder-30b"),
     }
 
 
@@ -163,7 +163,7 @@ async def test_producer_dispatch_publishes_the_updated_event(
     assert result is not None
     (event,) = result.output_events
     assert isinstance(event, ModelRoutingFeedbackUpdatedEvent)
-    assert event.feedback.model_id in {"qwen3-coder-30b", "claude", "ds-v4-flash"}
+    assert event.feedback.model_id in {"qwen3-coder-30b", "claude", "fixture-model-a"}
     assert event.feedback.task_type == "codegen"
     assert event.feedback.total_count == 1
 

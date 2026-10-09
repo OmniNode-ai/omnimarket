@@ -80,6 +80,9 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
+    ModelDodContractSubject,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
@@ -96,7 +99,11 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelProductClonePinSet,
     ModelProductCloneResolution,
 )
+from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
+    resolve_retirements,
+)
 from omnimarket.nodes.node_dod_verify.services.ac_falsifier_checks import (
+    _canonical_label,
     derive_falsifier_items,
     is_accepted_binding,
     unique_derived_id,
@@ -108,6 +115,10 @@ from omnimarket.nodes.node_dod_verify.services.behavior_check_execution import (
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_check,
     classify_item_checks,
+)
+from omnimarket.nodes.node_dod_verify.services.contract_subject import (
+    inline_goal_subject,
+    resolve_contract_subject,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -2370,6 +2381,8 @@ class EvidenceCollector:
         # which has no ticket criteria), so a consumer can tell "no acceptance
         # checks" from "never looked". Read by ``handler_dod_verify``.
         self.acceptance_summary: ModelDodAcceptanceSummary | None = None
+        # OMN-20696: subject of the contract loaded for the current verdict.
+        self.contract_subject: ModelDodContractSubject | None = None
 
     @property
     def occ_governance_ref(self) -> str:
@@ -3249,8 +3262,10 @@ class EvidenceCollector:
             One ModelEvidenceCheckResult per dod_evidence item.
         """
         self.acceptance_summary = None
+        self.contract_subject = None
         raw: dict[str, Any] | None
         if inline_items is not None:
+            self.contract_subject = inline_goal_subject()
             path = None
             raw = {
                 "ticket_id": ticket_id,
@@ -3267,6 +3282,7 @@ class EvidenceCollector:
                         message=f"File does not exist: {contract_path}",
                     )
                 ]
+            self.contract_subject = resolve_contract_subject(path)
             raw = self._load_yaml(path)
         else:
             found = self._find_contract(ticket_id)
@@ -3283,6 +3299,7 @@ class EvidenceCollector:
                     )
                 ]
             path = found
+            self.contract_subject = resolve_contract_subject(path)
             raw = self._load_yaml(path)
         if raw is None:
             return [
@@ -3619,6 +3636,8 @@ class EvidenceCollector:
         # alongside the claim rather than removed from it, because "claimed but
         # not yet accepted" and "not claimed at all" are different facts and
         # the consumer's hold reason has to tell them apart.
+        # Contract markers may name only declared items, never derived falsifiers.
+        retired = resolve_retirements(dod_items[:declared_count]).pairs
         declared_by_id: dict[str, tuple[str, ...]] = {}
         drafts_by_id: dict[str, tuple[str, ...]] = {}
         for item in dod_items:
@@ -3630,8 +3649,13 @@ class EvidenceCollector:
                 continue
             if not isinstance(raw_binds, (list, tuple)):
                 continue
-            labels = tuple(str(label) for label in raw_binds if str(label).strip())
-            if labels:
+            labels = tuple(
+                str(label)
+                for label in raw_binds
+                if str(label).strip()
+                and (item_id, _canonical_label(str(label))) not in retired
+            )
+            if labels or any(target == item_id for target, _ in retired):
                 declared_by_id[item_id] = labels
                 drafts_by_id[item_id] = _draft_binding_labels(item, labels)
         if declared_by_id:

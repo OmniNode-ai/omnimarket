@@ -63,6 +63,10 @@ DELEGATION_RUN_MIGRATION = MIGRATION.with_name(
 
 #: OMN-20025: the writer names goal_id and related columns, which 0003 adds.
 GOAL_RUN_MIGRATION = MIGRATION.with_name("0003_dod_verify_runs_goal.sql")
+#: OMN-20696: the writer names the contract-subject columns added by 0004.
+CONTRACT_SUBJECT_MIGRATION = MIGRATION.with_name(
+    "0004_dod_verify_runs_contract_subject.sql"
+)
 
 CORRELATION = UUID("d4396b48-e783-4523-98b1-5f795b5f7b51")
 STARTED = datetime(2026, 9, 20, 11, 0, tzinfo=UTC)
@@ -138,6 +142,7 @@ async def _migrated_writer() -> AsyncIterator[
             MIGRATION,
             DELEGATION_RUN_MIGRATION,
             GOAL_RUN_MIGRATION,
+            CONTRACT_SUBJECT_MIGRATION,
         ):
             ddl = migration.read_text().replace("omninode_internal.", f"{schema}.")
             await connection.execute(ddl)
