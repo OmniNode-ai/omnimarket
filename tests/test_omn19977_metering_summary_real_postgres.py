@@ -41,6 +41,7 @@ _MIGRATIONS = tuple(
         "0000_create_metering_summary.sql",
         "0002_metering_summary_savings_per_measured_run.sql",
         "0003_metering_summary_compression_and_cache_hit.sql",
+        "0004_metering_summary_savings_pct.sql",
     )
 )
 _SCHEMA = "omn19977_metering_summary_write_path_test"
@@ -172,6 +173,83 @@ async def test_omn20009_the_writer_stores_the_saving_per_measured_run() -> None:
         assert len(rows) == 1
         assert Decimal(rows[0]["savings_usd"]) == Decimal("2.9")
         assert rows[0]["savings_per_measured_run_usd"] == "0.966667"
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_omn20008_the_writer_stores_the_savings_share_of_the_baseline() -> None:
+    """OMN-20008 AC5: the real upsert writes savings over counterfactual.
+
+    The all row divides 2.9 by 3.0. The day with only a token-less measured run
+    has a counterfactual of exactly 0 and stores NULL, and a replay rewrites
+    the same text.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
+        as_of = datetime(2026, 9, 28, 12, tzinfo=UTC)
+        records = [
+            ModelMeteringRecord(
+                correlation_id=f"run-{index}",
+                occurred_at=as_of - timedelta(hours=1, minutes=index),
+                model="local-a",
+                tokens_in=1000,
+                tokens_out=0,
+                spend_usd=Decimal(spend),
+            )
+            for index, spend in enumerate(("0", "0", "0.1"))
+        ]
+        records.append(
+            ModelMeteringRecord(
+                correlation_id="run-zero-tokens",
+                occurred_at=as_of - timedelta(days=2),
+                model="local-a",
+                tokens_in=0,
+                tokens_out=0,
+                spend_usd=Decimal("0"),
+            )
+        )
+        request = ModelMeteringSummaryFoldRequest(
+            tenant_id="local",
+            baseline_model="baseline-model",
+            baseline=ModelCounterfactualBaseline(
+                model="baseline-model",
+                price_in_per_1k=Decimal("1"),
+                price_out_per_1k=Decimal("2"),
+                as_of="2026-09-01",
+                pricing_manifest_version="1",
+                source="pricing_manifest",
+            ),
+            as_of=as_of,
+            records=tuple(records),
+        )
+        query = (
+            f"SELECT window_kind, window_start, counterfactual_usd, savings_usd, "
+            f"savings_pct_of_counterfactual FROM {_SCHEMA}.metering_summary "
+            f"ORDER BY window_kind, window_start"
+        )
+        await writer._project(request)
+        stored = [dict(row) for row in await conn.fetch(query)]
+        by_window = {(r["window_kind"], r["window_start"]): r for r in stored}
+        assert Decimal(by_window[("all", "")]["savings_usd"]) == Decimal("2.9")
+        assert Decimal(by_window[("all", "")]["counterfactual_usd"]) == Decimal("3")
+        assert by_window[("all", "")]["savings_pct_of_counterfactual"] == "0.966667"
+        assert Decimal(by_window[("day", "2026-09-26")]["counterfactual_usd"]) == 0
+        assert by_window[("day", "2026-09-26")]["savings_pct_of_counterfactual"] is None
+        assert by_window[("day", "2026-09-28")]["savings_pct_of_counterfactual"] == (
+            "0.966667"
+        )
+
+        await writer._project(request)
+        assert [dict(row) for row in await conn.fetch(query)] == stored
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

@@ -362,6 +362,8 @@ _METERING_MIGRATIONS = (
     "0002_metering_summary_savings_per_measured_run.sql",
     _NODES / "node_projection_metering_summary/migrations/"
     "0003_metering_summary_compression_and_cache_hit.sql",
+    _NODES / "node_projection_metering_summary/migrations/"
+    "0004_metering_summary_savings_pct.sql",
 )
 # Store-generated or wall-clock columns beyond ``_GENERATED``: never compared.
 _ALSO_GENERATED = frozenset({"ingested_at", "projection_cursor"})
