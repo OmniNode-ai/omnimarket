@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_effect
+version: "0.1.0"
+description: "Effect: the I/O of a remote lane - resolve the sha its worktree is built from through the canonical clone or the public URL. Decisions are node_remote_lane_compute's. Hosted by a serve process on the dispatching host, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Remote Lane Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_remote_lane_effect: "omnimarket.nodes.node_remote_lane_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "remote-lane"]
