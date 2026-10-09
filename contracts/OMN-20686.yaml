@@ -37,6 +37,13 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: For every captured case the node plans the executor's command, files, environment and time budget and reports its exit code and output byte for byte from the facts a caller read from the same fixtures, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py against tests/fixtures/skill_exec_parity.json, which fails on any differing case
+  - id: "req-ci-state-verdict-node"
+    statement: |-
+      The CI verdict of the retired ci-watch ci_state.py (the watcher's answer, the required-context verdict from every check-run copy, the stuck check-suite finding and the evidence-line class of a gate log) runs in node_ci_state_verdict_compute, with no clock, no file reads and no process calls, and matches the old script.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: For every captured case the node returns the old script's stdout, stderr, exit code, scratch files and watcher fallback reason from the facts a caller read, and is dispatched through its contract on the RuntimeLocal in-memory bus -- falsifier: tests/nodes/node_ci_state_verdict_compute/test_golden_chain_ci_state_verdict_compute.py against tests/fixtures/ci_state_verdict_parity.json, which fails on any differing case
 evidence_requirements:
   - kind: "tests"
     description: "Parity, golden-chain and error-chain tests for the throughput tick decision compute node."
@@ -78,3 +85,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_skill_exec_decision_compute/test_golden_chain_skill_exec_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20686-ci-state-verdict"
+    description: "node_ci_state_verdict_compute matches the captured output of the retired ci_state.py and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ci_state_verdict_compute/test_golden_chain_ci_state_verdict_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
