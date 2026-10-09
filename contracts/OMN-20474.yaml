@@ -32,16 +32,16 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the cell rate is accepts over judged items and terminal_ok never contributes."
-    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k judged_acceptance_fold -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k judged_acceptance_fold -q -p no:randomly"
   - kind: "tests"
     description: "AC2: underpowered cells have no row and uncalibrated judge runs are refused."
-    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
   - kind: "tests"
     description: "AC3: probes are excluded and loop turns fold under their own kind."
-    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
   - kind: "tests"
     description: "AC4: permutations and redeliveries give the same rows and the arrival-order mutant fails."
-    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -52,7 +52,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k judged_acceptance_fold -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k judged_acceptance_fold -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20474-ac2-power-and-calibration"
@@ -60,7 +60,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"underpowered_absent or uncalibrated_judge_refused\" -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20474-ac3-kinds"
@@ -68,7 +68,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"probe_excluded or loop_turn_own_kind\" -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20474-ac4-order-independence"
@@ -76,6 +76,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -k \"order_independent or mutant_arrival_order\" -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]

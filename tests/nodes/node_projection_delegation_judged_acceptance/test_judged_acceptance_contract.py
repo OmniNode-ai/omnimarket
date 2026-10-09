@@ -37,12 +37,12 @@ def test_contract_names_a_pure_handler_that_resolves() -> None:
     )
 
 
-def test_routed_handler_is_the_declared_handler() -> None:
+def test_fold_is_called_in_process_so_it_has_no_handler_routing() -> None:
+    # The writer calls the fold in process; with no command topic a routed
+    # handler would fail the runtime dogfood inventory.
     contract = _contract()
-    (route,) = contract["handler_routing"]["handlers"]
-    assert route["operation"] == "judged_acceptance_fold"
-    assert route["handler"]["module"] == contract["handler"]["module"]
-    assert route["handler"]["name"] == contract["handler"]["class"]
+    assert contract["lifecycle"] == "experimental"
+    assert "handler_routing" not in contract
 
 
 def test_fold_declares_no_topic_so_the_writer_owns_the_bus_wiring() -> None:
