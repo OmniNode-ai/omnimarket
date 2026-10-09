@@ -24,6 +24,16 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: invalid run configuration and policy values are refused, malformed readings and candidates are named in the result, and project and operator identities exist only as request fields"
+  - id: "req-pure-outcomes"
+    statement: "The remaining pure workflow decisions are contract-bound ownership, lane rendering, placement, fallback planning and status operations with supplied reader facts and times."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the golden chain executes all five new operations through contract bindings, bad readings are named or refused by validation, at least 20 old-source parity cases per operation pass, and a temporary broken rule in each operation fails its cases; the node remains pure with unchanged topics."
+  - id: "req-effect-node"
+    statement: "The lab-fill I/O is a contract-declared effect node with definition-B handlers behind ports: pool probe, owner facts, lane launch, receipts, fallback host and the STATUS row; it decides nothing the plan node decides."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: the effect contract declares its command topic and terminal events, its six operations resolve to handle(request) -> result handlers, a cycle with the plan node passes JSON between them, and every port failure is named in a typed result rather than raised or read as an empty answer."
 evidence_requirements:
   - kind: "tests"
     description: "AC1: golden chain passes."
@@ -34,6 +44,12 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3: error chain passes."
     command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_error_chain_lab_fill_plan_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: the five outcome operations pass golden, error and parity cases."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+  - kind: "tests"
+    description: "AC5: effect golden chain, cycle chain, error chain and adapters pass."
+    command: "uv run pytest tests/nodes/node_lab_fill_effect -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -63,3 +79,19 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_error_chain_lab_fill_plan_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20668-ac4-outcome-operations"
+    description: "AC4: the five outcome operations pass golden, error and parity cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20668-ac5-effect-node"
+    description: "AC5: effect golden chain, cycle chain, error chain and adapters pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
