@@ -7,9 +7,9 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 UUID_PATTERN = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -24,6 +24,10 @@ class EnumCloseoutDecisionKind(StrEnum):
     PLAN_SCOPE = "plan_scope"
     FLIP_DECISION = "flip_decision"
     REPORT = "report"
+    REFUSE_BINDING = "refuse_binding"
+    CHECK_IDENTITIES = "check_identities"
+    SELECT_CANDIDATES = "select_candidates"
+    DECIDE_TICKET = "decide_ticket"
 
 
 class EnumPrecheckVerdict(StrEnum):
@@ -48,6 +52,75 @@ class EnumReleasedState(StrEnum):
     MERGED_UNRELEASED = "merged-unreleased"
     INDETERMINATE = "indeterminate"
     NOT_APPLICABLE = "not-applicable"
+
+
+class EnumTicketDecision(StrEnum):
+    """What the closer does with one adjudicated ticket."""
+
+    DONE = "done"
+    OPEN = "open"
+
+
+def _text_or_none(value: object) -> object:
+    """A check field the binder filled with anything but text names nothing."""
+    return value if isinstance(value, str) else None
+
+
+OptionalText = Annotated[str | None, BeforeValidator(_text_or_none)]
+
+
+class ModelBindingCheck(BaseModel):
+    """The check the binder proposed for one criterion, as the binder returned it.
+
+    A field of the wrong type reads as absent, as the closer reads it. Fields the closer
+    does not judge (the binder's own run, what would falsify the check) are ignored.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    label: OptionalText = None
+    kind: OptionalText = None
+    expect: OptionalText = None
+    selector: OptionalText = None
+    repo: OptionalText = None
+    ref: OptionalText = None
+    command: OptionalText = None
+    cwd: OptionalText = None
+    host: OptionalText = None
+
+
+class ModelAcceptanceState(BaseModel):
+    """One acceptance criterion after the bind, the script vetting and the accept."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    proposed: bool = False
+    refused: str = ""
+    accepted: bool = False
+    reason: str = ""
+    amendment: str = ""
+    proposed_by: str = ""
+    accepted_by: str = ""
+
+
+class ModelUnmetCriterion(BaseModel):
+    """One criterion that keeps a ticket open, with the text amendment it needs if any."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    reason: str
+    amendment: str = ""
+
+
+class ModelRotationRecord(BaseModel):
+    """One candidate ticket as the caller read it; its text hashes come from text_state."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    last_closeout_comment_at: str = ""
 
 
 class ModelSprintProject(BaseModel):
@@ -206,6 +279,23 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     friction: str = "none"
     released_probe_run: bool = True
     released_positive_control: str = ""
+    # refuse_binding
+    check: ModelBindingCheck | None = None
+    criterion_label: str = ""
+    # check_identities
+    proposed_by: str = ""
+    accepted_by: str = ""
+    # decide_ticket (ticket_id is shared with flip_decision)
+    acs: list[ModelAcceptanceState] | None = None
+    dod_verify_receipt: str | None = None
+    criteria_note: str = ""
+    criteria_amendment: str = ""
+    run_key: str = ""
+    text_sha: str = ""
+    # select_candidates (chunk_size is shared with plan_scope)
+    records: list[ModelRotationRecord] | None = None
+    text_state: str = ""
+    max_candidates: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_fields_for_kind(self) -> Self:
@@ -226,6 +316,10 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "scope_counts",
                 "chunk_results",
             ),
+            EnumCloseoutDecisionKind.REFUSE_BINDING: (),
+            EnumCloseoutDecisionKind.CHECK_IDENTITIES: (),
+            EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("records", "max_candidates"),
+            EnumCloseoutDecisionKind.DECIDE_TICKET: ("ticket_id", "acs"),
         }
         optional: dict[EnumCloseoutDecisionKind, tuple[str, ...]] = {
             EnumCloseoutDecisionKind.PRECHECK: (
@@ -255,6 +349,16 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "friction",
                 "released_probe_run",
                 "released_positive_control",
+            ),
+            EnumCloseoutDecisionKind.REFUSE_BINDING: ("check", "criterion_label"),
+            EnumCloseoutDecisionKind.CHECK_IDENTITIES: ("proposed_by", "accepted_by"),
+            EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("chunk_size", "text_state"),
+            EnumCloseoutDecisionKind.DECIDE_TICKET: (
+                "dod_verify_receipt",
+                "criteria_note",
+                "criteria_amendment",
+                "run_key",
+                "text_sha",
             ),
         }
         for field in required[kind]:
@@ -332,3 +436,21 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     dropped_chunks: list[int] | None = None
     unadjudicated_tickets: list[str] | None = None
     terminal_cells: list[str] | None = None
+    # resolve_sprint (the sprint before the live one)
+    previous_project_id: str | None = None
+    previous_project_name: str | None = None
+    # refuse_binding
+    refused: bool | None = None
+    refusal_class: str | None = None
+    # check_identities
+    same_actor: bool | None = None
+    # select_candidates (chunks is shared with plan_scope)
+    selected: list[str] | None = None
+    deferred: list[str] | None = None
+    held: list[str] | None = None
+    # decide_ticket
+    decision: EnumTicketDecision | None = None
+    ticket_unmet: list[ModelUnmetCriterion] | None = None
+    needs_amendment: bool | None = None
+    signature: str | None = None
+    comment_text: str | None = None

@@ -15,6 +15,19 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
+    refusal_of,
+    refusal_reason,
+    same_actor,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
+    chunk_list,
+    comment_signature,
+    decide_ticket,
+    open_comment,
+    read_dod_verify,
+    select_candidates,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
     CLOCK_FORMAT,
     UUID_PATTERN,
@@ -22,6 +35,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_
     EnumCloseoutDecisionKind,
     EnumPrecheckVerdict,
     EnumReleasedState,
+    EnumTicketDecision,
     ModelChunkResult,
     ModelCloseoutCounts,
     ModelDodCloseoutDecisionRequest,
@@ -72,7 +86,8 @@ COUNTS_BLOCK_TERMS = (
 )
 COUNTS_BLOCK_WINDOW_LINES = 40
 
-_SPRINT_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# Sprints named from 2026-09-28 on do not zero-pad: "Sprint 2026-10-5 -> 2026-10-11 ...".
+_SPRINT_DATE = re.compile(r"\d{4}-\d{1,2}-\d{1,2}")
 _KEY_CELL = re.compile(r"^\s*([A-Za-z][\w-]*)=(.*)$", re.DOTALL)
 
 
@@ -219,19 +234,51 @@ def precheck(
 
 
 def _dated_sprint(project: ModelSprintProject) -> bool:
-    """A dated beta sprint: starts with Sprint, carries two ISO dates, ends with (Beta)."""
+    """A dated sprint: the name starts with Sprint and carries two dates, whatever follows.
+
+    The window is read from the project's own start and target dates, never from the name.
+    """
     name = project.name.strip()
-    return (
-        name.startswith("Sprint")
-        and name.endswith("(Beta)")
-        and len(_SPRINT_DATE.findall(name)) == 2
-    )
+    return name.startswith("Sprint") and len(_SPRINT_DATE.findall(name)) == 2
 
 
 def _window(project: ModelSprintProject) -> str:
     return (
         f"{project.start_date}..{project.target_date} "
         f"completedAt={project.completed_at or 'null'}"
+    )
+
+
+def _previous_sprint(
+    live: ModelSprintProject, dated: list[ModelSprintProject]
+) -> tuple[str, str, list[str]]:
+    """The dated sprint other than `live` ending latest on or before `live` starts.
+
+    Its started tickets stay in scope until the sprint roll moves them, completed or not.
+    Returns its uuid and name with window, or both uuids and both names when two share
+    that latest end, and the residuals saying so. Empty strings when there is none.
+    """
+    start = live.start_date
+    ended = [
+        p
+        for p in dated
+        if p.uuid != live.uuid and start and p.target_date and p.target_date <= start
+    ]
+    if not ended:
+        return "", "", []
+    latest = max(p.target_date or "" for p in ended)
+    tied = [p for p in ended if p.target_date == latest]
+    residuals = (
+        [
+            f"{len(tied)} previous sprints share the latest end {latest}; both are returned"
+        ]
+        if len(tied) > 1
+        else []
+    )
+    return (
+        ",".join(p.uuid for p in tied),
+        "; ".join(f"{p.name} {_window(p)}" for p in tied),
+        residuals,
     )
 
 
@@ -275,12 +322,15 @@ def resolve_sprint(
     )
     if len(survivors) == 1:
         only = survivors[0]
+        previous_id, previous_name, previous_residuals = _previous_sprint(only, dated)
         return ModelDodCloseoutDecisionResult(
             kind=kind,
             resolved=True,
             project_id=only.uuid,
             project_name=f"{only.name} {_window(only)}",
-            residuals=[],
+            previous_project_id=previous_id,
+            previous_project_name=previous_name,
+            residuals=previous_residuals,
         )
     considered = [
         f"{p.name} {_window(p)} contains-{date}={p in containing}" for p in dated
@@ -291,7 +341,7 @@ def resolve_sprint(
         project_id=None,
         project_name=None,
         residuals=[
-            f"{len(survivors)} dated beta sprint(s) left for {date}; refusing to pick",
+            f"{len(survivors)} dated sprint(s) left for {date}; refusing to pick",
             *considered,
         ],
     )
@@ -729,6 +779,78 @@ def report(
     )
 
 
+def refuse_binding(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Whether the binder's check may go to the acceptor; the criterion label stands in for a
+    check that carries none."""
+    check = request.check
+    if check is not None and not check.label and request.criterion_label:
+        check = check.model_copy(update={"label": request.criterion_label})
+    refusal = refusal_of(check)
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.REFUSE_BINDING,
+        refused=refusal is not None,
+        refusal_class=refusal,
+        reason=None if refusal is None else refusal_reason(refusal),
+    )
+
+
+def rotate_candidates(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """The tickets a bounded run examines, least recently examined first, cut into chunks."""
+    assert request.records is not None
+    assert request.max_candidates is not None
+    selected, deferred, held = select_candidates(
+        records=request.records,
+        text_state=request.text_state,
+        max_candidates=request.max_candidates,
+    )
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.SELECT_CANDIDATES,
+        selected=selected,
+        deferred=deferred,
+        held=held,
+        chunks=chunk_list(selected, request.chunk_size),
+    )
+
+
+def judge_ticket(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """Done only on every criterion bound, accepted by another lane and verified; else open
+    with the unmet criteria and the comment the ticket receives."""
+    assert request.ticket_id is not None
+    assert request.acs is not None
+    dod_verify = (
+        {}
+        if request.dod_verify_receipt is None
+        else read_dod_verify(request.dod_verify_receipt)
+    )
+    decision, unmet = decide_ticket(
+        acs=request.acs,
+        dod_verify=dod_verify,
+        criteria_note=request.criteria_note,
+        criteria_amendment=request.criteria_amendment,
+    )
+    opened = decision is EnumTicketDecision.OPEN
+    needs_amendment = any(u.amendment for u in unmet)
+    sha = request.text_sha if needs_amendment else ""
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.DECIDE_TICKET,
+        decision=decision,
+        ticket_unmet=unmet,
+        needs_amendment=needs_amendment,
+        signature=f"signature={comment_signature(unmet, sha)}" if opened else None,
+        comment_text=(
+            open_comment(request.ticket_id, request.run_key, unmet, sha)
+            if opened
+            else None
+        ),
+    )
+
+
 class HandlerDodCloseoutSweep:
     """Pure decisions of the DoD closeout sweep. No reads, no clock, no writes."""
 
@@ -759,6 +881,17 @@ class HandlerDodCloseoutSweep:
             return flip_decision(request=request)
         if kind is EnumCloseoutDecisionKind.REPORT:
             return report(request=request)
+        if kind is EnumCloseoutDecisionKind.REFUSE_BINDING:
+            return refuse_binding(request=request)
+        if kind is EnumCloseoutDecisionKind.CHECK_IDENTITIES:
+            return ModelDodCloseoutDecisionResult(
+                kind=kind,
+                same_actor=same_actor(request.proposed_by, request.accepted_by),
+            )
+        if kind is EnumCloseoutDecisionKind.SELECT_CANDIDATES:
+            return rotate_candidates(request=request)
+        if kind is EnumCloseoutDecisionKind.DECIDE_TICKET:
+            return judge_ticket(request=request)
         assert request.project_id is not None
         assert request.tickets is not None
         return plan_scope(

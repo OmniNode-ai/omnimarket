@@ -392,7 +392,6 @@ def test_zero_or_several_survivors_refuse_to_pick(
 
 def test_non_sprint_and_malformed_names_are_never_candidates() -> None:
     for name in (
-        "Sprint 2026-09-21 → 2026-09-28",
         "2026-09-21 → 2026-09-28 (Beta)",
         "Sprint 2026-09-21 (Beta)",
         "Sprint 2026-09-21 → 2026-09-28 → 2026-10-05 (Beta)",

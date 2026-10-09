@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_dod_closeout_sweep_compute
 version: "1.0.0"
-description: Deterministic decisions of the DoD closeout sweep (idempotency precheck, live sprint resolution, scope classification and chunk plan)
+description: Deterministic decisions of the DoD closeout sweep (idempotency precheck, live sprint resolution, scope classification and chunk plan, binding refusal, identity separation, candidate rotation, per-ticket Done decision)
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
