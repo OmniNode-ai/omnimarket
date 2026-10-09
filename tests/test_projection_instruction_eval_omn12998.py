@@ -77,7 +77,7 @@ def test_row_builder_maps_pass_rate_output_tokens_runs() -> None:
 
     row = build_instruction_eval_row(
         {
-            "model": "ds4-flash",
+            "model": "fixture-model-a",
             "task": "python-version",
             "context_mode": "chunk",
             "pass_rate": 1.0,
@@ -85,7 +85,7 @@ def test_row_builder_maps_pass_rate_output_tokens_runs() -> None:
             "runs": 5,
         }
     )
-    assert row["model"] == "ds4-flash"
+    assert row["model"] == "fixture-model-a"
     assert row["task"] == "python-version"
     assert row["context_mode"] == "chunk"
     assert float(row["pass_rate"]) == 1.0
@@ -191,7 +191,7 @@ def test_row_builder_handles_all_context_modes(context_mode: str) -> None:
 
     row = build_instruction_eval_row(
         {
-            "model": "ds4-flash",
+            "model": "fixture-model-a",
             "task": "git-commit-style",
             "context_mode": context_mode,
             "pass_rate": 0.6667,

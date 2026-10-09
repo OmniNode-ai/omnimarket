@@ -42,7 +42,7 @@ def _overlay(*backend_refs: str) -> bytes:
     served = {
         "local-coder": "Qwen3.8-27B",
         "local-heavy-reasoning": "Qwen3.8-27B",
-        "local-ds-v4-flash": "deepseek-v4-flash",
+        "local-fixture-sibling": "fixture-model-a",
     }
     rows = "\n".join(
         f"  - backend_id: {backend_ref}\n    endpoint_url: {_ENDPOINT}"
@@ -145,16 +145,16 @@ def test_c0_uses_backend_ref_to_disambiguate_duplicate_qwen_served_ids() -> None
 @pytest.mark.unit
 def test_c0_rejects_routing_key_when_it_is_not_the_served_model() -> None:
     decision = _decision(
-        model="ds-v4-flash",
-        backend_ref="local-ds-v4-flash",
+        model="fixture-routing-key",
+        backend_ref="local-fixture-sibling",
     )
 
     with pytest.raises(RsdOfflineC0ValidationError):
         validate_rsd_offline_c0(
             _request(
                 decision=decision,
-                overlay=_overlay("local-ds-v4-flash"),
-                model_registry_key="ds-v4-flash",
+                overlay=_overlay("local-fixture-sibling"),
+                model_registry_key="fixture-routing-key",
             )
         )
 

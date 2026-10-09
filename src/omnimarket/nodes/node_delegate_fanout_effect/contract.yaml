@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Fanout Effect (OMN-20678)
+#
+# Operator fanout over the delegation chain. Admits labeled tasks, publishes each
+# admitted task exactly once through the sanctioned delegation client to the
+# existing node_delegate_skill_orchestrator, and renders every receipt or refusal.
+# Refused rows precede admitted rows; each chunk completes before the next is
+# dispatched. The subprocess exit status is never the delegation verdict; the
+# receipt is. No caller retries: the responder chain escalates inside one call.
+# This node adds no delegation orchestrator, routing authority or model endpoint.
+name: "node_delegate_fanout_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Effect: admit labeled delegation tasks, publish each admitted task once through the delegation client, and render every receipt or refusal with no caller retries."
+input_model:
+  name: "ModelFanoutRequest"
+  module: "omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_request"
+  description: "Nonempty tasks, declared delegation lane, parallelism cap and optional state directory."
+output_model:
+  name: "ModelFanoutResult"
+  module: "omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_result"
+  description: "Receipt-derived rows, counts, closeout fragment and Markdown table."
+handler:
+  module: "omnimarket.nodes.node_delegate_fanout_effect.handlers.handler_delegate_fanout"
+  class: "HandlerDelegateFanout"
+  input_model: "omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_request.ModelFanoutRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegate_fanout_effect.handlers.handler_delegate_fanout:HandlerDelegateFanout"
+  handlers:
+    - operation: "delegate_fanout"
+      input_model: "omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_request.ModelFanoutRequest"
+      output_model: "omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_result.ModelFanoutResult"
+      handler:
+        name: "HandlerDelegateFanout"
+        module: "omnimarket.nodes.node_delegate_fanout_effect.handlers.handler_delegate_fanout"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegation-fanout-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegation-fanout-completed.v1"
+    failure: "onex.evt.omnimarket.delegation-fanout-failed.v1"
+# The delegate-skill request and its terminals are published and consumed by the
+# delegation client and node_delegate_skill_orchestrator, not by this node, so
+# they are declared under delegation_transport and not as this node's publishes.
+terminal_event: "onex.evt.omnimarket.delegation-fanout-completed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.delegation-fanout-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.delegation-fanout-completed.v1"
+published_events:
+  - event_type: "ModelFanoutResult"
+    topic: "onex.evt.omnimarket.delegation-fanout-completed.v1"
+# The delegation client owns the correlated request/terminal exchange and receipts.
+delegation_transport:
+  node: "omnimarket.nodes.node_delegate_skill_orchestrator"
+  client: "omnibase_infra/scripts/onex delegate"
+  bus: "kafka"
+  locus: "deployed-lane"
+  default_lane: "dev"
+  request_topic: "onex.cmd.omnimarket.delegate-skill.v1"
+  terminal_topics:
+    - "onex.evt.omnimarket.delegate-skill-completed.v1"
+    - "onex.evt.omnimarket.delegate-skill-failed.v1"
+  retries: 0
+  max_parallel: 3
+  default_timeout_seconds: 300
+  hard_bound_margin_seconds: 60
+side_effects:
+  reads:
+    - filesystem
+  writes:
+    - filesystem
+    - kafka
+  duplicate_key_fields:
+    - run_slug
+  duplicate_handling: none
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Registry root containing the sanctioned delegation client and lane declarations."
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+  # The handler enforces timeout_s + 60 per item. Replay would spend another
+  # delegation, so a caller must not retry.
+  timeout_ms: 900000
+metadata:
+  transport_type: "kafka"
+  description: "Operator delegation fanout over the existing delegation chain"
+  author: "OmniNode Team"
+  created: "2026-10-09"
+  tags:
+    - "effect"
+    - "delegation"
+    - "OMN-20678"
+  related_tickets:
+    - "OMN-20678"

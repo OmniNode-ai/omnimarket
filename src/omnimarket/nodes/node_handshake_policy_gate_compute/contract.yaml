@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_handshake_policy_gate_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the architecture handshake policy gate (OMN-20671).
+  parse_repos turns the contents of repos.conf into the repo list; resolve_branch turns the
+  default-branch lookup output into the branch and the two GitHub API endpoints to read;
+  classify_read turns one read of a repo's latest completed handshake run into pass, fail,
+  no_workflow, no_runs, error or retry (with the next attempt and the backoff delay); report
+  turns the per-repo statuses into the compliance report, the verdict and the exit code.
+  Performs no read, has no clock and never sleeps: the caller reads, sleeps and prints.
+  Behaviour-preserving port of architecture-handshakes/check-policy-gate.sh, pinned by cases
+  captured from the script itself.
+input_model:
+  name: ModelPolicyGateDecisionRequest
+  module: omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate
+output_model:
+  name: ModelPolicyGateDecisionResult
+  module: omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate
+handler:
+  module: omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate
+  class: HandlerHandshakePolicyGate
+  input_model: omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate.ModelPolicyGateDecisionRequest
+  output_model: omnimarket.nodes.node_handshake_policy_gate_compute.models.model_handshake_policy_gate.ModelPolicyGateDecisionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate:HandlerHandshakePolicyGate
+  handlers:
+    - operation: decide_handshake_policy_gate
+      handler:
+        name: HandlerHandshakePolicyGate
+        module: omnimarket.nodes.node_handshake_policy_gate_compute.handlers.handler_handshake_policy_gate
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  kind: {type: str, required: true, enum: [parse_repos, resolve_branch, classify_read, report]}
+  repos_conf_text: {type: str, required: false, description: Contents of repos.conf, for parse_repos.}
+  repo: {type: str, required: false, description: Repo name, for resolve_branch and classify_read.}
+  default_branch_output: {type: str, required: false, description: Output of the default-branch lookup, empty when it failed, for resolve_branch.}
+  api_ok: {type: bool, required: false, description: Whether the runs read succeeded, for classify_read.}
+  api_error_text: {type: str, required: false}
+  total_count: {type: int, required: false}
+  conclusion: {type: str, required: false}
+  attempt: {type: int, required: false}
+  max_attempts_raw: {type: str, required: false}
+  base_delay_raw: {type: str, required: false}
+  statuses: {type: list, required: false, description: Final status per repo in check order, for report.}
+  strict: {type: bool, required: false}
+outputs:
+  kind: {type: str}
+  info_line: {type: str}
+  repos: {type: list}
+  branch: {type: str}
+  default_branch_endpoint: {type: str}
+  runs_endpoint: {type: str}
+  outcome: {type: str, enum: [pass, fail, no_workflow, no_runs, error, retry]}
+  next_attempt: {type: int}
+  retry_delay_seconds: {type: int}
+  report_text: {type: str}
+  pass_count: {type: int}
+  fail_count: {type: int}
+  failed_repos: {type: list}
+  verdict: {type: str, enum: [passed, failed, warning]}
+  exit_code: {type: int}
+terminal_event: onex.evt.omnimarket.handshake-policy-gate-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.handshake-policy-gate-decide-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.handshake-policy-gate-decide-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.handshake-policy-gate-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.handshake-policy-gate-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Handshake policy gate decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20671]

@@ -1,0 +1,53 @@
+---
+name: node_projection_delegation_judged_acceptance
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+# Experimental until the writer change subscribes it to the judged topic.
+lifecycle: experimental
+description: >
+  OMN-20474. The pure rule-7a fold half of the judged acceptance projection.
+  Judged verdicts go in, one cell per tenant, model, tier, task type, kind and
+  rubric version comes out, with n, accepts, accept rate, the Wilson 95
+  percent interval, mean quality, first and last call time and the count of
+  judge runs. The verdict standing for a call is the latest from a calibrated
+  judge run, ties going to the greater judge run id, so arrival order and
+  redelivery change nothing. A verdict from a run with agreement under 0.75 or
+  kappa under 0.60 is refused and counted. A cell under 15 verdicts has no
+  row. Edit-loop turns fold under their own kind, and a kind other than task
+  or edit_loop_turn never enters a cell. The window is the 30 days before the
+  cell's newest call time, never the wall clock. terminal_ok is not an input.
+  No I/O: the writer, tables and bus wiring are a separate change that calls
+  this fold in process.
+
+handler:
+  module: omnimarket.nodes.node_projection_delegation_judged_acceptance.handlers.handler_projection_delegation_judged_acceptance
+  class: HandlerProjectionDelegationJudgedAcceptance
+  input_model: omnimarket.nodes.node_projection_delegation_judged_acceptance.models.model_judged_acceptance_fold.ModelJudgedAcceptanceFoldRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  events:
+    type: tuple
+    required: true
+    description: ModelDelegationAcceptanceJudgedEvent values; any order, redelivery allowed.
+
+outputs:
+  cells:
+    type: tuple
+  folded_verdict_count:
+    type: int
+  uncalibrated_refused_count:
+    type: int
+  uncalibrated_judge_run_ids:
+    type: tuple
+  excluded_kind_count:
+    type: int
+  underpowered_cell_count:
+    type: int

@@ -23,7 +23,6 @@ MODEL_LLAMA_3_3_70B_FREE: str = "llama-3.3-70b-free"
 MODEL_CLAUDE_SONNET_4_6: str = "claude-sonnet-4-6"
 MODEL_CLAUDE_OPUS_4_6: str = "claude-opus-4-6"
 # New models added in OMN-12492 (2026-05-30 refresh)
-MODEL_DS_V4_FLASH: str = "ds-v4-flash"
 # OMN-12937: retargeted from gemini-2.0-flash (free tier 429) to gemini-2.5-flash-lite.
 MODEL_GEMINI_2_5_FLASH_LITE: str = "gemini-2.5-flash-lite"
 MODEL_OPENROUTER_NEMOTRON_ULTRA: str = "openrouter-nemotron-ultra"
@@ -43,5 +42,4 @@ MODEL_LOCAL_PRIMARY: str = MODEL_QWEN3_CODER_30B
 MODEL_CLOUD_BASELINE: str = MODEL_CLAUDE_OPUS_4_6
 MODEL_CLOUD_FAST: str = MODEL_CLAUDE_SONNET_4_6
 MODEL_LOCAL_FAST: str = MODEL_DEEPSEEK_R1_14B
-MODEL_LOCAL_DS: str = MODEL_DS_V4_FLASH
 MODEL_CLOUD_GEMINI: str = MODEL_GEMINI_2_5_FLASH_LITE

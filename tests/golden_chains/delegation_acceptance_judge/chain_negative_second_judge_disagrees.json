@@ -1,0 +1,1164 @@
+{
+ "chain": "negative_second_judge_disagrees",
+ "description": "The same recorded run with every second-judge verdict inverted: the agreement gate fails the run loud.",
+ "request": {
+  "operation": "score",
+  "items": [
+   {
+    "item_id": "J0ad0d8872e",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J0eb980667d",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J13569c6a87",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J14d260c6af",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J1b5cd57cf2",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J1e41334f03",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J218f86a497",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J24fee9ee03",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J254a24b795",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J294080209f",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J2c29db0a0b",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J30e5fb080c",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J334c9a299e",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J3920f5e8f7",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J3aa0c9a917",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J433ea86c63",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J46944a01eb",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J46c695d1bd",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J4de92411a5",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J4efbcb283d",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J4f375da9bf",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J4fd18dd79f",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J54e1a30ded",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J5d73b234d3",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J5eb272c98e",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J5ee676bddf",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J62f8258871",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J66e9bab166",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J67f42cb984",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J6c1ab33318",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J6df5a9ea30",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J6e0ae4523c",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J70f0f3d6fb",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J758a0a586f",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J758dc1404b",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J76b2296d7d",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J7d1db0c2fe",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J813ef88fb7",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J826469b3a7",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J83ac1ed387",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J8636fd4c08",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J8732af0cb2",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J87c5a609f4",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J8b4d7ed18f",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J92015c387f",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J94d67533d4",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J9606e34bb4",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J98faae3cc3",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J9ea96a850c",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "J9ef5c84b11",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Ja89a4a2cae",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jb0a051d581",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jb15cc720c1",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jb793867bb6",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jb7df3e19ab",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jb84d1cf822",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jba750706cd",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jbd9b8ee33f",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jc62825a915",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jc99baf1a6c",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jcb8aa5c39f",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jd3211a9307",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jd5eb42ef0c",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jd6ea9c38cc",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jd968bb5f7f",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jda478c8bdf",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Je10d9448f1",
+    "model": "claude-haiku-5-5",
+    "task_type": "summarization",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Je83e8f93b7",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Je9235e911b",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jeaf38d06e0",
+    "model": "claude-haiku-5-5",
+    "task_type": "document",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jf1c2a7216d",
+    "model": "claude-haiku-5-5",
+    "task_type": "test",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   },
+   {
+    "item_id": "Jf5389e07cc",
+    "model": "claude-haiku-5-5",
+    "task_type": "code_review",
+    "kind": "task",
+    "task_text": "Recorded delegated task; the text is withheld from this fixture.",
+    "answer_text": "Recorded delegated answer; the text is withheld from this fixture."
+   }
+  ],
+  "primary_verdicts": [
+   {
+    "item_id": "J0ad0d8872e",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J0eb980667d",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J13569c6a87",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J14d260c6af",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J1b5cd57cf2",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J1e41334f03",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J218f86a497",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J24fee9ee03",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J254a24b795",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J294080209f",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J2c29db0a0b",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J30e5fb080c",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J334c9a299e",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J3920f5e8f7",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J3aa0c9a917",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J433ea86c63",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J46944a01eb",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "broken_code",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J46c695d1bd",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J4de92411a5",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J4efbcb283d",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J4f375da9bf",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J4fd18dd79f",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J54e1a30ded",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J5d73b234d3",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J5eb272c98e",
+    "accept": false,
+    "quality": 2,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J5ee676bddf",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J62f8258871",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J66e9bab166",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J67f42cb984",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J6c1ab33318",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J6df5a9ea30",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J6e0ae4523c",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J70f0f3d6fb",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J758a0a586f",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J758dc1404b",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J76b2296d7d",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J7d1db0c2fe",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J813ef88fb7",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J826469b3a7",
+    "accept": false,
+    "quality": 2,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J83ac1ed387",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J8636fd4c08",
+    "accept": false,
+    "quality": 0,
+    "failure_class": "wrong_answer",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J8732af0cb2",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J87c5a609f4",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J8b4d7ed18f",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J92015c387f",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J94d67533d4",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J9606e34bb4",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J98faae3cc3",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J9ea96a850c",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J9ef5c84b11",
+    "accept": false,
+    "quality": 2,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Ja89a4a2cae",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "broken_code",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jb0a051d581",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jb15cc720c1",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jb793867bb6",
+    "accept": false,
+    "quality": 0,
+    "failure_class": "fabrication",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jb7df3e19ab",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jb84d1cf822",
+    "accept": true,
+    "quality": 2,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jba750706cd",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jbd9b8ee33f",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jc62825a915",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jc99baf1a6c",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jcb8aa5c39f",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jd3211a9307",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "broken_code",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jd5eb42ef0c",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jd6ea9c38cc",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jd968bb5f7f",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jda478c8bdf",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Je10d9448f1",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Je83e8f93b7",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Je9235e911b",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jeaf38d06e0",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jf1c2a7216d",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "Jf5389e07cc",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "false_findings",
+    "reason": "recorded verdict"
+   }
+  ],
+  "secondary_verdicts": [
+   {
+    "item_id": "J0ad0d8872e",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J218f86a497",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J3aa0c9a917",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J4fd18dd79f",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J5d73b234d3",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J66e9bab166",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J6df5a9ea30",
+    "accept": false,
+    "quality": 1,
+    "failure_class": "constraint_violation",
+    "reason": "recorded verdict"
+   },
+   {
+    "item_id": "J9ef5c84b11",
+    "accept": true,
+    "quality": 3,
+    "failure_class": "none",
+    "reason": "recorded verdict"
+   }
+  ]
+ },
+ "expected": {
+  "operation": "score",
+  "status": "failed",
+  "agreement": {
+   "double_judged": 8,
+   "required_double_judged": 8,
+   "agreed": 0
+  },
+  "issues": [
+   {
+    "code": "kappa_below_minimum",
+    "item_id": ""
+   }
+  ]
+ }
+}
