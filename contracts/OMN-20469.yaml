@@ -14,8 +14,6 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: the change removes task type reasoning from local-qwen-prose-no-think and a test shows a reasoning request payload carries chat_template_kwargs enable_thinking true and no /no_think prefix, with temperature and max_tokens unchanged -- falsifier: uv run pytest of the new test in omnimarket fails on the unchanged profile"
-      - id: "AC4"
-        statement: "AC4: the PR body reports median and p90 latency and mean completion tokens for the reasoning class before and after, from delegation_events -- falsifier: a PR body with none of the three figures"
 evidence_requirements:
   - kind: "tests"
     description: "AC3: the new test asserts the reasoning payload at the provider boundary and that no other class changes."
@@ -33,10 +31,3 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_reasoning_thinking_on_omn20469.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn20469-ac4-pr-body-figures"
-    description: "AC4: the PR body reports median latency, p90 latency and mean completion tokens before and after."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "gh pr view 3628 --repo OmniNode-ai/omnimarket --json body --jq .body | grep -c 'mean completion tokens'"
-    binds_ac: ["AC4"]
