@@ -52,6 +52,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 pytestmark = pytest.mark.integration
 
@@ -204,6 +205,8 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
     schema = f"omn18930_{uuid4().hex[:12]}"
     try:
         await admin.execute(_ROLES_SQL)
+        # The shared namespace is a prerequisite of the current migration chain.
+        await admin.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
@@ -212,6 +215,19 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
                     "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
                 )
             )
+        # The writer resolves the fixture's tenant through the registry mirror.
+        await admin.execute(
+            "CREATE TABLE tenant_registry_mirror ("
+            "tenant_slug TEXT PRIMARY KEY, tenant_uuid UUID UNIQUE NOT NULL, "
+            "status TEXT NOT NULL, source_event_id UUID NOT NULL)"
+        )
+        await admin.execute(
+            "INSERT INTO tenant_registry_mirror VALUES ($1, $2, $3, $4)",
+            "omninode",
+            HOUSE_TENANT_UUID,
+            "active",
+            uuid4(),
+        )
         yield admin, schema
     finally:
         with contextlib.suppress(asyncpg.PostgresError):
@@ -418,3 +434,42 @@ async def test_local_sync_writer_persists_the_same_key(postgres: _Postgres) -> N
 
     assert stored["cohort_key"] == key_b
     assert stored["cohort_key_sha256"] == _KEY_B_SHA256
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_writer_refuses_incomplete_nested_key_without_losing_the_row(
+    postgres: _Postgres,
+) -> None:
+    """Real JSONB readback: nested refusals also clear earlier valid evidence."""
+    key = _load("cohort_key_A.json")
+    corr = str(uuid4())
+    async with _provisioned(postgres) as (admin, schema):
+        adapter = PostgresSyncProjectionAdapter(postgres.dsn(schema))
+        handler = HandlerProjectionDelegation(publisher=_NullPublisher())
+        payload = _payload("A", key, corr)
+        payload["_db"] = adapter
+        handler.handle(payload)
+        baseline = await _stored(admin, corr)
+        assert baseline["cohort_key"] == key
+        assert baseline["cohort_key_sha256"] == _KEY_A_SHA256
+        assert baseline["cohort_key_refusal"] is None
+
+        for dimension, field in (
+            ("consumer_identity", "node_name"),
+            ("first_hop_identity", "provider"),
+            ("provider_policy", "backend_config_sha256"),
+            ("retry_bounds", "max_escalations"),
+        ):
+            incomplete = _load("cohort_key_A.json")
+            del incomplete[dimension][field]
+            payload = _payload("A", incomplete, corr)
+            payload["_db"] = adapter
+            handler.handle(payload)
+            stored = await _stored(admin, corr)
+            assert stored["task_type"] == "summarization"
+            assert stored["cohort_key"] is None
+            assert stored["cohort_key_sha256"] is None
+            assert stored["cohort_key_refusal"] == (
+                f"invalid cohort_key: {dimension}.{field} (missing)"
+            )

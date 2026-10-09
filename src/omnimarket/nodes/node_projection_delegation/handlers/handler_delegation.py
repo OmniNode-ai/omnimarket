@@ -62,6 +62,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _preserve_terminal_failure,
     _stamp_accepting_attempt,
     _stamp_declared_failure_cause,
+    _stamp_routing_tier,
     _stamp_terminal_stop_reason,
     _stamp_terminal_trace_and_routing,
     compute_generation_proof_fields,
@@ -1961,6 +1962,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        # OMN-20755: the routing tier, by the sync builder's rule.
+        _stamp_routing_tier(row, reduction.attempt_history)
         # Same rule as the sync builder: a terminal that was never scored names
         # neither column, so the row stores NULL on insert, never zero.
         for column, value in (
