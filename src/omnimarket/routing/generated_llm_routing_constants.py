@@ -25,7 +25,6 @@ class EnumLogicalModelKey(StrEnum):
     CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
     DEEPSEEK_R1_14B = "deepseek-r1-14b"
     DEEPSEEK_R1_32B = "deepseek-r1-32b"
-    DS_V4_FLASH = "ds-v4-flash"
     GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
     OPENROUTER_NEMOTRON_ULTRA = "openrouter-nemotron-ultra"
@@ -45,7 +44,6 @@ class EnumLlmEndpointRef(StrEnum):
     LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
     LLM_CODER_URL = "LLM_CODER_URL"
     LLM_DEEPSEEK_R1_URL = "LLM_DEEPSEEK_R1_URL"
-    LLM_DS_V4_FLASH_URL = "LLM_DS_V4_FLASH_URL"
     LLM_QWEN3_NEXT_URL = "LLM_QWEN3_NEXT_URL"
     OPENROUTER_URL = "OPENROUTER_URL"
 

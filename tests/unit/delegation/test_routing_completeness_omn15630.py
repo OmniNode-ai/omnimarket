@@ -462,8 +462,8 @@ class TestImplicitDefaultPinCannotOverrideCapability:
                 fast_path_threshold_tokens=8192,
             ),
             ModelTierModel(
-                id="ds-v4-flash",
-                backend_ref="local-ds-v4-flash",
+                id="fixture-model-a",
+                backend_ref="local-fixture-sibling",
                 max_context_tokens=65536,
                 use_for=("documentation",),
                 fast_path_threshold_tokens=8192,
@@ -484,9 +484,9 @@ class TestImplicitDefaultPinCannotOverrideCapability:
                 timeout_ms=30000,
                 max_tokens=8192,
             ),
-            "local-ds-v4-flash": routing.BifrostBackendRef(
-                endpoint_url="https://local-ds-v4-flash.contract.test/v1/chat/completions",
-                model_name="ds-v4-flash",
+            "local-fixture-sibling": routing.BifrostBackendRef(
+                endpoint_url="https://local-fixture-sibling.contract.test/v1/chat/completions",
+                model_name="fixture-model-a",
                 timeout_ms=30000,
                 max_tokens=65536,
             ),
@@ -496,7 +496,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         """The bug, closed: task_type ("documentation") is absent from BOTH
         id-matching models' use_for. Before OMN-15630 this returned
         id_matches[0] (local-coder — wrong capability, silent). After: it
-        falls through to the general use_for scan and finds local-ds-v4-flash,
+        falls through to the general use_for scan and finds local-fixture-sibling,
         which actually declares "documentation"."""
         selected = routing._select_model_for_task(
             self._models(),
@@ -508,7 +508,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         )
 
         assert selected is not None
-        assert selected.backend_ref == "local-ds-v4-flash", (
+        assert selected.backend_ref == "local-fixture-sibling", (
             "an implicit default pin must never silently bind an id-matched "
             f"model that does not declare the task type; got {selected.backend_ref!r}"
         )
@@ -555,7 +555,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         reinstate the wrong-capability id-match escape hatch. The kwarg
         defaults to ``False`` (assume implicit unless proven explicit), so an
         omitted-kwarg call falls through to the real capability scan and
-        resolves ``local-ds-v4-flash`` — same result as the explicit
+        resolves ``local-fixture-sibling`` — same result as the explicit
         ``contract_model_ref_is_explicit_override=False`` case above, not the
         stale ``local-coder`` off-capability bind a ``True`` default would
         produce."""
@@ -568,7 +568,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         )
 
         assert selected is not None
-        assert selected.backend_ref == "local-ds-v4-flash", (
+        assert selected.backend_ref == "local-fixture-sibling", (
             "an omitted contract_model_ref_is_explicit_override kwarg must "
             "default to the safe (implicit) path, never the id_matches[0] "
             f"escape hatch; got {selected.backend_ref!r}"
