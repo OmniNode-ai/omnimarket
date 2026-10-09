@@ -65,7 +65,7 @@ class ModelKBDestinationLayout:
 
 _KB_DESTINATION_LAYOUTS: Final[dict[EnumAdrKBDestination, ModelKBDestinationLayout]] = {
     EnumAdrKBDestination.public: ModelKBDestinationLayout(
-        repository="OmniNode-ai/knowledge-base",
+        repository="OmniNode-ai/knowledge_base",
         artifact_directory=PurePosixPath("adrs"),
         artifact_layout=EnumKBArtifactLayout.public_flat_adr,
     ),
@@ -305,7 +305,7 @@ class HandlerKBADRPublisher:
         branch = f"canary/{run_id}/{request.model_key}"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            kb_dir = Path(tmpdir) / "knowledge-base"
+            kb_dir = Path(tmpdir) / "knowledge_base"
 
             logger.info("Cloning approved %s KB repository ...", destination.value)
             self._run(

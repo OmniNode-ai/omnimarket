@@ -60,7 +60,7 @@ from tests.runtime_local_compat import LocalRuntimeBusAdapter
 TOPIC_COMMAND = "onex.cmd.omnimarket.kb-adr-publish-requested.v1"
 TOPIC_COMPLETED = "onex.evt.omnimarket.kb-adr-publish-completed.v1"
 
-_PR_URL = "https://github.com/OmniNode-ai/knowledge-base/pull/42"
+_PR_URL = "https://github.com/OmniNode-ai/knowledge_base/pull/42"
 _SOURCE_PROVENANCE = ModelAdrSourceProvenance(
     source_repository="OmniNode-ai/omnimarket",
     source_visibility="public",

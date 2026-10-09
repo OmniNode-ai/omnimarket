@@ -37,7 +37,7 @@ FLEET_REPOS = frozenset(
 # Repositories whose merges are never product merges (lesson 1, RULING 2026-09-29T16:45:14Z).
 NON_PRODUCT_REPOS = frozenset(
     {"knowledge-base-internal", "knowledge-base", "onex_change_control"}
-)
+) | frozenset({"knowledge_base"})
 DEFAULT_BRANCHES = frozenset({"dev", "main"})
 LOAD_PER_CORE_BAR = (
     1.0  # lesson 3: above this the lanes run on the lab only; none is withheld
