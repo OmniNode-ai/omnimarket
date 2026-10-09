@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Fill Effect (OMN-20668)
+#
+# The I/O half of the lab-fill cycle. The decisions (capacity, candidate choice,
+# dispatch plan, ownership verdicts, lane briefs, placement, fallbacks, STATUS
+# cells) are node_lab_fill_plan_compute's; this node reads and acts, one operation
+# per step of the cycle: probe the pool, read the owners, launch a lane, read the
+# receipts, pick a fallback host, write the STATUS row. Enumerating candidates is
+# not an operation here yet: it needs the ledger claim store and triage readers
+# promoted from omnibase_internal first.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that holds the rolling ledger
+# copy, the PR watcher's state, the remote-lane runner and its receipts (the host the
+# lab-fill job runs on). Shared runtimes must NOT attach it: an attached copy would
+# read a runtime container's filesystem, not the operator's, and could launch lanes
+# from the wrong host. The contract declares runtime_dispatch and NO event_bus
+# block, as node_lab_work_unit_effect does; runtime auto-wiring attaches only
+# contracts that declare both.
+#
+# OVERLAY. No project, operator, repository, ledger path or host identity lives in
+# this node: they arrive on the request, read by the caller from its overlay.
+name: "node_lab_fill_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Reads the lab pool, the ownership sources and the runner receipts for a lab-fill
+  run, launches decided lanes through the remote-lane runner inside their share of
+  the dispatch window, and appends the run's STATUS row to the rolling ledger over
+  the bus append. Decides nothing about which work runs where.
+input_model:
+  name: "ModelLabFillProbeRequest"
+  module: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect"
+  description: "Run key, ledger path, approved-work path (probe); each operation has its own request."
+output_model:
+  name: "ModelLabFillProbeResult"
+  module: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect"
+  description: "Pool readings or the reason the run is delivered or unreadable (probe); each operation has its own result."
+handler:
+  module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_probe"
+  class: "HandlerLabFillProbe"
+  input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillProbeRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_probe:HandlerLabFillProbe"
+  handlers:
+    - operation: "probe_lab_fill_hosts"
+      handler:
+        name: "HandlerLabFillProbe"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_probe"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillProbeRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillProbeResult"
+    - operation: "read_lab_fill_owner_facts"
+      handler:
+        name: "HandlerLabFillOwnerFacts"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_owner_facts"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillOwnerFactsRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillOwnerFacts"
+    - operation: "launch_lab_fill_lane"
+      handler:
+        name: "HandlerLabFillLaunch"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchResult"
+    - operation: "read_lab_fill_receipts"
+      handler:
+        name: "HandlerLabFillReceipts"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_receipts"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillReceiptsRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillReceiptsResult"
+    - operation: "pick_lab_fill_fallback_host"
+      handler:
+        name: "HandlerLabFillFallbackHost"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_fallback_host"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillFallbackHostRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillFallbackHostResult"
+    - operation: "write_lab_fill_status"
+      handler:
+        name: "HandlerLabFillStatus"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_status"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 1020000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-fill-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lab-fill-effect-completed.v1"
+    failure: "onex.evt.omnimarket.lab-fill-effect-failed.v1"
+published_events:
+  - event_type: ModelLabFillStatusWriteResult
+    topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
+    description: "The outcome of one lab-fill effect operation, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-fill-effect-completed.v1
+  - onex.evt.omnimarket.lab-fill-effect-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-20668
+  description: "Lab-fill I/O: pool probe, owner facts, lane launch, receipts, STATUS row"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "lab-fill"
+    - "OMN-20668"
+  related_tickets:
+    - "OMN-20668"
