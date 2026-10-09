@@ -527,6 +527,17 @@ jobs:
       # SYNC with pre-commit hook 'walkable-state-machines'.
       - name: Walkable contract state machines gate (OMN-19547)
         run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
+      # OMN-17427: every node's derived dispatch ids fit the ModelDispatchRoute
+      # limits, and every contract auto-wires in-process through the infra
+      # runtime's real wire_from_manifest. omnimarket 0.4.308 shipped two nodes
+      # whose route ids exceeded route_id's max_length; the .201 dev lane runs
+      # ONEX_WIRING_STRICT_MODE=1 and crash-looped, while every CI boot ran
+      # non-strict and stayed green. Runs here, not only in the smart-selected
+      # suite, because a contract.yaml change has no import edge to the test.
+      # Shrink-only exception lists. SYNC with pre-commit hook
+      # 'node-auto-wiring-in-process' and the release workflows.
+      - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,
@@ -809,6 +820,21 @@ jobs:
         run: uv sync --locked
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
+
+      # OMN-19684: the full-suite shards run only the files `merge_test_durations.py
+      # plan` assigns them. This job already syncs the tree and finishes in about
+      # 100 s, so it also collects the whole tree once (86 s on a hosted runner),
+      # off the shards' critical path, and fails when the 20 plans are not an
+      # exact partition of the test files pytest collects: a file the planner's
+      # discovery missed would otherwise run in no shard and nothing else would
+      # notice. 20 is detect_test_paths._full_suite's split count; the partition
+      # property does not depend on it (tests/unit/test_ci_shard_plan_omn19684.py).
+      # It is not the integration-guard job: that job already runs 313-509 s and
+      # would become the slowest job of the run once the shards drop below it.
+      - name: Collect the whole tree once (OMN-19684)
+        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
+      - name: Prove the shard plans partition the collected files (OMN-19684)
+        run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
 
   # ---------------------------------------------------------------------------
   # Detect Changes — emits matrix for test job (OMN-10759)
@@ -1524,19 +1550,6 @@ jobs:
         run: |
           uv run python scripts/ci/check_integration_skips.py \
             --junit integration-guard.xml
-
-      # OMN-19684: the full-suite shards run only the files `merge_test_durations.py
-      # plan` assigns them. This job already syncs the tree and collects it for
-      # the integration marker, so it also collects the whole tree once, off the
-      # shards' critical path, and fails when the 20 plans are not an exact
-      # partition of the test files pytest collects: a file the planner's
-      # discovery missed would otherwise run in no shard and nothing else would
-      # notice. 20 is detect_test_paths._full_suite's split count; the partition
-      # property does not depend on it (tests/unit/test_ci_shard_plan_omn19684.py).
-      - name: Collect the whole tree once (OMN-19684)
-        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
-      - name: Prove the shard plans partition the collected files (OMN-19684)
-        run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
 
       - name: Upload integration-guard results
         if: always()

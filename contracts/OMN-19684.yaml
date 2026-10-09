@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19684"
 title: "omnimarket full-suite test shards are planned from committed per-file durations"
-summary: "The 20 full-suite shards run only the test files scripts/ci/merge_test_durations.py plans for them from the committed config/test_file_durations.json, so each shard collects only its own files, and the integration-guard job proves the 20 plans partition the files pytest collects. The live shard spread is measured on first-attempt PR runs after merge."
+summary: "The 20 full-suite shards run only the test files scripts/ci/merge_test_durations.py plans for them from the committed config/test_file_durations.json, so each shard collects only its own files, and the typecheck job proves the 20 plans partition the files pytest collects. The live shard spread is measured on first-attempt PR runs after merge."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,6 +14,13 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: a planner test asserts every test file lands in exactly one shard, an unrecorded file is assigned once, the plan is deterministic, the committed record balances the real tree within 1.1x, and the ci.yml shard step runs only its planned files -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/test_ci_shard_plan_omn19684.py tests/unit/test_ci_workflow_shape_durations_merge.py -q
+  - id: "req-shard-plan-proof-off-the-critical-path"
+    statement: |-
+      The job that collects the whole tree once and proves the 20 shard plans partition the collected test files must be the typecheck job, which finishes well inside the shards' time, and not the integration-guard job, which already runs 313 to 509 s.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the collect-and-verify steps live in the typecheck job and not in integration-guard -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k "typecheck_job_proves or integration_guard_does_not_collect"
 evidence_requirements:
   - kind: "tests"
     description: "The planner and workflow-shape tests pass at the head and fail at the merge base."
@@ -31,3 +38,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py tests/unit/test_ci_workflow_shape_durations_merge.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-shard-plan-proof-typecheck-ac2"
+    description: "The collect-and-verify steps run in typecheck and integration-guard no longer collects the whole tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k \"typecheck_job_proves or integration_guard_does_not_collect\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

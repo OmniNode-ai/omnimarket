@@ -438,7 +438,7 @@ repos:
       # config/test_file_durations.json. These tests pin the planner's exact-once
       # assignment, the record's balance over the real tree and the ci.yml wiring.
       # The CI twin is the "Prove the shard plans partition the collected files"
-      # step of the integration-guard job, which checks the plan against a real
+      # step of the typecheck job, which checks the plan against a real
       # `pytest --collect-only`.
       - id: test-shard-plan
         name: Full-suite test shard plan stays balanced and exact-once (OMN-19684)
@@ -1502,6 +1502,15 @@ repos:
         language: system
         entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+      # OMN-17427: SYNC with the ci.yml lint-job step of the same name and the
+      # pre-build step in release.yml and release-cut.yml.
+      - id: node-auto-wiring-in-process
+        name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427\.py|uv\.lock)$
         pass_filenames: false
         stages: [pre-commit]
 
