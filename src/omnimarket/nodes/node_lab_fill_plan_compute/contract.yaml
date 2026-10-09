@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_plan_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide a lab-fill run from supplied facts without I/O: how many lanes each lab host
+  can carry from its real headroom and the runner's own slots, which read served the
+  tick's candidates, and which candidates become lanes on which host and engine. The
+  project, operator, repository and host identities arrive in the request, read by the
+  caller from its overlay.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: plan_lab_fill_capacity
+    handler:
+      name: HandlerLabFillCapacity
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_capacity
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityResult
+  - operation: choose_lab_fill_candidates
+    handler:
+      name: HandlerLabFillCandidateChoice
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_candidate_choice
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceResult
+  - operation: plan_lab_fill_dispatch
+    handler:
+      name: HandlerLabFillDispatchPlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_dispatch_plan
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.lab-fill-plan-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lab-fill-plan-decided.v1
+terminal_event: onex.evt.omnimarket.lab-fill-plan-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.lab-fill-plan-decided.v1
+metadata:
+  ticket: OMN-20668
+  origin_tickets:
+  - OMN-17427
+  - OMN-20662
+  transport_type: kafka
+lifecycle: experimental
