@@ -509,6 +509,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Canonical Inference Gate",
     "CI Naming Convention",
     "Dep Provenance Gate",
+    # OMN-20287 (deployment-fact-gate.yml): no new deployment fact (backend,
+    # endpoint, model name, secret ref, provider, tier or per-class order) in
+    # the packaged routing configs. Its own workflow file, so this L4 assertion
+    # is its enforcement surface, as for `Routing Tier Bindability` below.
+    "Deployment Fact Gate",
     "Ecosystem Integration Validation",
     "Enforce validator-requirements.yaml (OMN-13291)",
     "Hostile Review Gate",
@@ -1608,6 +1613,12 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request", "merge_group"),
             (),
             ("deploy-gate / deploy-gate",),
+        ),
+        (
+            "deployment-fact-gate.yml",
+            ("pull_request",),
+            (),
+            ("Deployment Fact Gate",),
         ),
         (
             "dispatcher-route-coverage.yml",
