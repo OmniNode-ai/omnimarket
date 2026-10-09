@@ -31,10 +31,13 @@ HOW THIS COMMAND REACHES THE CLI
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import sqlite3
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from getpass import getpass
 from pathlib import Path
 from typing import Any
@@ -362,6 +365,25 @@ def _pending_events_path(db_path: Path) -> Path:
     return db_path.parent / PENDING_CREDENTIAL_EVENTS_NAME
 
 
+@contextmanager
+def _pending_lock(db_path: Path) -> Iterator[None]:
+    """Hold this store's pending-events lock, across processes, for one step.
+
+    Two ``onex secret`` commands can overlap. Without the lock one command's
+    drain could remove a batch the other saved while the drain ran, and two
+    failed folds saving at once could each rewrite the file without the other's
+    batch. Every read-modify-write of the pending file happens under it.
+    """
+    path = db_path.parent / f"{PENDING_CREDENTIAL_EVENTS_NAME}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def _apply_events(lines: list[dict[str, Any]], db_path: Path) -> None:
     """Apply ``{"kind", "payload"}`` records in order. Both folds are idempotent."""
     db = SqliteDatabaseAdapter(db_path)
@@ -443,16 +465,20 @@ def _drain_pending_credential_events(db_path: Path) -> None:
     path = _pending_events_path(db_path)
     if not path.exists():
         return
-    lines = _read_pending(path)
-    try:
-        _apply_events(lines, db_path)
-    except sqlite3.Error as error:
-        raise click.ClickException(
-            f"the Credentials page still has updates waiting in {path} and they "
-            f"could not be applied ({type(error).__name__}: {error}); they are "
-            "kept. Run 'onex secret list' again once the store is readable."
-        ) from None
-    path.unlink()
+    with _pending_lock(db_path):
+        if not path.exists():
+            return
+        lines = _read_pending(path)
+        try:
+            _apply_events(lines, db_path)
+        except sqlite3.Error as error:
+            raise click.ClickException(
+                f"the Credentials page still has updates waiting in {path} and "
+                f"they could not be applied ({type(error).__name__}: {error}); "
+                "they are kept. Run 'onex secret list' again once the store is "
+                "readable."
+            ) from None
+        path.unlink()
 
 
 def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> None:
@@ -485,8 +511,9 @@ def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> No
         path = _pending_events_path(db_path)
         cause = f"{type(error).__name__}: {error}"
         try:
-            earlier = _read_pending(path) if path.exists() else []
-            _write_pending(path, earlier + lines)
+            with _pending_lock(db_path):
+                earlier = _read_pending(path) if path.exists() else []
+                _write_pending(path, earlier + lines)
         except (OSError, click.ClickException):
             raise click.ClickException(
                 f"{result.secret_ref} is {done}, but the Credentials page was not "

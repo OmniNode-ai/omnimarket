@@ -23,16 +23,23 @@ Each test names the failure it exists to catch:
       applied as a no-op and dropped, instead of refused and kept;
 * R9  a valid record before an invalid one is applied before the refusal, so
       the file is half-applied;
-* R10 a pending file that is not UTF-8 crashes instead of being refused and kept.
+* R10 a pending file that is not UTF-8 crashes instead of being refused and kept;
+* R11 two overlapping commands: one drains while the other saves a newer batch,
+      and the drain's removal deletes that newer batch;
+* R12 two failed folds save at once, and one batch is lost in the
+      read-modify-write of the pending file.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import stat
+import threading
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner, Result
 
@@ -218,3 +225,100 @@ def test_r10_a_pending_file_that_is_not_utf8_is_refused_and_kept(store: Path) ->
     assert result.exit_code != 0
     assert str(pending) in result.output
     assert pending.read_bytes() == b"\xff\xfe not utf-8\n"
+
+
+_PAUSE_S = 1.0
+
+
+def _revoke(ref: str) -> dict[str, object]:
+    return {"kind": "revoked", "payload": {"tenant_id": "t-19985", "api_key_ref": ref}}
+
+
+def _failed_fold(db_path: Path, ref: str) -> None:
+    from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_result import (
+        ModelLocalSecretResult,
+    )
+    from omnimarket.projection.credential_publisher import ModelCredentialRevokedEvent
+
+    result = ModelLocalSecretResult(
+        operation="delete",
+        secret_ref=_REF,
+        events=(ModelCredentialRevokedEvent(tenant_id="t-19985", api_key_ref=ref),),
+    )
+    with contextlib.suppress(click.ClickException):
+        cli_secret._fold_credential_events(result, db_path)
+
+
+def test_r11_a_drain_never_deletes_a_batch_saved_while_it_ran(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pending = store.parent / _PENDING_NAME
+    pending.write_text(json.dumps(_revoke("old-ref")) + "\n")
+    applying, saved = threading.Event(), threading.Event()
+    real_apply = cli_secret._apply_events
+
+    def apply(lines: list[dict[str, object]], db_path: Path) -> None:
+        if threading.current_thread().name == "drain":
+            real_apply(lines, db_path)
+            applying.set()
+            saved.wait(_PAUSE_S)  # with no lock, the other command saves here
+            return
+        raise sqlite3.OperationalError("injected projection failure")
+
+    monkeypatch.setattr(cli_secret, "_apply_events", apply)
+
+    def save() -> None:
+        applying.wait(_PAUSE_S * 5)
+        _failed_fold(store, "new-ref")
+        saved.set()
+
+    drain = threading.Thread(
+        name="drain", target=cli_secret._drain_pending_credential_events, args=(store,)
+    )
+    other = threading.Thread(name="save", target=save)
+    drain.start()
+    other.start()
+    drain.join(10)
+    other.join(10)
+
+    assert pending.exists(), "the drain deleted the batch saved while it ran"
+    assert "new-ref" in pending.read_text()
+
+
+def test_r12_two_failed_folds_at_once_keep_both_batches(
+    store: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pending = store.parent / _PENDING_NAME
+    read_one, wrote_two = threading.Event(), threading.Event()
+    real_read = cli_secret._read_pending
+
+    def failing_apply(*_args: object) -> None:
+        raise sqlite3.OperationalError("injected projection failure")
+
+    def read(path: Path) -> list[dict[str, object]]:
+        lines = real_read(path)
+        if threading.current_thread().name == "one":
+            read_one.set()
+            wrote_two.wait(_PAUSE_S)  # with no lock, the other save lands here
+        return lines
+
+    monkeypatch.setattr(cli_secret, "_apply_events", failing_apply)
+    monkeypatch.setattr(cli_secret, "_read_pending", read)
+    pending.write_text(json.dumps(_revoke("seed-ref")) + "\n")
+
+    def second() -> None:
+        read_one.wait(_PAUSE_S * 5)
+        _failed_fold(store, "ref-two")
+        wrote_two.set()
+
+    one = threading.Thread(name="one", target=_failed_fold, args=(store, "ref-one"))
+    two = threading.Thread(name="two", target=second)
+    one.start()
+    two.start()
+    one.join(10)
+    two.join(10)
+
+    text = pending.read_text()
+    assert "ref-one" in text
+    assert "ref-two" in text
+    assert "seed-ref" in text
