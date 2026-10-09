@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_architecture_discovery_orchestrator
+node_name: node_architecture_discovery_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles: [main]
+description: >
+  Full architecture discovery: four concurrent source scans, adjudication and a
+  KB report. Invokes the existing coding-agent effect over Kafka; never spawns a
+  model CLI or substitutes a tool-less inference request for a discovery scan.
+input_model:
+  name: ModelDiscoveryRequest
+  module: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_request
+output_model:
+  name: ModelDiscoveryResult
+  module: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_result
+handler:
+  name: HandlerArchitectureDiscovery
+  class: HandlerArchitectureDiscovery
+  module: omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery
+  input_model: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_request.ModelDiscoveryRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: discover_architecture_work
+      handler:
+        name: HandlerArchitectureDiscovery
+        module: omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery
+      event_model:
+        name: ModelDiscoveryRequest
+        module: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_request
+      input_model: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_request.ModelDiscoveryRequest
+      output_model: omnimarket.nodes.node_architecture_discovery_orchestrator.models.model_discovery_result.ModelDiscoveryResult
+terminal_event: onex.evt.omnimarket.architecture-discovery-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.architecture-discovery-requested.v1]
+  publish_topics:
+    - onex.evt.omnimarket.architecture-discovery-completed.v1
+    - onex.cmd.omnibase-infra.coding-agent-effect-invoke.v1
+    - onex.cmd.omnibase-infra.coding-agent-workspace-validate.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.architecture-discovery-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.architecture-discovery-completed.v1
+  # Consumed by omnibase_infra's coding-agent nodes, which own these commands.
+  - onex.cmd.omnibase-infra.coding-agent-effect-invoke.v1
+  - onex.cmd.omnibase-infra.coding-agent-workspace-validate.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.architecture-discovery-requested.v1
+    producer: onex-architecture-discovery and the morning tick caller
+invocation:
+  node: node_coding_agent_invoke_effect
+  # The installed target contract owns its command and terminal topics. These
+  # are inline request/reply dependencies, not durable subscriptions here.
+  command_topic: onex.cmd.omnibase-infra.coding-agent-effect-invoke.v1
+  terminal_topic: onex.evt.omnibase-infra.coding-agent-invoke-completed.v1
+  agent: claude
+  sandbox: workspace_write
+  timeout_ms: 1800000
+  delivery_margin_seconds: 30
+phases:
+  - {label: discovery-linear, phase: Scan, model: sonnet, effort: high, prompt: linear.txt}
+  - {label: discovery-marketplace, phase: Scan, model: opus, effort: high, prompt: marketplace.txt}
+  - {label: discovery-plans, phase: Scan, model: sonnet, effort: high, prompt: plans.txt}
+  - {label: discovery-process, phase: Scan, model: sonnet, effort: high, prompt: process.txt}
+  - {label: discovery-adjudicate, phase: Adjudicate, model: opus, effort: high, prompt: adjudicate.txt}
+  - {label: discovery-report, phase: Report, model: opus, effort: high, prompt: report.txt}
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestrating
+  idempotent: false
+  timeout_ms: 5490000
+  side_effects: [dispatches canonical coding-agent commands, writes KB report via the report phase]
+data_files:
+  schemas: handlers/schemas.json
+entry_points:
+  console_scripts:
+    onex-architecture-discovery: omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main
+  onex.nodes:
+    node_architecture_discovery_orchestrator: omnimarket.nodes.node_architecture_discovery_orchestrator
+metadata:
+  ticket: OMN-20679
+  transport_type: kafka
+  integrates: [node_coding_agent_workspace_compute, node_coding_agent_invoke_effect]

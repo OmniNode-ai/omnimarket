@@ -127,7 +127,10 @@ dependencies = [
     # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
     # models.ticket.model_done_write_decision. node_linear_triage imports both
     # unconditionally, so an older core fails at import. Raised in BOTH places.
-    "omnibase-core>=0.47.31,<0.48.0",
+    # OMN-20679: floor raised 0.47.31 -> 0.47.35, the first release whose shared
+    # publish_and_poll takes client_security (the bus CLI and coding-agent adapter of
+    # node_architecture_discovery_orchestrator call it). Raised in BOTH places.
+    "omnibase-core>=0.47.35,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -774,9 +777,11 @@ node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_co
 node_facts_first_prompt_compute = "omnimarket.nodes.node_facts_first_prompt_compute"
 node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_effect"
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
+node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
 delegation-cost-demo = "omnimarket.cli.cli_delegation_cost_demo:main"
@@ -992,7 +997,7 @@ override-dependencies = [
     # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
     # models.ticket.model_done_write_decision. node_linear_triage imports both
     # unconditionally, so an older core fails at import. Raised in BOTH places.
-    "omnibase-core>=0.47.31,<0.48.0",
+    "omnibase-core>=0.47.35,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

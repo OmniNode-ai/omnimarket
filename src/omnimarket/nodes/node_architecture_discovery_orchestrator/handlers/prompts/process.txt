@@ -1,0 +1,65 @@
+
+ROUTE: band=B3 score=10 dims=S2A2R1V2N1C1J1 dest=sonnet-lane model=sonnet effort=high
+{{common}}
+LANE: arch-discovery-process. Run date: {{date}}. Read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md before you start.
+This lane answers the operator's own worked example: a merge sweep that lists PRs needing fixes
+should instead DELEGATE those fixes to local models. Your job is to find every row in our existing
+sweep output where that substitution is actually possible, and to be honest about the rows where it
+is not.
+
+{{rules}}
+
+TASK: build the process-automation candidate list per RULE 5.
+
+STEP 1 — RESOLVE THE SWEEP ARTIFACTS LIVE. Do not assume a path. Record which you used:
+  (a) .onex_state/manual-merge-sweep/latest/ — a symlink to the newest manual-tick-<ts>/. Its
+      summary.json, classified.json, pr_status_flat.jsonl, and open_prs_by_repo.jsonl are that
+      tick's ledger. Read the symlink target and print it — "latest" is not a citation, the
+      resolved tick id is.
+  (b) the newest .onex_state/merge-sweep/merge-sweep-inproc-*/result.json.
+  (c) the most recent $KB/beta/tracking/<date>-friction-sweep.md, if one exists — its rows are already
+      fingerprinted friction with a named failure mode, which makes them the best-shaped candidates.
+  (d) any ledger/report/summary markdown or jsonl directly under _codex_merge_sweep/ (repo root,
+      untracked). RECORDED FACT to re-verify, not to trust: at authoring time this directory held
+      only a stale onex_change_control working clone and no ledger file. If that is still true, put
+      it in unreadable_sources with the command you ran. Never invent a path.
+
+STEP 2 — EXTRACT the rows that describe a MANUAL FIX: a PR that failed to land and why, a gate that
+fired on the same signature more than once, a repeated dequeue/re-enqueue, a sweep tick that
+produced no state change, a friction row whose acceptance criteria name a concrete edit. Each row
+carries its source citation (file + jsonl line number or json key path).
+
+STEP 3 — PROBE THE SUBSTRATE before judging D4/D5. Run curl {{substrate_probe_url}} and
+record the literal response. Resolve the routing chain from the routing authority contract, NOT from
+env vars. Read $OMNI_HOME/omniclaude/plugins/onex/skills/delegate/SKILL.md for the current entrypoint
+and args, and read the allowed_task_types block of
+$OMNI_HOME/omnimarket/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml — that
+contract, not the SKILL.md and not this brief, is the D4 task_type authority. Record the count you
+read and the line number. If either file has changed since this brief was written, trust the file.
+If the substrate probe fails, every candidate is NOT-DELEGABLE on D5 for this run and the report says
+so with the failing command; do not classify against an endpoint you could not reach.
+
+STEP 4 — CLASSIFY each row DELEGABLE / NOT-DELEGABLE per RULE 5, naming the failing clause (D1..D5)
+for every NOT-DELEGABLE. For each DELEGABLE row, write the concrete delegation shape: the task_type,
+a one-line prompt sketch, and the machine verification that closes the loop (which test, gate, or
+sweep re-run flips the row). A DELEGABLE row with no named verification fails D2 — demote it.
+
+STEP 5 — Separately, identify the AUTOMATION DELTA: what would have to change in the sweep itself for
+it to dispatch rather than list. Name the file and the seam. This is the operator's actual ask and
+it is a distinct output from the per-row classification — it is the work item, the rows are the
+evidence that the work item is worth doing.
+
+STEP 6 — HANDOFF. Mint a scratch path (lane_scratch.py --label "arch-discovery process" --suffix .json):
+{ "run_date": "{{date}}",
+  "artifacts_resolved": [ {"which":"a|b|c|d","resolved_path":"<the real path, symlink dereferenced>","tick_id":"..."} ],
+  "substrate_probe": {"command":"curl {{substrate_probe_url}}","response":"<literal>","ok":<bool>},
+  "routing_authority":{"source":"<contract path>","chain":["..."]},
+  "unreadable_sources": [ {"source":"...","command":"...","error":"..."} ],
+  "rows": [ {"row":"<what the sweep listed>","citation":"<file:line or json key path>",
+             "verdict":"DELEGABLE|NOT-DELEGABLE","failing_clause":"D1|D2|D3|D4|D5|null",
+             "task_type":"<one value read from the live allowed_task_types block per D4, or null>",
+             "prompt_sketch":"<one line, or null>",
+             "verification":"<the test/gate/sweep-rerun that closes the loop, or null>"} ],
+  "automation_delta": [ {"what":"<the change>","file":"<path that exists today>","seam":"<where it hooks>"} ] }
+Return handoff_path as the ABSOLUTE path.
+Ledger rows (CLAIM then TERMINAL). Return per schema (item_count = rows classified).
