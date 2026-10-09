@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_friction_rollup_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B decisions of the ledger friction rollup (parse rows, window, de-duplicate,
+  class/cost/recurrence/trend aggregate, free-text signals, markdown render); reads no files,
+  has no clock; reading the ledger, archive and JSON-lines sources and writing the outputs
+  stay with the caller. Behaviour-preserving port of the pure rollup decisions (OMN-18008).
+input_model:
+  name: ModelFrictionRollupRequest
+  module: omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup
+output_model:
+  name: ModelFrictionRollupResult
+  module: omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup
+handler:
+  module: omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup
+  class: HandlerFrictionRollup
+  input_model: omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup.ModelFrictionRollupRequest
+  output_model: omnimarket.nodes.node_friction_rollup_compute.models.model_friction_rollup.ModelFrictionRollupResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup:HandlerFrictionRollup
+  handlers:
+    - operation: compute_friction_rollup
+      handler:
+        name: HandlerFrictionRollup
+        module: omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  sources: {type: list, required: true, description: Caller-read texts in live ledger then sorted archive then JSON-lines order; absent archive uses kind missing.}
+  since: {type: str, required: true, description: Inclusive window start parsed as UTC.}
+  until: {type: str, required: true, description: Exclusive window end parsed as UTC.}
+  generated_at: {type: str, required: true, description: Caller-supplied report timestamp parsed as UTC.}
+  bucket_hours: {type: int, required: true, description: Positive trend bucket width in hours.}
+  umbrella_tickets: {type: list, required: true, description: Caller-supplied umbrella tickets excluded from owning tickets.}
+  aliases: {type: list, required: true, description: Raw class alias strings in raw=canonical form.}
+outputs:
+  report: {type: object}
+  markdown: {type: str}
+  json_text: {type: str}
+terminal_event: onex.evt.omnimarket.friction-rollup-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.friction-rollup-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.friction-rollup-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.friction-rollup-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.friction-rollup-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Ledger friction rollup decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-18008]
