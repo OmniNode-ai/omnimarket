@@ -142,7 +142,10 @@ def test_receipt_reader_and_result_writer(tmp_path: Path) -> None:
     assert [p.name for p in target.parent.iterdir()] == ["fire.json"]
 
 
-def test_lane_runner_passes_args_env_and_reports_the_exit(tmp_path: Path) -> None:
+def test_lane_runner_passes_args_env_and_reports_the_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     skills = _skills(
         tmp_path,
         runner_body="import os, sys; print('DETACHED receipt=/r.json', os.environ['ONEX_LEDGER_PATH'], *sys.argv[1:]); sys.exit(0)",
@@ -154,7 +157,10 @@ def test_lane_runner_passes_args_env_and_reports_the_exit(tmp_path: Path) -> Non
     assert out.stdout.strip() == "DETACHED receipt=/r.json /L run --lane x"
 
 
-def test_lane_runner_times_out_as_124(tmp_path: Path) -> None:
+def test_lane_runner_times_out_as_124(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     skills = _skills(tmp_path, runner_body="import time; time.sleep(30)")
     out = LocalLaneLauncher(skills).run(["run"], env={}, timeout_s=1)
     assert out.returncode == 124
@@ -473,3 +479,12 @@ def test_placement_reader_maps_the_runners_pool_read(tmp_path: Path) -> None:
         "describe": "h1 ok",
     }
     assert LocalPlacementReader(skills).limited_hosts() == frozenset({"h2"})
+
+
+def test_lane_runner_without_a_real_omni_home_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skills = _skills(tmp_path)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "no-such-dir"))
+    with pytest.raises(LabFillPortError, match="runner not started"):
+        LocalLaneLauncher(skills).run(["run"], env={}, timeout_s=5)
