@@ -33,6 +33,7 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     NON_RETRYABLE_CAUSES,
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.enums.enum_harness_rung_refusal import EnumHarnessRungRefusal
 from omnimarket.enums.enum_mint_failure_class import EnumMintFailureClass
 from omnimarket.enums.enum_mint_failure_disposition import (
     EnumMintFailureDisposition,
@@ -65,6 +66,7 @@ __all__ = [
     "EnumDodVerifyExecutionAudience",
     "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",
+    "EnumHarnessRungRefusal",
     "EnumMintFailureClass",
     "EnumMintFailureDisposition",
     "EnumNodeRole",

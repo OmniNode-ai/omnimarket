@@ -12,11 +12,11 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: the node declares only the OMN-20606 lineage columns and a terminal carrying attempt_kind stores no lineage -- falsifier: uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q in omnimarket"
-  - id: "req-harness-backend-key-tolerance"
-    statement: "Consumer first for the harness backend keys: ModelDelegationBackendConfig decodes a backend carrying kind, harness, surface or tenant_scope by dropping exactly those keys, and still refuses every other unknown key, so the release that later declares them as fields is not refused by this release at the decode boundary."
+  - id: "req-harness-backend-consumer"
+    statement: "The delegation backend model reads kind, harness, surface and tenant_scope, and admits a kind: harness backend only when it is internal surface, house tenant, with no endpoint and no secret_ref; the escalation-chain models and resolve_class_escalation_chain resolve a declared chain and give a harness rung a refusal for a pinned-only backend, a non-house tenant or a non-internal surface. No shipped config declares a harness backend, a harness tier or a chain in this change, so a released consumer decodes every shipped payload before any producer emits the new keys."
     acceptance:
-      - id: "AC2"
-        statement: "AC2: a backend carrying the four forthcoming keys decodes equal to one without them, and any other unknown key is refused -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: forged harness declarations parse or are refused as stated, and forged chains resolve with the stated refusals -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
@@ -34,11 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn20287-ac2-harness-backend-key-tolerance"
-    description: "AC2 hosted probe. The tolerance tests pass at the head and fail at the merge base, where the backend model refuses the four keys."
+  - id: "dod-omn20287-ac3-harness-backend-consumer"
+    description: "AC3 hosted probe. The consumer model and resolver tests pass at the head and fail at the merge base, where the fields and the resolver do not exist."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
+    binds_ac: ["AC3"]

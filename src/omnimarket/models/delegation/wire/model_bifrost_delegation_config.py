@@ -6,10 +6,47 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+
+
+class EnumDelegationBackendKind(StrEnum):
+    """How a delegation backend is executed (OMN-20287, plan step 7)."""
+
+    ENDPOINT = "endpoint"
+    """An HTTP inference endpoint, posted verbatim through the call effect."""
+
+    HARNESS = "harness"
+    """A coding-agent harness CLI run by the coding-agent invoke effect.
+
+    Allowed by the INV-064 amendment (RULING 2026-10-05T22:27:48Z, decision D1
+    of the delegation canonical-workflow plan): internal surface and house
+    tenant only, checked at routing and again at execution.
+    """
+
+
+class EnumDelegationHarness(StrEnum):
+    """The harness a ``kind: harness`` backend runs (OMN-20287)."""
+
+    CODEX = "codex"
+    CLAUDE_GLM = "claude-glm"
+    CLAUDE = "claude"
+
+
+class EnumDelegationBackendSurface(StrEnum):
+    """Which caller surface may reach a backend (OMN-20287)."""
+
+    ANY = "any"
+    INTERNAL = "internal"
+
+
+class EnumDelegationBackendTenantScope(StrEnum):
+    """Which tenant may reach a backend (OMN-20287, INV-068)."""
+
+    ANY = "any"
+    HOUSE = "house"
 
 
 class ModelDelegationShadowConfig(BaseModel):
@@ -118,29 +155,6 @@ class ModelDelegationRoutingRule(BaseModel):
     shadow_policy_id: UUID = Field(
         ..., description="Shadow policy UUID for A/B evaluation."
     )
-
-
-# OMN-20287: consumer-first for the harness backend keys (plan step 7 of the
-# delegation canonical workflow). A later release declares ``kind``,
-# ``harness``, ``surface`` and ``tenant_scope`` as real fields; until then this
-# consumer accepts and drops exactly those keys, so a producer that emits them
-# is decoded by this release instead of refused at the decode boundary. Every
-# other unknown key is still refused. No shipped config emits them before the
-# fields are declared.
-_FORTHCOMING_BACKEND_KEYS: frozenset[str] = frozenset(
-    {"kind", "harness", "surface", "tenant_scope"}
-)
-
-
-def _without_forthcoming_backend_keys(data: Any) -> Any:
-    """Drop the forthcoming harness backend keys from a raw payload, and nothing else."""
-    if not isinstance(data, dict) or _FORTHCOMING_BACKEND_KEYS.isdisjoint(data):
-        return data
-    return {
-        key: value
-        for key, value in data.items()
-        if key not in _FORTHCOMING_BACKEND_KEYS
-    }
 
 
 class ModelDelegationBackendConfig(BaseModel):
@@ -274,11 +288,63 @@ class ModelDelegationBackendConfig(BaseModel):
         ),
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_forthcoming_backend_keys(cls, data: Any) -> Any:
-        """OMN-20287: accept and drop the harness backend keys a later release declares."""
-        return _without_forthcoming_backend_keys(data)
+    kind: EnumDelegationBackendKind = Field(
+        default=EnumDelegationBackendKind.ENDPOINT,
+        description=(
+            "OMN-20287: how the backend is executed. ``endpoint`` (the default) "
+            "is an HTTP inference endpoint; ``harness`` is a coding-agent CLI run "
+            "by the coding-agent invoke effect, internal surface and house tenant "
+            "only (INV-064 as amended by decision D1, INV-068)."
+        ),
+    )
+    harness: EnumDelegationHarness | None = Field(
+        default=None,
+        description="OMN-20287: the harness a ``kind: harness`` backend runs. None for an endpoint.",
+    )
+    surface: EnumDelegationBackendSurface = Field(
+        default=EnumDelegationBackendSurface.ANY,
+        description=(
+            "OMN-20287: the caller surface allowed to reach this backend. A "
+            "harness backend must declare ``internal``."
+        ),
+    )
+    tenant_scope: EnumDelegationBackendTenantScope = Field(
+        default=EnumDelegationBackendTenantScope.ANY,
+        description=(
+            "OMN-20287: the tenant allowed to reach this backend. A harness "
+            "backend must declare ``house``: no customer reaches it (INV-068)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_backend_kind(self) -> ModelDelegationBackendConfig:
+        """A harness backend is internal, house-only and has no endpoint or key."""
+        if self.kind is EnumDelegationBackendKind.ENDPOINT:
+            if self.harness is not None:
+                msg = f"{self.backend_id}: harness is set on an endpoint backend"
+                raise ValueError(msg)
+            return self
+        problems: list[str] = []
+        if self.harness is None:
+            problems.append("harness is not declared")
+        if self.surface is not EnumDelegationBackendSurface.INTERNAL:
+            problems.append("surface must be internal")
+        if self.tenant_scope is not EnumDelegationBackendTenantScope.HOUSE:
+            problems.append("tenant_scope must be house")
+        if self.endpoint_url is not None or self.endpoint_url_env is not None:
+            problems.append("a harness backend has no endpoint_url")
+        if self.resolved_secret_ref is not None:
+            problems.append(
+                "a harness backend has no secret_ref; the harness owns its login"
+            )
+        if self.model_name is None and self.harness is not EnumDelegationHarness.CODEX:
+            # Codex runs the account's configured default model; a model pin is
+            # never passed to it. Every other harness names its model.
+            problems.append("model_name is not declared")
+        if problems:
+            msg = f"{self.backend_id}: " + "; ".join(problems)
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_secret_ref_fields(self) -> ModelDelegationBackendConfig:
