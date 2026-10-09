@@ -278,6 +278,14 @@ def test_typecheck_job_proves_the_plan_partitions_the_collected_tree() -> None:
     assert "> collected.txt" in runs[collect]
 
 
+def test_integration_guard_does_not_collect_the_whole_tree() -> None:
+    """Falsifier: the 86 s collection sits in a job that already runs 313-509 s."""
+    steps = _workflow()["jobs"]["integration-guard"]["steps"]
+    runs = [str(step.get("run", "")) for step in steps]
+    assert not any("--collect-only" in run for run in runs)
+    assert not any("merge_test_durations.py verify" in run for run in runs)
+
+
 def test_verified_split_count_is_the_full_suite_split_count() -> None:
     from scripts.ci import detect_test_paths
     from scripts.ci.test_selection_models import EnumFullSuiteReason
