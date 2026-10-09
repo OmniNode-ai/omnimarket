@@ -57,6 +57,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 NODES_DIR_PARTS: tuple[str, str, str] = ("src", "omnimarket", "nodes")
 RUNNER_FILE = Path("src/omnimarket/projection/runner.py")
 TESTS_DIR_NAME = "tests"
@@ -109,6 +111,29 @@ def is_write_path_target(raw_path: str) -> bool:
     return False
 
 
+def _node_declares_pure_fold(raw_path: str, repo_root: Path) -> bool:
+    """True when the node owning ``raw_path`` declares a pure fold with no DB I/O.
+
+    A projection node's pure fold half (rule 7a) owns no write path: its contract
+    says ``descriptor.purity: pure`` and declares no ``db_io``. Anything short of
+    that, including a missing or unreadable contract, is still a write path. The
+    carve-out ends by itself when the node gains a writer, because the writer's
+    contract declares ``db_io``.
+    """
+    parts = Path(raw_path).parts
+    if len(parts) < 5:
+        return False
+    contract_path = repo_root.joinpath(*parts[:4], "contract.yaml")
+    try:
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(contract, dict) or "db_io" in contract:
+        return False
+    descriptor = contract.get("descriptor")
+    return isinstance(descriptor, dict) and descriptor.get("purity") == "pure"
+
+
 def _file_has_real_db_integration_signal(full_path: Path) -> bool:
     if not full_path.is_file():
         # A deleted/renamed-away file cannot satisfy the requirement.
@@ -140,7 +165,13 @@ class GateResult:
 
 
 def evaluate(changed_files: list[str], repo_root: Path) -> GateResult:
-    targets = sorted({f for f in changed_files if is_write_path_target(f)})
+    targets = sorted(
+        {
+            f
+            for f in changed_files
+            if is_write_path_target(f) and not _node_declares_pure_fold(f, repo_root)
+        }
+    )
     if not targets:
         return GateResult()
     covering = sorted(
@@ -203,6 +234,38 @@ def run(*, changed_files: list[str], repo_root: Path, output_json: bool) -> int:
         "column types."
     )
     return 1
+
+
+def _selftest_pure_fold() -> bool:
+    """Cases (g)-(i): the pure-fold carve-out holds, and fails closed."""
+    ok = True
+    handler = "src/omnimarket/nodes/node_projection_fake/handlers/handler_fold.py"
+    cases = (
+        ("g", "descriptor:\n  purity: pure\n", True),
+        ("h", "descriptor:\n  purity: pure\ndb_io:\n  db_tables: []\n", False),
+        ("i", "descriptor:\n  purity: impure\n", False),
+        ("j", "descriptor: [unclosed\n", False),
+    )
+    for label, contract_text, expect_pass in cases:
+        with tempfile.TemporaryDirectory() as td:
+            node_dir = Path(td, *Path(handler).parts[:4])
+            node_dir.mkdir(parents=True)
+            node_dir.joinpath("contract.yaml").write_text(
+                contract_text, encoding="utf-8"
+            )
+            passed = evaluate([handler], Path(td)).passed
+        if passed != expect_pass:
+            ok = False
+            print(f"SELFTEST FAIL (case {label}): pure-fold carve-out wrong")
+        else:
+            print(f"SELFTEST ok: case ({label}) pure-fold carve-out -> {passed}")
+    with tempfile.TemporaryDirectory() as td:
+        if evaluate([handler], Path(td)).passed:
+            ok = False
+            print("SELFTEST FAIL (case k): a node with no contract passed")
+        else:
+            print("SELFTEST ok: case (k) no contract -> RED")
+    return ok
 
 
 def selftest() -> int:
@@ -290,6 +353,7 @@ def selftest() -> int:
         else:
             print("SELFTEST ok: case (f) nonexistent/deleted test file -> RED")
 
+    ok = _selftest_pure_fold() and ok
     print("SELFTEST PASSED" if ok else "SELFTEST FAILED")
     return 0 if ok else 1
 

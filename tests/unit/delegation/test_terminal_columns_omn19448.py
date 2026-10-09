@@ -9,8 +9,9 @@ model (``omnibase_core`` ``ModelDelegationResult``):
 * ``routed_model``       <- ``model_used``
 * ``answering_backend``  <- ``route``
 
-``requested_model``, ``queue_wait_ms`` and ``execution_ms`` have no field on
-that wire model today, so no column exists for them.
+``requested_model``, ``queue_wait_ms`` and ``execution_ms`` now have producer
+fields: the skill terminal carries ``attempts[0].model_id``, ``queue_wait_ms``
+and ``execution_duration_ms``. Canonical payloads may explicitly name them.
 
 The falsifier: apply the migration, project a terminal, assert each column.
 The SQL file is checked statically here; the real-Postgres twin below applies
@@ -88,16 +89,28 @@ def test_a_migration_adds_each_new_column_idempotently() -> None:
 
 
 @pytest.mark.unit
-def test_no_column_is_minted_for_a_field_the_terminal_does_not_carry() -> None:
-    text = "\n".join(path.read_text() for path in _MIGRATIONS.glob("*.sql"))
-    for absent in (
-        "requested_model",
-        "queue_wait_ms",
-        "execution_ms",
+def test_only_migration_0058_adds_requested_model_and_timing() -> None:
+    name = "0058_delegation_events_requested_model_and_timing.sql"
+    for column, sql_type in (
+        ("requested_model", "TEXT"),
+        ("queue_wait_ms", "INTEGER"),
+        ("execution_ms", "INTEGER"),
     ):
-        assert not re.search(rf"ADD COLUMN IF NOT EXISTS {absent}\b", text), (
-            f"{absent} has no producer field yet"
+        owners = [
+            path
+            for path in _MIGRATIONS.glob("*.sql")
+            if re.search(
+                rf"ADD\s+COLUMN\s+(?:IF NOT EXISTS\s+)?{column}\b", path.read_text()
+            )
+        ]
+        assert [path.name for path in owners] == [name], (
+            f"only migration 0058 may add {column}"
         )
+        sql = owners[0].read_text()
+        assert re.search(rf"ADD COLUMN IF NOT EXISTS {column}\s+{sql_type}\b", sql)
+        assert "BEGIN;" in sql
+        assert "COMMIT;" in sql
+    assert (_MIGRATIONS.parent / "rollback" / name).is_file()
 
 
 @pytest.mark.unit

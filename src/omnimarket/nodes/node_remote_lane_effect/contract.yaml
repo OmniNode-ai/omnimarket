@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Remote Lane Effect (OMN-20669)
+#
+# The I/O half of a remote lane. The decisions (which host takes the lane, how a
+# finished lane closes) are node_remote_lane_compute's; this node reads and acts.
+# Its first operation resolves the sha a lane's worktree is built from.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that dispatches lanes (it holds
+# the canonical clones, the placement directory and the lane receipts). Shared
+# runtimes must NOT attach it, so the contract declares runtime_dispatch and NO
+# event_bus block, as node_lab_fill_effect does.
+#
+# OVERLAY. No project, operator, repository owner or host path lives in this node:
+# they arrive on the request, read by the caller from its overlay.
+name: "node_remote_lane_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Resolves the sha a remote lane's worktree is built from: the named sha, the named
+  branch or tag, or the repository's landing branch read from the remote through its
+  canonical clone or public URL. Decides nothing about where the lane runs.
+input_model:
+  name: "ModelRemoteLaneRefRequest"
+  module: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect"
+  description: "Repository, owner, optional ref or sha, and the registry roots."
+output_model:
+  name: "ModelRemoteLaneRefResult"
+  module: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect"
+  description: "The sha, the landing branch read, the remote used, or the error."
+handler:
+  module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_ref"
+  class: "HandlerRemoteLaneRef"
+  input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect.ModelRemoteLaneRefRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_ref:HandlerRemoteLaneRef"
+  handlers:
+    - operation: "resolve_remote_lane_ref"
+      handler:
+        name: "HandlerRemoteLaneRef"
+        module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_ref"
+      input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect.ModelRemoteLaneRefRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect.ModelRemoteLaneRefResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 130000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.remote-lane-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.remote-lane-effect-completed.v1"
+    failure: "onex.evt.omnimarket.remote-lane-effect-failed.v1"
+published_events:
+  - event_type: ModelRemoteLaneRefResult
+    topic: onex.evt.omnimarket.remote-lane-effect-completed.v1
+    description: "The outcome of one remote-lane effect operation, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.remote-lane-effect-completed.v1
+  - onex.evt.omnimarket.remote-lane-effect-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-20669
+  description: "Remote-lane I/O: resolve the sha a lane builds from"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "remote-lane"
+    - "OMN-20669"
+  related_tickets:
+    - "OMN-20669"

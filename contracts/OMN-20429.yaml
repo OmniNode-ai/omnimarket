@@ -17,7 +17,7 @@ requirements:
   - id: AC3
     statement: 'AC3: the compute node scores a run from two judges and fails when Cohen kappa on the double-judged sample is under 0.6 or the sample is under 10 percent of the corpus, and builds the matrix of true accept rate with a Wilson interval beside terminal_ok -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_score.py -q'
   - id: AC4
-    statement: 'AC4: the golden chain replays the recorded run through the handler the node contract wires and gives the published matrix and agreement, fails the kappa gate when every second-judge verdict is inverted, and refuses an unsound judge reply with one issue per fault -- falsifier: uv run pytest tests/golden_chains/delegation_acceptance_judge -q'
+    statement: 'AC4: the golden chain replays the recorded run through the handler the node contract wires and gives the published matrix and agreement, fails the kappa gate when every second-judge verdict is inverted, and refuses an unsound judge reply with one issue per fault -- falsifier: uv run pytest tests/golden_chains/delegation_acceptance_judge/test_golden_chain_delegation_acceptance_judge.py -q'
 evidence_requirements:
 - kind: tests
   description: The rubric, check and score tests of the acceptance judge node pass.
@@ -59,7 +59,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/golden_chains/delegation_acceptance_judge -q
+    check_value: uv run pytest tests/golden_chains/delegation_acceptance_judge/test_golden_chain_delegation_acceptance_judge.py -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4

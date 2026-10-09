@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_host_reconcile_compute
+version: 1.0.0
+description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Host Reconcile Compute
+entry_points:
+  onex.nodes:
+    node_host_reconcile_compute: omnimarket.nodes.node_host_reconcile_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- host
+- reconcile

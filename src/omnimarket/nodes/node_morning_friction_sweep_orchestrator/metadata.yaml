@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_morning_friction_sweep_orchestrator
+version: 0.1.0
+description: "Operator morning friction sweep orchestrator - same-date idempotency precheck, five concurrent friction sources, synthesis, adjudication, report and watermark - with the deployment briefs supplied by an overlay."
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_morning_friction_sweep_orchestrator: omnimarket.nodes.node_morning_friction_sweep_orchestrator
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+- PyYAML>=6.0.3
+- omnibase_infra
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- orchestrator
+- operator
+- morning
+- friction
+- overlay
+pack: operator_tooling
+display_name: Morning Friction Sweep Orchestrator
+node_role: orchestrator

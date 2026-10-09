@@ -336,6 +336,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     # OMN-19448: the deciding terminal's stop reason and output truncation.
     finish_reason: str | None = Field(default=None)
     truncated: bool | None = Field(default=None)
+    # OMN-19448: the first requested model and measured terminal timings (0058).
+    requested_model: str | None = Field(default=None)
+    queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
+    execution_ms: int | None = Field(default=None, ge=0, strict=True)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -780,7 +784,7 @@ class HandlerProjectionDelegation:
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
             payload = _canonical_result_to_task_delegated_payload(payload)
 
-        event = ModelTaskDelegatedEvent(**payload)
+        event = ModelTaskDelegatedEvent.model_validate(payload)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
@@ -1009,6 +1013,12 @@ class HandlerProjectionDelegation:
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        _stamp_terminal_timing_and_requested_model(
+            row,
+            event.attempts[0].model_id if event.attempts else None,
+            event.queue_wait_ms,
+            event.execution_duration_ms,
+        )
         _stamp_routing_tier(row, reduction.attempt_history)
         # OMN-18889: how many up-tier re-dispatches this terminal took. The
         # terminal model has always carried it (inherited from the response
@@ -1716,6 +1726,11 @@ def _canonical_result_to_task_delegated_payload(
         "host": _blank_to_none(payload.get("host")),
         "finish_reason": finish_reason,
         "truncated": truncated,
+        # Canonical escalation rungs name model_used, not model_id; only an
+        # explicit requested_model identifies the requested model on this wire.
+        "requested_model": _blank_to_none(payload.get("requested_model")),
+        "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
+        "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2026,11 +2041,16 @@ def _preserve_existing_evidence(
         "backend_id",
         "host",
         "finish_reason",
+        "requested_model",
     ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
             if key == "finish_reason" and row.get("truncated") is None:
                 row["truncated"] = existing.get("truncated")
+    # A measured zero is evidence, so only None may inherit a stored timing.
+    for key in ("queue_wait_ms", "execution_ms"):
+        if row.get(key) is None and existing.get(key) is not None:
+            row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
         row["request_override_applied"] = True
     if existing.get("override_within_bounds") is False:
@@ -2099,6 +2119,34 @@ def _stamp_terminal_trace_and_routing(
         value = getattr(event, key)
         if not _is_blank(value):
             row[key] = str(value).strip()
+
+    _stamp_terminal_timing_and_requested_model(
+        row, event.requested_model, event.queue_wait_ms, event.execution_ms
+    )
+
+
+def _nonnegative_int_or_none(value: object) -> int | None:
+    """Accept measured non-negative integers without coercing booleans."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _stamp_terminal_timing_and_requested_model(
+    row: dict[str, object],
+    requested_model: str | None,
+    queue_wait_ms: int | None,
+    execution_ms: int | None,
+) -> None:
+    """Name only the terminal's requested model and measured timings (0058)."""
+    if not _is_blank(requested_model):
+        row["requested_model"] = requested_model
+    for key, value in (
+        ("queue_wait_ms", queue_wait_ms),
+        ("execution_ms", execution_ms),
+    ):
+        if value is not None:
+            row[key] = value
 
 
 def _blank_to_none(value: object) -> str | None:

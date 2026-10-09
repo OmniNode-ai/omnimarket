@@ -1,0 +1,88 @@
+---
+name: node_delegation_acceptance_judged_replay_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Definition-B replay of a committed judged run. The lines of a judgments.jsonl and its
+  summary.json in, one calibrated ModelDelegationAcceptanceJudgedEvent per item the matrix
+  counted out, or no event and the typed refusals. Reads no file, calls no model and reads no
+  clock; the tenant, the tier of each model, the judge's model version, the rubric hash and the
+  time of judgment come from the request.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_acceptance_judged_replay
+      handler:
+        name: HandlerDelegationAcceptanceJudgedReplay
+        module: omnimarket.nodes.node_delegation_acceptance_judged_replay_compute.handlers.handler_delegation_acceptance_judged_replay
+
+handler:
+  module: omnimarket.nodes.node_delegation_acceptance_judged_replay_compute.handlers.handler_delegation_acceptance_judged_replay
+  class: HandlerDelegationAcceptanceJudgedReplay
+  input_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_replay_request.ModelAcceptanceReplayRequest
+  output_model: omnimarket.models.delegation_acceptance_judge.model_acceptance_replay_result.ModelAcceptanceReplayResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [main]
+
+inputs:
+  rows:
+    type: tuple
+    required: true
+    description: The lines of the committed judgments.jsonl.
+  summary:
+    type: object
+    required: true
+    description: The primary judge, the calibration blocks and the matrix of the committed summary.json.
+  tenant_id:
+    type: str
+    required: true
+    description: The tenant the replayed events belong to.
+  tier_by_model:
+    type: object
+    required: true
+    description: The delegated tier of every delegated model in the run.
+  judge_run_id:
+    type: str
+    required: true
+    description: The judge run the events belong to; with the delegated call it keys each event.
+
+outputs:
+  status:
+    type: str
+  events:
+    type: tuple
+  issues:
+    type: tuple
+  skipped_unjudged_count:
+    type: int
+
+terminal_event: onex.evt.omnimarket.delegation-acceptance-replay-built.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-acceptance-replay-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-acceptance-replay-built.v1
+
+# The built events are read from the terminal by the delegation-judge skill, which hands them to
+# node_delegation_acceptance_judged_publish_effect.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-acceptance-replay-built.v1
+
+published_events:
+  - event_type: DelegationAcceptanceReplayBuilt
+    topic: onex.evt.omnimarket.delegation-acceptance-replay-built.v1
+    description: The judged-acceptance events of one committed run, or the refusals that stopped it.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-acceptance-replay-requested.v1

@@ -49,7 +49,7 @@ input_model:
 output_model:
   name: "ModelLabWorkUnitReceipt"
   module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
-  description: "Status, exit code, log path, output tail, duration, the host that ran it."
+  description: "Status, exit code, log path, output tail, duration, the host that ran it, originating lane and command kind."
 handler:
   module: "omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_lab_work_unit_effect"
   class: "HandlerLabWorkUnitEffect"
@@ -88,6 +88,9 @@ published_events:
   - event_type: ModelLabWorkUnitReceipt
     topic: onex.evt.omnimarket.lab-work-unit-completed.v1
     description: "The receipt of a unit this host ran, refused or could not run."
+  - event_type: ModelLabWorkCommandFailure
+    topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+    description: "Handler failure with the unit's host, lane, repo, sha, kind and elapsed duration."
   - event_type: ModelHostCapacityAdvertisement
     topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
     description: "This host's cores, load1, available memory, tools and running units."

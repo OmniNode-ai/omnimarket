@@ -1,0 +1,89 @@
+{
+ "calibration": {
+  "between": {
+   "agree": 0.9078947368421053,
+   "kappa": 0.8165517241379311,
+   "n": 76
+  },
+  "codex": {
+   "all": {
+    "accept_precision": 0.8857142857142857,
+    "accept_recall": 0.7380952380952381,
+    "agree": 0.8026315789473685,
+    "fn": 11,
+    "fp": 4,
+    "kappa": 0.6085164835164836,
+    "n": 76,
+    "tn": 30,
+    "tp": 31
+   },
+   "hand": {
+    "accept_precision": 1.0,
+    "accept_recall": 1.0,
+    "agree": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "kappa": 1.0,
+    "n": 10,
+    "tn": 4,
+    "tp": 6
+   },
+   "matrix": {
+    "accept_precision": 0.8620689655172413,
+    "accept_recall": 0.6944444444444444,
+    "agree": 0.7727272727272727,
+    "fn": 11,
+    "fp": 4,
+    "kappa": 0.550408719346049,
+    "n": 66,
+    "tn": 26,
+    "tp": 25
+   }
+  },
+  "opus": {
+   "all": {
+    "accept_precision": 0.875,
+    "accept_recall": 0.8333333333333334,
+    "agree": 0.8421052631578947,
+    "fn": 7,
+    "fp": 5,
+    "kappa": 0.6824512534818941,
+    "n": 76,
+    "tn": 29,
+    "tp": 35
+   },
+   "hand": {
+    "accept_precision": 1.0,
+    "accept_recall": 1.0,
+    "agree": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "kappa": 1.0,
+    "n": 10,
+    "tn": 4,
+    "tp": 6
+   },
+   "matrix": {
+    "accept_precision": 0.8529411764705882,
+    "accept_recall": 0.8055555555555556,
+    "agree": 0.8181818181818182,
+    "fn": 7,
+    "fp": 5,
+    "kappa": 0.6353591160220996,
+    "n": 66,
+    "tn": 25,
+    "tp": 29
+   }
+  },
+  "quality_gate": {
+   "agree": 0.5454545454545454,
+   "n": 66
+  }
+ },
+ "matrix": [
+  {
+   "n": 4
+  }
+ ],
+ "primary_judge": "codex"
+}
