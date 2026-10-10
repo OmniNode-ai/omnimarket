@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_skill_tree_read_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Reads one skills tree from disk into the snapshot the skill validator compute nodes judge (sorted root and per-directory listings, SKILL.md and prompt.md presence and text, every *.py and topics.yaml path). Read-only.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: skill_tree_read
+    handler:
+      name: HandlerSkillTreeRead
+      module: omnimarket.nodes.node_skill_tree_read_effect.handlers.handler_skill_tree_read
+handler:
+  module: omnimarket.nodes.node_skill_tree_read_effect.handlers.handler_skill_tree_read
+  class: HandlerSkillTreeRead
+  input_model: omnimarket.nodes.node_skill_tree_read_effect.models.model_skill_tree_read_request.ModelSkillTreeReadRequest
+  output_model: omnimarket.models.skill_tree.model_skill_tree_snapshot.ModelSkillTreeSnapshot
+descriptor:
+  node_archetype: effect
+  purity: effectful  # reads the skills tree on disk, writes nothing
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - effects
+inputs:
+  skills_root:
+    type: str
+    required: true
+    description: Directory whose child directories are skills.
+outputs:
+  skills_root:
+    type: str
+  entries:
+    type: tuple
+  python_files:
+    type: tuple
+  topics_files:
+    type: tuple
+terminal_event: onex.evt.omnimarket.skill-tree-read.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.skill-tree-read-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.skill-tree-read.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.skill-tree-read-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.skill-tree-read.v1
