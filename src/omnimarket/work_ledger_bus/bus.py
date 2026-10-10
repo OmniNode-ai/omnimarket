@@ -16,6 +16,7 @@ import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from functools import partial
 from importlib import resources
 from pathlib import Path
@@ -42,7 +43,9 @@ from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+    ModelWorkLedgerTerminalRefused,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers import terminal_refused
 from omnimarket.nodes.node_work_ledger_bus_mirror import (
     HandlerWorkLedgerBusMirror,
     ModelWorkLedgerBusMirrorRequest,
@@ -92,6 +95,7 @@ class ModelWorkLedgerAppendTopics(BaseModel):
     command: str
     success: str
     failure: str
+    terminal_refused: str
 
 
 class ModelWorkLedgerAppendCommandFailure(BaseModel):
@@ -118,11 +122,16 @@ def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
         .joinpath("contract.yaml")
         .read_text()
     )
-    dispatch = yaml.safe_load(text)["runtime_dispatch"]
+    contract = yaml.safe_load(text)
+    dispatch = contract["runtime_dispatch"]
+    published = {
+        entry["event_type"]: entry["topic"] for entry in contract["published_events"]
+    }
     return ModelWorkLedgerAppendTopics(
         command=dispatch["command_topic"],
         success=dispatch["terminal_events"]["success"],
         failure=dispatch["terminal_events"]["failure"],
+        terminal_refused=published[ModelWorkLedgerTerminalRefused.__name__],
     )
 
 
@@ -402,6 +411,9 @@ class WorkLedgerAppendHost:
             str(request.request_id).encode("utf-8"),
             _bytes(envelope),
         )
+        refused = terminal_refused(request, receipt, datetime.now(UTC))
+        if refused is not None:
+            await self._publish_terminal_refused(refused, command_id)
         if mirror and receipt.status == EnumWorkLedgerAppendStatus.REFUSED:
             logger.warning(
                 "work-ledger host %s request %s refused: %s",
@@ -417,6 +429,32 @@ class WorkLedgerAppendHost:
             receipt.status,
             receipt.exit_code,
             receipt.ledger_lines,
+        )
+
+    async def _publish_terminal_refused(
+        self, refused: ModelWorkLedgerTerminalRefused, command_id: uuid.UUID | None
+    ) -> None:
+        """A refused TERMINAL leaves its CLAIM open: say so on the bus and in the log."""
+        envelope = ModelEventEnvelope[dict[str, object]](
+            payload=refused.model_dump(mode="json"),
+            correlation_id=refused.request_id,
+            parent_envelope_id=command_id,
+            event_type=event_type_for(self._topics.terminal_refused),
+        )
+        await self._bus.publish(
+            self._topics.terminal_refused,
+            str(refused.request_id).encode("utf-8"),
+            _bytes(envelope),
+        )
+        logger.error(
+            "work-ledger host %s TERMINAL_REFUSED request %s lanes=%s tickets=%s "
+            "prs=%s: %s; the CLAIMs these rows close stay open until their lease TTL",
+            refused.ledger_host,
+            refused.request_id,
+            ",".join(refused.terminal_lanes) or "-",
+            ",".join(refused.tickets) or "-",
+            ",".join(refused.prs) or "-",
+            refused.reason,
         )
 
     async def _publish_failure(
