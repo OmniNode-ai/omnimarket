@@ -4879,6 +4879,7 @@
       "readers": [
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
+        "node_lab_job_check_effect",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
         "service:omnimarket_projection_migration_runner"
@@ -6600,6 +6601,7 @@
       "producer": "node_projection_pr_state",
       "readers": [
         "node_dod_verify",
+        "node_lab_job_check_effect",
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
@@ -8435,6 +8437,7 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_lab_job_check_effect",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect"
       ],

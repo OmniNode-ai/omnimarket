@@ -1,0 +1,14 @@
+# Verbatim CLAIM and TERMINAL rows of the rolling work ledger (2026-10-04T18:00Z to 2026-10-05T13:00Z),
+# each cut after its ninth ' | ' cell (the fan-9143 row after its sixth); the free-text tail is
+# dropped and no cell is edited.
+# Chosen lanes: dod-closeout-sweep reuses its name every two hours, so an older TERMINAL
+# precedes the newest CLAIM; suite-omnibase-core-20565 closes with outcome=failed;
+# fan-9143-process-obs-top20 and validator-convert-infra-9143 have a CLAIM and no TERMINAL.
+2026-10-04T21:52:25Z | TERMINAL | lane=dod-closeout-sweep | run=2026-10-04T2045Z | ticket=OMN-17427 | actor=launchd:dod-closeout-sweep | selected=3 | flipped=0 | open=3
+2026-10-04T22:47:32Z | CLAIM | lane=dod-closeout-sweep | run=2026-10-04T2245Z | ticket=OMN-17427 | actor=launchd:dod-closeout-sweep | worktree=none | est ~1.5 lane-hours; displaces nothing (scheduled closer); (OMN-17427)
+2026-10-05T00:47:39Z | CLAIM | lane=dod-closeout-sweep | run=2026-10-05T0045Z | ticket=OMN-17427 | actor=launchd:dod-closeout-sweep | worktree=none | est ~1.5 lane-hours; displaces nothing (scheduled closer); (OMN-17427)
+2026-10-05T02:06:13Z | TERMINAL | lane=dod-closeout-sweep | run=2026-10-05T0045Z | ticket=OMN-17427 | actor=launchd:dod-closeout-sweep | selected=5 | flipped=0 | open=5
+2026-10-05T04:56:07Z | CLAIM | lane=fan-9143-process-obs-top20 | ticket=OMN-17427 | actor=claude:opus5.5:workflow-lane | model=claude-opus-5-5
+2026-10-05T05:23:52Z | CLAIM | lane=validator-convert-infra-9143 | ticket=OMN-20568 | actor=claude:sonnet5.5:workflow-lane | model=claude-sonnet-5-5 | est ~3 lane-hours; displaces no peer lane; (OMN-20568) | worktree=omni_worktrees/OMN-20568/omnibase_infra | parent=review-session-9143
+2026-10-05T07:02:04Z | CLAIM | lane=suite-omnibase-core-20565 | ticket=OMN-20565 | actor=script:onex-remote-lane | model=claude-sonnet | est ~1 lane-hours; displaces a lane on the busy launching host; (OMN-20565) | host=h202 | run=rlane-suite-omnibase-core-20565-e26864
+2026-10-05T07:03:56Z | TERMINAL | lane=suite-omnibase-core-20565 | ticket=OMN-20565 | friction=none | closes-CLAIM=2026-10-05T07:02:04Z | outcome=failed | host=h202 | run=rlane-suite-omnibase-core-20565-e26864
