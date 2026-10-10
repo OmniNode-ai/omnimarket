@@ -27,6 +27,13 @@ requirements:
         statement: 'AC3: one scheduled fire per interval and none on ticks inside interval -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
       - id: "AC4"
         statement: 'AC4: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish scheduled fires on terminal topics, no host env or process in routes -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+  - id: "req-merge-sweep-runtime-tick"
+    statement: "The merge-sweep plan compute running from the runtime tick"
+    acceptance:
+      - id: "AC5"
+        statement: 'AC5: node_merge_sweep_plan_compute routes platform.runtime-tick with interval/offset merge-sweep 300/0 seconds, one scheduled fire per interval and none on ticks inside it -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
+      - id: "AC6"
+        statement: 'AC6: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish the merge-sweep scheduled fire on the terminal topic, no host env or process in the route -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
 evidence_requirements:
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
@@ -34,6 +41,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Runtime tick contract routing, interval decisions and terminal-topic readback tests."
     command: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Merge-sweep plan runtime tick routing, interval decisions and terminal-topic readback tests."
+    command: "uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -74,3 +84,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2", "AC3", "AC4"]
+  - id: "dod-omn20867-merge-sweep-runtime-tick"
+    description: "Merge-sweep plan runtime tick tests pass at the PR head, including real contract wiring and terminal-topic readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5", "AC6"]
