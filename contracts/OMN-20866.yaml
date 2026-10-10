@@ -58,3 +58,10 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_github_effect/test_clean_pr_merges_omn_20866.py tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_bus_ingress_omn_20866.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20866-m4-repositories"
+    description: "M4 landing configs from facts: each M4 repository's mode, companion and queue entries, the omnibase_infra replay through the real classifier and arm gate, and the idempotent enqueue (already queued or already armed sends no mutation)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_m4_repositories_omn_20866.py tests/unit/nodes/node_pr_landing_github_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
