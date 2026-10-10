@@ -361,9 +361,20 @@ def test_fleet_a_green_pr_with_no_merge_and_no_skip_is_a_gap() -> None:
 def test_fleet_a_gap_fails_the_tick_with_no_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A tick whose land_skips would drop a green, CLEAN PR returns no decision."""
+    """A tick that names no reason for a green, CLEAN PR raises before any
+    decision is built, so nothing of that tick reaches the caller."""
     facts = _facts(_fleet())
-    monkeypatch.setattr(handler_pr_landing_decision, "_land_skips", lambda _t: ())
+    product_pr = handler_pr_landing_decision._product_pr
+
+    def _names_nothing(t: Any, p: Any) -> None:
+        product_pr(t, p)
+        t.skips.pop(p.pr, None)
+
+    def _no_decision(_t: Any) -> None:
+        raise AssertionError("a decision was built for a tick with a coverage gap")
+
+    monkeypatch.setattr(handler_pr_landing_decision, "_product_pr", _names_nothing)
+    monkeypatch.setattr(handler_pr_landing_decision, "_decision", _no_decision)
     for _ in range(2):  # deterministic: the same facts raise the same way
         with pytest.raises(LandingCoverageError) as raised:
             HandlerPrLandingDecision().handle(facts)
@@ -498,9 +509,12 @@ def test_generated_fleets_never_leave_a_green_clean_pr_unnamed() -> None:
     seen_reasons: set[EnumLandingLandSkipReason] = set()
     merge_seen = False
     released_gate_seen = False
-    for _ in range(2000):
+    for fleet in range(2000):
         facts = ModelLandingFacts.model_validate(_generated_fleet(rng))
-        decision = decide_landing(facts)
+        try:
+            decision = decide_landing(facts)
+        except LandingCoverageError as gap:
+            pytest.fail(f"generated fleet {fleet}: {gap}")
         assert land_coverage_gaps(facts, decision) == ()
         seen_reasons.update(skip.reason for skip in decision.land_skips)
         merge_seen |= any(

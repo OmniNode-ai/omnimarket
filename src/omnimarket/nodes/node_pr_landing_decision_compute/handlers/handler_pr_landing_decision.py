@@ -1697,16 +1697,35 @@ def land_coverage_gaps(
     a companion, the token), so a gap is a defect in this module, not a fleet
     state the caller can produce.
     """
-    merged = _merged_heads((*decision.actions, *decision.observed_actions))
-    skipped = {(s.pr, s.head_sha) for s in decision.land_skips}
+    return _uncovered(
+        facts.prs,
+        _merged_heads((*decision.actions, *decision.observed_actions)),
+        {(s.pr, s.head_sha) for s in decision.land_skips},
+    )
+
+
+def _tick_coverage_gaps(t: _Tick) -> tuple[str, ...]:
+    """``land_coverage_gaps`` read off the tick, before any decision is built."""
+    return _uncovered(
+        t.prs.values(),
+        _merged_heads((*t.actions, *t.observed)),
+        {(pr, t.prs[pr].head_sha) for pr in t.skips},
+    )
+
+
+def _uncovered(
+    prs: Iterable[ModelLandingPrFacts],
+    merged: set[tuple[str, str | None]],
+    named: set[tuple[str, str]],
+) -> tuple[str, ...]:
     return tuple(
         sorted(
             p.pr
-            for p in facts.prs
+            for p in prs
             if p.state is EnumLandingPrState.OPEN
             and _mergeable(p)
             and (p.pr, p.head_sha) not in merged
-            and (p.pr, p.head_sha) not in skipped
+            and (p.pr, p.head_sha) not in named
         )
     )
 
@@ -1780,13 +1799,14 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     _dispatch_causes(t)
     for p in sorted(t.prs.values(), key=lambda p: _priority(t, p)):
         _product_pr(t, p)
-    decision = _decision(t)
-    gaps = land_coverage_gaps(facts, decision)
+    # The tick is local to this call: a raise here leaves no decision, no
+    # action and no state behind, so the caller has nothing to act on.
+    gaps = _tick_coverage_gaps(t)
     if gaps:
         raise LandingCoverageError(
             f"green, CLEAN PRs with no merge and no named reason: {', '.join(gaps)}"
         )
-    return decision
+    return _decision(t)
 
 
 def _decision(t: _Tick) -> ModelLandingDecision:
