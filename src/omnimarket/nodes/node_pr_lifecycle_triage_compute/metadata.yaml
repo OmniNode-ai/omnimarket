@@ -1,5 +1,5 @@
 name: node_pr_lifecycle_triage_compute
-version: "1.2.0"
+version: "1.3.0"
 description: "Pure computation: classifies PRs into triage categories from inventory data with zero network calls"
 pack: pr_lifecycle
 node_role: triage

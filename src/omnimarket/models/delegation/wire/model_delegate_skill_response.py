@@ -37,6 +37,7 @@ from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
 from omnimarket.models.delegation.delegation_caller_lane import CALLER_LANE_PATTERN
+from omnimarket.models.delegation.delegation_lineage import LINEAGE_KEYS
 from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
@@ -703,6 +704,27 @@ class ModelDelegateSkillResponse(BaseModel):
             return data
         return {key: item for key, item in data.items() if key not in undeclared}
 
+    # OMN-20606, step 1 of 2: a CONSUMER that decodes the delegation lineage
+    # keys (``parent_correlation_id``, ``lineage_kind``,
+    # ``parent_failure_cause``) before this model declares them. The in-process
+    # evidence terminal carries them from this release on; the Wire
+    # Compatibility Gate (OMN-18868) refuses declaring them here while the last
+    # release forbids extras, so this release tolerates and drops them, and the
+    # second half declares them once a release carrying this is out. Only an
+    # undeclared key is dropped: the projection model declares all three and
+    # keeps them.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_lineage_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key for key in LINEAGE_KEYS if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
+
     # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
     # producer on this package emits it (the OMN-18931 pattern on the request).
     #
@@ -950,10 +972,20 @@ class ModelDelegateSkillResponse(BaseModel):
         # Refused rather than corrected, the same as the count clause above: a
         # producer that does not derive the cause from the record must not be
         # able to publish one that disagrees with it.
+        #
+        # One exception (operator RULING 2026-10-10T00:27:40Z): a run the
+        # handler budget cancelled carries status timeout and names timeout. The
+        # budget stopped its ladder with a rung in flight, so the gate did not
+        # decide it; the earlier gate refusals stay on their own rungs.
         cause = self.terminal_failure_cause
+        budget_cancelled = (
+            self.status == "timeout"
+            and cause is EnumDelegationTerminalFailureCause.TIMEOUT
+        )
         if (
             cause is not None
             and cause is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            and not budget_cancelled
             and _gate_decided(self.attempts)
         ):
             refused = sum(

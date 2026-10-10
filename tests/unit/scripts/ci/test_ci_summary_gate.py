@@ -864,18 +864,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
     ),
-    ("public-repo-hygiene.yml", "public-repo-hygiene"): (
-        "public-repo hygiene gate (OMN-18016) landed in mode: report — the "
-        "validator records every finding with a per-class count and exits 0, "
-        "so it cannot gate a merge. It is EXEMPT for exactly as long as that "
-        "is true. PROMOTION PATH, not a permanent home: when this repo's "
-        "residue is FIXED and the gate flips to enforce, this entry MOVES to "
-        "EXPECTED_EXTERNAL_CONTEXTS in scripts/ci/ci_summary_gate.py in the "
-        "same PR — on this repo the CI Summary umbrella IS the enforcement "
-        "surface, so a context missing from that tuple is silently "
-        "unenforced with no branch-protection signal that it is missing. "
-        "Leaving it here after the flip would be that exact silent hole."
-    ),
     # --- OMN-19554: the report-only contract walker.
     ("contract-walker.yml", "contract-walker"): (
         "self-declared report-only, non-validating job by operator ruling "

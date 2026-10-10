@@ -63,6 +63,7 @@ from tests.chains.local.harness import (
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
+    shipped_byok_model_name,
     use_local_store,
 )
 
@@ -107,7 +108,11 @@ async def test_golden_chain_the_contract_reaches_the_model_and_the_caller_gets_t
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
         house_openrouter_rung(monkeypatch)
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(
@@ -153,7 +158,11 @@ async def test_error_chain_guessed_key_names_fail_rather_than_pass(
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
         house_openrouter_rung(monkeypatch)
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(

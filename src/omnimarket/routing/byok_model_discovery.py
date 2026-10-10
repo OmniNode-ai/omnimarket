@@ -101,6 +101,8 @@ class ModelByokModelDiscovery(BaseModel):
 
     * ``resolved``: the list was read and ``model`` is the best preferred id on it.
     * ``no_match``: the list was read and names none of the preferred families.
+    * ``not_listed``: the customer named a model (OMN-20844) and the list, read
+      for their key, does not name it.
     * ``rejected``: the provider refused the key itself (401/403, or Google's 400
       "API key not valid").
     * ``billing``: the provider refused on the account's billing.
@@ -112,11 +114,15 @@ class ModelByokModelDiscovery(BaseModel):
 
     provider: str
     plan: str
-    outcome: Literal["resolved", "no_match", "rejected", "billing", "inconclusive"]
+    outcome: Literal[
+        "resolved", "no_match", "not_listed", "rejected", "billing", "inconclusive"
+    ]
     model: str | None = None
     listed_count: int = 0
     http_status: int | None = None
     provider_message: str | None = None
+    #: OMN-20844: the model the customer named, when the list was read to check it.
+    chosen: str | None = None
 
 
 def _model_ids(body: Any) -> tuple[str, ...]:
@@ -151,6 +157,7 @@ def discover_byok_model_sync(
     *,
     exclude: Iterable[str] = (),
     exclude_families_of: Iterable[str] = (),
+    chosen: str | None = None,
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Read ``backend.models_url`` with ``api_key`` and pick the preferred model.
@@ -158,6 +165,11 @@ def discover_byok_model_sync(
     Blocking; see :func:`discover_byok_model` for the async form. ``get`` is
     looked up at CALL time when omitted, so the test suite's autouse guard can
     replace :func:`get_models_json` and no unit test reaches a real provider.
+
+    OMN-20844: ``chosen`` is the model the customer named. The list is then
+    read only to check it: ``resolved`` with that model when the list names it,
+    ``not_listed`` when it does not. The preference is never consulted, so no
+    model the customer did not name is returned.
     """
     fetch = get if get is not None else get_models_json
     secret = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
@@ -196,6 +208,15 @@ def discover_byok_model_sync(
     ids = _model_ids(response)
     if not ids:
         return ModelByokModelDiscovery(**base, outcome="inconclusive", http_status=200)
+    if chosen is not None:
+        return ModelByokModelDiscovery(
+            **base,
+            outcome="resolved" if chosen in ids else "not_listed",
+            model=chosen if chosen in ids else None,
+            listed_count=len(ids),
+            http_status=200,
+            chosen=chosen,
+        )
     model = select_byok_model(
         backend, ids, exclude=exclude, exclude_families_of=exclude_families_of
     )
@@ -214,6 +235,7 @@ async def discover_byok_model(
     *,
     exclude: Iterable[str] = (),
     exclude_families_of: Iterable[str] = (),
+    chosen: str | None = None,
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Async form of :func:`discover_byok_model_sync` (runs it in a thread)."""
@@ -223,7 +245,23 @@ async def discover_byok_model(
         api_key,
         exclude=tuple(exclude),
         exclude_families_of=tuple(exclude_families_of),
+        chosen=chosen,
         get=get,
+    )
+
+
+#: OMN-20844: the typed code for a registration or a call on a row whose
+#: customer chooses the model, when no model was named.
+BYOK_MODEL_NOT_CHOSEN = "BYOK_MODEL_NOT_CHOSEN"
+
+
+def model_not_chosen_message(provider: str) -> str:
+    """What a customer is told when their key has no model they chose (OMN-20844)."""
+    return (
+        f"{BYOK_MODEL_NOT_CHOSEN}: you choose the {provider} model your key runs, "
+        "and none was chosen. Name one with --model <model id> (for example "
+        f"onex models add {provider} --model <model id>); the provider's model "
+        "page lists the ids. A ':free' model is rate-limited but may be chosen."
     )
 
 
@@ -252,6 +290,13 @@ def describe_discovery_refusal(discovery: ModelByokModelDiscovery) -> str | None
             f"the account's billing.{said} The key is yours and so is the bill: "
             "add credits or enable billing on that provider account first."
         )
+    if discovery.outcome == "not_listed":
+        return (
+            f"BYOK_MODEL_NOT_LISTED: {discovery.provider} does not list "
+            f"{discovery.chosen!r} among the {discovery.listed_count} "
+            "models your key can use. Check the model id on the provider's model "
+            "page and try again."
+        )
     if discovery.outcome == "no_match":
         return (
             f"BYOK_NO_PREFERRED_MODEL: {discovery.provider} lists "
@@ -262,10 +307,12 @@ def describe_discovery_refusal(discovery: ModelByokModelDiscovery) -> str | None
 
 
 __all__: list[str] = [
+    "BYOK_MODEL_NOT_CHOSEN",
     "DISCOVERY_TIMEOUT_SECONDS",
     "ModelByokModelDiscovery",
     "describe_discovery_refusal",
     "discover_byok_model",
     "discover_byok_model_sync",
     "get_models_json",
+    "model_not_chosen_message",
 ]

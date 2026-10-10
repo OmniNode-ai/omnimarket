@@ -20,13 +20,14 @@ x-shared:
   test_target_pattern: &test_target_pattern '(?<![\w/])(?:tests/[\w./-]+\.py(?:::[\w.\[\]-]+)*|test_\w+)'
   declared_format: &declared_format
     criterion_id: declared_format_met
-    description: Explicitly requested finding line, JSON, fence count and first line are met.
+    description: Explicitly requested finding line, JSON, fence count, first line, single word, enumerated JSON values and facts echoed exactly as given are met.
     params:
       finding_phrases:
       - FINDING |
       json_phrases:
       - json only
       - return json
+      - only one json object
       fence_allow_phrases:
       - fences allowed
       - fence allowed
@@ -36,6 +37,10 @@ x-shared:
       one_fence_pattern: '\bone fenced\s+([\w+-]+)\s+(?:code\s+)?block\b(?!\s+(?:per|for each|each)\b)'
       # "<...>" in the declared first line is a placeholder matching any text.
       first_line_pattern: 'first line(?: of each block)?\s*(?:is|must be|:|=)?\s*(?:a comment\s*)?["`]([^"`\n]+)["`]'
+      single_word_pattern: '\breply with (?:only )?the single word:?\s*["''`]?([A-Za-z][\w-]*)'
+      json_choice_pattern: '"(\w+)":\s*("[^"]+"(?:\s+or\s+"[^"]+")+)'
+      echo_field_pattern: '"(\w+)":\s*\{\s*"<[^"]+>":\s*<[^>]*\bexactly as given>\s*\}'
+      facts_object_pattern: '\bFacts:\s*'
 
 x-review-criteria: &review_criteria
 - criterion_id: cited_lines_exist

@@ -313,11 +313,9 @@ def test_lab_backends_declare_a_budget_in_the_shipped_contract() -> None:
     declared = {
         b["backend_id"]: b.get("max_grounded_input_tokens")
         for b in backends
-        if b["backend_id"]
-        in {"local-coder", "local-heavy-reasoning", "local-ds-v4-flash"}
+        if b["backend_id"] in {"local-coder", "local-heavy-reasoning"}
     }
     assert declared == {
         "local-coder": _LOCAL_BUDGET,
         "local-heavy-reasoning": _LOCAL_BUDGET,
-        "local-ds-v4-flash": _LOCAL_BUDGET,
     }

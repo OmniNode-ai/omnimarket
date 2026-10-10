@@ -102,6 +102,7 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "tenant",
         "name",
         "plan",
+        "model_option",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)
 
@@ -144,7 +145,15 @@ def test_default_bus_is_constructed_and_owned_by_the_shared_publisher(
     )
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "openrouter", "--tenant", _TENANT],
+        # OMN-20844: the customer chooses the OpenRouter model their key runs.
+        [
+            "register-tenant-key",
+            "openrouter",
+            "--tenant",
+            _TENANT,
+            "--model",
+            "openai/gpt-5-nano",
+        ],
         input=f"{_VALUE}\n",
     )
     assert result.exit_code == 0, result.output

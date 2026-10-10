@@ -12,6 +12,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: A collection-only pre-fix failure with no call-phase mutation failure is accepted_collection, never accepted_call or accepted_mutation. -- falsifier: uv run pytest src/omnimarket/nodes/node_delegated_test_control_compute/tests -q has a case that maps it otherwise."
+  - id: "req-forbidden-fragment-response-contract"
+    statement: "A forbidden fragment is refused wherever it appears in the bundle, including the response contract."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: A bundle carrying a forbidden fragment is refused. -- falsifier: uv run pytest tests/nodes/node_delegated_test_prompt_compute/test_handler_delegated_test_prompt.py -k response_contract -q has a case where a fragment present only in the response contract is not refused."
 evidence_requirements:
   - kind: "tests"
     description: "AC2 hosted probe. The source-local grading cases pass at the head and fail at the merge base, where the probe path does not exist."
@@ -29,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest src/omnimarket/nodes/node_delegated_test_control_compute/tests -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19361-ac5-response-contract-refusal"
+    description: "AC5 response contract refusal. A forbidden fragment that appears only in the response contract is refused at the head and accepted at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_test_prompt_compute/test_handler_delegated_test_prompt.py -k response_contract -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_compute
+contract_version:
+  major: 1
+  minor: 1
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 1
+  patch: 0
+description: >
+  Decide which pool host takes a remote lane from supplied facts without I/O:
+  usage-limit and auth-expired marks, the admission bar, a pinned host, lab hosts
+  before the launching host, the spread rank, the Codex bar. Host readings arrive
+  evaluated by the placement reader. The launching host's and each host's dispatch-venv
+  lock hash arrive with them: a lane that finds no host only because those hashes differ
+  is answered VENV_DRIFT on the decided event, naming both hashes with one reconcile
+  intent for the drifted hosts, never a bare no-host; a missing hash on a drift-judged
+  request is VENV_UNKNOWN, never a pass. How a finished lane closes is
+  node_remote_lane_close_compute's decision, on its own command topic.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_remote_lane_placement
+    handler:
+      name: HandlerRemoteLanePlacement
+      module: omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement
+    input_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_placement.ModelRemoteLanePlacementRequest
+    output_model: omnimarket.nodes.node_remote_lane_compute.models.model_remote_lane_placement.ModelRemoteLanePlacementResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.remote-lane-decision-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.remote-lane-decided.v1
+terminal_event: onex.evt.omnimarket.remote-lane-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.remote-lane-decision-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.remote-lane-decided.v1
+metadata:
+  ticket: OMN-20669
+  transport_type: kafka
+lifecycle: experimental

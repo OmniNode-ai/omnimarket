@@ -54,7 +54,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import yaml
 
@@ -233,6 +233,9 @@ _CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
 _GIT_TIMEOUT_SECONDS = 120
 
 _OCC_REPO = OCC_REPO
+# OMN-20074: every product repository on change control calls the autobind
+# through this caller; deleting it is that repository's cut-over.
+AUTOBIND_CALLER_WORKFLOW_PATH: Final[str] = ".github/workflows/call-occ-autobind.yml"
 
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
@@ -505,6 +508,23 @@ class MergedBatchMissingMemberError(StaleBatchHeadError):
     """The batch merged at a head that omitted the triggering member."""
 
 
+class NothingToBindError(RuntimeError):
+    """GitHub refused to open the companion PR: the branch has no commit to show.
+
+    OMN-19984: when the companion this command would write already merged, the
+    rebuilt branch stages nothing (``_commit_staged`` skips the empty commit),
+    the push leaves the branch at the OCC default branch, and ``POST /pulls``
+    answers 422 "No commits between <base> and <branch>". That is not a fault:
+    there is nothing left to bind, so :meth:`OccCompanionEmitter._emit_companion_sync`
+    turns it into a ``skip:NOTHING_TO_BIND`` decline instead of an ERROR.
+    """
+
+
+def _is_no_commits_between(exc: GitHubApiError) -> bool:
+    """True only for the 422 GitHub answers when a PR head adds nothing to its base."""
+    return exc.status_code == 422 and "No commits between" in str(exc)
+
+
 # OMN-18853: a receipt directory id that encodes SOME product PR
 # (``dod-<repo-slug>-pr-<n>`` plus any suffix such as ``-ci``). Used only to
 # PROVE a merged companion belongs to another PR before its stamp is replaced.
@@ -716,6 +736,14 @@ class OccCompanionEmitter:
                     "attempt %s/3; restarting from fresh OCC dev",
                     attempt,
                 )
+            except NothingToBindError as exc:
+                action = (
+                    f"skip:NOTHING_TO_BIND — {repo}#{pr_number}: nothing left to "
+                    f"bind, the companion branch adds no commit to OCC's default "
+                    f"branch ({exc}) (OMN-19984)"
+                )
+                logger.info("occ_companion_emitter: %s", action)
+                return action
         raise AssertionError("unreachable batch rebuild retry state")
 
     def _emit_companion_sync_once(
@@ -856,6 +884,25 @@ class OccCompanionEmitter:
             )
             logger.warning("occ_companion_emitter: %s", action)
             return action
+
+        # OMN-20074: a repository that has cut over from change control deleted
+        # its autobind caller; the absence of that caller on the PR's base branch
+        # is the cut-over state, read from the repository itself rather than a
+        # list here. It still has to be read: GitHub runs a ``pull_request``
+        # event's workflows from the PR's test-merge commit, which can predate
+        # the cut-over (OCC#13507 was minted for omnibase_infra#4629 from a merge
+        # ref built against pre-cut-over ``dev``), and the scheduled re-mint in
+        # this repository publishes for every product repository.
+        caller_absent = self._caller_absent_reason(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            pr_data=pr_data,
+            token=token,
+        )
+        if caller_absent is not None:
+            logger.warning("occ_companion_emitter: %s", caller_absent)
+            return caller_absent
 
         # OMN-14255: the receipt must cite the actual squash ``mergeCommit.oid``
         # once the PR has landed — NOT the pre-merge ``headRefOid``. On these
@@ -2736,6 +2783,53 @@ class OccCompanionEmitter:
         if not isinstance(repo_obj, dict):
             return False
         return bool(repo_obj.get("private"))
+
+    @staticmethod
+    def _caller_absent_reason(
+        *,
+        owner: str,
+        repo_name: str,
+        pr_number: int,
+        pr_data: dict[str, object],
+        token: str,
+    ) -> str | None:
+        """Return a skip action when the PR's base branch has no autobind caller.
+
+        Reads ``AUTOBIND_CALLER_WORKFLOW_PATH`` at the base branch head (the
+        repository's default branch when the payload names no base). A 404 is
+        a cut-over only when the base branch's workflows directory reads and
+        lacks the caller: a token with no contents access also gets 404 on a
+        private repository. Any other failure propagates, because an unreadable
+        caller is not evidence that the repository left change control.
+        """
+        base = pr_data.get("base")
+        base_ref = base.get("ref") if isinstance(base, dict) else None
+        query = ""
+        if isinstance(base_ref, str) and base_ref:
+            query = f"?ref={urllib.parse.quote(base_ref, safe='')}"
+        contents = f"/repos/{owner}/{repo_name}/contents"
+        try:
+            rest_json(
+                "GET", f"{contents}/{AUTOBIND_CALLER_WORKFLOW_PATH}{query}", token=token
+            )
+        except GitHubApiError as exc:
+            if exc.status_code != 404:
+                raise
+            workflows_dir, _, caller_name = AUTOBIND_CALLER_WORKFLOW_PATH.rpartition(
+                "/"
+            )
+            listing = rest_json_array(
+                "GET", f"{contents}/{workflows_dir}{query}", token=token
+            )
+            if any(entry.get("name") == caller_name for entry in listing):
+                raise
+            return (
+                f"skip:CALLER_ABSENT — {owner}/{repo_name}#{pr_number}: the base "
+                f"branch {base_ref or '(default)'} carries no "
+                f"{AUTOBIND_CALLER_WORKFLOW_PATH}, so the repository has cut over "
+                "from change control and gets no companion (OMN-20074)"
+            )
+        return None
 
     @staticmethod
     def _suppression_reason(pr_data: dict[str, object]) -> str | None:
@@ -5378,17 +5472,24 @@ class OccCompanionEmitter:
         # unmergeable mega-PR. Basing on the default keeps the companion PR a
         # clean net-new-files diff.
         base = self._occ_default_branch(owner, repo_name, token)
-        resp = rest_json(
-            "POST",
-            f"/repos/{owner}/{repo_name}/pulls",
-            token=token,
-            body={
-                "title": title,
-                "head": branch,
-                "base": base,
-                "body": rendered_body,
-            },
-        )
+        try:
+            resp = rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/pulls",
+                token=token,
+                body={
+                    "title": title,
+                    "head": branch,
+                    "base": base,
+                    "body": rendered_body,
+                },
+            )
+        except GitHubApiError as exc:
+            if not _is_no_commits_between(exc):
+                raise
+            raise NothingToBindError(
+                f"{branch} has no commit past {base} on {owner}/{repo_name}: {exc}"
+            ) from exc
         number = resp.get("number")
         if not isinstance(number, int):
             raise RuntimeError(

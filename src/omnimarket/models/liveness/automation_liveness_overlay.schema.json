@@ -1,0 +1,397 @@
+{
+  "$defs": {
+    "EnumAutomationEmitter": {
+      "description": "Who reports a process's runs on the bus.",
+      "enum": [
+        "self",
+        "observer"
+      ],
+      "title": "EnumAutomationEmitter",
+      "type": "string"
+    },
+    "EnumAutomationEvidenceSource": {
+      "description": "Where an observer reads a process's run facts.",
+      "enum": [
+        "launchd_state",
+        "systemd_journal",
+        "receipts_file",
+        "state_file",
+        "log_line",
+        "ledger_rows",
+        "consumer_group",
+        "workflow_runs",
+        "heartbeat_file",
+        "probe"
+      ],
+      "title": "EnumAutomationEvidenceSource",
+      "type": "string"
+    },
+    "EnumAutomationProcessState": {
+      "description": "Lifecycle of a declared process.",
+      "enum": [
+        "active",
+        "not_installed",
+        "retired"
+      ],
+      "title": "EnumAutomationProcessState",
+      "type": "string"
+    },
+    "EnumAutomationRunRecord": {
+      "description": "How much run history the evidence keeps.",
+      "enum": [
+        "per-run",
+        "latest-only"
+      ],
+      "title": "EnumAutomationRunRecord",
+      "type": "string"
+    },
+    "EnumAutomationTriggerKind": {
+      "description": "What starts a process; the native id names the instance.",
+      "enum": [
+        "launchd-calendar",
+        "launchd-interval",
+        "launchd-keepalive",
+        "systemd-timer",
+        "systemd-service",
+        "cron",
+        "container",
+        "bus-consumer",
+        "gh-schedule",
+        "gh-event",
+        "session-cron",
+        "routine"
+      ],
+      "title": "EnumAutomationTriggerKind",
+      "type": "string"
+    },
+    "EnumPositiveControlKind": {
+      "description": "What proves an entry raises when its process fails.",
+      "enum": [
+        "replay_fixture",
+        "class_drill"
+      ],
+      "title": "EnumPositiveControlKind",
+      "type": "string"
+    },
+    "ModelAutomationCorrelation": {
+      "additionalProperties": false,
+      "description": "Trigger and answer of an event-triggered process.",
+      "properties": {
+        "answer_deadline_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Answer Deadline Seconds",
+          "type": "integer"
+        },
+        "answer_event": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Answer Event",
+          "type": "string"
+        },
+        "match_key": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Match Key",
+          "type": "string"
+        },
+        "trigger_event": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Trigger Event",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trigger_event",
+        "answer_event",
+        "match_key",
+        "answer_deadline_seconds"
+      ],
+      "title": "ModelAutomationCorrelation",
+      "type": "object"
+    },
+    "ModelAutomationLivenessEntry": {
+      "additionalProperties": false,
+      "description": "One automatic process's liveness contract.",
+      "properties": {
+        "alarm_deadline_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Alarm Deadline Seconds",
+          "type": "integer"
+        },
+        "correlation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelAutomationCorrelation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "demand": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Demand",
+          "type": "string"
+        },
+        "emitter": {
+          "$ref": "#/$defs/EnumAutomationEmitter"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelAutomationLivenessEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected_interval_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Interval Seconds"
+        },
+        "host": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Host",
+          "type": "string"
+        },
+        "idle_runs_before_alarm": {
+          "default": 3,
+          "exclusiveMinimum": 0,
+          "title": "Idle Runs Before Alarm",
+          "type": "integer"
+        },
+        "max_runtime_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Runtime Seconds"
+        },
+        "max_silence_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Silence Seconds"
+        },
+        "owner_repo": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Owner Repo",
+          "type": "string"
+        },
+        "positive_control": {
+          "$ref": "#/$defs/ModelAutomationPositiveControl"
+        },
+        "process_id": {
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+          "title": "Process Id",
+          "type": "string"
+        },
+        "real_work": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Real Work",
+          "type": "string"
+        },
+        "run_record": {
+          "$ref": "#/$defs/EnumAutomationRunRecord"
+        },
+        "state": {
+          "$ref": "#/$defs/EnumAutomationProcessState",
+          "default": "active"
+        },
+        "trigger": {
+          "$ref": "#/$defs/ModelAutomationTrigger"
+        }
+      },
+      "required": [
+        "process_id",
+        "owner_repo",
+        "host",
+        "trigger",
+        "alarm_deadline_seconds",
+        "emitter",
+        "run_record",
+        "real_work",
+        "demand",
+        "positive_control"
+      ],
+      "title": "ModelAutomationLivenessEntry",
+      "type": "object"
+    },
+    "ModelAutomationLivenessEvidence": {
+      "additionalProperties": false,
+      "description": "Where the run facts are read: required for an observer entry and a cron entry.",
+      "properties": {
+        "completion_record": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Record"
+        },
+        "locator": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/EnumAutomationEvidenceSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "ModelAutomationLivenessEvidence",
+      "type": "object"
+    },
+    "ModelAutomationLivenessTiming": {
+      "additionalProperties": false,
+      "description": "The monitor's own latencies, added to every verdict's bound.\n\nEach default is also the floor: an overlay may declare a slower monitor,\nwhich only widens every bound, but never a faster one than the design runs,\nwhich would let the deadline arithmetic pass on latencies nobody delivers.",
+      "properties": {
+        "confirmation_evaluations": {
+          "default": 2,
+          "minimum": 2,
+          "title": "Confirmation Evaluations",
+          "type": "integer"
+        },
+        "delivery_budget_seconds": {
+          "default": 120,
+          "minimum": 120,
+          "title": "Delivery Budget Seconds",
+          "type": "integer"
+        },
+        "evaluation_interval_seconds": {
+          "default": 60,
+          "minimum": 60,
+          "title": "Evaluation Interval Seconds",
+          "type": "integer"
+        },
+        "observer_interval_seconds": {
+          "default": 60,
+          "minimum": 60,
+          "title": "Observer Interval Seconds",
+          "type": "integer"
+        },
+        "outbox_retry_seconds": {
+          "default": 120,
+          "minimum": 120,
+          "title": "Outbox Retry Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "ModelAutomationLivenessTiming",
+      "type": "object"
+    },
+    "ModelAutomationPositiveControl": {
+      "additionalProperties": false,
+      "description": "The replay fixture or class drill that proves the entry raises.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EnumPositiveControlKind"
+        },
+        "ref": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "title": "ModelAutomationPositiveControl",
+      "type": "object"
+    },
+    "ModelAutomationTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EnumAutomationTriggerKind"
+        },
+        "native_id": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Native Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "native_id"
+      ],
+      "title": "ModelAutomationTrigger",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Every declared automatic process, with the monitor's timing.",
+  "properties": {
+    "processes": {
+      "items": {
+        "$ref": "#/$defs/ModelAutomationLivenessEntry"
+      },
+      "title": "Processes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "automation-liveness-overlay/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "timing": {
+      "$ref": "#/$defs/ModelAutomationLivenessTiming"
+    }
+  },
+  "required": [
+    "schema_version",
+    "processes"
+  ],
+  "title": "ModelAutomationLivenessOverlay",
+  "type": "object",
+  "x-onex-overlay-checks": [
+    "deadline arithmetic: for every entry, the worst case of each reachable verdict (MISSED from max_silence_seconds, FAILED and OVERRUN from max_runtime_seconds, IDLE_WITH_DEMAND from idle_runs_before_alarm intervals, TRIGGER_UNANSWERED from the correlation's answer deadline, UNOBSERVABLE) plus the observer interval, the confirmation hold, one outbox retry and the delivery budget must not exceed alarm_deadline_seconds",
+    "latest-only run records require expected_interval_seconds of at least three observer intervals",
+    "a cron entry names its completion record",
+    "process_id is unique"
+  ]
+}

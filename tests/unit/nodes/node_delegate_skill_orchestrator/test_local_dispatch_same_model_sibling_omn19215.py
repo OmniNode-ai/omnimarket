@@ -16,6 +16,10 @@ A transport failure is different: the host was unavailable, so a same-model
 sibling on another host is exactly the fallback the placement exists for. The
 second test pins that the fix does not remove it.
 
+The bus-path cases drive the canonical workflow and routing handlers with a
+placed same-model backend. Quality retries retain transport exclusions, and
+budget exhaustion escalates to a distinct model without trying another host.
+
 Fixture shape: ``cheap_cloud`` declares ``cloud-primary`` and ``cloud-mirror``,
 both serving ``shared-model``, then the ``claude`` tier declares a distinct
 ``ceiling-model``, so the only way the rejected request reaches an answer is by
@@ -28,6 +32,7 @@ import asyncio
 import functools
 import textwrap
 from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -42,8 +47,29 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    HandlerDelegationWorkflow,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+    ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
+    ModelInferenceResponseData,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+    ModelRoutingIntent,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
+    HandlerRoutingIntent,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+    ModelRoutingDecision,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
@@ -300,3 +326,117 @@ def test_transport_failure_still_hops_to_a_same_model_sibling(
 
     assert effect.calls == ["cloud-primary", "cloud-mirror"]
     assert result["status"] == "completed"
+
+
+@pytest.mark.usefixtures("_fixture_env", "stub_provider_quota_reader")
+@pytest.mark.parametrize("primary_down", [False, True], ids=["primary", "mirror"])
+@pytest.mark.parametrize("retry_budget", [0, 1], ids=["escalate", "redraft"])
+def test_bus_quality_rejection_never_switches_same_model_hosts(
+    tmp_path: Path, primary_down: bool, retry_budget: int
+) -> None:
+    """Route real bus intents, including quality after a transport fallback."""
+    tiers = yaml.safe_load(_ROUTING_TIERS_YAML)
+    tiers["tiers"][0]["name"] = "local"
+    tiers["tiers"][0]["cost_per_1k_tokens"] = 0.0
+    tiers["tiers"][0]["max_retries"] = retry_budget
+    # Exercise an overlay-added placement, rather than declaring the mirror
+    # directly in the product ladder.
+    tiers["tiers"][0]["models"].pop(1)
+    (tmp_path / "routing_tiers.yaml").write_text(yaml.safe_dump(tiers))
+    bifrost = yaml.safe_load(_BIFROST_YAML)
+    bifrost["backends"][1]["placement"] = {
+        "tier": "local",
+        "fallback_for": ["cloud-primary"],
+        "max_context_tokens": 8192,
+    }
+    (tmp_path / "bifrost_delegation.yaml").write_text(yaml.safe_dump(bifrost))
+    contract = yaml.safe_load(_TASK_CLASS_CONTRACT_YAML.replace("cheap_cloud", "local"))
+    contract["task_classes"]["research"]["required_bar"] = 0.85
+    contract["task_classes"]["research"]["request_override_bounds"] = {
+        "min": 0.5,
+        "max": 1.0,
+    }
+    (tmp_path / "task_class_contracts.v1.yaml").write_text(yaml.safe_dump(contract))
+    routing._config = None
+    routing._get_task_class_contract.cache_clear()
+    routing._load_bifrost_endpoints.cache_clear()
+
+    workflow = HandlerDelegationWorkflow(workflows={})
+    router = HandlerRoutingIntent()
+    request = ModelDelegationRequest(
+        prompt="Explain the tradeoff between two caching strategies.",
+        task_type="research",
+        correlation_id=uuid4(),
+        emitted_at=datetime.now(UTC),
+    )
+
+    exclusions: list[tuple[str, ...]] = []
+
+    def route(events: list[Any]) -> ModelRoutingDecision:
+        intents = [event for event in events if isinstance(event, ModelRoutingIntent)]
+        assert len(intents) == 1, [
+            getattr(event, "failure_reason", None) for event in events
+        ]
+        exclusions.append(tuple(intents[0].excluded_backend_refs))
+        decision = router.handle(intents[0])
+        asyncio.run(workflow.handle(decision))
+        return decision
+
+    decision = route(asyncio.run(workflow.handle(request)))
+    assert decision.selected_backend_ref == "cloud-primary"
+    if primary_down:
+        decision = route(
+            asyncio.run(
+                workflow.handle(
+                    ModelInferenceResponseData(
+                        correlation_id=request.correlation_id,
+                        content="",
+                        model_used=decision.selected_model,
+                        latency_ms=1,
+                        error_message="Connection refused (fixture)",
+                    )
+                )
+            )
+        )
+        # Positive control: transport unavailability still selects the mirror.
+        assert decision.selected_backend_ref == "cloud-mirror"
+        assert decision.selected_model == "shared-model"
+
+    answered_backend = decision.selected_backend_ref
+    quality_intents_from = len(exclusions)
+    for attempt in range(retry_budget + 1):
+        asyncio.run(
+            workflow.handle(
+                ModelInferenceResponseData(
+                    correlation_id=request.correlation_id,
+                    content="### ANSWER\nAn inadequate draft.",
+                    model_used=decision.selected_model,
+                    latency_ms=1,
+                )
+            )
+        )
+        decision = route(
+            asyncio.run(
+                workflow.handle(
+                    ModelQualityGateResult(
+                        correlation_id=request.correlation_id,
+                        passed=False,
+                        quality_score=0.1,
+                        failure_reasons=("score_below_required_bar",),
+                        fallback_recommended=True,
+                    )
+                )
+            )
+        )
+        if attempt < retry_budget:
+            assert decision.selected_backend_ref == answered_backend
+            assert decision.tier_name == "local"
+        else:
+            assert decision.selected_backend_ref == "cloud-ceiling"
+            assert decision.selected_model == "ceiling-model"
+            assert decision.tier_name == "claude"
+    # Every intent after a quality rejection excludes exactly the backends whose
+    # call failed in transport: none when the primary answered, the primary
+    # alone after the fallback to the mirror.
+    expected = ("cloud-primary",) if primary_down else ()
+    assert exclusions[quality_intents_from:] == [expected] * (retry_budget + 1)

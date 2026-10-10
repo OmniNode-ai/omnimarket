@@ -22,7 +22,7 @@ class ModelInstructionEvalProjectionEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
-    model: str = Field(description="Model identifier (e.g. 'ds4-flash', 'qwen-27b')")
+    model: str = Field(description="Model identifier (e.g. 'fixture-model-a')")
     task: str = Field(
         description="Instruction task slug (e.g. 'python-version', 'no-hardcoded-paths')"
     )

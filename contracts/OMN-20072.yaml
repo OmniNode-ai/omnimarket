@@ -18,14 +18,35 @@ requirements:
     statement: "The repo-evidence caller runs the reusable's OCC difference step with a verifier release that ships the classifier, so an unclassified difference fails the required context and names the difference."
     acceptance:
       - id: "AC3"
-        statement: "The S3 context is required on omnimarket while every OCC context stays required, and a difference between the two paths that has no reason code in the OR.1 expected-difference table fails the check and names the difference."
+        statement: "AC3: OCC contexts stayed required through the S5 pilot; at S6 the repo-owned evidence gate is required and the four OCC contexts are removed, with a one-step rollback: the caller passes compare-with-occ \"false\" and keeps verifier-version at a release that ships the classifier, so one input turns the OCC difference step back on -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+  - id: "req-s5-pilot-evidence-recorded"
+    statement: "The S5 pilot's verdicts are repo-resident data that a check reads, so the bar is held by a test and not by a live observation."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: 30 eligible omnimarket PRs passed through both paths with no unclassified difference, no new-path admit where OCC refused for a behavioural reason, and no accepted negative control, recorded with each PR's check-run id -- falsifier: uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k count"
+      - id: "AC5"
+        statement: "AC5: each kept constructed case (C1, C2, C4, C5, C8, C10, C12, C13, C14, C15, C16, C17, C18) has a recorded observation -- falsifier: uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k plan_case"
+      - id: "AC6"
+        statement: "AC6: the rollback drill's ruleset readback equals the pre-pilot context set -- falsifier: uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
 evidence_requirements:
   - kind: "tests"
     description: "The nine S5 constructed cases classify as documented."
     command: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
   - kind: "tests"
-    description: "The caller passes compare-with-occ true and pins a verifier release that ships node_dod_verify occ-difference."
-    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k compares_with_occ"
+    description: "After the S6 cut-over the caller passes compare-with-occ false and still pins a verifier release that ships node_dod_verify occ-difference, so one input is the rollback."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+  - kind: "tests"
+    description: "The recorded S5 count is 103 per-PR rows with check run ids, meets the bar of 30 with no violation, and a planted disagreement fails it."
+    command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k count"
+  - kind: "tests"
+    description: "Every kept constructed case has a recorded observation."
+    command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k plan_case"
+  - kind: "tests"
+    description: "The rollback drill's readback equals the pre-pilot context set and the drill precedes the first counted PR."
+    command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
+  - kind: "tests"
+    description: "Dev requires repo-evidence / dod-verify from GitHub Actions only and none of the four OCC contexts, read from the live rules and branch protection."
+    command: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -39,11 +60,43 @@ dod_evidence:
         check_value: "uv run pytest tests/test_dod_verify_s5_case_list.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-s5-caller-compares-with-occ"
-    description: "The caller turns on the difference step and pins a verifier that carries the classifier; the test fails at the merge base, whose caller has no compare-with-occ and pins 0.4.280."
+  - id: "dod-s5-s6-caller-rollback-one-input"
+    description: "After the S6 cut-over the caller passes compare-with-occ false and pins a verifier that carries the classifier. The test asserts the caller side only; the dev protection readback after S6 (31 contexts, none of the four OCC contexts) is recorded in the rolling ledger STATUS 2026-10-07T14:43:20Z. The merge base's contract bound AC3 to a selector that no longer selects a test, so its check fails there."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k compares_with_occ"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-s5-pilot-count-meets-bar"
+    description: "The 103 per-PR rows in tests/ci/fixtures/omn20072_s5_pilot_evidence.json, each with its merged head and repo-evidence / dod-verify check run id, are the counted total and meet the S5 bar of 30; a missing row, a repeated PR or check run, a non-counting outcome and a declared total above the rows all fail it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k count"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-s5-pilot-cases-observed"
+    description: "Every kept constructed case has an observation in the recorded evidence; a removed case fails the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k plan_case"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-s5-drill-readback-equals-pre-pilot"
+    description: "The drill's readback has no context added or removed against the 35 pre-pilot contexts, and the drill is timed before the first counted PR merged; a planted difference and a drill after the first counted PR both fail the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-s5-s6-ruleset-readback"
+    description: "The ruleset half of AC3: dev's active ruleset requires repo-evidence / dod-verify with GitHub Actions as the only source, and the live rules and branch protection require none of the four OCC contexts; planted payloads violate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]

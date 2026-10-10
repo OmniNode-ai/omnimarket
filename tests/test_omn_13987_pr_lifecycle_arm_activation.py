@@ -535,25 +535,31 @@ class TestChokepoint2StallCategory:
     def test_unmapped_categories_return_unknown(self, category: EnumPrCategory) -> None:
         assert _stall_category_for_dispatch(category) == EnumStallCategory.UNKNOWN
 
-    def test_red_stall_category_routes_dispatcher_to_ci_fix_effect(self) -> None:
+    def test_red_stall_category_routes_dispatcher_to_pr_lifecycle_fix_effect(
+        self,
+    ) -> None:
         stall = _stall_category_for_dispatch(EnumPrCategory.RED)
         result = HandlerFixerDispatcher().handle(
             ModelFixerDispatchRequest(
                 pr_number=42, repo="omnimarket", stall_category=stall
             )
         )
-        assert result.target_node == "node_ci_fix_effect"
+        assert result.target_node == "node_pr_lifecycle_fix_effect"
         assert result.action == "dispatch_ci_fix"
+        assert result.payload_hint["block_reason"] == "code_failure"
 
-    def test_conflicted_stall_category_routes_to_conflict_hunk_effect(self) -> None:
+    def test_conflicted_stall_category_routes_to_pr_lifecycle_fix_effect(
+        self,
+    ) -> None:
         stall = _stall_category_for_dispatch(EnumPrCategory.CONFLICTED)
         result = HandlerFixerDispatcher().handle(
             ModelFixerDispatchRequest(
                 pr_number=42, repo="omnimarket", stall_category=stall
             )
         )
-        assert result.target_node == "node_conflict_hunk_effect"
+        assert result.target_node == "node_pr_lifecycle_fix_effect"
         assert result.action == "dispatch_conflict_resolve"
+        assert result.payload_hint["block_reason"] == "conflict"
 
     def test_prose_block_reason_would_have_escalated(self) -> None:
         """Regression witness for the pre-fix bug: the old prose value never

@@ -1,0 +1,197 @@
+
+================ CLASSIFICATION RULES (verbatim; do not paraphrase, do not "improve") ================
+
+--- RULE 1: INTEGRATION STATUS (is a built thing actually wired?) ---
+Applies to every built artifact in the marketplace: a node (contract.yaml + handler) or a skill
+(SKILL.md + a skill_mapping entry). Verdict is exactly one of:
+INTEGRATED / BUILT-NOT-INTEGRATED / PARTIALLY-INTEGRATED / UNKNOWN.
+
+Three static signals. Check all three; record which fired.
+  S1 ORPHANED CONSUMER — the contract declares subscribe_topics: [T] and NOTHING declares
+     production of T. Reachability for T is satisfied by EXACTLY three things and nothing else:
+       (a) another contract declaring T in its publish_topics,
+       (b) an external_producers entry naming T,
+       (c) a runtime_dispatch.command_topic: T on the subscribing node's own contract.
+     A node with no runtime_dispatch block at all and no external producer is an ORPHANED CONSUMER.
+  S2 ORPHANED PRODUCER — a topic in publish_topics that either no contract subscribes to, OR that
+     the handler never actually emits. Declared-but-never-emitted is the stronger finding and MUST
+     be checked separately: grep the handler for the topic constant. A topic that appears only in
+     contract.yaml and nowhere in the handler is declared, not emitted.
+  S3 IN-MEMORY-ONLY DISPATCH — the artifact's only trigger path is the local CLI, and its
+     skill_mapping.yaml entry declares no event_bus override. omnibase_infra/src/omnibase_infra/cli/
+     model_skill_mapping.py defaults event_bus="inmemory", and cli_skill.py calls
+     run_receipt_mode(..., backend_overrides={"event_bus": mapping.event_bus}, ...) — so the events
+     are published onto an in-process bus that dies with the process. Nothing durable, nothing
+     projected, no consumer or projection can ever see it.
+
+VERDICT:
+  BUILT-NOT-INTEGRATED — contract AND handler exist, AND ( S1 fires, OR S2 fires on EVERY declared
+    topic, OR S3 is the artifact's only trigger path ).
+  PARTIALLY-INTEGRATED — contract AND handler exist, and at least one but not all declared topics
+    has a real producer/consumer, or a declared trigger exists on one lane only.
+  INTEGRATED — a DECLARED producer of its trigger exists AND at least one consumer or projection of
+    its terminal topic exists.
+  UNKNOWN — a check could not be run. Record the failing command. Never infer either direction.
+
+AUTHORITIES (read them; do not trust this summary alone):
+  omnimarket/src/omnimarket/validators/contract_topic_graph.py — find_defects is documented as
+    "every static defect the graph can prove, WITHOUT a broker"; the reachability rule above lives here.
+  omnimarket/src/omnimarket/validators/data/contract_topic_graph_orphan_classification.yaml — the
+    recorded ORPHANED_CONSUMER / ORPHANED_PRODUCER entries.
+  omnibase_infra/src/omnibase_infra/cli/model_skill_mapping.py and .../cli/skill_mapping.yaml — the
+    inmemory default and whether any entry overrides it.
+
+WORKED PRECEDENT — reproduce this shape, it is why the rule exists. Verdict re-verified against the
+live authority 2026-08-28; an earlier revision of this precedent asserted S1 and was WRONG. The
+native PR-review family's real verdict is S3 + S2-never-emitted, NOT S1-orphaned:
+  - contract_topic_graph_orphan_classification.yaml DOES carry an ORPHANED_CONSUMER row for
+    node_pr_review_orchestrator on onex.cmd.omnimarket.pr-review-bot-start.v1, but that row is
+    tagged tag: cli_dispatch_reachable / signal: skill_mapping_registry (lines 1376-1382), and so
+    are all four of its ORPHANED_PRODUCER rows (lines 3812-3838). A cli_dispatch_reachable row is
+    the classification file recording that the CLI mapping IS the reachability — it is NOT a
+    genuine orphan, and quoting it as "nothing publishes the start command" misreads the file.
+  - Only node_pr_review_fsm_reducer's TWO rows are tag: genuine_orphan (lines 1369-1375 consumer,
+    3805-3811 producer). Those two are the family's real S1/S2 genuine-orphan finding.
+  - S3 fires on the orchestrator: skills pr_review and pr_review_bot are CLI-mapped with no
+    event_bus override, so the CLI path resolves to the inmemory default and running it emits
+    nothing any deployed consumer or projection can see.
+  - S2 never-emitted fires on all four declared publish topics: node_pr_review_orchestrator's
+    contract declares phase-transition / thread-posted / thread-verified / completed
+    (contract.yaml:72-76) and the node package contains the first three ONLY in contract.yaml,
+    with completed appearing elsewhere only in a model docstring and a handler comment — the
+    handler emits none of them. The contract also carries NO runtime_dispatch block.
+Contract and handler both existed; the failure is declared-but-never-emitted plus a CLI-only,
+in-memory trigger path. That is the exact pattern this rule detects.
+METHOD LESSON, and the reason this correction is recorded rather than quietly patched: the tag field
+decides the verdict. Read tag and signal on every classification row before citing it. The presence
+of an ORPHANED_* key proves only that the defect was CLASSIFIED, never that it is a genuine orphan.
+
+HARD RULE — DECLARATION AND EVENT FLOW ARE DIFFERENT FACTS, AND THIS PASS ONLY ESTABLISHES THE FIRST.
+  A static pass proves what is DECLARED. It NEVER proves that events flow, and it never proves they
+  do not. Do not write "this runs" or "this never runs" from a static read. Event flow is proven
+  only by a live consumer-group offset/lag read on the deployed broker, which this workflow does not
+  perform. Editing the orphan classification file is NEVER evidence of anything.
+
+--- RULE 2: BETA DEPENDENCE (is this on the operator's critical path?) ---
+Verdict is exactly one of: BETA-CRITICAL / BETA-ADJACENT / NON-BETA.
+  BETA-CRITICAL — ANY of: the item is a ticket in the CURRENT dated beta sprint PROJECT (resolve it
+    LIVE for {{date}}: it is a Linear PROJECT covering that date, NOT a Cycle; paginate, project
+    filters truncate); OR it blocks a ticket in that project by a named blocking edge; OR its
+    acceptance requires a deploy or promotion to a governed lane (prod / stability-test / judge);
+    OR it requires an operator decision or grant that has not been issued.
+  BETA-ADJACENT — it touches a surface the beta uses, but nothing in the sprint depends on this
+    change landing.
+  NON-BETA — none of the above.
+ONLY NON-BETA items are eligible for the slate. BETA-ADJACENT items are listed for visibility and
+are NOT slated.
+FAIL CLOSED: if the sprint project cannot be resolved live, EVERY item is BETA-CRITICAL for this run
+and the slate is empty, with the failing command printed in the report. A guessed sprint is worse
+than an empty slate.
+
+--- RULE 3: EXECUTABILITY (can it be done without joining the planning loop?) ---
+Verdict is exactly one of: EXECUTABLE / NEEDS-DECISION / BLOCKED.
+EXECUTABLE requires ALL SIX to hold. Any failure demotes it; name the clause that failed.
+  E1 The target is named down to files, contracts, or nodes that EXIST TODAY — not "design a
+     component for". A row whose target is a document that has not been written is not executable.
+  E2 Acceptance is MACHINE-CHECKABLE without a human review step — a test, a CI gate, a validator
+     verdict, a green ChainCase. "Someone looks at it and agrees" is not acceptance.
+  E3 It lands in a repo the assignee already has write access to.
+  E4 It requires NO governed-lane mutation (prod / stability-test / judge) and NO grant.
+  E5 It requires ZERO planning-loop participation: no open operator decision, no plan whose
+     execution gate is CLOSED or UNSTATED, no dependency on a document that does not yet exist.
+  E6 It is off the operator's critical path: no beta ticket blocks on it, and the operator does not
+     have to unblock it mid-flight. An item that will stall pending an operator answer is
+     NEEDS-DECISION, not EXECUTABLE, even if everything else holds.
+  NEEDS-DECISION — everything else holds but an operator answer is missing. State the exact
+     question in one sentence. Do not answer it.
+  BLOCKED — a real dependency edge. Name the blocking ticket, PR, or plan.
+
+--- RULE 4: PLAN EXECUTION GATE ---
+THE READ SET IS DEFINED, NOT "every plan". docs/plans/ holds 643 files (counted 2026-08-28); an
+earlier revision implied a full header pass no run has ever performed or ever will. The set whose
+headers a run MUST open is exactly:
+  (R1) every plan whose most recent commit falls in the RUN-DATE WINDOW — the 14 days ending on
+       {{date}} inclusive. Resolve it mechanically, do not eyeball filenames (a plan's DATED FILENAME
+       is not its commit date):
+         git -C $OMNI_HOME log --since=<date minus 14d> --until=<{{date}} 23:59:59> \
+             --name-only --pretty=format: -- docs/plans/ | sort -u
+  (R2) every plan NAMED BY A CANDIDATE this run — cited by a gathered Linear ticket, by a
+       marketplace artifact's integration delta, by a sweep/friction row, or by another plan in the
+       read set. These enter the read set no matter how old they are.
+Everything outside R1 ∪ R2 is NOT opened. It is counted, reported as UNSTATED-by-default, and
+treated as CLOSED for slating by the fail-closed rule below — which is exactly why not opening it is
+safe. The report prints both numbers (read set size, unread tail size) so the boundary is legible;
+it never implies the tail was examined.
+Verdict is exactly one of: CLOSED / OPEN / PARTIAL / UNSTATED.
+  CLOSED — the document literally states its execution gate is CLOSED, or that it authorizes
+    nothing, or that it is "presented for review" / awaiting a plan-review gate. Read the header
+    block and any "Status" line.
+  OPEN — the plan's work is ticketed AND live ticket states show that work started or landed.
+  PARTIAL — some phases ticketed and landed, later phases not authorized.
+  UNSTATED — the document carries no gate language at all.
+GATE RULE, FAIL CLOSED: work from a CLOSED plan is NEVER slated and NEVER recommended — list it as
+gated, with the gate sentence quoted. UNSTATED is TREATED AS CLOSED for slating purposes. Absence of
+a gate sentence is not authorization; it is a missing fact.
+
+--- RULE 5: PROCESS-AUTOMATION CANDIDATE (can a listed manual fix be delegated to a local model?) ---
+Applies to each row a sweep artifact already lists as needing a manual fix. Verdict is exactly one
+of: DELEGABLE / NOT-DELEGABLE. DELEGABLE requires ALL FIVE:
+  D1 The fix is a bounded, deterministic edit whose ENTIRE input is already present in the sweep
+     artifact — no live investigation, no judgment call about what the right answer is.
+  D2 Its correctness is machine-verifiable: a test, a gate verdict, a validator, or a re-run of the
+     same sweep that flips the row.
+  D3 It mutates nothing governed — no prod/stability/judge lane, no grant, no merge-queue mutation,
+     no ticket-state flip, no force-push.
+  D4 It fits the delegation runtime's ACTUAL entrypoint: onex delegate "<prompt>" dispatching
+     node_delegate_skill_orchestrator (omnimarket), returning one typed
+     ModelSkillResult[ModelDelegateSkillResponse]; and its task_type appears in the
+     allowed_task_types block of that node's LIVE contract — the single authority is
+     omnimarket/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml
+     (allowed_task_types, at line 110 as of 2026-08-28). READ THAT BLOCK IN THIS RUN and classify
+     against what it actually lists; no list is copied here, deliberately. An earlier revision of
+     this clause enumerated seven types inline; the live contract listed fifteen, so a candidate
+     whose natural type was code_review or validator_generation was demoted on a stale copy. Do not
+     reintroduce an inline list — cite the file and the count you read.
+  D5 The whole task fits the live model's actual context limit.
+NOT-DELEGABLE otherwise — name the failing clause (D1..D5).
+SUBSTRATE, RE-PROBED EVERY RUN, NEVER ASSUMED: the execution substrate is the .201 endpoints reached
+through the cheapest-first routing chain resolved from the ROUTING AUTHORITY CONTRACT — never an env
+var, never a hardcoded endpoint (feedback_no_env_for_model_endpoint_use_routing_authority). Probe
+what is live: curl {{substrate_probe_url}}. Recorded fact to re-verify, not to trust:
+.201:8000 serves qwen3.8 under SGLang; .201:8001 is REMOVED (the RTX 4090 was pulled for RMA,
+OMN-16407) and anything still pointing there fails closed. A candidate whose only cited endpoint is
+dead is NOT-DELEGABLE until re-pointed, and the report says so rather than silently dropping it.
+
+--- RULE 6: COLLABORATOR SUITABILITY (profile-driven, no hardcoded persons) ---
+Every slate row names an assignee, an item, and the machine-checkable acceptance check from E2. A slate
+row with no acceptance check is a defect in the row, not an acceptable row — move it to excluded with
+clause E2.
+
+Per-assignee suitability comes ENTIRELY from args.profiles, an array supplied by the caller for this
+run. Each profile is shaped:
+  { name: string, surfaces: string[], excluded_domains: string[], planning_loop_eligible: boolean }
+    name                   — the label printed on the slate lane.
+    surfaces               — free-text domains this assignee IS eligible for (e.g. "UI prototyping",
+                              "cloud configuration verification"). An item is suitable for a profile
+                              only when it matches at least one declared surface.
+    excluded_domains       — domains this assignee is NEVER eligible for. Checked BEFORE surfaces; an
+                              excluded_domains match always wins over a surfaces match, even a strong one.
+    planning_loop_eligible — when false, this profile fails E5/E6 for any item that would require the
+                              assignee to read a plan, join a decision, or wait on an operator answer,
+                              regardless of surface match. When true, E5/E6 are evaluated normally.
+
+NO PROFILES SUPPLIED (args.profiles is [] or omitted — the default): the run produces the UNASSIGNED
+INVENTORY ONLY. Every NON-BETA/EXECUTABLE item is listed with its citation and acceptance check and NO
+named assignee. This is the default outcome, not a failure — a run with no profiles is a legitimate
+"here is what's available" pass, and the report says so plainly rather than inventing a person.
+
+session-lane (agent sessions) is the standing, non-person default bucket for anything
+executable that suits no supplied profile's surfaces (or when no profiles were supplied at all). It
+carries no surfaces/excluded_domains/planning_loop_eligible restriction beyond RULE 3's E1-E6 — it is
+the fallback, not a named collaborator.
+
+Order the slate: profiles in the order supplied in args.profiles, then session-lane last. If a supplied
+profile's lane is empty after matching, print its heading and the literal "none this run" plus the
+one-line reason the eligible items failed that profile's surfaces / excluded_domains /
+planning_loop_eligible test — an empty lane is a finding, not an omission.
+=====================================================================================================

@@ -19,9 +19,10 @@ distinct causes at one seam.
 
 WHY IT IS NOT MERELY A MISSING COLUMN. ``reduce_delegation_attempts`` is
 ladder-authoritative: given a ladder it derives the terminal cause from the
-rungs, and a ladder of quality-gate rejections correctly yields NO typed
-cause. Only when the ladder is EMPTY does it fall through to sniffing the
-error text for quota phrasing. The local path always handed it an empty
+rungs, and a ladder of quality-gate rejections yields
+``quality_gate_refused``, never a quota cause (OMN-19448). Only when the
+ladder is EMPTY does it fall through to sniffing the error text for quota
+phrasing. The local path always handed it an empty
 ladder, so the local path always took the text-sniffing branch -- which is how
 a run whose rungs answered and were refused on quality could be recorded as a
 provider quota failure. ``test_a_quality_gate_ladder_is_not_read_as_a_quota_failure``
@@ -308,7 +309,7 @@ class TestTheCauseComesFromTheLadder:
             failure_message=_QUOTA_SHAPED_TEXT,
             content=None,
         )
-        assert row["terminal_failure_cause"] is None
+        assert row["terminal_failure_cause"] == "quality_gate_refused"
         assert row["terminal_ok"] == 0
 
     def test_positive_control_an_empty_ladder_still_types_from_the_text(

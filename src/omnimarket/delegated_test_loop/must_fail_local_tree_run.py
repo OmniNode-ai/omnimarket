@@ -64,6 +64,29 @@ def _has_commit(repo_dir: Path, sha: str) -> bool:
     return _git(["cat-file", "-e", f"{sha}^{{commit}}"], cwd=repo_dir).returncode == 0
 
 
+def _share_source_objects(repo_dir: Path, tree: Path) -> None:
+    """Point the tree at the source's objects, even when the source is shallow.
+
+    ``git clone --shared`` of a shallow repository falls back to a plain clone
+    with no alternates, so the commit just fetched into the source is unreadable
+    from the tree. ``--reference`` is refused for a shallow repository, so the
+    alternates line is written directly. When the source's objects cannot be
+    resolved, nothing is written and the checkout reports the failure.
+    """
+    objects = _git(
+        ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+        cwd=repo_dir,
+    )
+    if objects.returncode != 0 or not objects.stdout.strip():
+        return
+    alternates = tree / ".git" / "objects" / "info" / "alternates"
+    existing = alternates.read_text().splitlines() if alternates.exists() else []
+    source = objects.stdout.strip()
+    if source not in existing:
+        alternates.parent.mkdir(parents=True, exist_ok=True)
+        alternates.write_text("".join(f"{line}\n" for line in [*existing, source]))
+
+
 def _fail(detail: str) -> ModelMustFailRunResult:
     return ModelMustFailRunResult(detail=detail[:_DETAIL_CHARS])
 
@@ -111,6 +134,7 @@ class HandlerMustFailLocalTreeRun:
         )
         if clone.returncode != 0:
             return _fail(f"git clone failed: {clone.stderr.strip()}")
+        _share_source_objects(request.repo_dir, tree)
         checkout = _git(
             ["checkout", "--quiet", "--detach", request.pre_change_sha], cwd=tree
         )

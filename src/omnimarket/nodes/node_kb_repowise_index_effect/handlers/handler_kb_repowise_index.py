@@ -3,7 +3,7 @@
 
 """Handler for KB Repowise index effect — EFFECT node.
 
-Clones/pulls OmniNode-ai/knowledge-base into a temp directory, invokes the
+Clones/pulls OmniNode-ai/knowledge_base into a temp directory, invokes the
 Repowise indexer CLI to update the index, and publishes a completion event
 with the HEAD commit SHA and entry count.
 
@@ -92,7 +92,7 @@ class HandlerKBRepoWiseIndex:
             return ModelKBRepoIndexResult(success=True)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            kb_dir = Path(tmpdir) / "knowledge-base"
+            kb_dir = Path(tmpdir) / "knowledge_base"
 
             logger.info("Cloning %s ...", request.kb_repo)
             try:

@@ -793,6 +793,11 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # provider answered is matched first.
     if "provider http 401" in normalized or "provider http 403" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    # OMN-20712: the same rule for an unavailable provider. The call's URL can
+    # carry "401" in its port (127.0.0.1:44011) and read a 503 as a rejected
+    # credential through the generic marker below.
+    if "provider http 503" in normalized:
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -3388,6 +3393,7 @@ class HandlerDelegationWorkflow:
                 ]
 
             # No escalation possible: terminal FAILED.
+            self._settle_final_rung_as_terminate(workflow)
             # OMN-13408/OMN-13365: _record_inference_response reconciles the
             # served tokens onto workflow.inference_* (deriving total from
             # prompt + completion so a reasoning model's bundled total cannot
@@ -3953,6 +3959,7 @@ class HandlerDelegationWorkflow:
             ]
 
         # Cannot escalate: terminal FAILED with reason.
+        self._settle_final_rung_as_terminate(workflow)
         terminal_inputs = self._gate_terminal_inputs(
             workflow,
             result,
@@ -4248,7 +4255,17 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.request is not None
         return [
-            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+            # OMN-19215: a quality retry after transport failover must retain
+            # the unavailable same-model rung's routing exclusion. The set holds
+            # only backends whose call failed in transport on this workflow, so
+            # it is empty when none did; the escalation intents carry the same set.
+            ModelRoutingIntent(
+                payload=workflow.request,
+                min_tier_name=tier,
+                excluded_backend_refs=tuple(
+                    sorted(workflow.transport_failed_backend_refs)
+                ),
+            ),
         ]
 
     def _build_escalation_event(
@@ -4605,6 +4622,27 @@ class HandlerDelegationWorkflow:
             workflow.compliance_attempts or 1,
             inference_sequence,
         )
+
+    @staticmethod
+    def _settle_final_rung_as_terminate(workflow: DelegationWorkflowState) -> None:
+        """Record the rung the ladder ended on as TERMINATE, not CLIMB (OMN-18978).
+
+        A rung is recorded when it is judged, before the escalation decision is
+        made. Called on the branches that go on to emit a terminal, it turns the
+        last rung's ``climb`` into ``terminate``, because no rung followed it.
+        The reason is left as recorded; only the decision changes.
+        """
+        history = workflow.escalation_history
+        if (
+            history
+            and history[-1].acceptance_decision
+            is EnumDelegationAcceptanceDecision.CLIMB
+        ):
+            history[-1] = history[-1].model_copy(
+                update={
+                    "acceptance_decision": EnumDelegationAcceptanceDecision.TERMINATE
+                }
+            )
 
     def _record_escalation_attempt(
         self,
@@ -5306,9 +5344,9 @@ class HandlerDelegationWorkflow:
         # OMN-18928: lifecycle completion is not evidence of returned content.
         # Decide before advancing the FSM so a missing artifact closes FAILED
         # once, rather than manufacturing a perfect score from the status text.
+        # An empty artifact map also contains no returned answer.
         missing_final_artifact = (
-            next_state is EnumDelegationState.COMPLETED
-            and lifecycle_event.artifact is None
+            next_state is EnumDelegationState.COMPLETED and not lifecycle_event.artifact
         )
         if missing_final_artifact:
             next_state = EnumDelegationState.FAILED
@@ -5334,6 +5372,14 @@ class HandlerDelegationWorkflow:
             )
 
         completed = next_state is EnumDelegationState.COMPLETED
+        # A lifecycle error/status is operational evidence, never answer text.
+        # Reuse the inference path's retained-answer provenance when this agent
+        # returned no artifact; its final verdict and score remain unscored.
+        content, history_dicts = _terminal_response_fields(
+            workflow,
+            content if lifecycle_event.artifact else "",
+            retain_best=not completed,
+        )
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
         # counts and no serving tier — it is not a tier-routed LLM inference. The
         # single terminal builder still prices it through the same typed-tier-cost
@@ -5376,10 +5422,7 @@ class HandlerDelegationWorkflow:
             escalation_count=0,
             # Historical grades remain evidence about answered attempts,
             # independent of this lifecycle's unscored final response.
-            escalation_history=tuple(
-                attempt.model_dump(mode="json")
-                for attempt in workflow.escalation_history
-            ),
+            escalation_history=history_dicts,
             terminal_failure_reason=None,
             routing_tiers_hash=None,
             escalation_config_hash=None,

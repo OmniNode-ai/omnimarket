@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_architecture_discovery_orchestrator
+version: "1.0.0"
+description: "Full architecture discovery: four concurrent source scans, adjudication and a report, each phase run by the existing coding-agent invocation effect over the event bus. Operator-private facts arrive on the request as an overlay; the package holds none."
+pack: pipeline
+node_role: orchestrator
+display_name: "Orchestrator: Architecture Discovery"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_architecture_discovery_orchestrator: "omnimarket.nodes.node_architecture_discovery_orchestrator"
+  console_scripts:
+    onex-architecture-discovery: "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.68"
+  - "jsonschema>=4.18.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "architecture-discovery", "coding-agent"]

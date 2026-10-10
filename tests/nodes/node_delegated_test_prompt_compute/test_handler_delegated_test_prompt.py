@@ -107,6 +107,19 @@ def test_hidden_function_name_in_bundle_is_refused(field: str) -> None:
         build_prompt_bundle(_request(**overrides))
 
 
+@pytest.mark.parametrize("fragment", ["additionalProperties", "required", "properties"])
+def test_a_forbidden_fragment_in_the_response_contract_is_refused(
+    fragment: str,
+) -> None:
+    handler = HandlerDelegatedTestPrompt()
+    bundle = handler.handle(_request(forbidden_fragments=()))
+    assert fragment not in bundle.prompt
+    assert fragment in json.dumps(bundle.response_contract)
+
+    with pytest.raises(DelegatedTestPromptRefusedError, match="forbidden"):
+        handler.handle(_request(forbidden_fragments=(fragment,)))
+
+
 def test_a_forbidden_fragment_in_the_digest_is_refused_too() -> None:
     failure = ModelFailureContext(outcome="failed_call", message=f"see {HIDDEN[0]}")
     with pytest.raises(DelegatedTestPromptRefusedError):

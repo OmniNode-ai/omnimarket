@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20728"
+title: "onex dashboard's served page reads tenant-scoped exposures as the install's tenant"
+summary: "The local dashboard server declares the tenant it serves in its GET /projections catalogue, and omnidash reads tenant-scoped exposures as that declared tenant when no build-time tenant is configured. A build-time tenant still wins, and with neither the page still refuses with Tenant not configured. omnidash cuts a release and onex dashboard pins the new bundle."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-catalogue-tenant"
+    statement: |-
+      The served page learns the install's tenant from the catalogue the local server publishes, with no silent default.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: `GET /projections` from `onex dashboard` names the install's tenant, and a scoped read sent with that tenant returns 200 -- falsifier: the catalogue carries no tenant, or a read with it is refused
+      - id: "AC2"
+        statement: |-
+          AC2: The bundle `onex dashboard` serves, opened in a browser on a machine with an install identity and at least one delegation, issues `GET /projection/onex.snapshot.projection.delegation.decisions.v1?tenant=<install tenant>` and the Runs page shows a row from it -- falsifier: the network log has no such read, or Runs still says Tenant not configured
+      - id: "AC3"
+        statement: |-
+          AC3: With no build-time tenant and no catalogue tenant, a scoped panel still shows Tenant not configured and sends no scoped read -- falsifier: a scoped read goes out with no tenant, or a panel renders rows
+evidence_requirements:
+  - kind: "tests"
+    description: "The catalogue names the install tenant, a read with it is served, and an install with no identity declares none."
+    command: "uv run pytest tests/projection/test_api_server_local_mode.py -q -p no:randomly"
+  - kind: "tests"
+    description: "onex dashboard pins an omnidash bundle that reads the catalogue tenant (v1.1.5 or later)."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20728.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20728-catalogue-tenant"
+    description: "GET /projections names the install tenant and a scoped read with it returns 200."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_api_server_local_mode.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20728-bundle-pin"
+    description: "onex dashboard pins the omnidash v1.1.5 bundle, the first that reads the tenant GET /projections declares and, with none declared, still refuses scoped panels."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20728.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]

@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind session-cron.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: session/example-tick
+  owner_repo: example-owner/example-repo
+  host: session
+  trigger:
+    kind: session-cron
+    native_id: example tick
+  expected_interval_seconds: 900
+  alarm_deadline_seconds: 3600
+  max_runtime_seconds: 300
+  emitter: observer
+  run_record: latest-only
+  evidence:
+    source: heartbeat_file
+    locator: example-state/tick/heartbeat.json
+    completion_record: last_tick_at
+  real_work: merges + arms + dispatches
+  demand: landing controller live
+  positive_control:
+    kind: class_drill
+    ref: stop a session tick
+  state: active

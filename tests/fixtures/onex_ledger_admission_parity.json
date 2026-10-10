@@ -1,0 +1,1650 @@
+{
+ "cases": [
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-825",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | CLAIM\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1 jev=none\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=-1\n2026-10-09T10:00:00Z | TERMINAL | lane=x | outcome=done\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "budget_s": 0.4,
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": [],
+    "timeout_stderr": "RETRY 124 budget: onex-ledger query exceeded its 0.4s budget and was stopped; rows it printed OK for landed, the rest did not",
+    "timeout_stdout": "REFUSED 124 budget: onex-ledger query exceeded 0.4s"
+   },
+   "name": "case-92",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "query",
+     "--since",
+     "x"
+    ],
+    "budget_raw": "0.4",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got 1e999"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-4",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=0 delegation_reason=no-delegation-line"
+    ],
+    "budget_raw": "1e999",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: <unavailable: OMNI_HOME is unset>. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-3",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "query",
+     "--since",
+     "x"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegation_reason=no-delegation-line closes a lane only with outcome=rejected-no-delegation (or failed), never outcome=none",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-146",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "/case/ledger.md",
+     "--append",
+     "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=no-delegation-line",
+     "--dry"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-0",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | STATUS | lane=x | delegated=1 runs=abc\n2026-10-09T10:00:00Z | STATUS | lane=x | delegated=0 delegation_reason=route-unavailable:run:9\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x | outcome=rejected-no-delegation\n2026-10-09T10:00:00Z | TERMINAL",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-2",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--model",
+     "delegated=1",
+     "--actor",
+     "delegated=1 runs=abc"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": null,
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-14",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--outcome",
+     "claude:opus",
+     "--kv",
+     "delegated=1"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "budget_s": 5.0,
+    "project": "/case/ws/omnibase_internal",
+    "stderr_lines": [],
+    "stdout_lines": [],
+    "timeout_stderr": "RETRY 124 budget: onex-ledger --append exceeded its 5s budget and was stopped; rows it printed OK for landed, the rest did not",
+    "timeout_stdout": "REFUSED 124 budget: onex-ledger --append exceeded 5s"
+   },
+   "name": "case-22",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "--append",
+     "x",
+     "y"
+    ],
+    "budget_raw": "5",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-43",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=-1",
+     "--outcome",
+     "delegated=0 delegation_reason=read-only-lane"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere",
+    "path_override": "/case/nowhere",
+    "project_names": {
+     "/case/nowhere": null,
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegation_reason=no-delegation-line closes a lane only with outcome=rejected-no-delegation (or failed), never outcome=none",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-44",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv=delegated=0 delegation_reason=no-delegation-line",
+     "--actor=delegated=1 runs=abc",
+     "--actor",
+     "delegated=1, runs=a,"
+    ],
+    "budget_raw": "1e-1",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/tmp/omn20686-s2/lcases/other_internal",
+    "path_override": "../other_internal",
+    "project_names": {
+     "/case/ws/omnibase_internal": null,
+     "/tmp/omn20686-s2/lcases/other_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-58",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--model=rejected-no-delegation",
+     "--kv=delegated=x",
+     "--kv",
+     "delegated=0. delegation_reason=read-only-lane;"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-4935",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1 jev=none | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/tmp/omn20686-s2/lcases/other_internal",
+    "path_override": "../other_internal",
+    "project_names": {
+     "/case/ws/omnibase_internal": null,
+     "/tmp/omn20686-s2/lcases/other_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-143",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'route-refused:'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1296",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-unavailable:run:9\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=1\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=-1 | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused: | actor=claude:opus\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": "/case/nowhere-x",
+    "path_override": "~/nowhere-x",
+    "project_names": {
+     "/case/nowhere-x": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got 1e999"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-172",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "1e999",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere",
+    "path_override": "/case/nowhere",
+    "project_names": {
+     "/case/nowhere": null,
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-260",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=0 delegation_reason=read-only-lane"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: <unavailable: OMNI_HOME is unset>. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-8",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-194",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=1 runs=abc | model=none\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=-1",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "5",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "other",
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-4493",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=-1\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x | actor=claude:opus\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=-1\n2026-10-09T10:00:00Z | STATUS | lane=x | delegated=0 delegation_reason=route-refused:\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-180",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=1",
+     "--model",
+     "delegated=0 delegation_reason=read-only-lane",
+     "--kv=delegated=0 delegation_reason=route-unavailable:run:9"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got 1e999"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-117",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "verify"
+    ],
+    "budget_raw": "1e999",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'route-refused:'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1709",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x\n2026-10-09T10:00:00Z | STATUS | lane=x | delegated=0 delegation_reason=route-refused:\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused:\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1, runs=a, | outcome=rejected-no-delegation",
+    "argv": [
+     "append-rows",
+     "--x",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/ws/omnibase_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-30",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "STATUS"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-4256",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=2 codex=t1\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused: | model=none\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1097",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "/case/ledger.md",
+     "--append",
+     "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x | outcome=rejected-no-delegation"
+    ],
+    "budget_raw": "1e-1",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "other",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: /case/nowhere-x; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal (not selected because OMNIBASE_INTERNAL_PATH is set). Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-60",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=0 delegation_reason=read-only-lane",
+     "--kv=delegated=0 delegation_reason=bogus"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere-x",
+    "path_override": "~/nowhere-x",
+    "project_names": {
+     "/case/nowhere-x": null,
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'route-refused:'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-768",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=2 codex=t1\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegation=na:read-only\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused:",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": null,
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-16",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv=done",
+     "--actor",
+     "delegated=1",
+     "--kv",
+     "delegated=2 codex=t1"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got abc"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-33",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=0 delegation_reason=route-unavailable:run:9",
+     "--outcome",
+     "delegated=1, runs=a,",
+     "--kv=rejected-no-delegation"
+    ],
+    "budget_raw": "abc",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/tmp/omn20686-s2/lcases/other_internal",
+    "path_override": "../other_internal",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal",
+     "/tmp/omn20686-s2/lcases/other_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: /case/nowhere; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal (not selected because OMNIBASE_INTERNAL_PATH is set). Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-66",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere",
+    "path_override": "/case/nowhere",
+    "project_names": {
+     "/case/nowhere": null,
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegation_reason=no-delegation-line closes a lane only with outcome=rejected-no-delegation (or failed), never outcome=none",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-154",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "/case/ledger.md",
+     "--append",
+     "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=no-delegation-line",
+     "--dry"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere-x",
+    "path_override": "~/nowhere-x",
+    "project_names": {
+     "/case/nowhere-x": null,
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-45",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere",
+    "path_override": "/case/nowhere",
+    "project_names": {
+     "/case/nowhere": null,
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'bogus'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-3601",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | STATUS | lane=x | delegation=na:read-only | actor=claude:opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=bogus | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused:503",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "budget_s": 0.1,
+    "project": "/case/ws/omnibase_internal",
+    "stderr_lines": [],
+    "stdout_lines": [],
+    "timeout_stderr": "RETRY 124 budget: onex-ledger row exceeded its 0.1s budget and was stopped; rows it printed OK for landed, the rest did not",
+    "timeout_stdout": "REFUSED 124 budget: onex-ledger row exceeded 0.1s"
+   },
+   "name": "case-2463",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "1e-1",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1016",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=-1",
+     "--kv"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-2036",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | STATUS | lane=x | delegated=0 delegation_reason=route-unavailable:run:9 | actor=claude:opus\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=0 delegation_reason=no-text-or-code\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=no-text-or-code\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": "/case/nowhere-x",
+    "path_override": "~/nowhere-x",
+    "project_names": {
+     "/case/nowhere-x": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "budget_s": 0.4,
+    "project": "/case/ws/omnibase_internal",
+    "stderr_lines": [],
+    "stdout_lines": [],
+    "timeout_stderr": "RETRY 124 budget: onex-ledger row exceeded its 0.4s budget and was stopped; rows it printed OK for landed, the rest did not",
+    "timeout_stdout": "REFUSED 124 budget: onex-ledger row exceeded 0.4s"
+   },
+   "name": "case-63",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=2 codex=t1"
+    ],
+    "budget_raw": "0.4",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-18",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "verify"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1318",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | friction=none | outcome=done\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/tmp/omn20686-s2/lcases/other_internal",
+    "path_override": "../other_internal",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal",
+     "/tmp/omn20686-s2/lcases/other_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegation_reason=no-delegation-line closes a lane only with outcome=rejected-no-delegation (or failed), never outcome=none",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1303",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | STATUS | lane=x | delegated=1 | actor=script:x\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=no-delegation-line | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1 jev=none\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=no-text-or-code | outcome=done\n",
+    "argv": [
+     "append-rows",
+     "--x",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "budget_s": 2.5,
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": [],
+    "timeout_stderr": "RETRY 124 budget: onex-ledger row exceeded its 2.5s budget and was stopped; rows it printed OK for landed, the rest did not",
+    "timeout_stdout": "REFUSED 124 budget: onex-ledger row exceeded 2.5s"
+   },
+   "name": "case-3286",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "STATUS",
+     "--model",
+     "delegated=1 runs=abc"
+    ],
+    "budget_raw": "2.50",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'none'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-265",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=-1 | outcome=done\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=read-only-lane | outcome=rejected-no-delegation\n2026-10-09T10:00:00Z | TERMINAL | lane=x\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=0 delegation_reason=no-text-or-code | actor=script:x\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'bogus'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-958",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=bogus | model=opus\n2026-10-09T10:00:00Z | TERMINAL | lane=x | outcome=rejected-no-delegation\n",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/nowhere-x",
+    "path_override": "~/nowhere-x",
+    "project_names": {
+     "/case/nowhere-x": null,
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=0 needs delegation_reason= from the declared set (no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane), got 'route-refused:'",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: TERMINAL carries no delegated= cell: close with delegated=<n> runs=<ids>, or delegated=0 delegation_reason=<one of no-text-or-code, route-refused:<status>, route-unavailable:<run id>, read-only-lane>",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1862",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=0 delegation_reason=route-refused:\n2026-10-09T10:00:00Z | TERMINAL | lane=x\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x | outcome=failed\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=0 delegation_reason=bogus",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "2.50",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got nan"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-197",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "nan",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-101",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got -2"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-20",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL"
+    ],
+    "budget_raw": "-2",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got -2"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-15",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "-2",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal",
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got nan"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-512",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "query",
+     "--since",
+     "x"
+    ],
+    "budget_raw": "nan",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/ws/omnibase_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-747",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: /case/other_internal; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal (not selected because OMNIBASE_INTERNAL_PATH is set). Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-10",
+   "request": {
+    "append_rows_text": "",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "1e-1",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": null,
+     "/case/ws/omnibase_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=x is not a count",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1784",
+   "request": {
+    "append_rows_text": "2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=0 delegation_reason=no-text-or-code\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1\n2026-10-09T10:00:00Z | CLAIM | lane=x | delegated=0 delegation_reason=no-text-or-code\n2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=x",
+    "argv": [
+     "append-rows",
+     "/case/rows.txt"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: /tmp/omn20686-s2/lcases/other_internal; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal (not selected because OMNIBASE_INTERNAL_PATH is set). Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-116",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": "/tmp/omn20686-s2/lcases/other_internal",
+    "path_override": "../other_internal",
+    "project_names": {
+     "/case/ws/omnibase_internal": null,
+     "/tmp/omn20686-s2/lcases/other_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: delegation_reason=no-delegation-line closes a lane only with outcome=rejected-no-delegation (or failed), never outcome=none",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-1074",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "TERMINAL",
+     "--kv",
+     "delegated=0 delegation_reason=no-delegation-line",
+     "--model=delegated=0 delegation_reason=no-text-or-code"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {}
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-24",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "STATUS"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "refuse",
+    "exit_code": 65,
+    "stderr_lines": [],
+    "stdout_lines": [
+     "REFUSED 65 delegation-cells: 2026-10-09T10:00:00Z TERMINAL: delegated=1 names no runs= (or codex=/jev=) ids that back it",
+     "FIX: run the lane's delegation step and pass its cells (delegated=<n> runs=<ids>), or delegated=0 delegation_reason=<no-text-or-code|route-refused:<status>|route-unavailable:<run id>|read-only-lane>"
+    ]
+   },
+   "name": "case-472",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "/case/ledger.md",
+     "--append",
+     "2026-10-09T10:00:00Z | TERMINAL | lane=x | delegated=1",
+     "--dry"
+    ],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "usage-error",
+    "exit_code": 64,
+    "stderr_lines": [
+     "onex-ledger resolver: ONEX_LEDGER_BUDGET_S must be a positive number of seconds, got -2"
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-3116",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row"
+    ],
+    "budget_raw": "-2",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "other"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "run",
+    "project": "/case/other_internal",
+    "stderr_lines": [],
+    "stdout_lines": []
+   },
+   "name": "case-313",
+   "request": {
+    "append_rows_text": null,
+    "argv": [
+     "row",
+     "STATUS",
+     "--actor",
+     "none"
+    ],
+    "budget_raw": "",
+    "default_resolved": null,
+    "omni_home": "",
+    "override_resolved": "/case/other_internal",
+    "path_override": "/case/other_internal",
+    "project_names": {
+     "/case/other_internal": "omnibase-internal"
+    }
+   }
+  },
+  {
+   "expected": {
+    "action": "no-project",
+    "exit_code": 2,
+    "stderr_lines": [
+     "onex-ledger resolver: no valid omnibase_internal clone. OMNIBASE_INTERNAL_PATH tried: <unset>; $OMNI_HOME/../omnibase_internal tried: /case/ws/omnibase_internal. Expected a directory containing pyproject.toml with [project] name = \"omnibase-internal\"."
+    ],
+    "stdout_lines": []
+   },
+   "name": "case-204",
+   "request": {
+    "append_rows_text": null,
+    "argv": [],
+    "budget_raw": "",
+    "default_resolved": "/case/ws/omnibase_internal",
+    "omni_home": "/case/ws/omni_home",
+    "override_resolved": null,
+    "path_override": "",
+    "project_names": {
+     "/case/ws/omnibase_internal": null
+    }
+   }
+  }
+ ],
+ "source": "plugins/omni/scripts/onex_ledger.py (the retired wrapper), run end to end with a fake uv, beside the facts a caller read from the same fixtures"
+}

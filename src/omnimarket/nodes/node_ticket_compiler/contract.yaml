@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_ticket_compiler
+contract_name: node_ticket_compiler
+node_name: node_ticket_compiler
+
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: compute
+# Invoked in process; event-bus activation is a separate step.
+lifecycle: experimental
+description: Compile work units into tickets with verifiable acceptance criteria
+
+input_model:
+  name: ModelTicketCompileRequest
+  module: omnimarket.nodes.node_ticket_compiler.models
+output_model:
+  name: ModelCompiledTicket
+  module: omnimarket.nodes.node_ticket_compiler.models
+
+capabilities:
+  - name: nl.ticket.compile.compute
+    description: Compile work units into tickets with verifiable acceptance criteria
+    version: 0.1.0
+
+io_operations:
+  - operation: compile_ticket
+    description: Compile work units into tickets with verifiable acceptance criteria
+    protocol_method: handle
+    input_fields:
+      - request: ModelTicketCompileRequest
+    output_fields:
+      - result: ModelCompiledTicket
+    idempotent: false  # mints a uuid4 id per call
+
+handler:
+  module: omnimarket.nodes.node_ticket_compiler.handlers.handler_ticket_compile_default
+  class: HandlerTicketCompileDefault
+  input_model: omnimarket.nodes.node_ticket_compiler.models.ModelTicketCompileRequest
+  output_model: omnimarket.nodes.node_ticket_compiler.models.ModelCompiledTicket
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: false  # mints a uuid4 id per call
+  timeout_ms: 1000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18008
+  maturity: alpha
+  tags: [compute, pipeline, nl-to-ticket]

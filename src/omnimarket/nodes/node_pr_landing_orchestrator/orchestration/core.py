@@ -46,6 +46,9 @@ from omnimarket.events.pr_arm_gate import (
 from omnimarket.events.pr_head_check.enum_head_check_verdict import (
     EnumHeadCheckVerdict,
 )
+from omnimarket.events.pr_landing.model_pr_landing_check_attempt import (
+    ModelPrLandingCheckAttempt,
+)
 from omnimarket.events.pr_landing_companion import (
     EnumPrLandingCompanionOp,
     EnumPrLandingCompanionOutcomeKind,
@@ -64,6 +67,7 @@ from omnimarket.events.pr_lifecycle_fix.model_fix_command import (
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
 )
+from omnimarket.events.pr_state import EnumPrState
 from omnimarket.events.topics import (
     PR_LANDING_COMPANION_OUTCOME_TOPIC_V1,
     PR_LANDING_GITHUB_COMPLETED_TOPIC_V1,
@@ -99,6 +103,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingre
     ModelPrLandingGithubCompletedIngress,
     ModelPrLandingGithubFailedIngress,
     ModelPrLandingMergedIngress,
+    ModelPrLandingObservedPrompt,
     ModelPrLandingReconcileCommand,
     PrLandingOrchestratorInput,
 )
@@ -178,6 +183,8 @@ _READ_OPERATIONS = frozenset(
         EnumPrLandingGithubOperation.READ_PR_STATE,
     }
 )
+# GitHub mergeable_state values under which a green head is not yet ready.
+_MERGE_STATES_NOT_SETTLED = frozenset({"unknown", "blocked"})
 _OP_BY_COMPANION_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingCompanionOp] = {
     EnumPrLandingIntentKind.COMPANION_DERIVE: EnumPrLandingCompanionOp.DERIVE,
     EnumPrLandingIntentKind.COMPANION_REGENERATE: EnumPrLandingCompanionOp.REGENERATE,
@@ -187,9 +194,22 @@ _OP_BY_COMPANION_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingCompanionOp
 
 @dataclass(frozen=True)
 class PrLandingOrchestratorConfig:
-    """Operator-controlled knobs. Defaults are shadow mode (plan 5.5, wave 3)."""
+    """Operator-controlled knobs. Defaults are shadow mode (plan 5.5, wave 3).
 
+    The handler builds this from the ``landing_config`` block of the node's
+    contract.yaml (OMN-20866); these defaults apply only where a caller builds
+    the config itself.
+    """
+
+    # The mode of every GitHub mutation and companion command, unless the
+    # repository is named in github_mode_by_repository.
     github_mode: EnumPrLandingGithubMode = EnumPrLandingGithubMode.DRY_RUN
+    github_mode_by_repository: Mapping[str, EnumPrLandingGithubMode] = field(
+        default_factory=dict
+    )
+    # Mutations that stay dry_run in every repository, whatever its mode: the
+    # classes another owner still acts on (no dual owner).
+    dry_run_operations: frozenset[EnumPrLandingGithubOperation] = frozenset()
     arm_policy: ModelArmGatePolicy = field(default_factory=ModelArmGatePolicy)
     head_checks_poll_interval: timedelta = timedelta(minutes=2)
     state_bounds: Mapping[EnumPrLandingState, timedelta | None] = field(
@@ -205,9 +225,32 @@ class PrLandingOrchestratorConfig:
     # Until the producer builds op=verify (T10 treats it as derive), the tick
     # does not verify open companions; companion merged waits for T12.
     verify_open_companions_on_tick: bool = False
+    # Repositories whose base branch requires no conversation resolution, so an
+    # unresolved review thread cannot block the merge an arm requests. The arm
+    # gate reads that as zero blocking threads; every other repository leaves
+    # the count unknown and the gate withholds.
+    review_threads_not_required_repos: frozenset[str] = frozenset()
+    # Repositories whose PR-state observations (the PR watcher's feed) prompt
+    # a read, as a push prompt does. Every other repository's observation is
+    # dropped.
+    observed_prompt_repos: frozenset[str] = frozenset()
 
     def companion_required(self, repository: str) -> bool:
         return repository not in self.companion_exempt_repos
+
+    def github_mode_for(self, repository: str) -> EnumPrLandingGithubMode:
+        return self.github_mode_by_repository.get(repository, self.github_mode)
+
+    def mutation_mode(
+        self, repository: str, operation: EnumPrLandingGithubOperation
+    ) -> EnumPrLandingGithubMode:
+        """The mode one GitHub mutation is sent with (reads are always enforce)."""
+        if operation in self.dry_run_operations:
+            return EnumPrLandingGithubMode.DRY_RUN
+        return self.github_mode_for(repository)
+
+    def companion_dry_run(self, repository: str) -> bool:
+        return self.github_mode_for(repository) is EnumPrLandingGithubMode.DRY_RUN
 
     def arm_method(self, repository: str) -> EnumPrLandingArmMethod:
         if repository in self.queue_repos:
@@ -388,14 +431,20 @@ class _Leg:
                 and not self.config.companion_required(state.repository)
             )
         )
+        merge_state = self.row.merge_state_status or state.merge_state
         return ModelArmCandidate(
             repo=state.repository,
             pr_number=state.pr_number,
             is_draft=state.draft,
-            # Not a fact the workflow reads; unknown withholds (fail closed).
-            coderabbit_unresolved=None,
-            merge_state_status=state.merge_state.upper() if state.merge_state else None,
-            status_checks="SUCCESS",
+            # The workflow reads no review threads: zero blocking threads only
+            # where the base requires no conversation resolution, else unknown,
+            # which withholds (fail closed).
+            coderabbit_unresolved=0
+            if state.repository in self.config.review_threads_not_required_repos
+            else None,
+            merge_state_status=merge_state.upper() if merge_state else None,
+            # Only called for a GREEN verdict of the head-check classifier.
+            head_check_verdict=EnumHeadCheckVerdict.GREEN,
             occ_companion_verified=companion_ok,
         )
 
@@ -492,7 +541,7 @@ class _Leg:
                 block_reason=EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
                 ticket_id=tickets[0] if tickets else None,
                 op=op,
-                dry_run=self.config.github_mode is EnumPrLandingGithubMode.DRY_RUN,
+                dry_run=self.config.companion_dry_run(intent.repository),
                 requested_at=at,
             )
         )
@@ -571,7 +620,7 @@ class _Leg:
         mode = (
             EnumPrLandingGithubMode.ENFORCE
             if operation in _READ_OPERATIONS
-            else self.config.github_mode
+            else self.config.mutation_mode(row.repository, operation)
         )
         fields: dict[str, object] = {
             "correlation_id": correlation,
@@ -586,6 +635,8 @@ class _Leg:
             fields["etag"] = row.pr_state_etag
         elif operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS:
             fields["etag"] = row.head_checks_etag
+            # The base's required contexts decide which checks block (OMN-20866).
+            fields["base_ref"] = row.base_ref
         elif operation is EnumPrLandingGithubOperation.RERUN_RUNS:
             run_ids = sorted(
                 {ref.run_id for ref in row.check_runs if ref.check in intent.check_runs}
@@ -664,6 +715,8 @@ async def run_leg(
     """Apply one consumed message to the stored row."""
     if isinstance(message, ModelPrLandingAutobindPrompt):
         return await _on_prompt(row, message, config=config, ports=ports)
+    if isinstance(message, ModelPrLandingObservedPrompt):
+        return await _on_observed(row, message, config=config, ports=ports)
     if row is None:
         return PrLandingStepResult(
             row=None, dropped_reason="no landing row for this PR"
@@ -705,6 +758,45 @@ async def _on_prompt(
         )
     now = message.requested_at
     start = row if row is not None else _new_row(message.repo, message.pr_number, now)
+    leg = _Leg(start, now=now, config=config, ports=ports)
+    leg.want_read()
+    leg.dispatch()
+    return _finish(leg, row)
+
+
+async def _on_observed(
+    row: ModelPrLandingWorkflowRow | None,
+    message: ModelPrLandingObservedPrompt,
+    *,
+    config: PrLandingOrchestratorConfig,
+    ports: PrLandingOrchestratorPorts,
+) -> PrLandingStepResult:
+    """I3 (OMN-20866): a watcher observation prompts a read for a named repository."""
+    if message.repository not in config.observed_prompt_repos:
+        return PrLandingStepResult(
+            row=None, dropped_reason="repository not prompted by observations"
+        )
+    if row is None and message.state is not EnumPrState.OPEN:
+        return PrLandingStepResult(
+            row=None, dropped_reason="first sight of a PR that is not open"
+        )
+    landing = row.landing if row is not None else None
+    if landing is not None and (
+        landing.state is EnumPrLandingState.MERGED
+        or (
+            landing.state is EnumPrLandingState.CLOSED
+            and message.state is not EnumPrState.OPEN
+        )
+    ):
+        # A closed row reads again only when the watcher sees it open (G5).
+        return PrLandingStepResult(row=None, dropped_reason="terminal row")
+    now = message.observed_at
+    if row is not None and now < row.updated_at:
+        # An older observation redelivered: the row has seen later input.
+        now = row.updated_at
+    start = (
+        row if row is not None else _new_row(message.repository, message.pr_number, now)
+    )
     leg = _Leg(start, now=now, config=config, ports=ports)
     leg.want_read()
     leg.dispatch()
@@ -968,7 +1060,11 @@ async def _apply_snapshot(
     if fact is None:  # 304: unchanged since the last read, nothing newer to apply
         return
     leg.row = leg.row.model_copy(
-        update={"pr_node_id": fact.pr_node_id, "base_ref": fact.base_ref}
+        update={
+            "pr_node_id": fact.pr_node_id,
+            "base_ref": fact.base_ref,
+            "merge_state_status": fact.mergeable_state,
+        }
     )
     observations = snapshot_observations(
         landing=leg.row.landing,
@@ -992,6 +1088,14 @@ async def _apply_head_checks(
         return  # unchanged: still pending; the tick reads again after the interval
     leg.row = leg.row.model_copy(update={"check_runs": _check_run_refs(message)})
     verdict = await leg.ports.classifier.classify(message, leg.row)
+    if (
+        verdict.verdict is EnumHeadCheckVerdict.GREEN
+        and (leg.row.merge_state_status or "").lower() in _MERGE_STATES_NOT_SETTLED
+    ):
+        # Every blocking check passed, but GitHub has not computed the PR's
+        # mergeability yet, or still reports it blocked (a required context not
+        # posted yet): the head is still pending, read again after the interval.
+        verdict = verdict.model_copy(update={"verdict": EnumHeadCheckVerdict.PENDING})
     arm_method = await leg.arm_method_for(verdict.verdict)
     await leg.apply_and_evaluate(
         ModelPrLandingObservation(
@@ -1005,6 +1109,10 @@ async def _apply_head_checks(
             source_event_id=str(message.correlation_id),
             verdict=verdict.verdict,
             rerun_checks=verdict.rerun_checks,
+            check_attempts=tuple(
+                ModelPrLandingCheckAttempt(check=a.check, attempt=a.attempt)
+                for a in verdict.check_attempts
+            ),
             arm_method=arm_method,
         )
     )

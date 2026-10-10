@@ -430,77 +430,6 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX"
-  # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
-  #
-  # OMN-16833 — PARKED AND UNREFERENCED. This declaration is retained on
-  # purpose, but routing_tiers.yaml no longer points any tier at it. The
-  # endpoint is STOPPED, not retired: probed 2026-09-10, GET
-  # .200:8101/v1/models -> curl exit 7 "Couldn't connect to
-  # server", http=000, while `ping .200` returned 2/2 packets at 0.0%
-  # loss and the same probe against .201:8000 returned HTTP 200 (both controls
-  # proving the probe itself ran).
-  # All three lab lane overlays (dev, judge, lakshman) declare `serving: false`
-  # here per OMN-16999, and the onex-dev overlay declares `locale: cloud` with
-  # zero local backends — so the renderer writes `endpoint_url: null` on every
-  # lane and `_load_bifrost_endpoints` drops the backend SILENTLY. A tier
-  # pointing at it was a rung declared and unreachable at the same time.
-  # RESTORE by starting the ds4 server, re-probing, updating omnibase_infra
-  # tests/fixtures/bifrost_served_models_probe.json, flipping `serving: true` in
-  # the lane overlays, moving the id into LANE_BOUND_LOCAL_BACKENDS in
-  # omnimarket.validators.routing_tier_backend_bindability, and only then
-  # restoring the tier entry. Endpoint first, tier reference last.
-  - backend_id: local-ds-v4-flash
-    provider: local
-    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
-    endpoint_url: null
-    # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
-    # OMN-16833 / OMN-17099: ds-v4-flash remains the routing key;
-    # the lane overlay supplies the served id checked at dispatch.
-    model_name: null
-    tier: local
-    # OMN-13170: DS-V4-Flash is a 284B MoE serving code_generation; full
-    # module/test-suite generation at its throughput well exceeds 60s and was
-    # failing with error="timed out" on the dev runtime. Size the timeout to the
-    # 65536-token budget below (300000 ms). Overlay-overridable per deploy lane.
-    timeout_ms: 300000
-    # OMN-13161: 64k output budget. OMN-16833 correction: the SERVER's context
-    # window is 131072 (live: /v1/models context_length=131072; ds4-server is
-    # launched with --ctx 131072), not 65536. 65536 is the ROUTING budget
-    # (routing_tiers.yaml max_context_tokens) — a deliberate conservative cap,
-    # kept as-is here. The 64k output budget fits either way.
-    max_tokens: 65536
-    # OMN-18297 -- grounding budget, NOT the context window. Live readback of
-    # this endpoint's /v1/models on 2026-09-13 reports max_model_len 131072, and
-    # an 18245-token prompt was accepted without complaint; the answer then cited
-    # eight pull requests occurring nowhere in it, and the quality gate scored it
-    # 1.0. Measured grounding on this backend the same session: clean at 577, 898,
-    # 1030 and 2381 input tokens (zero ungrounded identifiers across four tasks),
-    # ungrounded at 18245. The honest measured bracket is therefore (2381, 18245];
-    # 8000 is a declared bound INSIDE that bracket, chosen to sit above every
-    # observed success and well under the only observed failure. It is NOT itself
-    # a measured degradation point, and narrowing it needs a bisection run that
-    # has not been done. The identifier-grounding check is what actually catches a
-    # fabricated citation; this budget is the coarse pre-emptive bound that keeps
-    # an oversized prompt off a rung that cannot hold it.
-    max_grounded_input_tokens: 8000
-    capabilities:
-      - deep_reasoning
-      - reasoning
-      - research
-      - code_generation
-  # OMN-16442: the `local-coder-mlx` backend (model_name
-  # mlx-community/Qwen3.6-35B-A3B-8bit, endpoint_url_env
-  # BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL → .200:8401, registered by OMN-15155)
-  # was DELETED. Live probe 2026-08-28: `curl
-  # .200:8401/v1/models` → exit 7 "Couldn't connect to
-  # server", and the named artifact is served nowhere on the fleet. The Mac
-  # Studio's MLX server now serves `Qwen3.8-27B-8bit` on 127.0.0.1:8099, bound
-  # LOCALHOST-ONLY (canonical inventory
-  # omni_home/docs/reference/AI_LAB_HARDWARE.md, verified 2026-08-28) — not
-  # reachable from the .201 runtime, so it is NOT registered here. Registering
-  # it needs explicit availability semantics + a health check first, the same
-  # gate the inventory places on the mini/laptop/Gemma-canary endpoints;
-  # tracked as the scoped follow-on on OMN-16442.
   # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
   # (secret_ref) and NOTHING ELSE.
   #
@@ -826,8 +755,8 @@ routing_rules:
     # OMN-16442: `local-reasoner` removed from this list — see the deletion
     # note on the backends block above. This rule referencing it was the sole
     # reason OMN-16419 could not delete the backend definition. `research`
-    # keeps two live local rungs via routing_tiers.yaml
-    # (local-heavy-reasoning, local-ds-v4-flash) plus the free cloud rungs here.
+    # keeps its live local rung via routing_tiers.yaml
+    # (local-heavy-reasoning) plus the free cloud rungs here.
     backend_ids:
       - local-heavy-reasoning
       - openrouter-nemotron-ultra

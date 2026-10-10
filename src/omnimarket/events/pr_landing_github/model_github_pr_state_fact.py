@@ -43,6 +43,11 @@ def _require_bool(mapping: object, key: str, context: str) -> bool:
     return value
 
 
+def _optional_str(mapping: dict[str, object], key: str) -> str | None:
+    value = mapping.get(key)
+    return value if isinstance(value, str) and value else None
+
+
 def _head_sha(value: str, context: str) -> str:
     if not _FULL_SHA.match(value):
         raise GithubPrStateParseError(f"{context} head is not a full sha")
@@ -56,6 +61,12 @@ def _label_names(nodes: object, context: str) -> tuple[str, ...]:
     for node in nodes:
         names.append(_require_str(node, "name", f"{context} label"))
     return tuple(names)
+
+
+def _merge_state_status(pr: object) -> str | None:
+    """The GraphQL mergeStateStatus in the REST mergeable_state's lower case."""
+    value = pr.get("mergeStateStatus") if isinstance(pr, dict) else None
+    return value.lower() if isinstance(value, str) else None
 
 
 class ModelGithubPrStateFact(BaseModel):
@@ -86,6 +97,15 @@ class ModelGithubPrStateFact(BaseModel):
     auto_merge_allowed: bool | None = Field(
         default=None,
         description="GraphQL read only: the repository allows auto-merge.",
+    )
+    mergeable_state: str | None = Field(
+        default=None,
+        description=(
+            "GitHub's merge state (clean, blocked, behind, dirty, unstable, "
+            "has_hooks, draft or unknown), as reported (OMN-20866): the REST "
+            "read's mergeable_state, or the GraphQL policy read's "
+            "mergeStateStatus in lower case. None when GitHub reported none."
+        ),
     )
 
     @classmethod
@@ -121,6 +141,7 @@ class ModelGithubPrStateFact(BaseModel):
             merged=_require_bool(body, "merged", ctx),
             auto_merge_armed=isinstance(auto_merge, dict),
             auto_merge_method=method,
+            mergeable_state=_optional_str(body, "mergeable_state"),
         )
 
     @classmethod
@@ -163,6 +184,7 @@ class ModelGithubPrStateFact(BaseModel):
             auto_merge_allowed=_require_bool(
                 repository, "autoMergeAllowed", f"{ctx}.repository"
             ),
+            mergeable_state=_merge_state_status(pr),
         )
 
 

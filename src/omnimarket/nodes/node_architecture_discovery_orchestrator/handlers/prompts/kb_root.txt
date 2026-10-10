@@ -1,0 +1,6 @@
+OUTPUT ROOT — resolve this FIRST, before any other step of this brief:
+  KB="${KNOWLEDGE_BASE_INTERNAL_PATH:?OMN-17235: KNOWLEDGE_BASE_INTERNAL_PATH is unset. This workflow writes its report to the knowledge-base-internal clone (operator ruling 2026-08-31). Export it to the absolute path of that clone and re-run. There is NO default path and NO {{registry_dir}} fallback.}"
+  git -C "$KB" rev-parse --show-toplevel >/dev/null 2>&1 || { echo "OMN-17235: KNOWLEDGE_BASE_INTERNAL_PATH=$KB is not a git clone"; exit 1; }
+  git -C "$KB" remote get-url origin | grep -q knowledge-base-internal || { echo "OMN-17235: $KB is not a clone of OmniNode-ai/knowledge-base-internal"; exit 1; }
+Both output paths in this brief are relative to $KB. Writing them under $OMNI_HOME/docs is a defect — the kb-doc-gate required check rejects it on the PR.
+PORTABLE PATHS ONLY inside the report body: no machine-absolute home or volume paths, no $OMNI_HOME, no {{registry_dir}}/<repo>/ — knowledge-base-internal/scripts/check_no_local_paths.py is a required check there. Cite a GitHub URL or a repo-relative path instead; mark a genuine reviewed exception with an inline <!-- local-path-ok --> on that line.

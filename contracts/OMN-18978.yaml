@@ -14,6 +14,9 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: a budget or port-owned timeout names its cancelled stage in the timeout error message on the bus and local paths, the cleanup stage never overwrites it, concurrent dispatches keep distinct stages, an accepting dispatch keeps its answer, and the progress context resets after dispatch -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q
+      - id: "AC4"
+        statement: |-
+          AC4: the top rung of a delegation ladder that is refused with no higher tier left records acceptance_decision terminate, not climb, while a rung that climbs stays climb -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn18978_final_rung_terminates.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The timeout-stage tests pass at the head and fail at the merge base, where the dispatch progress module does not exist."
@@ -47,3 +50,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_runtime_bus_deadline_preserves_the_stage_after_unwinding -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-stage-deadline-survives-cleanup"
+    description: "A stage's own TimeoutError names the innermost stage after terminal cleanup runs; the test fails at the merge base, where the stage is reset to the outer scope before cleanup."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_stage_deadline_names_the_innermost_stage_after_cleanup -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-final-rung-terminates"
+    description: "The final-rung tests prove a refused top rung with no higher tier records terminate and a climbing rung stays climb; the test file does not exist at the merge base, so the check fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18978_final_rung_terminates.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

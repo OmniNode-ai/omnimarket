@@ -1,6 +1,6 @@
 name: node_log_persistence_effect
-version: "1.0.0"
-description: "Persists structured log events to Postgres for historical trace queries"
+version: "1.1.0"
+description: "Materializes structured logs and delegation terminal execution logs through the runtime database binding"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

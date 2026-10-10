@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -119,7 +119,23 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]:
+        # OMN-20844: the canonical delegation request this port publishes has
+        # no model field at the Core floor this package locks, so a model the
+        # caller named cannot reach the consumer. Refused rather than dropped,
+        # so the call cannot run on a model the caller did not choose.
+        if model is not None:
+            raise ValueError(
+                "model is not carried by this dispatch port's delegation request; "
+                "a per-call model runs on your own key through the in-process "
+                "path (onex delegate --bus inmemory --model <id>)"
+            )
+        # OMN-20606: accepted and unused. This port publishes the request to a
+        # deployed lane, whose handler stamps the caller onto its own terminal;
+        # only the in-process port writes an evidence terminal of its own.
+        del attribution
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than

@@ -57,6 +57,7 @@ from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
     caller_lane_refusal,
 )
+from omnimarket.models.delegation.delegation_lineage import resolve_lineage
 from omnimarket.models.delegation.delegation_ticket_id import (
     DELEGATION_TICKET_METADATA_KEY,
     ticket_id_refusal,
@@ -84,6 +85,7 @@ from omnimarket.models.delegation.wire.model_response_source_attempt import (
 )
 from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    budget_cancelled_result,
     current_dispatch_progress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
@@ -174,6 +176,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -195,6 +199,52 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _AttributionDispatchKwargs(TypedDict, total=False):
+    """Who issued a delegation and what it follows, for the port (OMN-20606).
+
+    The in-process port writes its own evidence terminal and published it with
+    no caller lane, ticket or lineage, which is why every in-process fallback
+    row on the dev lane had an empty caller_lane. Passed only when the request
+    names any of them, so an anonymous request calls the port exactly as
+    before; a port must declare ``attribution`` before omnimarket pins a
+    release that passes it (omnibase_infra declares it from OMN-20606).
+    """
+
+    attribution: dict[str, str]
+
+
+def _request_attribution(request: ModelDelegateSkillRequest) -> dict[str, str]:
+    """The request's caller lane, ticket and lineage, each only when well formed."""
+    attribution: dict[str, str] = {}
+    caller_lane = _request_caller_lane(request)
+    if caller_lane is not None:
+        attribution[DELEGATION_CALLER_LANE_METADATA_KEY] = caller_lane
+    ticket_id = _request_ticket_id(request)
+    if ticket_id is not None:
+        attribution[DELEGATION_TICKET_METADATA_KEY] = ticket_id
+    lineage, refusal = resolve_lineage(
+        request.metadata, own_correlation_id=request.correlation_id
+    )
+    if refusal is not None:
+        logger.warning(
+            "delegate-skill request lineage refused (correlation_id=%s): %s",
+            request.correlation_id,
+            refusal,
+        )
+    elif lineage is not None:
+        attribution.update(lineage.as_columns())
+    return attribution
+
+
+def _attribution_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _AttributionDispatchKwargs:
+    attribution = _request_attribution(request)
+    if attribution:
+        return {"attribution": attribution}
     return {}
 
 
@@ -893,7 +943,19 @@ def _response_from_result(
     # rung's 429 on ``6ce51f77``) is the last thing that went wrong, not what
     # decided the run, and the response model refuses that contradiction.
     # Otherwise an explicit cause stays authoritative, as before.
+    #
+    # Operator RULING 2026-10-10T00:27:40Z: a run the handler budget cancelled
+    # (``budget_cancelled_result``: status timeout, explicit cause timeout)
+    # names timeout, whatever its earlier rungs record. The budget stopped the
+    # ladder with a rung in flight, so the gate did not decide it; any earlier
+    # gate refusals stay on their own rungs in ``attempts``.
     if (
+        status_value == "timeout"
+        and explicit_terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.TIMEOUT
+    ):
+        terminal_failure_cause = EnumDelegationTerminalFailureCause.TIMEOUT
+    elif (
         terminal_failure_cause
         is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     ):
@@ -1273,6 +1335,8 @@ class HandlerDelegateSkill:
                     response_format=request.response_format,
                     # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
                     **_no_escalation_dispatch_kwargs(request),
+                    # OMN-20606: only when named -- see _AttributionDispatchKwargs.
+                    **_attribution_dispatch_kwargs(request),
                 ),
                 timeout=float(
                     execution_timeout_seconds
@@ -1331,24 +1395,32 @@ class HandlerDelegateSkill:
                     "(the budget is measured from pickup, not from publish)"
                 )
             )
-            return ModelDelegateSkillFailed(
-                status="timeout",
-                correlation_id=request.correlation_id,
-                task_type=request.task_type,
-                tenant_id=resolved_tenant_id,
-                provenance=request.provenance,
-                error_message=(
-                    f"delegation exceeded the handler execution budget of "
-                    f"{execution_timeout_seconds}s and was cancelled at "
-                    f"stage={progress.cancelled_stage or progress.stage}; "
-                    "the consumer commits "
-                    "this terminal instead of being evicted mid-handle "
-                    f"(OMN-15504){queue_clause}"
-                ),
-                terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
-                queue_wait_ms=queue_wait_ms,
-                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
-                budget_evidence=budget_evidence,
+            # OMN-17427: the terminal is built from what the dispatch already
+            # learned, not from nothing. Cancelled at stage=inference, a run had
+            # already been routed, had resolved its key and had made calls; C29
+            # run 37977092319 lost all of it and its receipt named no backend,
+            # model, key source or attempt.
+            cancelled_stage = progress.cancelled_stage or progress.stage
+            return delegate_skill_terminal_from_response(
+                _response_from_result(
+                    request,
+                    budget_cancelled_result(
+                        progress,
+                        cancel_message=(
+                            f"delegation exceeded the handler execution budget of "
+                            f"{execution_timeout_seconds}s and was cancelled at "
+                            f"stage={cancelled_stage}; "
+                            "the consumer commits "
+                            "this terminal instead of being evicted mid-handle "
+                            f"(OMN-15504){queue_clause}"
+                        ),
+                        cancelled_stage=cancelled_stage,
+                    ),
+                    tenant_id=resolved_tenant_id,
+                    queue_wait_ms=queue_wait_ms,
+                    execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+                    budget_evidence=budget_evidence,
+                )
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(

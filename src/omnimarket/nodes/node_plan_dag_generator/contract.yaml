@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_plan_dag_generator
+contract_name: node_plan_dag_generator
+node_name: node_plan_dag_generator
+
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: compute
+# Invoked in process; event-bus activation is a separate step.
+lifecycle: experimental
+description: Generate a typed work unit dependency graph from intent
+
+input_model:
+  name: ModelPlanDagRequest
+  module: omnimarket.nodes.node_plan_dag_generator.models
+output_model:
+  name: ModelPlanDag
+  module: omnimarket.nodes.node_plan_dag_generator.models
+
+capabilities:
+  - name: nl.plan.dag.compute
+    description: Generate a typed work unit dependency graph from intent
+    version: 0.1.0
+
+io_operations:
+  - operation: generate_plan_dag
+    description: Generate a typed work unit dependency graph from intent
+    protocol_method: handle
+    input_fields:
+      - request: ModelPlanDagRequest
+    output_fields:
+      - result: ModelPlanDag
+    idempotent: false  # mints a uuid4 id per call
+
+handler:
+  module: omnimarket.nodes.node_plan_dag_generator.handlers.handler_plan_dag_default
+  class: HandlerPlanDagDefault
+  input_model: omnimarket.nodes.node_plan_dag_generator.models.ModelPlanDagRequest
+  output_model: omnimarket.nodes.node_plan_dag_generator.models.ModelPlanDag
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: false  # mints a uuid4 id per call
+  timeout_ms: 1000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18008
+  maturity: alpha
+  tags: [compute, pipeline, nl-to-ticket]

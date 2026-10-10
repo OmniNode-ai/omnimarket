@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: branch_claim_check_effect
+version: "1.0.0"
+description: "Reads lab work ledger rows and reports the PR head branch claim check."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.18"
+  - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
+tags: [effect, github, work-ledger]
+pack: "data"
+display_name: "Effect: Branch Claim Check"
+node_role: "effect"

@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19978"
+title: "The usage-by-model-day real-Postgres helper returns once, explicitly"
+summary: "CodeQL alert 1324 (py/mixed-returns) flagged _connect_or_skip in the OMN-19978 real-Postgres test: it returned inside try and fell through after pytest.skip. It now binds the connection and returns it once. Test-side only; the projection and its writer are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-usage-real-postgres-helper-explicit-return"
+    statement: "The real-Postgres usage-by-model-day tests connect through a helper with one explicit return, and still pass against a live database."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: _connect_or_skip returns the connection once, explicitly, and the two real-Postgres usage-by-model-day tests pass against the database the hosted job provides -- falsifier: uv run pytest tests/test_omn19978_usage_by_model_day_real_postgres.py -q in omnimarket fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "The OMN-19978 real-Postgres usage tests pass at the head against a live Postgres. The change is test-side only, so there is no earlier product behaviour to control."
+    command: "uv run pytest tests/test_omn19978_usage_by_model_day_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19978-ac1-real-postgres-explicit-return"
+    description: "AC1 hosted probe. The real-Postgres usage-by-model-day tests connect through the single-return helper and pass against the job's Postgres."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19978_usage_by_model_day_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

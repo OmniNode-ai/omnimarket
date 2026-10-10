@@ -13,7 +13,7 @@ name: Non-dev base guard
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, reopened, edited, synchronize, auto_merge_enabled, auto_merge_disabled]
 
 # OMN-19643: cancel only superseded pull request runs.
 concurrency:
@@ -23,6 +23,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   non-dev-base-guard:
@@ -41,6 +42,9 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
@@ -57,10 +61,26 @@ jobs:
           echo "PR targets feature base '${BASE_REF}' from head '${HEAD_REF}'."
 
           if echo "${PR_BODY}" | grep -qE 'Stacked-Parent:[[:space:]]*#[0-9]+'; then
-            echo "::notice::Declared stacked PR (Stacked-Parent found). Allowed."
-            echo "::warning::Stacked PRs merge INTO their parent branch, not dev."
-            echo "::warning::Do NOT arm auto-merge on this PR; land the parent into dev first."
-            exit 0
+            # OMN-19032: read current state, since arming may follow this event.
+            # This is a verdict, not proof that the feature base requires it.
+            if ! armed="$(gh api "repos/${REPO}/pulls/${PR}" --jq 'if type == "object" and has("auto_merge") then .auto_merge != null else error("Missing auto_merge in PR readback") end')"; then
+              echo "::error::Could not read current auto-merge state; refusing the stack."
+              exit 1
+            fi
+            case "$armed" in
+              false)
+                echo "::notice::Declared stack with auto-merge disabled. Allowed."
+                exit 0
+                ;;
+              true)
+                echo "::error::Auto-merge is armed on a feature-base stack; disable it before landing."
+                exit 1
+                ;;
+              *)
+                echo "::error::Unreadable auto-merge state; refusing the stack."
+                exit 1
+                ;;
+            esac
           fi
 
           echo "::error::PR base '${BASE_REF}' is not the integration branch (dev)."

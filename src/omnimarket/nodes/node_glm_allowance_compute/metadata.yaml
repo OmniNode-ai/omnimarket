@@ -1,0 +1,23 @@
+name: node_glm_allowance_compute
+version: "0.1.0"
+description: "the GLM Coding Plan allowance left in the window and the week, and the chain order the GLM rungs leave"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_glm_allowance_compute: "omnimarket.nodes.node_glm_allowance_compute"
+capabilities:
+  standalone: true
+  # false until the harness rung publishes the command: nothing calls the node yet.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "glm", "allowance", "pure"]
+pack: "routing"
+display_name: "GLM Allowance"
+node_role: "compute"

@@ -3797,6 +3797,7 @@
         "idx_delegation_events_context_pack_hash",
         "idx_delegation_events_created_at",
         "idx_delegation_events_delegated_to",
+        "idx_delegation_events_parent_correlation_id",
         "idx_delegation_events_score_vs_bar",
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",
@@ -4372,6 +4373,7 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
+        "idx_dod_verify_runs_contract_subject",
         "idx_dod_verify_runs_cursor",
         "idx_dod_verify_runs_delegation_correlation_id",
         "idx_dod_verify_runs_goal_revision",
@@ -6484,6 +6486,7 @@
       "producer": "node_pr_lifecycle_state_reducer",
       "readers": [
         "node_database_sweep",
+        "node_pr_lifecycle_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -7880,6 +7883,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
       "readers": [
+        "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
       ],
       "target_schema": "public",
@@ -8377,7 +8381,9 @@
     },
     {
       "accessor_nodes": [
+        "node_branch_claim_check_effect",
         "node_projection_work_ledger",
+        "node_work_ledger_query_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -8389,7 +8395,9 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
+        "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
+        "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
+        "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -8426,7 +8434,9 @@
       "partitioning": [],
       "producer": "node_projection_work_ledger",
       "readers": [
-        "node_work_ledger_emit_effect"
+        "node_branch_claim_check_effect",
+        "node_work_ledger_emit_effect",
+        "node_work_ledger_query_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_effect
+version: "0.1.0"
+description: "Effect: the I/O of a merge sweep - gather a reading's facts from the PR watcher state, the ledger and the controller's tick log, and start a lane through the remote-lane runner. Decisions are node_merge_sweep_reading_compute's and node_merge_sweep_plan_compute's. Hosted by a serve process on the host that holds the watcher state and the runner, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Merge Sweep Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_merge_sweep_effect: "omnimarket.nodes.node_merge_sweep_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "merge-sweep"]

@@ -370,7 +370,8 @@ class TestCatalogueShapeRefusals:
     ) -> None:
         payload = _catalogue_payload()
         for row in payload["providers"]:
-            if row["provider"] == "openrouter":
+            # OMN-20844: openrouter is pay-as-you-go now; the flat-rate row is glm's.
+            if row["provider"] == "glm" and row["plan"] == "coding_plan":
                 row["limit_model"]["windows"] = []
         with pytest.raises(ByokCatalogError, match="window"):
             mod._read_catalog(_write(tmp_path, payload))
