@@ -22,6 +22,11 @@ fault on some other rung is real and stays legible on that rung's own record,
 but it only stopped the ladder collecting more answers; every answer the ladder
 did collect was refused by the gate. A ladder on which no rung was answered and
 judged at all was decided by the provider, and keeps its provider cause.
+
+One run is outside this reading: a run the handler budget cancelled names
+``timeout`` (operator RULING 2026-10-10T00:27:40Z). The budget stopped its
+ladder with a rung in flight, so the gate did not decide it, and its earlier
+gate refusals stay on their own rungs.
 """
 
 from __future__ import annotations
