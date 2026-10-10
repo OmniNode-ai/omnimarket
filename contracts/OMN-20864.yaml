@@ -82,10 +82,11 @@ dod_evidence:
         check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py -q -p no:randomly -k "acm8 or base_or_a_shared_cause"'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
-  - id: "dod-omn20864-deploy"
-    description: "Deploy: the dev lane's runtime imports the shared pr-land fallback rule after the deploy agent rolls the merge."
+  - id: "dod-omn20864-runtime-readback"
+    description: "Pre-merge runtime readback: packaged operation contracts resolve the head's selection, throughput decision, dispatch and render handlers; JSON hand-offs dispatch a parked PR only with readable, clear holds. Deployment readback follows the merge on the dev lane."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: 'docker exec omninode-runtime python -c "from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback"'
-    binds_ac: ["AC1", "AC2"]
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_lab_fill_plan_compute/test_pr_land_runtime_readback.py -q -s -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC4"]
