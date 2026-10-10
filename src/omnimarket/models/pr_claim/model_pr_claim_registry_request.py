@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_pr_claim_registry_effect.models.enum_pr_claim_operation import (
+from omnimarket.models.pr_claim.enum_pr_claim_operation import (
     EnumPrClaimOperation,
 )
 

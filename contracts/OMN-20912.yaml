@@ -25,6 +25,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1: the six new gateway reads replay on a recorded fake transport, page inside the node, honour their byte and item caps, and refuse an over-cap artifact with a typed reason."
     command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: node_github_repo_write_effect performs pr_create, pr_edit, pr_ready, pr_close, pr_comment and workflow_dispatch on a recorded fake transport; pr_close without the lane's claim in node_pr_claim_registry_effect and a call under the quota floor are refused with typed reasons before any mutation."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -38,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20912-ac2-repo-write-effect"
+    description: "AC2: the six writes run on a recorded fake transport; the refused close (no claim, another lane's claim) and the quota-floor refusal send no mutation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
