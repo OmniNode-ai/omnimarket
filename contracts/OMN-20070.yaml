@@ -58,4 +58,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k unbound_criteria"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
