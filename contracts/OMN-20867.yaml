@@ -92,3 +92,10 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5", "AC6"]
+  - id: "dod-omn20867-merge-sweep-deploy-probe"
+    description: "Deploy probe. The merge-sweep plan compute at the checked-out commit carries HandlerMergeSweepScheduledFire, the runtime-tick handler this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is a record with a fire_id beginning merge-sweep- on onex.evt.omnimarket.merge-sweep-planned.v1 within one 300 s interval of the runtime tick."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_plan_compute/handlers/handler_merge_sweep_scheduled_fire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergeSweepScheduledFire'"
+        cwd: "${OMNI_HOME}/omnimarket"
