@@ -819,6 +819,31 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
       topic: onex.evt.omnimarket.pr-state-observed.v1
       description: "A watcher observation of a named repository issues a conditional read_pr_state and drains the row; any other repository is dropped."
+# OMN-20866: the ledger facts every green head is checked against before an arm
+# or enqueue (orchestration/gate_facts.py), read by the handler from the lab
+# projections the bus already folds (orchestration/gate_facts_reader.py):
+#   * HOLD rows in force for the PR: the open HOLD entities of
+#     work_ledger_state (node_projection_work_ledger), scoped by the landing
+#     controller's canonical hold check. A held PR is never armed.
+#   * rule 24: in a lab-proof repository a PR needs a PASS lab proof for its
+#     exact head, the pr-head receipt in lab_proof_receipts
+#     (node_projection_lab_proof_receipts) or the lab pool's LAB PROOF PASS
+#     readback row in work_ledger_rows. The workflow reads no changed-file
+#     class, so every PR of these repositories counts as runtime-affecting.
+#   * a fact that cannot be read, or a ledger projection that has projected
+#     no row within the bound, is UNKNOWN and withholds the arm.
+# A withheld head stays CHECKS_PENDING with its reason on the transition, and
+# the next poll reads it again in full.
+landing_gate_facts:
+  lab_proof_repositories:
+    - OmniNode-ai/omnibase_infra
+    - OmniNode-ai/omnimarket
+  ledger_freshness_bound_minutes: 60
+  source:
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    hold_state_relation: omninode_internal.work_ledger_state
+    ledger_rows_relation: omninode_internal.work_ledger_rows
+    lab_proof_receipts_relation: omninode_internal.lab_proof_receipts
 metadata:
   description: "Deterministic per-PR landing workflow: change-control companion, re-runs, update-branch and arming as one FSM."
   author: "OmniNode Team"

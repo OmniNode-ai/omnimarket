@@ -16,7 +16,10 @@ seam when a dispatch has bound its rows, the in-memory store otherwise.
 OMN-20866: by default the config is the contract's ``landing_config`` block
 (:mod:`...orchestration.contract_config`) and the head-check classifier is
 node_pr_lifecycle_triage_compute's ``classify_head_checks``
-(:mod:`...orchestration.head_checks`).
+(:mod:`...orchestration.head_checks`). The ledger gate facts every green head is
+checked against before an arm are read from the lab projections
+(:mod:`...orchestration.gate_facts_reader`) the contract's
+``landing_gate_facts`` block names.
 
 OMN-20127: the compose runtime calls :meth:`HandlerPrLandingOrchestrator.handle_async`
 (it prefers that entrypoint when the class declares it) and publishes the events
@@ -53,6 +56,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
     PrLandingStepResult,
     run_leg,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.gate_facts_reader import (
+    ProjectionGateFactsReader,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.head_checks import (
     TriageHeadCheckClassifier,
 )
@@ -62,6 +68,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.outbox import (
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     LazyPrLandingReducer,
     ProtocolPrLandingArmGate,
+    ProtocolPrLandingGateFacts,
     ProtocolPrLandingHeadCheckClassifier,
     ProtocolPrLandingReducer,
 )
@@ -89,17 +96,22 @@ class HandlerPrLandingOrchestrator:
         classifier: ProtocolPrLandingHeadCheckClassifier | None = None,
         config: PrLandingOrchestratorConfig | None = None,
         store: ProtocolPrLandingRowStore | None = None,
+        gate_facts: ProtocolPrLandingGateFacts | None = None,
     ) -> None:
+        # OMN-20866: the contract's landing_config, not a code default, decides
+        # each repository's mode; an explicit config is for tests only.
+        self._config = config if config is not None else load_contract_config()
+        gate = self._config.gate_facts
+        if gate_facts is None and gate is not None:
+            gate_facts = ProjectionGateFactsReader(gate)
         self._ports = PrLandingOrchestratorPorts(
             reducer=reducer if reducer is not None else LazyPrLandingReducer(),
             arm_gate=arm_gate if arm_gate is not None else HandlerPrArmGate(),
             classifier=classifier
             if classifier is not None
             else TriageHeadCheckClassifier(),
+            gate_facts=gate_facts,
         )
-        # OMN-20866: the contract's landing_config, not a code default, decides
-        # each repository's mode; an explicit config is for tests only.
-        self._config = config if config is not None else load_contract_config()
         self._local_store: ProtocolPrLandingRowStore = (
             store if store is not None else InMemoryPrLandingRowStore()
         )

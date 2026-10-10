@@ -38,6 +38,14 @@ class ModelPrLandingTransitioned(BaseModel):
     )
     intents: tuple[ModelPrLandingIntent, ...] = Field(default=())
     transitioned_at: datetime = Field(...)
+    withheld_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why a green head was not armed on its ledger gate facts (OMN-20866): "
+            "'<code>: <detail>', the code one of ledger_hold_in_force, "
+            "ledger_holds_unknown, lab_pass_missing or lab_pass_unknown."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelPrLandingTransitioned"]
