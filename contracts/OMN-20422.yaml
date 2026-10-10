@@ -13,14 +13,14 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the job-level env names LLM_GPT_OSS_REVIEW_URL on :8131 and a non-empty LLM_ENDPOINT_CIDR_ALLOWLIST, and both voter models are still requested -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q
+          AC1 (superseded by OMN-20910, RULING 2026-10-10T18:17:37Z): the second voter is no longer a job-level URL; the workflow reads every voter from the review voters overlay and names no voter endpoint, and the CIDR allowlist stays job-level -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-reviewer-pin-and-key"
     statement: |-
       The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 33a29cdfba6f14be6f94c3c77a05e29f345c692b (the dev tip carrying the failed-vote parse fix and the registry key rename), name the second voter local-studio-planner at every roster site, and resolve its URL from LLM_LOCAL_STUDIO_PLANNER_URL on :8131.
     acceptance:
       - id: "AC2"
         statement: |-
-          AC2: the omniintelligence clone is pinned to 33a29cdfba6f14be6f94c3c77a05e29f345c692b, the retired gpt-oss-review key and LLM_GPT_OSS_REVIEW_URL are gone, and local-studio-planner is requested at the preflight, retry-budget and review sites -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
+          AC2 (superseded by OMN-20910): no registry key or endpoint variable is named at the preflight, retry-budget or review sites; all three read the review voters overlay -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-shadow-review-runner"
     statement: |-
       node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (knowledge-base-internal never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
@@ -34,20 +34,20 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: |-
-          AC4: the omniintelligence clone is pinned to 30f37eca07b692d7889692edfe99686c87612315 -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
+          AC4 (superseded by OMN-20910): the omniintelligence clone is pinned to a full sha that carries the self-negating drop and the voters overlay reader -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k pinned
 evidence_requirements:
   - kind: "tests"
     description: "The workflow voter tests pass at the head."
-    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
   - kind: "tests"
     description: "The workflow pin and roster-key tests pass at the head."
-    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
   - kind: "tests"
     description: "The shadow-review node tests pass at the head."
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
   - kind: "tests"
     description: "The workflow clones omniintelligence at 30f37eca at the head."
-    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -58,7 +58,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-reviewer-pin-and-key-ac2"
@@ -66,7 +66,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-shadow-review-runner-ac3"
@@ -82,6 +82,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]

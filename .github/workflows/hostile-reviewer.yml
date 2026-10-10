@@ -5,18 +5,18 @@
 #
 # Adversarial multi-model code review gate on every pull request.
 #
-# Invokes omniintelligence.review_pairing.cli_review (node-based path via
-# HandlerLlmCliSubprocess / adapter_codex_reviewer) with two different LAB
-# models (OMN-17492, operator rulings 2026-09-25): qwen3-review (Qwen3.8-27B
-# on .201:8000) and local-studio-planner (Qwen3.6-35B-A3B on the .200 Mac Studio,
-# :8131 via LLM_LOCAL_STUDIO_PLANNER_URL, OMN-20422). Private diffs go only to lab models, never to a third-party cloud
-# reviewer (OPERATOR-CONSENT, rolling ledger row 4842). qwen3-review-b is
-# no longer a voter: it named the same .201:8000 model as qwen3-review, so
-# their "agreement" was one model agreeing with itself. .200 is always on
-# (operator, 2026-09-25), so there is no single-model pass: a lost reviewer
-# leaves one model, no quorum, and the job fails closed (OMN-15110 below).
-# Codex is excluded from the initial pilot — add --model codex once non-interactive
-# OAuth auth is confirmed on trusted CI runners (OMN-8524).
+# Invokes omniintelligence.review_pairing.cli_review with the voters declared
+# in the review voters contract overlay, omnibase_infra
+# docker/lane-overlays/hostile-review-voters.yaml, read from omnibase_infra
+# `dev` at run time (OMN-20910, operator RULING 2026-10-10T18:17:37Z: review-
+# voter models are declared in a contract overlay, never in repository
+# variables or workflow files). THIS FILE NAMES NO VOTER, ENDPOINT OR MODEL:
+# changing or adding a voter is an edit to that overlay, and the next run of
+# this gate uses it with no workflow, variable or pin change. Private diffs go
+# only to lab models (OPERATOR-CONSENT, rolling ledger row 4842). A required
+# voter that is unreachable or fails is named and the job fails closed; one
+# voter is no quorum (OMN-15110 below).
+# Codex is not a voter (OMN-8524); a voter of any kind is added in the overlay.
 #
 # Gate semantics:
 #   blocked  — critical/error findings from at least one succeeded model → exit 1
@@ -93,18 +93,13 @@ jobs:
     # either.
     timeout-minutes: 60
 
-    # Lab-endpoint environment, job-level so the preflight and the review step
-    # read the SAME values (the preflight resolves URLs exactly as the reviewer
-    # does: os.environ.get(config.env_var, config.default_url)).
-    # LLM_ENDPOINT_CIDR_ALLOWLIST: the transport fail-closes if it is unset (there
-    # is no code default). It moved here from the two step-level env blocks
-    # (OMN-20422) so the job carries one annotated line per address, not two.
-    # LLM_LOCAL_STUDIO_PLANNER_URL: OMN-20422, RULING 2026-10-09T04:15:56Z. The
-    # local-studio-planner key now names the Studio's Qwen3.6-35B-A3B on :8131; the
-    # registry default :8130 stays Qwen3.8-27B for delegation.
+    # Job-level so the preflight, the budget check and the review step read the
+    # SAME values. LLM_ENDPOINT_CIDR_ALLOWLIST is the transport's trust boundary
+    # (it fail-closes if unset); it names a subnet, not a voter. The voters
+    # themselves come only from REVIEW_VOTERS_OVERLAY (OMN-20910).
     env:
       LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200"
-      LLM_LOCAL_STUDIO_PLANNER_URL: "http://192.168.86.200:8131"  # onex-allow-internal-ip OMN-20422 reason="local-studio-planner resolves its URL from this env var: the second voter is Qwen3.6-35B-A3B on the Studio's :8131"
+      REVIEW_VOTERS_OVERLAY: ${{ github.workspace }}/../review-voters-overlay/docker/lane-overlays/hostile-review-voters.yaml
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -112,7 +107,29 @@ jobs:
           fetch-depth: 0
 
       - name: Clean stale dependency clones
-        run: rm -rf ../omniintelligence ../omnibase_core ../omnibase_compat
+        run: rm -rf ../omniintelligence ../omnibase_core ../omnibase_compat ../review-voters-overlay
+
+      # OMN-20910: the voters overlay is read from omnibase_infra `dev` at run
+      # time, deliberately unpinned: it is a deployment fact, and a pin would
+      # bring back the per-PR branch update this overlay exists to remove. Only
+      # docker/lane-overlays is checked out. The commit read is logged.
+      - name: Fetch review voters overlay
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4; do
+            rm -rf ../review-voters-overlay
+            if timeout 240s git clone --quiet --depth=1 --filter=blob:none --sparse --branch dev \
+                https://github.com/OmniNode-ai/omnibase_infra.git ../review-voters-overlay \
+              && git -C ../review-voters-overlay sparse-checkout set docker/lane-overlays; then
+              echo "review voters overlay read from omnibase_infra dev at $(git -C ../review-voters-overlay rev-parse HEAD)"
+              test -s "$REVIEW_VOTERS_OVERLAY"
+              exit 0
+            fi
+            echo "::warning::fetch of the review voters overlay failed (attempt ${attempt}/4)"
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not fetch the review voters overlay from omnibase_infra dev"
+          exit 1
 
       - name: Clone omniintelligence
         run: |
@@ -145,7 +162,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 30f37eca07b692d7889692edfe99686c87612315
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA e346cb6b841917089cddf1146e0039de2d5fea87
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -228,170 +245,91 @@ jobs:
         id: preflight
         working-directory: ../omniintelligence
         env:
-          # Resolve the SAME registry the reviewer loads (model_registry_loader)
-          # for the SAME models the review step runs
-          # (`--model qwen3-review --model local-studio-planner`). We flip
-          # reachable=false ONLY when EVERY requested model is unreachable AND the
-          # codex api-fallback is unavailable — the exact condition under which the
-          # reviewer itself yields verdict=degraded + exit 0.
-          REVIEW_MODEL_KEYS: "qwen3-review local-studio-planner"
-          REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
           # Wired from a GitHub Actions secret (OMN-14176): the LLM HTTP transport
           # HMAC-signs every call with LOCAL_LLM_SHARED_SECRET and fail-closes if it
-          # is absent. The old assumption that the runner env provided it
-          # (Infisical / shell profile) never held on this fleet.
+          # is absent.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_LOCAL_STUDIO_PLANNER_URL come from the
-          # job-level env block above (OMN-20422), not from this step.
         run: |
-          # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
-          # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
-          # We flip reachable=false ONLY when the reviewer would ALSO degrade:
-          # ALL requested models are TCP-unreachable (adapter_ai_reviewer._probe_tcp)
-          # AND the codex api-fallback (select_models_with_fallback ->
-          # _resolve_codex_binary) is unavailable. That keeps our short-circuit a
-          # STRICT SUBSET of the reviewer's degrade condition under all configs, so
-          # once OMN-8524 provisions codex on CI a local outage no longer suppresses
-          # a review.
+          # -e is intentionally OMITTED: an unreachable endpoint must never fail
+          # this step; it records a DEGRADED verdict and the enforce step fails
+          # the job. The targets come from the voters overlay through the same
+          # loader and node the review uses (OMN-20910), imported from source
+          # with only pyyaml and pydantic, before the ~3.6 GiB install. An
+          # invalid overlay is DEGRADED with the refusal, which names the voter.
           set -o pipefail
 
-          # Resolve host:port for EACH requested model exactly as the reviewer does:
-          #   url = os.environ.get(config.env_var, config.default_url)   # per-model
-          # then urllib.parse the host/port. pyyaml runs in an isolated env
-          # (--no-project --with) so we do NOT trigger the ~3.6 GiB dependency sync.
-          # Output: one "FALLBACK|<bool>" line, then one "TARGET|host|port|url" line
-          # per resolvable model.
-          PROBE_TARGETS="$(uv run --no-project --with pyyaml python - <<'PYEOF'
-          import os
-          import shutil
-          import urllib.parse
+          PROBE_TARGETS="$(uv run --no-project --with pyyaml --with pydantic python -I - "$REVIEW_VOTERS_OVERLAY" <<'PYEOF'
+          import sys
 
-          import yaml
+          sys.path.insert(0, "src")
+          from omniintelligence.nodes.node_review_voters_overlay_compute.handlers.handler_review_voters_overlay import (
+              probe_target_lines,
+          )
+          from omniintelligence.review_pairing.model_registry_loader import load_review_voters
 
-          registry_path = os.environ["REGISTRY_PATH"]
-          model_keys = os.environ["REVIEW_MODEL_KEYS"].split()
-          with open(registry_path, encoding="utf-8") as fh:
-              registry = yaml.safe_load(fh)
-
-
-          def _codex_resolvable() -> bool:
-              # Bool-form verbatim mirror of
-              # adapter_codex_reviewer._resolve_codex_binary: CODEX_BINARY (file+exec)
-              # -> shutil.which("codex") -> known Homebrew/system fallback dirs.
-              # ASSUMPTION (load-bearing): codex resolvability is identical at
-              # preflight-time (uv run --no-project) and review-time (project uv run)
-              # ONLY because omniintelligence ships no `codex` console-script in its
-              # venv; if it ever adds one, resolve codex from the review's own env here
-              # or the preflight could miss a `.venv/bin/codex` the review would find.
-              env_override = os.environ.get("CODEX_BINARY")
-              if (
-                  env_override
-                  and os.path.isfile(env_override)
-                  and os.access(env_override, os.X_OK)
-              ):
-                  return True
-              if shutil.which("codex") is not None:
-                  return True
-              for directory in (
-                  "/opt/homebrew/bin",
-                  "/usr/local/bin",
-                  os.path.expanduser("~/.local/bin"),
-              ):
-                  candidate = os.path.join(directory, "codex")
-                  if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                      return True
-              return False
-
-
-          # Mirror select_models_with_fallback: when the requested local models are
-          # unreachable the reviewer substitutes api_fallback_keys and only degrades
-          # if that fallback ALSO fails. fallback_blocks=True means a live fallback
-          # might still succeed -> we must NOT short-circuit; let the reviewer decide.
-          # Conservative: an unrecognized (non-codex) fallback we cannot prove
-          # unavailable also blocks the short-circuit (fail-open).
-          fallback_keys = list(registry.get("api_fallback_keys", []))
-          if not fallback_keys:
-              fallback_blocks = False
-          elif any(k != "codex" for k in fallback_keys):
-              fallback_blocks = True
+          roster = load_review_voters(sys.argv[1])
+          if not roster.ok:
+              print(f"REFUSED|{roster.error_message}")
           else:
-              fallback_blocks = _codex_resolvable()
-
-          print(f"FALLBACK|{'true' if fallback_blocks else 'false'}")
-
-          for model_key in model_keys:
-              cfg = registry["models"].get(model_key)
-              if not cfg:
-                  continue
-              # env_var overrides default_url — identical to adapter_ai_reviewer.
-              url = os.environ.get(cfg["env_var"], cfg["default_url"]).strip()
-              parsed = urllib.parse.urlparse(url)
-              host = parsed.hostname or ""
-              port = parsed.port or 80
-              if url and host:
-                  print(f"TARGET|{host}|{port}|{url}")
+              for voter in roster.voters:
+                  print(f"VOTER|{voter.describe()}")
+              print("\n".join(probe_target_lines(roster)))
           PYEOF
           )"
+          printf '%s\n' "$PROBE_TARGETS" | sed -n 's/^VOTER|/review voter: /p'
 
-          FALLBACK_BLOCKS="$(printf '%s\n' "$PROBE_TARGETS" | sed -n 's/^FALLBACK|//p' | head -n1)"
+          REFUSED="$(printf '%s\n' "$PROBE_TARGETS" | sed -n 's/^REFUSED|//p' | head -n1)"
           TARGETS="$(printf '%s\n' "$PROBE_TARGETS" | grep '^TARGET' || true)"
 
-          if [ -z "$TARGETS" ]; then
-            echo "Could not statically resolve any of [${REVIEW_MODEL_KEYS}]; proceeding with full review (fail-open)."
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$REFUSED" ] || [ -z "$TARGETS" ]; then
+            REASON="${REFUSED:-the review voters overlay resolved no voter}"
+            echo "::error::review voters overlay refused: ${REASON}"
+            {
+              echo "reachable=false"
+              echo "verdict=degraded"
+              echo "blocking_count=0"
+              echo "total_findings=0"
+              echo "models_succeeded="
+              echo "error=review voters overlay refused: ${REASON}"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # TCP-connect probe — SAME semantics as adapter_ai_reviewer._probe_tcp
-          # (socket.create_connection). We retry so our short-circuit is a STRICT
-          # SUBSET of the reviewer's own single-shot 2s probe. If ANY requested
-          # model is reachable, the review can succeed -> proceed. Process
-          # substitution (not a pipe) keeps this loop in the current shell so exit
-          # and UNREACHABLE persist.
+          # TCP-connect probe, 3 attempts per voter, the same tolerance as the
+          # reviewer's own probe. If ANY voter is reachable, the review runs and
+          # decides (it names every unreachable required voter itself).
           UNREACHABLE=""
-          while IFS='|' read -r _tag HOST PORT URL; do
+          while IFS='|' read -r _tag VOTER HOST PORT URL; do
             [ "$_tag" = "TARGET" ] || continue
-            model_reachable="false"
+            voter_reachable="false"
             for attempt in 1 2 3; do
               if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${PORT}" 2>/dev/null; then
-                echo "TCP connect to ${HOST}:${PORT} (${URL}) succeeded (attempt ${attempt})."
-                model_reachable="true"
+                echo "TCP connect to voter ${VOTER} at ${HOST}:${PORT} (${URL}) succeeded (attempt ${attempt})."
+                voter_reachable="true"
                 break
               fi
-              echo "TCP connect to ${HOST}:${PORT} (${URL}) failed (attempt ${attempt}/3)."
+              echo "TCP connect to voter ${VOTER} at ${HOST}:${PORT} (${URL}) failed (attempt ${attempt}/3)."
               [ "$attempt" -lt 3 ] && sleep 2
             done
-            if [ "$model_reachable" = "true" ]; then
-              echo "At least one review endpoint is reachable; proceeding with full review."
+            if [ "$voter_reachable" = "true" ]; then
+              echo "At least one review voter is reachable; proceeding with full review."
               echo "reachable=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            UNREACHABLE="${UNREACHABLE}${HOST}:${PORT} "
+            UNREACHABLE="${UNREACHABLE}${VOTER}@${HOST}:${PORT} "
           done < <(printf '%s\n' "$TARGETS")
 
-          # EVERY requested model is unreachable. The reviewer does NOT degrade on
-          # that alone — select_models_with_fallback substitutes the codex
-          # api-fallback and only degrades if codex ALSO fails. If codex may be
-          # available, PROCEED and let the reviewer decide (fail-open; closes the
-          # OMN-8524 hole where a codex review would otherwise be suppressed).
-          if [ "$FALLBACK_BLOCKS" = "true" ]; then
-            echo "All review endpoints unreachable, but the codex api-fallback may be available; proceeding to the full review (reviewer decides) — OMN-8524."
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # ALL models unreachable AND codex api-fallback unavailable → this is the
-          # EXACT condition under which the reviewer yields verdict=degraded + exit 0
-          # with zero models succeeded. Short-circuit with the IDENTICAL degraded
-          # verdict (see the degraded branch of "Run adversarial review").
-          echo "::warning::All review endpoints [${UNREACHABLE}] unreachable after 3 attempts and no codex api-fallback available; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          # EVERY voter is unreachable; the overlay names no fallback, so the
+          # reviewer would call nobody. Short-circuit with the same DEGRADED
+          # verdict and skip the install.
+          echo "::warning::All review voters [${UNREACHABLE}] unreachable after 3 attempts; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
           {
             echo "reachable=false"
             echo "verdict=degraded"
             echo "blocking_count=0"
             echo "total_findings=0"
             echo "models_succeeded="
-            echo "error=all review endpoints [${UNREACHABLE}] unreachable — preflight short-circuit (no models available)"
+            echo "error=all review voters [${UNREACHABLE}] unreachable — preflight short-circuit"
           } >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -463,8 +401,7 @@ jobs:
           # -- bash does not trigger -e for a command that is part of an
           # if/while/until condition, regardless of ambient -e state.
           if OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
-            --model qwen3-review \
-            --model local-studio-planner \
+            --voters-overlay "$REVIEW_VOTERS_OVERLAY" \
             --job-timeout-seconds 3600 \
             --setup-overhead-seconds 300 2>&1); then
             STATUS=0
@@ -510,8 +447,8 @@ jobs:
           # on this fleet — that gap is why every review DEGRADED with "all models
           # failed" despite a reachable endpoint.
           LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
-          # LLM_ENDPOINT_CIDR_ALLOWLIST and LLM_LOCAL_STUDIO_PLANNER_URL come from the
-          # job-level env block above (OMN-20422), not from this step.
+          # LLM_ENDPOINT_CIDR_ALLOWLIST and REVIEW_VOTERS_OVERLAY come from the
+          # job-level env block above, not from this step.
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
@@ -524,19 +461,15 @@ jobs:
           # the reason is visible. stdout is still captured into REVIEW_JSON via the
           # command substitution, and the command's exit code is still preserved via
           # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
-          # Two different lab models (OMN-17492): qwen3-review (Qwen3.8-27B,
-          # .201:8000) + local-studio-planner (Qwen3.6-35B-A3B, .200:8131). Both must
-          # answer for a verdict (OMN-14176 made >=2 the exit-0 condition);
-          # one is no quorum, and the enforce step below fails the job.
-          #
-          # OMN-18479: those two models are also the quorum. A finding blocks
-          # only when both raise it; a finding one model raised is reported in
-          # the reviewer summary without blocking.
+          # The voters, their endpoints, models, sampling and focus come from the
+          # overlay (OMN-20910); the log names each voter and the model its
+          # endpoint serves. A required voter that does not vote exits 2, named.
+          # OMN-18479: a finding blocks only when at least two distinct voters
+          # raise it; one voter's finding is reported without blocking.
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
-            --model qwen3-review \
-            --model local-studio-planner \
+            --voters-overlay "$REVIEW_VOTERS_OVERLAY" \
             2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
