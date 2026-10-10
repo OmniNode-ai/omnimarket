@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 import omnimarket.nodes.node_handshake_policy_gate_effect as node_package
 from omnimarket.github_api import GitHubApiError
@@ -327,6 +327,29 @@ def test_real_reader_resolves_the_token_once_at_the_first_read(
     assert reader.default_branch("repos/OmniNode-ai/alpha") == "dev"
     assert reader.default_branch("repos/OmniNode-ai/alpha") == "dev"
     assert calls == ["resolve"]
+
+
+def test_an_empty_token_from_the_store_is_refused_at_the_first_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The constructor's empty-value refusal for explicit "" also holds for a token resolved at the first read."""
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def resolve(*args: object, **kwargs: object) -> SecretStr:
+        return SecretStr("")
+
+    def rest(*args: object, **kwargs: object) -> dict[str, object]:
+        calls.append((args, kwargs))
+        return {}
+
+    monkeypatch.setattr(adapters, "resolve_api_key_loop_safe", resolve)
+    monkeypatch.setattr(adapters, "rest_json", rest)
+    reader = adapters.GitHubPolicyGateReader()
+    with pytest.raises(PolicyGatePortError, match="must not be empty"):
+        reader.default_branch("repos/OmniNode-ai/alpha")
+    with pytest.raises(PolicyGatePortError, match="must not be empty"):
+        reader.latest_run("repos/OmniNode-ai/alpha/actions/runs")
+    assert calls == []
 
 
 def test_missing_repos_conf_is_exit_two(

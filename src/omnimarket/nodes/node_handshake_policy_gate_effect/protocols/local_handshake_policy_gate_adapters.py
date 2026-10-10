@@ -34,7 +34,10 @@ def resolve_policy_gate_token() -> str:
         raise PolicyGatePortError(
             f"no GitHub token: {_SECRET_NAME} is not set in the secret store"
         )
-    return secret.get_secret_value()
+    token = secret.get_secret_value()
+    if not token:
+        raise PolicyGatePortError("GitHub token must not be empty")
+    return token
 
 
 def _error_text(exc: GitHubApiError) -> str:
