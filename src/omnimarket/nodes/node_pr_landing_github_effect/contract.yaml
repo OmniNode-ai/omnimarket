@@ -16,8 +16,14 @@
 # consumes both results. Either half alone is a defect the hard contract topic
 # graph gate refuses. The orchestrator sends mutations in dry_run by default
 # (shadow mode, plan 5.5); only the conditional reads are sent live.
+#
+# 1.3.0 (OMN-20866): the arm's policy read also reads mergeStateStatus, and an
+# arm of a PR GitHub reports mergeable now (clean, unstable or has_hooks) with
+# no arm in place sends mergePullRequest at the expected head instead of
+# enablePullRequestAutoMerge, which GitHub refuses on such a PR ("Pull request
+# is in clean status"). A green, mergeable PR is merged, not left unarmed.
 name: node_pr_landing_github_effect
-contract_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -33,7 +39,9 @@ description: >
   send and calls nothing; enforce sends them. Every result carries a
   ModelGithubQuotaReading parsed from the response's x-ratelimit-* headers,
   and a call is refused with the typed reason quota_floor when the last
-  reading for its resource is under the declared floor. Never merges.
+  reading for its resource is under the declared floor. The one merge it
+  makes is an arm's, of a PR GitHub reports mergeable now (it refuses to arm
+  one), at the expected head.
 
 input_model:
   name: ModelPrLandingGithubRequest
@@ -47,7 +55,7 @@ operations:
     description: "PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch with expected_head_sha."
     transport: rest
   - name: arm_auto_merge
-    description: "GraphQL landing policy read (head, draft, title, labels, state, merged, autoMergeAllowed, isMergeQueueEnabled), then enablePullRequestAutoMerge with expectedHeadOid (merge method from the command, SQUASH by default). Refused without a mutation on a draft, a hold marker, a closed or merged PR, a moved head, auto-merge not allowed, or a merge queue on the base."
+    description: "GraphQL landing policy read (head, draft, title, labels, state, merged, mergeStateStatus, autoMergeAllowed, isMergeQueueEnabled), then enablePullRequestAutoMerge with expectedHeadOid (merge method from the command, SQUASH by default). Refused without a mutation on a draft, a hold marker, a closed or merged PR, a moved head, auto-merge not allowed, or a merge queue on the base. No mutation when auto-merge is already armed. When mergeStateStatus is CLEAN, UNSTABLE or HAS_HOOKS, GitHub refuses the arm, so mergePullRequest with expectedHeadOid is sent instead (OMN-20866)."
     transport: graphql
   - name: enqueue
     description: "GraphQL landing policy read, then enqueuePullRequest with expectedHeadOid into the base branch's merge queue. Refused without a mutation on a draft, a hold marker, a closed or merged PR, a moved head, or no merge queue on the base."

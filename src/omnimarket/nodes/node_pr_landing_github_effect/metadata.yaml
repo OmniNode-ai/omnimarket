@@ -1,5 +1,5 @@
 name: node_pr_landing_github_effect
-version: "1.2.0"
+version: "1.3.0"
 description: "PR landing workflow GitHub effect: re-run, update-branch, arm and enqueue behind a draft, hold, head and merge-policy read, disarm, and conditional check and PR-state reads, with header-read quota (OMN-19826, OMN-19831)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 # OMN-19826 froze the seam; OMN-19831 added the handler (contract 1.1.0). The

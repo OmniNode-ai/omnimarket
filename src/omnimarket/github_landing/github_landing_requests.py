@@ -51,19 +51,29 @@ ENQUEUE_AT_HEAD_MUTATION = (
 DEQUEUE_MUTATION = (
     "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }"
 )
+# The landing effect's merge of a PR GitHub already reports mergeable (OMN-20866):
+# GitHub refuses to arm auto-merge on such a PR ("Pull request is in clean
+# status"), so the arm merges it instead, refused once the head has moved past
+# expectedHeadOid.
+MERGE_AT_HEAD_MUTATION = (
+    "mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!) {"
+    " mergePullRequest(input: {pullRequestId: $id, mergeMethod: $method,"
+    " expectedHeadOid: $head}) { pullRequest { number merged } } }"
+)
 # GitHub's documented disablePullRequestAutoMerge mutation.
 DISABLE_AUTO_MERGE_MUTATION = (
     "mutation($id: ID!) { disablePullRequestAutoMerge(input: {pullRequestId: $id}) "
     "{ pullRequest { number } } }"
 )
 # The read an arm or enqueue makes first, in one call: the PR's head, draft
-# flag, title and labels (the hold markers), open state, and the repository's
-# live merge policy (auto-merge allowed, merge queue on the base branch).
+# flag, title and labels (the hold markers), open state, GitHub's merge state
+# (mergeStateStatus, OMN-20866), and the repository's live merge policy
+# (auto-merge allowed, merge queue on the base branch).
 LANDING_POLICY_QUERY = (
     "query($owner: String!, $name: String!, $number: Int!) {"
     " repository(owner: $owner, name: $name) { autoMergeAllowed"
     " pullRequest(number: $number) { id number headRefOid baseRefName isDraft"
-    " title state merged isMergeQueueEnabled isInMergeQueue"
+    " title state merged isMergeQueueEnabled isInMergeQueue mergeStateStatus"
     " labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }"
 )
 
@@ -240,6 +250,16 @@ def enable_auto_merge_request(
     )
 
 
+def merge_at_head_request(
+    pr_node_id: str, merge_method: MergeMethod, expected_head_sha: str
+) -> ModelGithubHttpRequest:
+    """Merge now at the expected head. GitHub refuses it on a moved head."""
+    return _graphql(
+        MERGE_AT_HEAD_MUTATION,
+        {"id": pr_node_id, "method": merge_method, "head": expected_head_sha},
+    )
+
+
 def enqueue_request(pr_node_id: str, expected_head_sha: str) -> ModelGithubHttpRequest:
     """Enqueue in the base branch's merge queue at the expected head."""
     return _graphql(
@@ -263,6 +283,7 @@ __all__: list[str] = [
     "ENQUEUE_AT_HEAD_MUTATION",
     "LANDING_POLICY_QUERY",
     "LIST_PAGE_SIZE",
+    "MERGE_AT_HEAD_MUTATION",
     "GithubLandingRequestError",
     "MergeMethod",
     "branch_request",
@@ -277,6 +298,7 @@ __all__: list[str] = [
     "git_ref_request",
     "head_check_runs_request",
     "landing_policy_request",
+    "merge_at_head_request",
     "pull_request_request",
     "rerun_failed_jobs_request",
     "run_jobs_request",
