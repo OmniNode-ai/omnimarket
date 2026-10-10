@@ -248,3 +248,38 @@ def test_filesystem_key_rejects_keys_that_could_escape_the_directory(
 ) -> None:
     with pytest.raises(ValueError, match="invalid PR key"):
         filesystem_key(bad_key)
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    ["../../etc/passwd#1", "a/../b#1", "../x#1", "./.#1", "org/repo", "org/repo#1/.."],
+)
+def test_a_path_traversing_pr_key_is_refused_at_the_model(bad_key: str) -> None:
+    # The request boundary refuses the key, so no claim path is ever built from it.
+    with pytest.raises(ValidationError, match="invalid PR key"):
+        ModelPrClaimRegistryRequest(
+            operation=EnumPrClaimOperation.ACQUIRE,
+            claims_dir="/tmp/claims",
+            now="2026-10-09T12:00:00Z",
+            pr_key=bad_key,
+        )
+
+
+@pytest.mark.parametrize(
+    "key", ["a.b/..c#1", "x./.y#2", "-/-#3", "omninode-ai/omniclaude#247"]
+)
+def test_every_accepted_pr_key_names_one_file_inside_the_claims_dir(
+    key: str, tmp_path: Path
+) -> None:
+    stem = filesystem_key(key)
+    assert "/" not in stem
+    assert stem not in {".", ".."}
+    request = ModelPrClaimRegistryRequest(
+        operation=EnumPrClaimOperation.GET_CLAIM,
+        claims_dir=str(tmp_path),
+        now="2026-10-09T12:00:00Z",
+        pr_key=key,
+    )
+    result = HandlerPrClaimRegistry().handle(request)
+    assert result.claim is None
+    assert (tmp_path / f"{stem}.json").resolve().parent == tmp_path.resolve()
