@@ -137,3 +137,27 @@ def test_the_rest_pull_read_carries_mergeable_state() -> None:
     assert fact.mergeable_state == "clean"
     unknown = ModelGithubPrStateFact.from_rest_pull({**body, "mergeable_state": None})
     assert unknown.mergeable_state is None
+
+
+@pytest.mark.parametrize(
+    ("name", "queued", "armed"),
+    [
+        ("enqueue_already_queued", True, False),
+        ("enqueue_already_armed", False, True),
+    ],
+)
+async def test_an_enqueue_already_in_place_sends_no_mutation(
+    name: str, queued: bool, armed: bool
+) -> None:
+    """A PR already queued, or armed to join the queue, holds: no second enqueue."""
+    transport = FakeGithubLandingTransport.for_scenario(name)
+    result = await HandlerPrLandingGithubEffect(transport).handle(_command(name))
+    transport.assert_drained()
+    assert isinstance(result, ModelPrLandingGithubCompleted)
+    (policy_read,) = transport.sent
+    assert policy_read.body is not None
+    assert policy_read.body["query"] == LANDING_POLICY_QUERY
+    assert result.pr_state is not None
+    assert result.pr_state.in_merge_queue is queued
+    assert result.pr_state.auto_merge_armed is armed
+    assert result.http_statuses == (200,)

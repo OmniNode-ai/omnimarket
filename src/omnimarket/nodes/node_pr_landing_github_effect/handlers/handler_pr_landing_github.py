@@ -32,7 +32,8 @@ Rules this handler enforces (knowledge-base#94, revision 1 of the plan):
   the rulesets in force), so the classifier judges only what blocks a merge.
 - **An arm already in place holds (OMN-20866).** When the policy read shows
   auto-merge already armed at the expected head, the arm completes without
-  sending the mutation again.
+  sending the mutation again. An enqueue completes the same way when the PR
+  is already in the merge queue or armed to join it.
 - **A PR GitHub already reports mergeable is merged (OMN-20866).** GitHub
   refuses to arm auto-merge on a PR whose merge state is clean, unstable or
   has_hooks ("Pull request is in clean status"), so an arm whose policy read
@@ -492,6 +493,13 @@ class HandlerPrLandingGithubEffect:
         ):
             # Already armed at the expected head (another arm path placed it):
             # the arm holds, so the mutation is not sent again (OMN-20866).
+            return exchange.completed(pr_state=state)
+        if command.operation is EnumPrLandingGithubOperation.ENQUEUE and (
+            state.in_merge_queue or state.auto_merge_armed
+        ):
+            # Already queued, or armed so GitHub queues it when its required
+            # checks pass (auto-merge.yml's path): the enqueue holds, so the
+            # mutation is not sent again (OMN-20866).
             return exchange.completed(pr_state=state)
         if (
             command.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE
