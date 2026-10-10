@@ -86,6 +86,69 @@ class EnumLandingSuspension(StrEnum):
     OWNED = "owned"
 
 
+class EnumLandingGateReason(StrEnum):
+    """Which gate a ``gate`` suspension stands for; a gate with none is refused.
+
+    The collector's gate sources, one word each: ``companion_wait`` (red only on
+    the change-control cascade while its companion is open), ``autobind`` (the
+    producer is about to bind a cascade red), ``pending_required`` (a red head
+    whose required contexts are still running), ``worker_gate`` (a judged
+    external blocker or a spent head: no worker), ``base_blocked`` (a merge-queue
+    ejection while the base is red), ``queued`` (in the merge queue),
+    ``ledger_pause`` (a pause row names it), ``operator_main`` (based on main in
+    an operator-gated repository), ``release_train`` (a bot's release PR, landed
+    by release-cut), ``lab_unproven`` (a runtime head with no lab PASS readback),
+    ``companion_subject`` (a change-control companion, never merged here) and
+    ``retarget`` (based on a branch its repository does not land on).
+    """
+
+    COMPANION_WAIT = "companion_wait"
+    AUTOBIND = "autobind"
+    PENDING_REQUIRED = "pending_required"
+    WORKER_GATE = "worker_gate"
+    BASE_BLOCKED = "base_blocked"
+    QUEUED = "queued"
+    LEDGER_PAUSE = "ledger_pause"
+    OPERATOR_MAIN = "operator_main"
+    RELEASE_TRAIN = "release_train"
+    LAB_UNPROVEN = "lab_unproven"
+    COMPANION_SUBJECT = "companion_subject"
+    RETARGET = "retarget"
+
+
+# The gates whose premise is a red head: each holds a worker or a rerun, never a
+# merge, so on a green, CLEAN head older than two ticks it holds nothing.
+STALE_WHEN_GREEN_GATE_REASONS: frozenset[EnumLandingGateReason] = frozenset(
+    {
+        EnumLandingGateReason.COMPANION_WAIT,
+        EnumLandingGateReason.AUTOBIND,
+        EnumLandingGateReason.PENDING_REQUIRED,
+        EnumLandingGateReason.WORKER_GATE,
+    }
+)
+
+
+class EnumLandingLandSkipReason(StrEnum):
+    """Why an open, green, CLEAN PR got no merge this tick (one per such PR).
+
+    A suspension (``hold``, ``do_not_land``, ``draft``, ``owned``, ``gate`` with
+    its reasons), a collaborator's PR, an open merge-order parent, a live lease
+    whose verified head is not this one, a runtime PR inside an open companion,
+    or a runtime PR while another holds the token.
+    """
+
+    HOLD = "hold"
+    DO_NOT_LAND = "do_not_land"
+    DRAFT = "draft"
+    OWNED = "owned"
+    GATE = "gate"
+    COLLABORATOR = "collaborator"
+    OPEN_PARENTS = "open_parents"
+    LEASED = "leased"
+    COMPANION_MEMBER = "companion_member"
+    TOKEN_HELD = "token_held"
+
+
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;
 # ``owned`` (a lane's CLAIM on the PR) and a stalled ``gate`` do not.
 CAUSE_EXCLUDED_SUSPENSIONS: frozenset[EnumLandingSuspension] = frozenset(
@@ -298,6 +361,7 @@ __all__: list[str] = [
     "CAUSE_EXCLUDED_SUSPENSIONS",
     "CLAUDE_ENGINES",
     "RERUNNABLE_RED_CLASSES",
+    "STALE_WHEN_GREEN_GATE_REASONS",
     "EnumLandingActionKind",
     "EnumLandingBriefClass",
     "EnumLandingCi",
@@ -305,6 +369,8 @@ __all__: list[str] = [
     "EnumLandingDegradedReason",
     "EnumLandingEngine",
     "EnumLandingExternalBlockerKind",
+    "EnumLandingGateReason",
+    "EnumLandingLandSkipReason",
     "EnumLandingMemberEligibility",
     "EnumLandingMemberPosition",
     "EnumLandingMergeState",

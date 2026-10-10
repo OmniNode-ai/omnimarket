@@ -1,0 +1,74 @@
+{
+  "provenance": {
+    "sidecar": "the landing controller's sidecar gate_since entries for the five PRs the ticket names (ops_gated stands in for the operator-gated private repository, which a public repository never names), read 2026-10-10T04:20Z: each carried kind gate with since 2026-10-09T15:47:41Z, and no decision row named the gate",
+    "facts": "per PR, the PR watcher's record (head, base, labels, draft, armed, author, title, created_at) read from its state at tick 2026-10-10T08:42:50Z; omnimemory#557's CI (every check-run success) and merge state (CLEAN) as the ticket read them before it merged at 2026-10-10T04:20:19Z",
+    "ci": "the ops_gated PRs are held-excluded in the watcher, which reads no CI for them: sent as pending; their merge state is the watcher's BLOCKED, except #1824 which it does not read (unknown)",
+    "gate_reasons": "the collector rule each PR meets: omnimemory#557 is a bot's chore: release PR (release_train, landed by release-cut); the ops_gated PRs are based on main in an operator-gated repository (operator_main); a hold:auto-merge label is the hold suspension, beside the gate"
+  },
+  "observed_at": "2026-10-10T04:15:00Z",
+  "sidecar_gate_since": {
+    "omnimemory#557": {"head": "83ddb778b5afed4f45c0b3a1edb85f00a87abbde", "kind": "gate", "since": "2026-10-09T15:47:41Z"},
+    "ops_gated#1786": {"head": "c242e5fb307a8b87695f81ef7dbef1e6e07d7d9d", "kind": "gate", "since": "2026-10-09T15:47:41Z"},
+    "ops_gated#1799": {"head": "4a26f6e22baf74f55058e030c5adcde66ccbfce2", "kind": "gate", "since": "2026-10-09T15:47:41Z"},
+    "ops_gated#1802": {"head": "511b86f898acf830582010ef76e145bc03041d6c", "kind": "gate", "since": "2026-10-09T15:47:41Z"},
+    "ops_gated#1824": {"head": "1da64d9ad7426d4927c2af3d77d0cce6906f52d1", "kind": "gate", "since": "2026-10-09T15:47:41Z"}
+  },
+  "prs": [
+    {
+      "pr": "OmniNode-ai/omnimemory#557",
+      "head_sha": "83ddb778b5afed4f45c0b3a1edb85f00a87abbde",
+      "state": "open",
+      "ci": "green",
+      "merge_state": "clean",
+      "suspensions": ["gate"],
+      "gate_reasons": ["release_train"],
+      "gate_since": "2026-10-09T15:47:41Z",
+      "created_at": "2026-10-01T07:34:37Z"
+    },
+    {
+      "pr": "OmniNode-ai/ops_gated#1786",
+      "head_sha": "c242e5fb307a8b87695f81ef7dbef1e6e07d7d9d",
+      "state": "open",
+      "ci": "pending",
+      "merge_state": "blocked",
+      "suspensions": ["gate", "hold"],
+      "gate_reasons": ["operator_main"],
+      "gate_since": "2026-10-09T15:47:41Z",
+      "created_at": "2026-10-03T01:36:43Z"
+    },
+    {
+      "pr": "OmniNode-ai/ops_gated#1799",
+      "head_sha": "4a26f6e22baf74f55058e030c5adcde66ccbfce2",
+      "state": "open",
+      "ci": "pending",
+      "merge_state": "blocked",
+      "suspensions": ["gate"],
+      "gate_reasons": ["operator_main"],
+      "gate_since": "2026-10-09T15:47:41Z",
+      "created_at": "2026-10-04T18:34:30Z"
+    },
+    {
+      "pr": "OmniNode-ai/ops_gated#1802",
+      "head_sha": "511b86f898acf830582010ef76e145bc03041d6c",
+      "state": "open",
+      "ci": "pending",
+      "merge_state": "blocked",
+      "suspensions": ["gate"],
+      "gate_reasons": ["operator_main"],
+      "gate_since": "2026-10-09T15:47:41Z",
+      "auto_merge_head": "511b86f898acf830582010ef76e145bc03041d6c",
+      "created_at": "2026-10-04T23:55:03Z"
+    },
+    {
+      "pr": "OmniNode-ai/ops_gated#1824",
+      "head_sha": "1da64d9ad7426d4927c2af3d77d0cce6906f52d1",
+      "state": "open",
+      "ci": "pending",
+      "merge_state": "unknown",
+      "suspensions": ["gate", "hold"],
+      "gate_reasons": ["operator_main"],
+      "gate_since": "2026-10-09T15:47:41Z",
+      "created_at": "2026-10-06T14:54:01Z"
+    }
+  ]
+}

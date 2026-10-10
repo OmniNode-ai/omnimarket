@@ -100,6 +100,7 @@ class Pr:
     annotations: dict[str, str] = field(default_factory=lambda: {CHECK: ANN})
     suspensions: tuple[str, ...] = ()
     gate_since: datetime | None = None
+    gate_reasons: tuple[str, ...] = ()
     process_fix: bool = False
     rerun_runs: list[dict[str, Any]] = field(default_factory=list)
 
@@ -128,6 +129,8 @@ class Pr:
             data["red_annotations"] = dict(self.annotations)
         if self.gate_since is not None:
             data["gate_since"] = self.gate_since.isoformat()
+        if "gate" in self.suspensions:
+            data["gate_reasons"] = list(self.gate_reasons or ("companion_wait",))
         return data
 
 

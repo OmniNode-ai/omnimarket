@@ -26,6 +26,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingCi,
     EnumLandingEngine,
     EnumLandingExternalBlockerKind,
+    EnumLandingGateReason,
     EnumLandingMergeState,
     EnumLandingPrState,
     EnumLandingPushMode,
@@ -145,11 +146,23 @@ class ModelLandingPrFacts(BaseModel):
         default=None,
         description="When the current gate suspension began on this head.",
     )
+    gate_reasons: tuple[EnumLandingGateReason, ...] = Field(
+        default=(),
+        description=(
+            "Which gates the gate suspension stands for. A gate suspension with "
+            "none is refused, and so are reasons with no gate suspension."
+        ),
+    )
 
     @model_validator(mode="after")
     def _red_needs_class(self) -> ModelLandingPrFacts:
         if self.ci is EnumLandingCi.RED and self.red_class is None:
             raise ValueError("a red head needs its red_class")
+        gated = EnumLandingSuspension.GATE in self.suspensions
+        if gated and not self.gate_reasons:
+            raise ValueError("a gate suspension needs at least one named gate_reason")
+        if self.gate_reasons and not gated:
+            raise ValueError("gate_reasons without a gate suspension")
         if not set(self.open_parents) <= set(self.parents):
             raise ValueError("open_parents must be a subset of parents")
         return self
@@ -319,6 +332,14 @@ class ModelLandingPolicy(BaseModel):
         default=2,
         ge=1,
         description="Update-branch refreshes per PR for stale cancelled copies.",
+    )
+    stale_gate_seconds: int = Field(
+        default=600,
+        ge=0,
+        description=(
+            "A gate whose premise is a red head, on a green, CLEAN head, holds "
+            "nothing once older than this (two 300 s controller ticks)."
+        ),
     )
     engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(
