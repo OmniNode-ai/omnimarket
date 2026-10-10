@@ -28,6 +28,8 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingCompanionVerdict,
     EnumLandingDegradedReason,
     EnumLandingEngine,
+    EnumLandingGateReason,
+    EnumLandingLandSkipReason,
     EnumLandingOutcome,
     EnumLandingOutcomeReason,
     EnumLandingResultKind,
@@ -301,6 +303,39 @@ class ModelLandingCompanionVerdictRow(BaseModel):
     verdict: EnumLandingCompanionVerdict
 
 
+class ModelLandingGateRow(BaseModel):
+    """One open PR under a gate suspension: the gates it names, and whether this
+    tick released them (every reason's premise is a red head, the head is green
+    and CLEAN, and the gate is older than ``stale_gate_seconds``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    reasons: tuple[EnumLandingGateReason, ...] = Field(..., min_length=1)
+    since: datetime | None = None
+    released: bool = False
+
+
+class ModelLandingLandSkip(BaseModel):
+    """Why one open, green, CLEAN PR got no merge on this head this tick."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    reason: EnumLandingLandSkipReason
+    gate_reasons: tuple[EnumLandingGateReason, ...] = Field(
+        default=(), description="The gates named, when the reason is gate."
+    )
+
+    @model_validator(mode="after")
+    def _gate_is_named(self) -> ModelLandingLandSkip:
+        if (self.reason is EnumLandingLandSkipReason.GATE) != bool(self.gate_reasons):
+            raise ValueError("a gate skip names its gates, and only a gate skip does")
+        return self
+
+
 class ModelLandingDecision(BaseModel):
     """One tick's decision."""
 
@@ -319,6 +354,16 @@ class ModelLandingDecision(BaseModel):
     observe_only_refused: tuple[str, ...] = Field(
         default=(), description="Draining repos refused observe-only this tick (P7)."
     )
+    gates: tuple[ModelLandingGateRow, ...] = Field(
+        default=(), description="Every open gate-suspended PR, with its named gates."
+    )
+    land_skips: tuple[ModelLandingLandSkip, ...] = Field(
+        default=(),
+        description=(
+            "Every open, green, CLEAN PR with no merge on its head this tick, "
+            "with the one reason why; such a PR has a merge or a row, never neither."
+        ),
+    )
     next_state: ModelLandingControllerState
 
 
@@ -335,6 +380,8 @@ __all__: list[str] = [
     "ModelLandingCompanionVerdictRow",
     "ModelLandingDecision",
     "ModelLandingDegraded",
+    "ModelLandingGateRow",
+    "ModelLandingLandSkip",
     "ModelLandingRecordedOutcome",
     "ModelLandingViolation",
     "ModelLandingWorkerBrief",

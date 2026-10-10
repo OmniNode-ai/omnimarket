@@ -26,6 +26,15 @@
 # park's operator MSG is deduped against the ledger row, not the state (LC-F3);
 # both from the T1 model, omnibase_internal#144.
 #
+# 0.3.0 names every gate: a gate suspension carries its gate_reasons (a closed
+# vocabulary, one word per collector gate source) or the facts are refused. The
+# decision lists every gated open PR with its reasons (gates), and every open,
+# green, CLEAN PR with no merge on its head gets one named reason (land_skips);
+# a tick that leaves such a PR with neither raises. A gate whose every reason's
+# premise is a red head (companion_wait, autobind, pending_required,
+# worker_gate) is released on a green, CLEAN head older than stale_gate_seconds
+# (two ticks), so that head takes the ordinary merge path.
+#
 # The landing controller calls it in process, so it has no event_bus; it is
 # addressable through runtime_dispatch like the other directly-invoked compute
 # nodes. Experimental until the controller runs it (observe-only first).
@@ -36,11 +45,11 @@ lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 0
-  minor: 2
+  minor: 3
   patch: 0
 node_version:
   major: 0
-  minor: 2
+  minor: 3
   patch: 0
 description: >
   Pure definition-B decision of one landing-controller tick. Reads one
@@ -50,8 +59,9 @@ description: >
   head, rerun, update-branch, eligibility rerun, companion rebuild or close,
   dispatch of a fixed worker brief or of one cause brief per shared red cause,
   kill, discard, observe-only, operator escalation of a parked cause), the
-  outcomes recorded, DEGRADED reasons, violations and the next state to write
-  ahead of acting. Deterministic in any input order.
+  outcomes recorded, DEGRADED reasons, violations, the named gate of every
+  gated PR, the named reason every green, CLEAN PR was not merged, and the
+  next state to write ahead of acting. Deterministic in any input order.
 input_model:
   name: "ModelLandingFacts"
   module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"

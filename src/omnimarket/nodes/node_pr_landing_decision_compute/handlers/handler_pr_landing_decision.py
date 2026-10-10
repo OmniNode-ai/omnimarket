@@ -46,6 +46,13 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    live lease or an open fix PR, or a park an owner's CLAIM covers; a park
    alone releases its members to per-PR dispatch (the fallback).
 
+Gates are named: every gated open PR is listed with its ``gate_reasons``, and
+every open, green, CLEAN PR left with no merge on its head carries one named
+reason (a suspension, a collaborator, an open parent, a lease, a companion, the
+token); a tick that leaves one with neither raises ``LandingCoverageError``. A
+gate whose every reason's premise is a red head is released on a green, CLEAN
+head once older than ``stale_gate_seconds``, so the head takes the merge path.
+
 A fixer HOLD (a repo, or all) dispatches no worker in its scope and revokes
 every live lease there through the kill sequence; merges, reruns and branch
 updates go on.
@@ -70,12 +77,14 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
     RERUNNABLE_RED_CLASSES,
+    STALE_WHEN_GREEN_GATE_REASONS,
     EnumLandingActionKind,
     EnumLandingBriefClass,
     EnumLandingCi,
     EnumLandingCompanionVerdict,
     EnumLandingDegradedReason,
     EnumLandingEngine,
+    EnumLandingLandSkipReason,
     EnumLandingMemberEligibility,
     EnumLandingMemberPosition,
     EnumLandingMergeState,
@@ -96,6 +105,8 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
     ModelLandingCompanionVerdictRow,
     ModelLandingDecision,
     ModelLandingDegraded,
+    ModelLandingGateRow,
+    ModelLandingLandSkip,
     ModelLandingRecordedOutcome,
     ModelLandingViolation,
     ModelLandingWorkerBrief,
@@ -220,6 +231,11 @@ class _Tick:
     refused: list[str] = field(default_factory=list)
     closing: set[str] = field(default_factory=set)
     close_next: set[str] = field(default_factory=set)
+    suspensions: dict[str, tuple[EnumLandingSuspension, ...]] = field(
+        default_factory=dict
+    )
+    released: set[str] = field(default_factory=set)
+    skips: dict[str, EnumLandingLandSkipReason] = field(default_factory=dict)
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -1445,10 +1461,12 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
             for c in t.comps.values()
         )
         if in_open_companion:
+            t.skips[p.pr] = EnumLandingLandSkipReason.COMPANION_MEMBER
             return
         if t.token is None:
             t.token = p.pr
         elif t.token != p.pr:
+            t.skips[p.pr] = EnumLandingLandSkipReason.TOKEN_HELD
             return
     t.emit(
         ModelLandingAction(
@@ -1520,7 +1538,11 @@ def _brief_class(p: ModelLandingPrFacts, ladder: int) -> EnumLandingBriefClass |
 
 
 def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
-    if p.state is not EnumLandingPrState.OPEN or p.suspensions or p.collaborator:
+    if p.state is not EnumLandingPrState.OPEN:
+        return
+    suspensions = t.suspensions.get(p.pr, p.suspensions)
+    if suspensions or p.collaborator:
+        t.skips[p.pr] = _held_reason(suspensions)
         return
     pr = p.pr
     fp = t.fingerprint(pr)
@@ -1539,11 +1561,18 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         # PinMerge: under a live lease, merge only the verified head
         if rec.awaiting_head == p.head_sha and _mergeable(p) and not p.open_parents:
             _merge(t, p)
+        else:
+            t.skips[p.pr] = (
+                EnumLandingLandSkipReason.OPEN_PARENTS
+                if p.open_parents
+                else EnumLandingLandSkipReason.LEASED
+            )
         return
     needs_worker = (
         p.ci is EnumLandingCi.RED or p.merge_state is EnumLandingMergeState.CONFLICTING
     )
     if p.open_parents:  # R3: only chain roots move
+        t.skips[pr] = EnumLandingLandSkipReason.OPEN_PARENTS
         if needs_worker and (
             rec.outcome is not EnumLandingOutcome.BLOCKED_ON
             or rec.blocker_fingerprint != fp
@@ -1607,6 +1636,78 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         _try_dispatch(t, pr, brief_class, p.head_sha, p.red_checks)
 
 
+# The order a held PR's reason is named in: a person's hold first, the gate last.
+_HELD_ORDER: tuple[tuple[EnumLandingSuspension, EnumLandingLandSkipReason], ...] = (
+    (EnumLandingSuspension.HOLD, EnumLandingLandSkipReason.HOLD),
+    (EnumLandingSuspension.DO_NOT_LAND, EnumLandingLandSkipReason.DO_NOT_LAND),
+    (EnumLandingSuspension.DRAFT, EnumLandingLandSkipReason.DRAFT),
+    (EnumLandingSuspension.OWNED, EnumLandingLandSkipReason.OWNED),
+    (EnumLandingSuspension.GATE, EnumLandingLandSkipReason.GATE),
+)
+
+
+def _held_reason(
+    suspensions: tuple[EnumLandingSuspension, ...],
+) -> EnumLandingLandSkipReason:
+    for suspension, reason in _HELD_ORDER:
+        if suspension in suspensions:
+            return reason
+    return EnumLandingLandSkipReason.COLLABORATOR
+
+
+def _gate_released(t: _Tick, p: ModelLandingPrFacts) -> bool:
+    """A gate whose every reason's premise is a red head holds nothing on a green,
+    CLEAN head once it is older than ``stale_gate_seconds`` (two ticks)."""
+    return (
+        EnumLandingSuspension.GATE in p.suspensions
+        and set(p.gate_reasons) <= STALE_WHEN_GREEN_GATE_REASONS
+        and _mergeable(p)
+        and p.gate_since is not None
+        and t.now - p.gate_since > timedelta(seconds=t.facts.policy.stale_gate_seconds)
+    )
+
+
+def _effective_suspensions(t: _Tick) -> None:
+    for p in t.prs.values():
+        if p.state is EnumLandingPrState.OPEN and _gate_released(t, p):
+            t.released.add(p.pr)
+            t.suspensions[p.pr] = tuple(
+                s for s in p.suspensions if s is not EnumLandingSuspension.GATE
+            )
+        else:
+            t.suspensions[p.pr] = p.suspensions
+
+
+def _merged_heads(decision: ModelLandingDecision) -> set[tuple[str, str | None]]:
+    return {
+        (a.subject, a.head_sha)
+        for a in (*decision.actions, *decision.observed_actions)
+        if a.kind is EnumLandingActionKind.MERGE
+    }
+
+
+def land_coverage_gaps(
+    facts: ModelLandingFacts, decision: ModelLandingDecision
+) -> tuple[str, ...]:
+    """The open, green, CLEAN PRs with neither a merge on their head nor a named skip."""
+    merged = _merged_heads(decision)
+    skipped = {(s.pr, s.head_sha) for s in decision.land_skips}
+    return tuple(
+        sorted(
+            p.pr
+            for p in facts.prs
+            if p.state is EnumLandingPrState.OPEN
+            and _mergeable(p)
+            and (p.pr, p.head_sha) not in merged
+            and (p.pr, p.head_sha) not in skipped
+        )
+    )
+
+
+class LandingCoverageError(RuntimeError):
+    """A green, CLEAN, open PR left this tick with no merge and no named reason."""
+
+
 def _priority(
     t: _Tick, p: ModelLandingPrFacts
 ) -> tuple[bool, int, bool, datetime, str]:
@@ -1641,11 +1742,12 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         causes={c.key: c for c in state.causes},
         hold=set(facts.fixer_hold),
     )
+    _effective_suspensions(t)
     holder = t.prs.get(t.token) if t.token is not None else None
     if t.token is not None and (
         holder is None
         or holder.state is not EnumLandingPrState.OPEN
-        or holder.suspensions
+        or t.suspensions[holder.pr]
         or holder.collaborator
     ):
         t.token = None  # R6: freed first, the tick its holder left
@@ -1665,7 +1767,13 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     _dispatch_causes(t)
     for p in sorted(t.prs.values(), key=lambda p: _priority(t, p)):
         _product_pr(t, p)
-    return _decision(t)
+    decision = _decision(t)
+    gaps = land_coverage_gaps(facts, decision)
+    if gaps:
+        raise LandingCoverageError(
+            f"green, CLEAN PRs with no merge and no named reason: {', '.join(gaps)}"
+        )
+    return decision
 
 
 def _decision(t: _Tick) -> ModelLandingDecision:
@@ -1708,8 +1816,46 @@ def _decision(t: _Tick) -> ModelLandingDecision:
         violations=tuple(t.violations),
         companion_verdicts=tuple(t.verdicts),
         observe_only_refused=tuple(t.refused),
+        gates=tuple(
+            ModelLandingGateRow(
+                pr=p.pr,
+                head_sha=p.head_sha,
+                reasons=p.gate_reasons,
+                since=p.gate_since,
+                released=p.pr in t.released,
+            )
+            for p in sorted(t.prs.values(), key=lambda p: p.pr)
+            if p.state is EnumLandingPrState.OPEN
+            and EnumLandingSuspension.GATE in p.suspensions
+        ),
+        land_skips=_land_skips(t),
         next_state=next_state,
     )
+
+
+def _land_skips(t: _Tick) -> tuple[ModelLandingLandSkip, ...]:
+    merged = {
+        (a.subject, a.head_sha)
+        for a in (*t.actions, *t.observed)
+        if a.kind is EnumLandingActionKind.MERGE
+    }
+    rows: list[ModelLandingLandSkip] = []
+    for pr in sorted(t.skips):
+        p = t.prs[pr]
+        if not _mergeable(p) or (pr, p.head_sha) in merged:
+            continue
+        reason = t.skips[pr]
+        rows.append(
+            ModelLandingLandSkip(
+                pr=pr,
+                head_sha=p.head_sha,
+                reason=reason,
+                gate_reasons=(
+                    p.gate_reasons if reason is EnumLandingLandSkipReason.GATE else ()
+                ),
+            )
+        )
+    return tuple(rows)
 
 
 class HandlerPrLandingDecision:
@@ -1721,9 +1867,11 @@ class HandlerPrLandingDecision:
 
 __all__: list[str] = [
     "HandlerPrLandingDecision",
+    "LandingCoverageError",
     "blocker_fingerprint",
     "decide_landing",
     "is_cause",
+    "land_coverage_gaps",
     "rebuild_key",
     "repo_of",
 ]
