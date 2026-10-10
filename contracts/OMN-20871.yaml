@@ -13,7 +13,7 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: |-
-          AC5: with GH_TOKEN and GITHUB_TOKEN unset, HandlerHandshakePolicyGateRun() is built without resolving a token, node_handshake_policy_gate_effect auto-wires in-process, the reader resolves the token once at its first GitHub read, and a missing or empty token is refused at that read with no REST call -- falsifier: unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails at the merge base
+          AC5: with GH_TOKEN and GITHUB_TOKEN unset, HandlerHandshakePolicyGateRun() is built without resolving a token, node_handshake_policy_gate_effect auto-wires in-process, the reader resolves the token once at its first GitHub read, and a missing or empty token is refused at that read with no REST call -- falsifier: unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q fails at the merge base
 # Linear AC1-AC4 are not declared here, so they are unbound in this contract. Each
 # is a readback outside this repository: AC1 a lab RestartCount readback at current
 # omnibase_infra dev, AC2 three lab runs of the dev-lane class step, AC3 the diff of
@@ -22,29 +22,18 @@ requirements:
 # AC4 can only be read after an omnimarket release that contains this change.
 evidence_requirements:
   - kind: "tests"
-    description: "The handler is built without resolving a token; the reader resolves it once at the first read and refuses a missing or empty token there."
-    command: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly -k 'resolves_no_token or resolves_the_token_once or empty_token_from_the_store'"
-  - kind: "tests"
-    description: "node_handshake_policy_gate_effect auto-wires in-process with no GitHub token and is off the cannot-wire list."
-    command: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly"
+    description: "The handler is built without resolving a token and the node auto-wires in-process with no GitHub token; the reader resolves it once at the first read and refuses a missing or empty token there."
+    command: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly -k 'resolves_no_token or resolves_the_token_once or empty_token_from_the_store or auto_wires_in_process_without_a_github_token'"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20871-handler-built-without-token"
-    description: "With no GitHub token in the environment, the handler is built without resolving one; the reader resolves it once at the first read and refuses a missing or empty token there with no REST call."
+    description: "With no GitHub token in the environment, the runtime's auto-wiring wires node_handshake_policy_gate_effect in-process and the handler is built without resolving a token; the reader resolves it once at the first read and refuses a missing or empty token there with no REST call."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly -k 'resolves_no_token or resolves_the_token_once or empty_token_from_the_store'"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC5"]
-  - id: "dod-omn20871-node-auto-wires-without-token"
-    description: "With no GitHub token in the environment, node_handshake_policy_gate_effect auto-wires in-process, as the runtime wires it at kernel boot."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly"
+        check_value: "unset GH_TOKEN GITHUB_TOKEN; uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly -k 'resolves_no_token or resolves_the_token_once or empty_token_from_the_store or auto_wires_in_process_without_a_github_token'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]

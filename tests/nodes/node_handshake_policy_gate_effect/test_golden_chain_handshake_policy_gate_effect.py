@@ -19,6 +19,17 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.container import ModelONEXContainer
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
+from omnibase_infra.runtime.auto_wiring.report import (
+    _RESOLUTION_FAILURE_REASONS,
+    EnumWiringOutcome,
+)
+from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+from omnibase_infra.topology import load_topology_profile
 from pydantic import SecretStr, ValidationError
 
 import omnimarket.nodes.node_handshake_policy_gate_effect as node_package
@@ -350,6 +361,60 @@ def test_an_empty_token_from_the_store_is_refused_at_the_first_read(
     with pytest.raises(PolicyGatePortError, match="must not be empty"):
         reader.latest_run("repos/OmniNode-ai/alpha/actions/runs")
     assert calls == []
+
+
+async def test_the_node_auto_wires_in_process_without_a_github_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-20871: the runtime wires this handler at kernel boot with no ports; a lane
+    with no GH_TOKEN (the laptop catalog-local profile) must still wire it, which is
+    what makes runtime-effects boot.
+    """
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    discovered = discover_contracts_from_paths([NODE_DIR / "contract.yaml"])
+    assert not discovered.errors, discovered.errors
+    assert len(discovered.contracts) == 1
+    manifest = ModelAutoWiringManifest(contracts=tuple(discovered.contracts))
+
+    topology = load_topology_profile("local")
+    monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "local")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9")
+    for database in topology.databases.values():
+        for binding in database.bindings.values():
+            if binding.dsn_env:
+                monkeypatch.setenv(
+                    binding.dsn_env,
+                    "postgresql://wiring-check:wiring-check@127.0.0.1:9/wiring_check",
+                )
+    monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
+
+    bus = EventBusInmemory()
+    try:
+        report = await wire_from_manifest(
+            manifest,
+            MessageDispatchEngine(),
+            event_bus=bus,
+            environment="local",
+            container=ModelONEXContainer(),
+            topology=topology,
+        )
+    finally:
+        await bus.close()
+
+    failing: dict[str, str] = {}
+    for result in report.results:
+        if result.outcome == EnumWiringOutcome.FAILED:
+            failing[result.contract_name] = str(result.reason)[:400]
+    for quarantined in report.quarantined_handlers:
+        if quarantined.reason in _RESOLUTION_FAILURE_REASONS:
+            failing.setdefault(
+                quarantined.contract_name,
+                f"{quarantined.handler_name}: {quarantined.detail[:400]}",
+            )
+    assert not failing, f"contracts that fail infra auto-wiring in-process: {failing}"
+    assert report.total_wired > 0
 
 
 def test_missing_repos_conf_is_exit_two(
