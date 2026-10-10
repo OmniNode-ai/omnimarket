@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20915"
-title: "GitHub source-control nodes live in omnimarket only: the PR poller and the webhook ingress move from omnibase_infra, on the one omnimarket GitHub transport"
-summary: "node_github_pr_poller_effect and node_github_webhook_ingress_effect now live in omnimarket on the same topics and the same event models, registered as onex.nodes entry points. The poller reads GitHub through omnimarket's GitHubHttpTransport (the three PR triage reads folded in there) and resolves its token from its contract's secrets block. The webhook ingress behaves exactly as it did in omnibase_infra, including refusing every delivery on a lane that maps no webhook secret."
+title: "GitHub source-control nodes live in omnimarket only: the poller and webhook ingress move out of omnibase_infra, and the duplicate pr_state pair, dead merge-sweep workflow and model-only stubs are deleted"
+summary: "node_github_pr_poller_effect and node_github_webhook_ingress_effect now live in omnimarket on the same topics and the same event models, registered as onex.nodes entry points. The poller reads GitHub through omnimarket's GitHubHttpTransport (the three PR triage reads folded in there) and resolves its token from its contract's secrets block. The webhook ingress behaves exactly as it did in omnibase_infra, including refusing every delivery on a lane that maps no webhook secret. The omnibase_infra deletions are bound by the omnibase_infra pull request."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,23 +11,18 @@ requirements:
     statement: "The PR poller and the webhook ingress are omnimarket nodes on the same topics and event models, wired from their real contracts."
     acceptance:
       - id: "AC1"
-        statement: "AC1 (omnimarket half): node_github_pr_poller_effect and node_github_webhook_ingress_effect are discovered from omnimarket's own contracts on the effects runtime profile, consume and publish the topics they consumed and published in omnibase_infra, and keep their behaviour -- falsifier: uv run pytest tests/nodes/node_github_pr_poller_effect tests/nodes/node_github_webhook_ingress_effect -q fails at the merge base"
+        statement: "AC1: node_github_pr_poller_effect and node_github_webhook_ingress_effect run from omnimarket on the dev lane on the same topics, and omnibase_infra no longer contains them -- falsifier: rpk group list on the dev lane shows omnimarket consumer groups for both, and find over omnibase_infra src nodes returns neither directory"
   - id: "req-triage-reads-on-one-transport"
     statement: "omnimarket's GitHubHttpTransport serves the PR triage reads, with the poller's error posture: a failed PR list raises, a failed per-PR read degrades to its neutral value."
     acceptance:
       - id: "AC3"
-        statement: "AC3 (omnimarket half): the open-PR-for-triage, combined-status and review-state reads exist on omnimarket.github_api.GitHubHttpTransport -- falsifier: uv run pytest tests/test_github_api_triage.py -q fails at the merge base"
-# The criterion text above is the lane brief's wording of the omnibase_infra adapter
-# fold; the ticket itself was not readable from this lane (the tracker connector
-# needs an interactive authorization), so the line is not a copy of the ticket's.
-# AC2 (the infra deletions) is bound by the omnibase_infra pull request that
-# carries it.
+        statement: "AC3: omnibase_infra adapters/github folds into the omnimarket GitHub transport so one GitHub I/O path remains (OMN-14306) -- falsifier: a grep for api.github.com and subprocess gh across omnibase_infra src finds no source-control caller"
 evidence_requirements:
   - kind: "tests"
-    description: "AC1: the two moved nodes discover from omnimarket's contracts, wire through the real auto-wiring on an in-memory bus, and keep their poller, fold and refusal behaviour."
+    description: "AC1 (omnimarket half): the two moved nodes discover from omnimarket's contracts, wire through the real auto-wiring on an in-memory bus, and keep their poller, fold and refusal behaviour. The dev-lane consumer-group readback is recorded in the pull request body and a later pull request comment."
     command: "uv run pytest tests/nodes/node_github_pr_poller_effect tests/nodes/node_github_webhook_ingress_effect -q -p no:randomly"
   - kind: "tests"
-    description: "AC3: the triage reads on the omnimarket transport return the augmented PR payloads, page, and degrade as the poller expects."
+    description: "AC3 (omnimarket half): the triage reads on the omnimarket transport return the augmented PR payloads, page, and degrade as the poller expects."
     command: "uv run pytest tests/test_github_api_triage.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -43,7 +38,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20915-ac3-triage-reads-on-one-transport"
-    description: "AC3: the PR triage reads are served by omnimarket's GitHubHttpTransport."
+    description: "AC3 (omnimarket half): the PR triage reads are served by omnimarket's GitHubHttpTransport."
     source: "manual"
     checks:
       - check_type: "test_passes"
