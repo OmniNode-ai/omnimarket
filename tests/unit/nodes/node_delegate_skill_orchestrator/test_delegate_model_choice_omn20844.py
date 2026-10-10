@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20844: ``onex delegate --model`` overrides the customer route's model per call.
+"""OMN-20844: a per-call model for the customer's own key, consumer first.
 
-The request field is declared consumer-first and omitted from serialisation
-when unset, so a request without it is byte-identical to today's. The handler
-passes it to the dispatch port only when set (a port that predates the keyword
-keeps serving every other request). The in-process port runs the customer's own
-BYOK route on the named model, so the result and the receipt name it; a model
-named for a route that is not the customer's own key is refused, never applied
-to a house or local rung. The runtime port's canonical request cannot carry it,
-so it refuses rather than dropping it.
+The request decodes ``model`` before it declares it (step 1 of the Wire
+Compatibility Gate's release order): a null is dropped, so a request without it
+is byte-identical to today's, and a named model is refused by name rather than
+dropped, so a call never runs the stored model when another was asked for. The
+handler therefore never passes a model to the dispatch port yet. The in-process
+port already runs the customer's own BYOK route on a named model, so the result
+and the receipt name it; a model named for a route that is not the customer's
+own key is refused, never applied to a house or local rung. The runtime port's
+canonical request cannot carry it, so it refuses rather than dropping it.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    MODEL_WIRE_KEY,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
@@ -58,44 +60,35 @@ _ANSWER = (
 
 
 class TestRequestField:
-    def test_the_model_field_is_accepted(self) -> None:
-        request = ModelDelegateSkillRequest(
-            prompt="p", task_type="research", source="claude-code", model=PAID
-        )
-        assert request.model == PAID
-        assert request.model_dump()["model"] == PAID
+    def test_the_model_key_is_not_declared_yet(self) -> None:
+        assert MODEL_WIRE_KEY not in ModelDelegateSkillRequest.model_fields
 
-    def test_an_unset_model_is_omitted_from_the_wire(self) -> None:
-        request = ModelDelegateSkillRequest(
-            prompt="p", task_type="research", source="claude-code"
+    def test_a_null_model_is_dropped(self) -> None:
+        request = ModelDelegateSkillRequest.model_validate(
+            {
+                "prompt": "p",
+                "task_type": "research",
+                "source": "claude-code",
+                MODEL_WIRE_KEY: None,
+            }
         )
         assert "model" not in request.model_dump()
         assert '"model"' not in request.model_dump_json()
 
-    def test_an_empty_model_is_refused(self) -> None:
-        with pytest.raises(ValidationError):
-            ModelDelegateSkillRequest(
-                prompt="p", task_type="research", source="claude-code", model=""
+    def test_a_named_model_is_refused_by_name(self) -> None:
+        with pytest.raises(ValidationError, match="model is not honoured"):
+            ModelDelegateSkillRequest.model_validate(
+                {
+                    "prompt": "p",
+                    "task_type": "research",
+                    "source": "claude-code",
+                    MODEL_WIRE_KEY: PAID,
+                }
             )
 
 
 class TestHandlerSeam:
-    async def test_the_handler_passes_the_model_to_the_dispatch_port(self) -> None:
-        port = AsyncMock()
-        port.dispatch.return_value = {"status": "completed", "content": "ok"}
-        handler = HandlerDelegateSkill(object(), dispatch_port=port)
-        await handler.handle(
-            ModelDelegateSkillRequest(
-                prompt="p",
-                task_type="research",
-                source="claude-code",
-                backend_id="byok-openrouter",
-                model=PAID,
-            )
-        )
-        assert port.dispatch.await_args.kwargs["model"] == PAID
-
-    async def test_no_model_keyword_reaches_a_port_when_unset(self) -> None:
+    async def test_no_model_keyword_reaches_a_port(self) -> None:
         port = AsyncMock()
         port.dispatch.return_value = {"status": "completed", "content": "ok"}
         handler = HandlerDelegateSkill(object(), dispatch_port=port)

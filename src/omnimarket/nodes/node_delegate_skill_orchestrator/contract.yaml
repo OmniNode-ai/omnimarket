@@ -235,13 +235,6 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
-  model:
-    type: str
-    required: false
-    description: >
-      Optional model id for the customer's own provider key, for this call
-      only (onex delegate --model). Applied to the customer's BYOK route and
-      refused for any other route; omitted from the wire when unset.
   no_escalation:
     type: bool
     required: false

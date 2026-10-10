@@ -46,6 +46,11 @@ NO_ESCALATION_WIRE_KEY = "no_escalation"
 # Decoded, not declared, by ``_tolerate_declared_outputs_before_it_is_declared``.
 DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
 
+# OMN-20844: the request key that names the model the customer's own provider
+# key runs for one call. Decoded, not declared, by
+# ``_tolerate_model_before_it_is_declared``.
+MODEL_WIRE_KEY = "model"
+
 
 class ModelDelegateSkillRequest(BaseModel):
     """Typed delegation request from a registered adapter source."""
@@ -162,23 +167,6 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
             "the backend via the normal cheapest-first tier_order selection."
-        ),
-    )
-    # OMN-20844: the model the customer's own provider key runs for THIS call
-    # (``onex delegate --model``), overriding the model stored with their key.
-    # Declared consumer-first and excluded when unset, the OMN-18852 rule: a
-    # request that names no model is byte-identical to today's, so a consumer
-    # predating the field keeps accepting every such request. The in-process
-    # port applies it to the customer's BYOK route only and refuses it for any
-    # other route; the runtime port refuses it (Core's request has no field).
-    model: str | None = Field(
-        default=None,
-        min_length=1,
-        exclude_if=lambda value: value is None,
-        description=(
-            "Optional model id for the customer's own provider key, for this "
-            "call only. None runs the model stored with the key. Omitted from "
-            "serialisation when None."
         ),
     )
     # OMN-18931, step 2 of 2: the declared field. Step 1 released a consumer
@@ -364,6 +352,28 @@ class ModelDelegateSkillRequest(BaseModel):
             key: item for key, item in data.items() if key != DECLARED_OUTPUTS_WIRE_KEY
         }
 
+    # OMN-20844, step 1 of 2: decode ``model`` before it is declared, the same
+    # tolerate-before-declare order as ``declared_outputs`` above. Declaring it
+    # outright is refused by the Wire Compatibility Gate: the last release
+    # forbids the key and the gate grades the maximal key set, so ``exclude_if``
+    # does not help. A null is the ordinary request and is dropped. A named
+    # model is refused by name rather than dropped, so a caller is never run
+    # on the stored model when it asked for another. Step 2 declares the field
+    # once a release carrying this is out.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_model_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or MODEL_WIRE_KEY not in data:
+            return data
+        if data[MODEL_WIRE_KEY] is not None:
+            raise ValueError(
+                f"{MODEL_WIRE_KEY} is not honoured by this release: a per-call "
+                "model for the customer's own provider key is applied only once "
+                "the field is declared (OMN-20844). Refused rather than dropped, "
+                "so the call does not run a model the caller did not name."
+            )
+        return {key: item for key, item in data.items() if key != MODEL_WIRE_KEY}
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(
@@ -433,6 +443,7 @@ class ModelDelegateSkillRequest(BaseModel):
 
 __all__: list[str] = [
     "DECLARED_OUTPUTS_WIRE_KEY",
+    "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",

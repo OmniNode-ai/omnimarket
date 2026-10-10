@@ -202,25 +202,6 @@ def _no_escalation_dispatch_kwargs(
     return {}
 
 
-class _ModelChoiceDispatchKwargs(TypedDict, total=False):
-    """The model the caller named for this call, passed only when set (OMN-20844).
-
-    Same rule as ``_NoEscalationDispatchKwargs``: a port that predates the
-    keyword keeps serving every request that names no model, and a request
-    that names one fails loudly there instead of running a model nobody chose.
-    """
-
-    model: str
-
-
-def _model_choice_dispatch_kwargs(
-    request: ModelDelegateSkillRequest,
-) -> _ModelChoiceDispatchKwargs:
-    if request.model is not None:
-        return {"model": request.model}
-    return {}
-
-
 class _AttributionDispatchKwargs(TypedDict, total=False):
     """Who issued a delegation and what it follows, for the port (OMN-20606).
 
@@ -1342,8 +1323,6 @@ class HandlerDelegateSkill:
                     response_format=request.response_format,
                     # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
                     **_no_escalation_dispatch_kwargs(request),
-                    # OMN-20844: only when named -- see _ModelChoiceDispatchKwargs.
-                    **_model_choice_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
                 ),
