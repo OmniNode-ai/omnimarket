@@ -65,3 +65,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_m4_repositories_omn_20866.py tests/unit/nodes/node_pr_landing_github_effect -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20866-ac1-m4-config-from-facts"
+    description: "AC1, M4 slice: each M4 repository's mode, companion, queue, review-thread and prompt entries come from the contract's landing_config, and a repository not cut over sends its companion command as a dry run. The test file is added by this pull request and fails on the merge base, where it does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_m4_repositories_omn_20866.py -q -k config"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20866-ac2-m4-enforce-replay"
+    description: "AC2, M4 slice: omnibase_infra's recorded green head reaches READY and a dry_run enqueue as the contract declares, reaches READY then ARMED once flipped to enforce, a DIRTY head and a held PR are not enqueued, and reruns, update-branch and disarm stay dry_run after a flip. The test file is added by this pull request and fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_m4_repositories_omn_20866.py -q -k enforce"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20866-deploy-probe"
+    description: "Deploy probe. The GitHub landing effect handler at the checked-out commit carries the idempotent enqueue this change adds (an enqueue completes without a mutation when the PR is already in the merge queue or armed); the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is a pr-landing-github-requested record with operation enqueue for a PR already armed, followed by a completed outcome with no mutation sent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_github_effect/handlers/handler_pr_landing_github.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'state.in_merge_queue or state.auto_merge_armed'"
+        cwd: "${OMNI_HOME}/omnimarket"
