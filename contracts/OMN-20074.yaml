@@ -28,6 +28,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: classify_plugin_manifest_version_only admits omniclaude#2644's shape (only the version of .claude-plugin/plugin.json and of the marketplace entry moves, increasing) and refuses another key, a non-increasing or non-numeric version, a path outside .claude-plugin manifests, an unreadable, added or deleted manifest, no moved version and too many files; classify_dependency_pin_only admits omniclaude#2646's tool.uv.override-dependencies rev move and still refuses it beside project.scripts -- falsifier: uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q fails at the merge base
+  - id: "req-topic-hook-from-core"
+    statement: |-
+      omnimarket's no-hardcoded-topics pre-commit hook comes from omnibase_core, which exports it under the same hook id, instead of from onex_change_control, with the hook's exclude and settings unchanged.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: .pre-commit-config.yaml declares no-hardcoded-topics once, in an omnibase_core block pinned to a full commit sha, with its exclude (773 characters, sha256 7782a602) and settings unchanged and no onex_change_control block -- falsifier: uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -38,6 +45,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The writer-app bump classifiers admit the two real omniclaude bump shapes and refuse every other change."
     command: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
+  - kind: "tests"
+    description: "The topic hook is one omnibase_core block at a full sha with its exclude and settings unchanged and no onex_change_control block."
+    command: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -67,3 +77,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20074-topic-hook-from-core"
+    description: "The no-hardcoded-topics hook is sourced from omnibase_core with its exclude unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
