@@ -23,6 +23,7 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
+from omnimarket.events.pr_state import ModelPrCheckFact
 from omnimarket.events.topics import (
     CI_RED_TRIAGE_DECIDED_TOPIC_V1,
     PR_LANDING_GITHUB_REQUESTED_TOPIC_V1,
@@ -40,6 +41,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims impo
     ProjectionCiRedClaims,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage import (
+    EventCiRedFactsReader,
     GhCiRedFactsReader,
     HandlerCiRedTriage,
     ci_red_act_flags,
@@ -281,6 +283,44 @@ async def test_a_reviewer_pool_red_stays_with_the_controller() -> None:
     assert reruns([output]) == []
     assert decided.action_applied is False
     assert "start=withheld:reviewer_pool" in decided.evidence
+
+
+class NoGitHubRead:
+    def read(self, ev: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        raise AssertionError("the event carries its facts; no GitHub read")
+
+
+@pytest.mark.asyncio
+async def test_an_event_that_carries_its_check_facts_reruns_from_their_actions_runs() -> (
+    None
+):
+    """A version 2 event states each failing check's Actions run, so the rerun needs no GitHub read."""
+    checks = (LINT, TESTS)
+    carried = event(checks).model_copy(
+        update={
+            "failing_runs": tuple(
+                ModelPrCheckFact(
+                    check=check,
+                    conclusion="timed_out",
+                    run_id=run_id,
+                    workflow="CI",
+                    completed_at="2026-10-10T15:00:00Z",
+                )
+                for check, run_id in ((LINT, RUN_LINT), (TESTS, RUN_TESTS))
+            ),
+            "base_read": True,
+        }
+    )
+    handler = HandlerCiRedTriage(
+        facts_reader=EventCiRedFactsReader(fallback=NoGitHubRead()),
+        claims=ProjectionCiRedClaims(InmemoryDatabaseAdapter()),
+    )
+    output = await handler.handle(carried)
+    [request] = reruns([output])
+    [decided] = decisions([output])
+    assert request.run_ids == (RUN_TESTS, RUN_LINT)
+    assert decided.action_applied is True
+    assert decided.red_class is EnumCiRedClass.RUNNER
 
 
 @pytest.mark.asyncio

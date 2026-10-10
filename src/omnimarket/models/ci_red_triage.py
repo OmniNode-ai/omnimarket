@@ -177,8 +177,9 @@ class ModelCiRedFacts(BaseModel):
     unread and ``""`` is a check read with no annotation. With
     ``annotations_read`` false the classifier clusters by check name only.
     ``check_run_ids`` is the Actions workflow run of each check's newest copy
-    at the event head, read from its details URL; a check absent from it is
-    not an Actions check or was unread, and a runner rerun never names it.
+    at the event head, read from its details URL or taken from the event's
+    per-check run id; a check absent from it is not an Actions check or was
+    unread, and a runner rerun never names it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -203,6 +204,9 @@ def facts_from_event(event: ModelCiRunFailedEvent) -> ModelCiRedFacts | None:
     return ModelCiRedFacts(
         event=event,
         check_conclusions={run.check: run.conclusion for run in event.failing_runs},
+        check_run_ids={
+            run.check: run.run_id for run in event.failing_runs if run.run_id
+        },
         base_red_checks=event.base_red_checks,
         base_read=event.base_read,
     )
