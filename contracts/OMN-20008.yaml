@@ -14,6 +14,13 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: Estimated runs are excluded from any total presented as measured, and their count is shown beside it -- falsifier: uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot
+  - id: "req-local-run-basis-from-stored-provenance"
+    statement: |-
+      A local install's dashboard reads each run's basis from the stored provenance of that run, so its delegation.savings.v1 exposure answers for a recorded run instead of 503 projection_table_missing. The criterion below is transcribed from the ticket body; its id is the label a binding item claims through binds_ac.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: Every run row shows its basis, `measured` or `estimated`, from the stored provenance rather than a default -- falsifier: a row whose basis is absent or hardcoded
 evidence_requirements:
   - kind: "tests"
     description: "The savings-overview exposure serves estimated_run_count and unknown_run_count after the existing columns."
@@ -31,3 +38,45 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20008-ac2-local-basis-served"
+    description: "AC2 local-surface probe. In a clean HOME, onex local init mints the install, a measured run is recorded in its store, and onex dashboard serves delegation.savings.v1 with that run's basis read as measured; the check exits non-zero when the exposure answers 503 or the basis is not measured."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          uv sync --locked --quiet
+          export PATH="$PWD/.venv/bin:$PATH"
+          HOME="$(mktemp -d)"
+          export HOME
+          onex local init > /dev/null
+          python -c '
+          import subprocess
+          from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter, default_evidence_db_path
+          tenant = next(l.split()[1] for l in subprocess.run(["onex", "local", "identity"], check=True, capture_output=True, text=True).stdout.splitlines() if l.strip().startswith("tenant_id:"))
+          run = "3bf8c6cc-3cc7-4b98-a72c-30e4fcafdb1e"
+          db = SqliteDatabaseAdapter(default_evidence_db_path())
+          db.upsert("delegation_events", "correlation_id", {"correlation_id": run, "tenant_id": tenant, "task_type": "document", "delegated_to": "Qwen3.8-27B", "model_name": "Qwen3.8-27B", "cost_tier_name": "local", "cost_usd": 0.0, "cost_savings_usd": 0.000486, "tokens_input": 213, "tokens_output": 6, "pricing_manifest_version": 1, "latency_ms": 321, "data_source": "real", "created_at": "2026-10-10T18:13:00.608068+00:00"})
+          db.upsert("llm_call_metrics", "input_hash", {"correlation_id": run, "session_id": run, "model_id": "Qwen3.8-27B", "prompt_tokens": 213, "completion_tokens": 6, "total_tokens": 219, "usage_source": "measured", "usage_is_estimated": False, "input_hash": run + "-0", "created_at": "2026-10-10T18:13:00.623992+00:00"})
+          '
+          onex dashboard > "$HOME/dashboard.out" &
+          pid=$!
+          trap 'kill "$pid"' EXIT
+          for _ in $(seq 1 60); do
+            url="$(sed -n 's/^onex dashboard: \(http[^ ]*\).*/\1/p' "$HOME/dashboard.out")"
+            [ -n "$url" ] && break
+            sleep 0.5
+          done
+          for _ in $(seq 1 60); do
+            curl -fs "$url/projections" > /dev/null && break
+            sleep 0.5
+          done
+          curl -fsS "$url/projection/onex.snapshot.projection.delegation.savings.v1" > "$HOME/savings.json"
+          python -c '
+          import json, sys
+          body = json.load(open(sys.argv[1]))
+          basis = {s["session_id"]: s["usage_source"] for row in body["rows"] for s in row["sessions"]}
+          assert basis.get("3bf8c6cc-3cc7-4b98-a72c-30e4fcafdb1e") == "measured", basis
+          ' "$HOME/savings.json"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
