@@ -66,6 +66,9 @@ from omnimarket.delegated_test_loop.must_fail_models import (
     ModelPrChangedFile,
     ModelPrDiffFacts,
 )
+from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
+    DodEvidenceLocalSource,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
@@ -109,6 +112,39 @@ _GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 # ``state`` string; a run only counts as green when ``status == "completed"``
 # AND its conclusion is one of these.
 _GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+
+# OMN-20838: the local read source (PR watcher state plus canonical clones).
+# A module attribute so a test can substitute a fixture source.
+_default_local_source = DodEvidenceLocalSource
+
+# OMN-20838: the required-context set of a base branch has no local source;
+# it is the one GitHub read a local run keeps. Read once per (repo, base) per
+# process: a ticket binds several PRs of the same repository.
+_REQUIRED_CONTEXTS_CACHE: dict[tuple[str, str], tuple[object, str, object, str]] = {}
+
+# OMN-20838: a MERGED PR's rollup is terminal, and a ticket's contract binds the
+# same PR from several evidence items; one rollup per merged PR per process.
+_MERGED_CHECKS_GREEN_CACHE: dict[
+    tuple[str, int], ModelDodEvidenceGithubLookupResultEvent
+] = {}
+
+# OMN-20838: both per-process caches above hold at most this many entries; the
+# oldest entry is dropped first, so a long-lived process stays bounded.
+_READ_CACHE_MAX_ENTRIES = 256
+
+
+def _bounded_put[K, V](cache: dict[K, V], key: K, value: V) -> None:
+    """Store ``value`` under ``key``, dropping the oldest entries past the cap."""
+    cache.pop(key, None)
+    while len(cache) >= _READ_CACHE_MAX_ENTRIES:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
+# OMN-20838: listing pages of 100 instead of GitHub's default 30, for the
+# check-suite and check-run listings that remain GitHub reads when the PR
+# watcher's state cannot settle a head. Same rows, fewer calls.
+_PER_PAGE = "per_page=100"
 
 
 def _required_check_names_from_classic(data: object) -> set[str]:
@@ -392,6 +428,46 @@ def _check_run_is_own_or_ambiguous(
     return True  # ambiguous: unresolved suite id or null head_branch
 
 
+def _ticket_token_pattern(ticket_id: str) -> re.Pattern[str]:
+    """The exact, case-insensitive ticket-id token (see below)."""
+    return re.compile(rf"(?<![A-Za-z0-9]){re.escape(ticket_id)}(?!\d)", re.IGNORECASE)
+
+
+def _read_required_contexts(
+    repo: str, base_branch: str
+) -> tuple[object, str, object, str]:
+    """Classic protection and active rulesets for ``repo@base_branch``.
+
+    The one GitHub read a local run keeps (OMN-20838): no local source holds a
+    branch's required-context set. ``gh`` resolves on PATH, where the logged
+    shim sits on an operator or lab host.
+    """
+    key = (repo, base_branch)
+    cached = _REQUIRED_CONTEXTS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    classic, classic_detail = _gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/branches/{base_branch}/protection/required_status_checks",
+        ],
+        _GH_PR_TIMEOUT_S,
+    )
+    rules, rules_detail = _gh_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/rules/branches/{base_branch}",
+        ],
+        _GH_PR_TIMEOUT_S,
+    )
+    result = (classic, classic_detail, rules, rules_detail)
+    if classic is not None or rules is not None:
+        _bounded_put(_REQUIRED_CONTEXTS_CACHE, key, result)
+    return result
+
+
 def _exact_ticket_token_candidates(
     items: object, ticket_id: str
 ) -> list[dict[str, object]]:
@@ -413,9 +489,7 @@ def _exact_ticket_token_candidates(
     # practice — the ``headRefName`` signal was effectively dead. Match
     # case-insensitively; the token-boundary lookaround still prevents a
     # shorter ticket id matching inside a longer one.
-    pattern = re.compile(
-        rf"(?<![A-Za-z0-9]){re.escape(ticket_id)}(?!\d)", re.IGNORECASE
-    )
+    pattern = _ticket_token_pattern(ticket_id)
     matches: list[dict[str, object]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -465,7 +539,18 @@ class HandlerDodEvidenceGithubEffect:
     Behavior-identical carve-out of ``EvidenceCollector``'s
     ``_lookup_pr_for_ticket`` / ``_lookup_repo_for_ticket`` /
     ``_fetch_pr_merge_state`` / ``_fetch_pr_checks_green``.
+
+    OMN-20838: every fact is read first from the local source (the PR
+    watcher's state and the canonical clones); the ``gh`` read below each one
+    runs only when the local source does not hold that fact, and the branch
+    protection read (no local source) is cached per base branch.
     """
+
+    def __init__(self, local_source: DodEvidenceLocalSource | None = None) -> None:
+        self._local = (
+            local_source if local_source is not None else _default_local_source()
+        )
+        self._checks_pr_merged = False
 
     def handle(
         self, command: ModelDodEvidenceGithubLookupCommand
@@ -522,6 +607,11 @@ class HandlerDodEvidenceGithubEffect:
                 text_value="",
                 error_code="PR_LOOKUP_FAILED",
             )
+        local = self._local.merged_pr_candidates(
+            repo, ticket_id, _ticket_token_pattern(ticket_id)
+        )
+        if local:
+            return self._pr_lookup_result(command, ticket_id, repo, local)
         try:
             result = subprocess.run(
                 [
@@ -571,7 +661,18 @@ class HandlerDodEvidenceGithubEffect:
                 text_value="",
                 error_code="PR_LOOKUP_FAILED",
             )
-        candidates = _exact_ticket_token_candidates(data, ticket_id)
+        return self._pr_lookup_result(
+            command, ticket_id, repo, _exact_ticket_token_candidates(data, ticket_id)
+        )
+
+    @staticmethod
+    def _pr_lookup_result(
+        command: ModelDodEvidenceGithubLookupCommand,
+        ticket_id: str,
+        repo: str,
+        candidates: list[dict[str, object]],
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """One exact-token candidate binds; zero or several fail closed."""
         if len(candidates) != 1:
             code = "PR_LOOKUP_AMBIGUOUS" if len(candidates) > 1 else "PR_LOOKUP_FAILED"
             logger.warning(
@@ -615,6 +716,18 @@ class HandlerDodEvidenceGithubEffect:
         self, command: ModelDodEvidenceGithubLookupCommand
     ) -> ModelDodEvidenceGithubLookupResultEvent:
         ticket_id = command.ticket_id or ""
+        # OMN-20838: ``gh pr list`` with no ``--repo`` searches the working
+        # directory's origin repository; the local source answers for the same
+        # repository from its clone and the watcher's records.
+        cwd_repo = self._local.cwd_repo()
+        if cwd_repo and self._local.merged_pr_candidates(
+            cwd_repo, ticket_id, _ticket_token_pattern(ticket_id)
+        ):
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                text_value=cwd_repo,
+            )
         try:
             result = subprocess.run(
                 [
@@ -692,6 +805,15 @@ class HandlerDodEvidenceGithubEffect:
     ) -> ModelDodEvidenceGithubLookupResultEvent:
         repo = command.repo or ""
         pr_number = command.pr_number or 0
+        local = self._local.pr_view(repo, pr_number)
+        if local is not None:
+            local_state = str(local.get("state") or "UNKNOWN")
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                merged=bool(local.get("mergedAt")) or local_state.upper() == "MERGED",
+                state=local_state,
+            )
         try:
             result = subprocess.run(
                 [
@@ -778,19 +900,25 @@ class HandlerDodEvidenceGithubEffect:
                 detail=detail,
             )
 
-        view, detail = _gh_json(
-            [
-                "gh",
-                "pr",
-                "view",
-                str(pr_number),
-                "--repo",
-                repo,
-                "--json",
-                "state,mergedAt,mergeCommit",
-            ],
-            _GH_PR_TIMEOUT_S,
-        )
+        view: object = self._local.pr_view(repo, pr_number)
+        detail = ""
+        if not isinstance(view, dict) or (
+            str(view.get("state", "")).upper() == "MERGED"
+            and not isinstance(view.get("mergeCommit"), dict)
+        ):
+            view, detail = _gh_json(
+                [
+                    "gh",
+                    "pr",
+                    "view",
+                    str(pr_number),
+                    "--repo",
+                    repo,
+                    "--json",
+                    "state,mergedAt,mergeCommit",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
         if not isinstance(view, dict):
             return _unresolved(detail or "gh pr view returned no object")
         merge_commit = view.get("mergeCommit")
@@ -807,31 +935,47 @@ class HandlerDodEvidenceGithubEffect:
                 diff_facts=ModelPrDiffFacts(repo=repo, pr_number=pr_number),
             )
 
-        commit, detail = _gh_json(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/commits/{merge_sha}",
-                "--jq",
-                "{parents: [.parents[].sha]}",
-            ],
-            _GH_PR_TIMEOUT_S,
-        )
-        if not isinstance(commit, dict) or not isinstance(commit.get("parents"), list):
-            return _unresolved(detail or "the merge commit's parents are unreadable")
-        parents = [p for p in commit["parents"] if isinstance(p, str)]
+        local_parents = self._local.commit_parents(repo, merge_sha)
+        if local_parents is not None:
+            parents = local_parents
+        else:
+            commit, detail = _gh_json(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/commits/{merge_sha}",
+                    "--jq",
+                    "{parents: [.parents[].sha]}",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+            if not isinstance(commit, dict) or not isinstance(
+                commit.get("parents"), list
+            ):
+                return _unresolved(
+                    detail or "the merge commit's parents are unreadable"
+                )
+            parents = [p for p in commit["parents"] if isinstance(p, str)]
 
-        rows, detail = _gh_json_lines(
-            [
-                "gh",
-                "api",
-                "--paginate",
-                f"repos/{repo}/pulls/{pr_number}/files",
-                "--jq",
-                ".[] | {filename: .filename, status: .status}",
-            ],
-            _GH_PR_TIMEOUT_S * 4,
+        # A squash commit has one parent, and its diff against that parent is
+        # the PR's change set. A merge with several parents is not read locally.
+        rows: list[dict[str, object]] | None = (
+            self._local.changed_files(repo, parents[0], merge_sha)
+            if len(parents) == 1
+            else None
         )
+        if rows is None:
+            rows, detail = _gh_json_lines(
+                [
+                    "gh",
+                    "api",
+                    "--paginate",
+                    f"repos/{repo}/pulls/{pr_number}/files?{_PER_PAGE}",
+                    "--jq",
+                    ".[] | {filename: .filename, status: .status}",
+                ],
+                _GH_PR_TIMEOUT_S * 4,
+            )
         if rows is None:
             return _unresolved(detail or "the PR's files are unreadable")
         files = tuple(
@@ -864,22 +1008,29 @@ class HandlerDodEvidenceGithubEffect:
     def _fetch_pr_checks_green(
         self, command: ModelDodEvidenceGithubLookupCommand
     ) -> ModelDodEvidenceGithubLookupResultEvent:
+        key = (command.repo or "", command.pr_number or 0)
+        cached = _MERGED_CHECKS_GREEN_CACHE.get(key)
+        if cached is not None:
+            return cached.model_copy(update={"correlation_id": command.correlation_id})
+        self._checks_pr_merged = False
+        result = self._fetch_pr_checks_green_uncached(command)
+        if self._checks_pr_merged:
+            _bounded_put(_MERGED_CHECKS_GREEN_CACHE, key, result)
+        return result
+
+    def _fetch_pr_checks_green_uncached(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
         repo = command.repo or ""
         pr_number = command.pr_number or 0
 
-        pr_data, pr_detail = _gh_json(
-            [
-                "gh",
-                "pr",
-                "view",
-                str(pr_number),
-                "--repo",
-                repo,
-                "--json",
-                "headRefName,baseRefName,headRefOid,state,mergedAt,mergeCommit",
-            ],
-            _GH_PR_TIMEOUT_S,
+        pr_data: object = self._local.pr_view(repo, pr_number)
+        pr_detail = ""
+        pr_from_local = isinstance(pr_data, dict) and all(
+            pr_data.get(k) for k in ("headRefName", "baseRefName", "headRefOid")
         )
+        if not pr_from_local:
+            pr_data, pr_detail = self._gh_pr_view_for_checks(repo, pr_number)
         if not isinstance(pr_data, dict):
             return self._checks_not_green(
                 command, f"could not resolve PR head/base branch: {pr_detail}"
@@ -894,6 +1045,7 @@ class HandlerDodEvidenceGithubEffect:
             )
         pr_state = str(pr_data.get("state") or "UNKNOWN")
         is_merged = bool(pr_data.get("mergedAt")) or pr_state.upper() == "MERGED"
+        self._checks_pr_merged = is_merged
         # OMN-15817 shape 2b: the squash ``mergeCommit.oid`` — the commit that
         # actually lands on the target branch (``dev``/``main``) and that a
         # push-triggered context (e.g. a "CI Summary" umbrella job) produces
@@ -909,21 +1061,8 @@ class HandlerDodEvidenceGithubEffect:
             if isinstance(raw_merge_sha, str):
                 merge_sha = raw_merge_sha
 
-        classic_required, classic_detail = _gh_json(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/branches/{base_branch}/protection/required_status_checks",
-            ],
-            _GH_PR_TIMEOUT_S,
-        )
-        rules_required, rules_detail = _gh_json(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/rules/branches/{base_branch}",
-            ],
-            _GH_PR_TIMEOUT_S,
+        classic_required, classic_detail, rules_required, rules_detail = (
+            _read_required_contexts(repo, base_branch)
         )
         required_names = sorted(
             _required_check_names_from_classic(classic_required)
@@ -952,86 +1091,111 @@ class HandlerDodEvidenceGithubEffect:
                 command, base_protection_detail, protection_unreachable
             )
 
-        suites, suites_detail = _gh_json_lines(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/commits/{sha}/check-suites",
-                "--paginate",
-                "--jq",
-                ".check_suites[] | {id, head_branch}",
-            ],
-            _GH_PR_TIMEOUT_S,
+        # OMN-20838: the PR watcher's last read of this exact head settles the
+        # rollup when it holds a completed copy of every required context and
+        # no other PR shares the head (see DodEvidenceLocalSource.
+        # head_check_runs). Every run is then the PR's own, and no merge-commit
+        # run can change a context that has a completed head copy (OMN-16055),
+        # so the merge commit is not read. Otherwise the listings below are
+        # read from GitHub as before.
+        local_runs, _local_why = (
+            self._local.head_check_runs(repo, pr_number, sha, required_names)
+            if required_names
+            else (None, "no required contexts")
         )
-        if suites is None:
-            return self._checks_not_green(
-                command,
-                f"could not enumerate check-suites for {sha[:12]}: {suites_detail}",
-            )
         suite_branch: dict[int, str | None] = {}
-        for suite in suites:
-            suite_id = suite.get("id")
-            if isinstance(suite_id, int):
-                head = suite.get("head_branch")
-                suite_branch[suite_id] = (
-                    str(head) if isinstance(head, str) and head else None
-                )
-
-        runs, runs_detail = _gh_json_lines(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/commits/{sha}/check-runs",
-                "--paginate",
-                "--jq",
-                ".check_runs[] | {name, status, conclusion, check_suite, id, completed_at}",
-            ],
-            _GH_PR_TIMEOUT_S,
-        )
-        if runs is None:
-            return self._checks_not_green(
-                command,
-                f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
-            )
-
-        # OMN-15817 shape 2b: for a MERGED PR, also enumerate check-runs on the
-        # squash merge commit (when GitHub reports one and it differs from the
-        # pre-merge source-branch tip). A merge commit is unique to exactly one
-        # merge event — unlike ``sha`` above, there is no foreign-PR/sibling-
-        # branch attribution question, so every run found here is unconditionally
-        # this PR's own evidence. This is ADDITIVE evidence layered on top of
-        # the head-SHA rollup — but only when the fetch actually SUCCEEDS. A
-        # fetch FAILURE (timeout/OSError/non-zero exit/unparseable JSON) is
-        # NOT interchangeable with a successful fetch that genuinely found
-        # zero runs: collapsing both to an empty ``merge_runs`` list was the
-        # F1 audit finding (HIGH fail-open) — it let a transient failure here
-        # silently masquerade as "nothing exists on the merge commit," which
-        # then fed the ``is_merged: continue`` not-applicable carve-out below
-        # even for a required context that may have run RED on the merge
-        # commit and simply went unobserved. ``merge_runs_fetch_failed`` is
-        # tracked explicitly so that carve-out can be suppressed per-context
-        # (GATE-DIRECTION LAW: fetch FAILURE is always fail-closed — unknown
-        # != absent; only a successful fetch returning empty may be treated
-        # as genuinely-absent).
         merge_runs: list[dict[str, object]] = []
         merge_runs_fetch_failed = False
         merge_runs_fetch_detail = ""
-        if is_merged and merge_sha and merge_sha != sha:
-            fetched_merge_runs, merge_runs_fetch_detail = _gh_json_lines(
+        if local_runs is not None:
+            runs = local_runs
+        else:
+            if is_merged and not merge_sha and pr_from_local:
+                # The local PR facts lacked the squash commit; the GitHub
+                # listings below need it for the merge-commit runs.
+                gh_view, _gh_view_detail = self._gh_pr_view_for_checks(repo, pr_number)
+                gh_merge = (
+                    gh_view.get("mergeCommit") if isinstance(gh_view, dict) else None
+                )
+                if isinstance(gh_merge, dict) and isinstance(gh_merge.get("oid"), str):
+                    merge_sha = gh_merge["oid"]
+            suites, suites_detail = _gh_json_lines(
                 [
                     "gh",
                     "api",
-                    f"repos/{repo}/commits/{merge_sha}/check-runs",
+                    f"repos/{repo}/commits/{sha}/check-suites?{_PER_PAGE}",
                     "--paginate",
                     "--jq",
-                    ".check_runs[] | {name, status, conclusion, id, completed_at}",
+                    ".check_suites[] | {id, head_branch}",
                 ],
                 _GH_PR_TIMEOUT_S,
             )
-            if fetched_merge_runs is not None:
-                merge_runs = fetched_merge_runs
-            else:
-                merge_runs_fetch_failed = True
+            if suites is None:
+                return self._checks_not_green(
+                    command,
+                    f"could not enumerate check-suites for {sha[:12]}: {suites_detail}",
+                )
+            for suite in suites:
+                suite_id = suite.get("id")
+                if isinstance(suite_id, int):
+                    head = suite.get("head_branch")
+                    suite_branch[suite_id] = (
+                        str(head) if isinstance(head, str) and head else None
+                    )
+
+            gh_runs, runs_detail = _gh_json_lines(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/commits/{sha}/check-runs?{_PER_PAGE}",
+                    "--paginate",
+                    "--jq",
+                    ".check_runs[] | {name, status, conclusion, check_suite, id, completed_at}",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+            if gh_runs is None:
+                return self._checks_not_green(
+                    command,
+                    f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
+                )
+            runs = gh_runs
+
+            # OMN-15817 shape 2b: for a MERGED PR, also enumerate check-runs on the
+            # squash merge commit (when GitHub reports one and it differs from the
+            # pre-merge source-branch tip). A merge commit is unique to exactly one
+            # merge event — unlike ``sha`` above, there is no foreign-PR/sibling-
+            # branch attribution question, so every run found here is unconditionally
+            # this PR's own evidence. This is ADDITIVE evidence layered on top of
+            # the head-SHA rollup — but only when the fetch actually SUCCEEDS. A
+            # fetch FAILURE (timeout/OSError/non-zero exit/unparseable JSON) is
+            # NOT interchangeable with a successful fetch that genuinely found
+            # zero runs: collapsing both to an empty ``merge_runs`` list was the
+            # F1 audit finding (HIGH fail-open) — it let a transient failure here
+            # silently masquerade as "nothing exists on the merge commit," which
+            # then fed the ``is_merged: continue`` not-applicable carve-out below
+            # even for a required context that may have run RED on the merge
+            # commit and simply went unobserved. ``merge_runs_fetch_failed`` is
+            # tracked explicitly so that carve-out can be suppressed per-context
+            # (GATE-DIRECTION LAW: fetch FAILURE is always fail-closed — unknown
+            # != absent; only a successful fetch returning empty may be treated
+            # as genuinely-absent).
+            if is_merged and merge_sha and merge_sha != sha:
+                fetched_merge_runs, merge_runs_fetch_detail = _gh_json_lines(
+                    [
+                        "gh",
+                        "api",
+                        f"repos/{repo}/commits/{merge_sha}/check-runs?{_PER_PAGE}",
+                        "--paginate",
+                        "--jq",
+                        ".check_runs[] | {name, status, conclusion, id, completed_at}",
+                    ],
+                    _GH_PR_TIMEOUT_S,
+                )
+                if fetched_merge_runs is not None:
+                    merge_runs = fetched_merge_runs
+                else:
+                    merge_runs_fetch_failed = True
 
         if not required_names:
             # OMN-15715 D1 fix: the carve-out below (design option (a)) may
@@ -1324,6 +1488,23 @@ class HandlerDodEvidenceGithubEffect:
                 f"all {len(required_names)} required context(s) green for "
                 f"{head_branch}@{sha[:12]}{push_note}"
             ),
+        )
+
+    @staticmethod
+    def _gh_pr_view_for_checks(repo: str, pr_number: int) -> tuple[object | None, str]:
+        """The PR facts FETCH_PR_CHECKS_GREEN needs, read from GitHub."""
+        return _gh_json(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "headRefName,baseRefName,headRefOid,state,mergedAt,mergeCommit",
+            ],
+            _GH_PR_TIMEOUT_S,
         )
 
     def _checks_green_from_own_history(
