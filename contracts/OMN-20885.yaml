@@ -12,10 +12,20 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: .github/workflows/onex-schema-compat.yml checks out no onex_change_control and its compatibility step passes on this repository's contracts, fails on a planted contract whose schema_version major differs from omnibase_core ModelTicketContract's, fails on an unparseable version and on a contracts directory with no OMN-*.yaml -- falsifier: uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q fails"
+  - id: "req-todo-format-core-handler"
+    statement: "The lint job's TODO format check installs no onex_change_control and runs omnibase_core's handler_todo_format, so an untracked TODO, FIXME or HACK comment in src/ fails the step."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: the ci.yml lint job's TODO format check step names no onex_change_control or onex-change-control, installs no package and swallows no failure -- falsifier: uv run pytest tests/ci/test_todo_format_core_owner_omn20885.py -q fails"
+      - id: "AC6"
+        statement: "AC6: the TODO format check step's own run block passes a clean src tree and fails a planted untracked marker, a bare marker in a nested package included, naming the file and line, and does not scan a tests directory -- falsifier: uv run pytest tests/ci/test_todo_format_core_owner_omn20885.py -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC2: the workflow's own compatibility step, run against the repo contracts and planted ones, admits the repo and refuses a major mismatch."
     command: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC5, AC6: the TODO format check step's own run block, run in clean and planted trees, installs nothing from change control and fails on an untracked marker naming file and line."
+    command: "uv run pytest tests/ci/test_todo_format_core_owner_omn20885.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,3 +39,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20885-ac5-todo-format-no-change-control"
+    description: "AC5: the TODO format check step installs nothing from change control and swallows no failure."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_todo_format_core_owner_omn20885.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20885-ac6-todo-format-fails-on-marker"
+    description: "AC6: the TODO format check step passes a clean tree and fails a planted untracked marker naming file and line."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_todo_format_core_owner_omn20885.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
