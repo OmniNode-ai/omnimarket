@@ -31,6 +31,10 @@
 # otherwise wait for an OCC verdict and fail closed without one. verifier-version
 # stays a release that ships the classifier (node_dod_verify occ-difference,
 # omnimarket#3277), so a rollback turns the step back on with this one input.
+#
+# verifier-version 0.4.305 is the release omnibase_infra and omnibase_core run.
+# It ships the refusal of a contract that leaves a criterion unbound
+# (omnimarket#3511, first released in 0.4.303; OMN-20070), which 0.4.294 predates.
 
 name: Repo Evidence Gate
 
@@ -52,5 +56,5 @@ jobs:
     uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@fb0c6c2117d5868a398b0920cd0048d0824415b1 # OMN-20074: immutable full-SHA pin, the squash commit of omnibase_core#1914 on that repo's dev branch, the pin omnibase_core's own caller and omnibase_infra's caller use; it descends from #1912 (and #1884, #1886, #1911) and adds the writer app's release-cut exemption derived at the head.
     with:
       evidence-source: caller
-      verifier-version: 0.4.294
+      verifier-version: 0.4.305
       compare-with-occ: "false"
