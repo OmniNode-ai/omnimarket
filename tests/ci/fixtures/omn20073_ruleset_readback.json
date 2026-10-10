@@ -1,0 +1,20 @@
+{
+ "repos/OmniNode-ai/omnimarket/rules/branches/dev": [
+  {
+   "parameters": {
+    "do_not_enforce_on_create": false,
+    "required_status_checks": [
+     {
+      "context": "repo-evidence / dod-verify",
+      "integration_id": 15368
+     }
+    ],
+    "strict_required_status_checks_policy": false
+   },
+   "ruleset_id": 24462257,
+   "ruleset_source": "OmniNode-ai/omnimarket",
+   "ruleset_source_type": "Repository",
+   "type": "required_status_checks"
+  }
+ ]
+}

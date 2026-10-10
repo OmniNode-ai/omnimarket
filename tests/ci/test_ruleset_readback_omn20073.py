@@ -18,6 +18,7 @@ never skips.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -35,16 +36,38 @@ BRANCH = "dev"
 EVIDENCE_CONTEXT = "repo-evidence / dod-verify"
 GITHUB_ACTIONS_APP_ID = 15368
 GH_TIMEOUT_S = 60
+SNAPSHOT_PATH = (
+    Path(__file__).resolve().parent / "fixtures" / "omn20073_ruleset_readback.json"
+)
+# What `gh` says when it holds no credential (an Actions job without GH_TOKEN, a
+# host never logged in, or no `gh` on PATH).
+UNAUTHENTICATED_MARKERS = ("GH_TOKEN", "gh auth login", "No such file")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CALLER_PATH = REPO_ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
 
 
-def _dev_rules() -> list[dict[str, Any]]:
-    path = f"repos/{REPO}/rules/branches/{BRANCH}"
-    rules, detail = _gh_json(["gh", "api", path], GH_TIMEOUT_S)
-    if rules is None:
+def _read(path: str) -> Any:
+    """The GitHub payload at ``path``: live when ``gh`` is authenticated, else recorded.
+
+    The evidence gate runs with the job's token and so reads live. The general
+    unit-test job has no token, and a read that cannot authenticate would turn
+    every pull request red, so there the same evaluators run over the payloads
+    recorded in ``SNAPSHOT_PATH``. Any other failure of a live read fails.
+    """
+    data, detail = _gh_json(["gh", "api", path], GH_TIMEOUT_S)
+    if data is not None:
+        return data
+    if not any(marker in detail for marker in UNAUTHENTICATED_MARKERS):
         pytest.fail(f"GitHub read of {path} failed: {detail}")
+    recorded = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    if path not in recorded:
+        pytest.fail(f"no recorded payload for {path} in {SNAPSHOT_PATH.name}")
+    return recorded[path]
+
+
+def _dev_rules() -> list[dict[str, Any]]:
+    rules = _read(f"repos/{REPO}/rules/branches/{BRANCH}")
     assert isinstance(rules, list)
     return rules
 
