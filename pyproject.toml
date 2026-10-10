@@ -130,7 +130,10 @@ dependencies = [
     # OMN-20679: floor raised 0.47.31 -> 0.47.34, the first release whose shared
     # publish_and_poll takes client_security (the bus CLI and coding-agent adapter of
     # node_architecture_discovery_orchestrator call it). Raised in BOTH places.
-    "omnibase-core>=0.47.34,<0.48.0",
+    # OMN-20287: floor raised 0.47.34 -> 0.47.36, the first release whose routing-
+    # authority shape audit admits a declared harness backend with no endpoint
+    # (core#1917); bifrost_delegation.yaml declares six. Raised in BOTH places.
+    "omnibase-core>=0.47.36,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -1040,7 +1043,7 @@ override-dependencies = [
     # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
     # models.ticket.model_done_write_decision. node_linear_triage imports both
     # unconditionally, so an older core fails at import. Raised in BOTH places.
-    "omnibase-core>=0.47.34,<0.48.0",
+    "omnibase-core>=0.47.36,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

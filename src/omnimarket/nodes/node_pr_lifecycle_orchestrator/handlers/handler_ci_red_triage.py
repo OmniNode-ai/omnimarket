@@ -56,6 +56,7 @@ from omnimarket.models.ci_red_triage import (
     ci_red_owner_correlation_id,
     ci_red_owner_run_id,
     ci_red_repo_slug,
+    facts_from_event,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims import (
     CiRedClaimsUnreadError,
@@ -232,6 +233,23 @@ class GhCiRedFactsReader:
         return ModelCiRedFacts.model_validate({"event": event, **checks, **annotations})
 
 
+class EventCiRedFactsReader:
+    """Take the facts from the event; read GitHub only for an event that does not carry them.
+
+    A red-CI event derived from a PR-state observation of schema version 2, or from a webhook check
+    run, states every failing check's conclusion and the base branch's red checks, so the runner and
+    dev-head classes are decided without a GitHub read. An event that lacks any of that keeps the
+    read, which retires when every watcher publishes version 2 with the base branch read.
+    """
+
+    def __init__(self, fallback: ProtocolCiRedFactsReader | None = None) -> None:
+        self._fallback = fallback if fallback is not None else GhCiRedFactsReader()
+
+    def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        facts = facts_from_event(event)
+        return facts if facts is not None else self._fallback.read(event)
+
+
 class HandlerCiRedTriage:
     """Durable decision and owner claims; identities never read the clock.
 
@@ -262,7 +280,7 @@ class HandlerCiRedTriage:
     ) -> None:
         """``act`` is a flag per red class (a bool sets every class); ``None`` reads the contract."""
         self._facts_reader = (
-            facts_reader if facts_reader is not None else GhCiRedFactsReader()
+            facts_reader if facts_reader is not None else EventCiRedFactsReader()
         )
         self._classifier = classifier
         if act is None or claims is None:

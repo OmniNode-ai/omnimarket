@@ -13,9 +13,9 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+from omnimarket.events.pr_state import ISO_Z_PATTERN, ModelPrCheckFact
 
-ISO_Z_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+DEFAULT_GITHUB_OWNER = "OmniNode-ai"
 
 
 def ci_red_repo_slug(repo: str) -> str:
@@ -98,6 +98,11 @@ class ModelCiRunFailedEvent(BaseModel):
     observed_at: str = Field(pattern=ISO_Z_PATTERN)
     source_digest: str
     peers: tuple[ModelCiRedPeer, ...] = ()
+    # Per-check facts (PR-state schema version 2 and webhook check runs). Empty when the source
+    # observation predates them; the triage then reads the checks from GitHub.
+    failing_runs: tuple[ModelPrCheckFact, ...] = ()
+    base_red_checks: tuple[str, ...] = ()
+    base_read: bool = False
 
     @field_validator("failing_checks")
     @classmethod
@@ -118,7 +123,14 @@ class ModelCiRunFailedEvent(BaseModel):
             self.repo, self.pr_number, self.head_sha, self.failing_checks
         ):
             raise ValueError("event_id does not match red CI identity")
+        if not {run.check for run in self.failing_runs} <= set(self.failing_checks):
+            raise ValueError("failing_runs must name failing_checks only")
         return self
+
+    @property
+    def carries_check_facts(self) -> bool:
+        """True when every failing check has its conclusion on the event itself."""
+        return {run.check for run in self.failing_runs} == set(self.failing_checks)
 
 
 class ModelCiRedFacts(BaseModel):
@@ -143,6 +155,22 @@ class ModelCiRedFacts(BaseModel):
     annotations_read: bool = False
     base_red_checks: tuple[str, ...] = ()
     base_read: bool = False
+
+
+def facts_from_event(event: ModelCiRunFailedEvent) -> ModelCiRedFacts | None:
+    """The classifier's facts as the event states them; None when it does not carry them all.
+
+    Every failing check's conclusion and the base branch's read are both needed: with the base
+    unread the dev-head class cannot be ruled in or out, which is a decision, not a default.
+    """
+    if not (event.carries_check_facts and event.base_read):
+        return None
+    return ModelCiRedFacts(
+        event=event,
+        check_conclusions={run.check: run.conclusion for run in event.failing_runs},
+        base_red_checks=event.base_red_checks,
+        base_read=event.base_read,
+    )
 
 
 class ModelCiRedClassification(BaseModel):
