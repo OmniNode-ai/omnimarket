@@ -25,12 +25,12 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
-from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+from omnimarket.models.landing_ledger_row import (
+    ModelLandingLedgerRow,
+    ModelLandingLedgerRows,
+)
 from omnimarket.nodes.node_pr_landing_ledger_facts_compute.handlers.handler_pr_landing_ledger_facts import (
     HandlerPrLandingLedgerFacts,
-)
-from omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts import (
-    ModelLandingLedgerRows,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_gate_facts import (
     EnumPrLandingFactState,
