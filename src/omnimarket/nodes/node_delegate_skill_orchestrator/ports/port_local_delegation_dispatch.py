@@ -515,6 +515,26 @@ def derive_attempt_acceptance(
     )
 
 
+def _settle_final_rung_as_terminate(attempts: list[dict[str, object]]) -> None:
+    """Record the rung the ladder ended on as TERMINATE, not CLIMB (OMN-18978).
+
+    Every rung is recorded when it is judged, before anyone knows whether a
+    higher tier exists to climb to. A rung refused at the top of the ladder, or
+    after the escalation budget is spent, then reads ``climb`` on a run that
+    ended on it: a decision to move on that no rung carried out. Called only on
+    the paths that return a terminal, so the last recorded rung is the one the
+    run ended on. The reason is left as recorded; only the decision changes.
+    """
+    if (
+        attempts
+        and attempts[-1].get("acceptance_decision")
+        == EnumDelegationAcceptanceDecision.CLIMB.value
+    ):
+        attempts[-1]["acceptance_decision"] = (
+            EnumDelegationAcceptanceDecision.TERMINATE.value
+        )
+
+
 def _terminal_artifact(
     best_content: str, last_result: ModelLlmDelegationCallResult
 ) -> str:
@@ -1475,6 +1495,7 @@ class LocalDelegationDispatchPort:
                         quota_state=self._quota_snapshot(quota_observations),
                     )
                 if over_budget_next is None:
+                    _settle_final_rung_as_terminate(attempts)
                     # No rung can hold this input. Terminal FAILED naming the
                     # budget and the measurement -- never a silent truncation.
                     #
@@ -1741,6 +1762,7 @@ class LocalDelegationDispatchPort:
                 # Cannot escalate (non-retryable failure_class, budget exhausted,
                 # or no higher eligible/resolvable tier): terminal FAILED, carrying
                 # the cumulative metered cost of every attempt made so far.
+                _settle_final_rung_as_terminate(attempts)
                 self._project_evidence(
                     correlation_id=correlation_id,
                     task_type=task_type,
@@ -2245,6 +2267,7 @@ class LocalDelegationDispatchPort:
                 # Cannot escalate (budget exhausted or no higher eligible tier):
                 # terminal FAILED, carrying the cumulative metered cost of every
                 # attempt made so far.
+                _settle_final_rung_as_terminate(attempts)
                 self._project_evidence(
                     correlation_id=correlation_id,
                     task_type=task_type,

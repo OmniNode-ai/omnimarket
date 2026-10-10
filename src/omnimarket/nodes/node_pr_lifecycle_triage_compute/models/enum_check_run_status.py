@@ -1,21 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""EnumCheckRunStatus: the check-runs API ``status`` of one check-run copy."""
+"""Export of the shared ``omnimarket.models.pr_head_check.enum_check_run_status`` models for this node.
+
+The definitions live in :mod:`omnimarket.models.pr_head_check.enum_check_run_status` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from omnimarket.models.pr_head_check.enum_check_run_status import (
+    EnumCheckRunStatus,
+)
 
-
-class EnumCheckRunStatus(StrEnum):
-    """A check-run's ``status``; only ``COMPLETED`` carries a conclusion."""
-
-    QUEUED = "queued"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    WAITING = "waiting"
-    REQUESTED = "requested"
-    PENDING = "pending"
-
-
-__all__: list[str] = ["EnumCheckRunStatus"]
+__all__: list[str] = [
+    "EnumCheckRunStatus",
+]

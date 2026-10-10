@@ -29,6 +29,26 @@ def ci_run_failed_event_id(
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
+# Claim identities. The decision and owner claims are rows of the
+# pr_lifecycle_ledger_entries projection keyed by these correlation ids, so the
+# handler that reads a claim and the reducer that writes it share one spelling.
+def ci_red_decision_correlation_id(decision_key: str) -> UUID:
+    return uuid5(NAMESPACE_URL, "onex:ci-red-decision:" + decision_key)
+
+
+def ci_red_owner_correlation_id(owner_key: str) -> UUID:
+    return uuid5(NAMESPACE_URL, "onex:ci-red-owner:" + owner_key)
+
+
+def ci_red_owner_run_id(owner_key: str) -> str:
+    return "ci-red-" + hashlib.sha256(owner_key.encode()).hexdigest()[:16]
+
+
+def ci_red_cause_key(slug: str, check: str) -> str:
+    """Check-level cause key, used for a red whose annotations are unread."""
+    return f"cause:{slug}:{hashlib.sha256(check.encode()).hexdigest()[:12]}"
+
+
 class EnumCiRedClass(StrEnum):
     SHARED_CAUSE = "shared_cause"
     PR_OWN = "pr_own"
@@ -43,6 +63,17 @@ class EnumCiRedAction(StrEnum):
     RERUN_FAILED = "rerun_failed"
     JOINED_OWNER = "joined_owner"
     RECORD_ONLY = "record_only"
+
+
+# Decisions that started an owner and so claim it for their members.
+CI_RED_OWNER_START_ACTIONS = frozenset(
+    {
+        EnumCiRedAction.START_CAUSE_OWNER,
+        EnumCiRedAction.START_PR_FIX,
+        EnumCiRedAction.START_DEV_CAUSE,
+        EnumCiRedAction.RERUN_FAILED,
+    }
+)
 
 
 class ModelCiRedPeer(BaseModel):
@@ -91,11 +122,21 @@ class ModelCiRunFailedEvent(BaseModel):
 
 
 class ModelCiRedFacts(BaseModel):
-    """Facts shared by the reader and pure classifier; absent reads stay explicit."""
+    """Facts shared by the reader and pure classifier; absent reads stay explicit.
+
+    ``annotations`` is the first failure annotation per failing check at the
+    event head (``first_failure_annotations``), and ``peer_annotations`` the
+    same per peer PR number at the peer's head; a check or peer absent is
+    unread and ``""`` is a check read with no annotation. With
+    ``annotations_read`` false the classifier clusters by check name only.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     event: ModelCiRunFailedEvent
     check_conclusions: dict[str, str] = Field(default_factory=dict)
+    annotations: dict[str, str] = Field(default_factory=dict)
+    peer_annotations: dict[int, dict[str, str]] = Field(default_factory=dict)
+    annotations_read: bool = False
     base_red_checks: tuple[str, ...] = ()
     base_read: bool = False
 
@@ -131,9 +172,7 @@ class ModelCiRedTriageDecided(BaseModel):
 
     @model_validator(mode="after")
     def valid_decision(self) -> Self:
-        if self.correlation_id != uuid5(
-            NAMESPACE_URL, "onex:ci-red-decision:" + self.decision_key
-        ):
+        if self.correlation_id != ci_red_decision_correlation_id(self.decision_key):
             raise ValueError("correlation_id does not match decision_key")
         if self.repo != ci_red_repo_slug(self.repo) or "/" not in self.repo:
             raise ValueError("decision repo must be a full slug")
@@ -141,3 +180,9 @@ class ModelCiRedTriageDecided(BaseModel):
             raise ValueError("initial_state does not match red_class")
         datetime.fromisoformat(self.observed_at)
         return self
+
+    def claimed_members(self) -> tuple[int, ...]:
+        """PRs whose owner this decision claimed: none unless a start was applied."""
+        if self.action_applied and self.action in CI_RED_OWNER_START_ACTIONS:
+            return self.members
+        return ()

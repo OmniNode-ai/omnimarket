@@ -20,11 +20,14 @@ by OMN-16738).
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
+)
 
 #: A unit may run at most this long; the caller's wait adds slack on top.
 MAX_TIMEOUT_SECONDS: int = 7200
@@ -138,30 +141,6 @@ class ModelHostCapacityProbeRequest(BaseModel):
     @classmethod
     def _plain(cls, value: str) -> str:
         return _check_name(value)
-
-
-class ModelHostCapacityAdvertisement(BaseModel):
-    """One pool host's capacity at ``advertised_at``."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host_name: str
-    cores: int = Field(..., ge=1)
-    load1: float = Field(..., ge=0.0)
-    mem_available_bytes: int = Field(..., ge=0)
-    tools: list[str] = Field(default_factory=list)
-    running_units: int = Field(default=0, ge=0)
-    max_units: int = Field(default=1, ge=1)
-    #: Added to load per core for RANKING only, never for the load bar: it keeps an
-    #: evidence-lane host last-resort while idle hosts take the work (OMN-17485).
-    rank_penalty: float = Field(default=0.0, ge=0.0)
-    advertised_at: datetime
-    cadence_seconds: int = Field(..., ge=1)
-
-    @property
-    def load_per_core(self) -> float:
-        """Load per core, counting the units this host already runs."""
-        return (self.load1 + self.running_units) / self.cores
 
 
 __all__ = [

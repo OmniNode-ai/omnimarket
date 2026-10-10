@@ -8,9 +8,10 @@ gate. Each is a protocol here so the orchestrator is tested against the real
 handler or an explicit double, and so the handler can be composed on the lab
 (wave 3) without changing this node.
 
-Each default resolves the real handler by import when first used. A handler
-that is not in the tree yet (the reducer before T6 lands) is a typed refusal
-of the message that needed it, never a guess.
+Each default resolves the real handler: the reducer by import when first
+used, the arm gate and the head-check classifier (:mod:`.head_checks`,
+OMN-20866) directly. A handler that is not in the tree is a typed refusal of
+the message that needed it, never a guess.
 """
 
 from __future__ import annotations
@@ -66,9 +67,9 @@ class ProtocolPrLandingHeadCheckClassifier(Protocol):
     """Turns one read_head_checks answer into the PR-level verdict for its head.
 
     The classification itself is ``classify_head_checks`` on
-    node_pr_lifecycle_triage_compute (T3, T8). Building its facts from the
-    effect's check-run facts needs the required contexts and run attempts the
-    effect reads (T9); the composition is wired on the lab in wave 3.
+    node_pr_lifecycle_triage_compute (T3, T8); :mod:`.head_checks` builds its
+    facts from the effect's check runs, run attempts and required contexts
+    (T9, OMN-20866) and is the handler's default.
     """
 
     async def classify(
@@ -122,28 +123,11 @@ class LazyPrLandingReducer:
         return self._resolve().handle(request)
 
 
-class UnwiredHeadCheckClassifier:
-    """The classifier port before wave 3 composes it: refuses, never guesses a verdict."""
-
-    async def classify(
-        self,
-        completed: ModelPrLandingGithubCompleted,
-        row: ModelPrLandingWorkflowRow,
-    ) -> ModelHeadCheckVerdict:
-        msg = (
-            f"no head-check classifier is wired for {row.landing_key} at "
-            f"{completed.head_sha}: classify_head_checks needs the required "
-            "contexts and run attempts the GitHub effect reads"
-        )
-        raise PrLandingPortUnavailableError(msg)
-
-
 __all__: list[str] = [
     "LazyPrLandingReducer",
     "PrLandingPortUnavailableError",
     "ProtocolPrLandingArmGate",
     "ProtocolPrLandingHeadCheckClassifier",
     "ProtocolPrLandingReducer",
-    "UnwiredHeadCheckClassifier",
     "call_reducer",
 ]

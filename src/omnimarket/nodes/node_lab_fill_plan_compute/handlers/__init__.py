@@ -6,6 +6,8 @@ from .handler_lab_fill_candidate_choice import HandlerLabFillCandidateChoice
 from .handler_lab_fill_capacity import HandlerLabFillCapacity
 from .handler_lab_fill_dispatch_plan import HandlerLabFillDispatchPlan
 from .handler_lab_fill_fallback_plan import HandlerLabFillFallbackPlan
+from .handler_lab_fill_fanout_readback import HandlerLabFillFanoutReadback
+from .handler_lab_fill_headroom_plan import HandlerLabFillHeadroomPlan
 from .handler_lab_fill_lane_render import HandlerLabFillLaneRender
 from .handler_lab_fill_ownership import HandlerLabFillOwnership
 from .handler_lab_fill_placement import HandlerLabFillPlacement
@@ -16,6 +18,8 @@ __all__ = [
     "HandlerLabFillCapacity",
     "HandlerLabFillDispatchPlan",
     "HandlerLabFillFallbackPlan",
+    "HandlerLabFillFanoutReadback",
+    "HandlerLabFillHeadroomPlan",
     "HandlerLabFillLaneRender",
     "HandlerLabFillOwnership",
     "HandlerLabFillPlacement",

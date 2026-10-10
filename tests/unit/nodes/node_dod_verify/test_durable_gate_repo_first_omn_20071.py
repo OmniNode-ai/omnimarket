@@ -340,6 +340,57 @@ class TestRepoFirstAdmits:
 
 
 @pytest.mark.unit
+class TestRepoDiagnosticEscaping:
+    @pytest.mark.parametrize(
+        "field",
+        ["source", "error", "ticket_id", "named_ticket", "status", "criterion", "item"],
+    )
+    def test_untrusted_values_are_inert_in_verdict_details(self, field: str) -> None:
+        payload = '<script>"&\r\n\x1b[31m\x00\u2028'
+        contract = _contract(["AC1"], ["AC2"])
+        pr = _pr(repo=payload) if field == "source" else _pr()
+        ticket = payload if field == "ticket_id" else _TICKET
+        contract["ticket_id"] = payload if field == "named_ticket" else ticket
+        read = _found(contract)
+        if field in {"source", "error", "ticket_id"}:
+            read = ModelRepoContractRead(
+                status=EnumRepoContractReadStatus.ERROR,
+                error=payload if field == "error" else "HTTP 502",
+            )
+        description = _DESCRIPTION
+        if field == "criterion":
+            criterion = payload.replace("\r\n", "")
+            description += f"- [ ] an unlabelled criterion {criterion}\n"
+        if field == "item":
+            contract["dod_evidence"] = [{"id": payload, "binds_ac": ["AC1", "AC2"]}]
+            read = _found(contract)
+        readers = _readers(
+            {(pr.repo, _MERGE): read, (pr.repo, _HEAD): read},
+            {
+                (pr.repo, _HEAD): (
+                    _run(7001, status=payload if field == "status" else "completed"),
+                )
+            },
+        )
+
+        verdict = evaluate_repo_evidence(ticket, description, (pr,), **readers)
+
+        expected = (
+            EnumRepoEvidenceOutcome.PASSED
+            if field == "item"
+            else EnumRepoEvidenceOutcome.REFUSED
+        )
+        assert verdict.outcome is expected
+        assert "&lt;script&gt;" in verdict.detail
+        assert "<script>" not in verdict.detail
+        assert not any(char in verdict.detail for char in "\r\n\x1b\x00\u2028")
+        assert "\\x1b" in verdict.detail or "\\u001b" in verdict.detail
+        if field == "item":
+            # Formatting a diagnostic must not rewrite the governing evidence.
+            assert verdict.governing_contracts == (contract,)
+
+
+@pytest.mark.unit
 class TestRepoFirstRefuses:
     def _refused(self, result: ModelDurableEvidenceGateResult, needle: str) -> None:
         assert result.status == EnumDurableEvidenceStatus.FAIL

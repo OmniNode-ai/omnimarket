@@ -1,0 +1,2063 @@
+{
+ "repository": "OmniNode-ai/omnimarket",
+ "pr_number": 3643,
+ "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+ "base_ref": "dev",
+ "label": "red: three required contexts failed (Hostile Review Gate, Hostile Reviewer (adversarial gate), CI Summary)",
+ "provenance": "Recorded 2026-10-10 about 05:50Z with gh api --paginate repos/OmniNode-ai/omnimarket/commits/<head>/check-runs (every copy, fields trimmed to what ModelGithubCheckRunFact.from_check_runs_body reads); required_contexts recorded 2026-10-10T05:59:47Z from the dev branch's classic protection and rules reads (OMN-20866). One recorded copy, a non-required parity check that passed and whose name the public-repo hygiene gate refuses in this public repository, is left out.",
+ "required_contexts": [
+  "Architectural Compliance Lint",
+  "CI Naming Convention",
+  "CI Summary",
+  "Canonical Inference Gate",
+  "Customer Path Boundary (OMN-18012)",
+  "Dep Provenance Gate",
+  "Ecosystem Integration Validation",
+  "Enforce validator-requirements.yaml (OMN-13291)",
+  "Hostile Review Gate",
+  "Hostile Reviewer (adversarial gate)",
+  "JS Toolchain Hermetic (OMN-18012)",
+  "Leaked Literals Gate",
+  "Legacy Compatibility Check",
+  "No Faked Boundary Gate",
+  "Omni Standards Gate",
+  "PR Arch Review Gate",
+  "Precommit Fail-Loud Gate",
+  "Projection Exposure Drift Gate",
+  "Repository Structure Validation",
+  "Resolve Bot Token",
+  "Stale TODO Gate",
+  "URL Authority Gate",
+  "Wire Compatibility Gate",
+  "call / validate-docs",
+  "dispatcher-route-coverage",
+  "imperative-contract-guard / Imperative Contract Guard",
+  "main-target-guard",
+  "non-dev-base-guard",
+  "pr-title / check-title",
+  "repo-evidence / dod-verify",
+  "required-check-skip-guard / check-skip-vectors",
+  "state-coverage-gate"
+ ],
+ "check_runs_body": {
+  "total_count": 144,
+  "check_runs": [
+   {
+    "id": 113839825184,
+    "name": "product-readiness / evaluate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155445/job/113839825184",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182886
+    }
+   },
+   {
+    "id": 113839824586,
+    "name": "reason-graph",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155445/job/113839824586",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182886
+    }
+   },
+   {
+    "id": 113837087223,
+    "name": "Skip Count Ratchet (OMN-18776)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113837087223",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113837087085,
+    "name": "Coverage Sweep Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113837087085",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113837086971,
+    "name": "Merge test durations",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113837086971",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113836323962,
+    "name": "Hostile Review Gate",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154785/job/113836323962",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181128
+    }
+   },
+   {
+    "id": 113835562604,
+    "name": "Hostile Reviewer (adversarial gate)",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154785/job/113835562604",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181128
+    }
+   },
+   {
+    "id": 113834228323,
+    "name": "CodeQL",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/runs/113834228323",
+    "app": {
+     "slug": "github-advanced-security"
+    },
+    "check_suite": {
+     "id": 102781161637
+    }
+   },
+   {
+    "id": 113832720063,
+    "name": "Tests (Split 19/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832720063",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832720032,
+    "name": "Tests (Split 18/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832720032",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832720030,
+    "name": "Tests (Split 11/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832720030",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832720021,
+    "name": "Tests (Split 7/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832720021",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719977,
+    "name": "Tests (Split 20/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719977",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719939,
+    "name": "Tests (Split 17/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719939",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719910,
+    "name": "Tests (Split 8/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719910",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719905,
+    "name": "Tests (Split 13/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719905",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719872,
+    "name": "Tests (Split 16/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719872",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719751,
+    "name": "Tests (Split 14/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719751",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719700,
+    "name": "Tests (Split 10/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719700",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719685,
+    "name": "Tests (Split 12/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719685",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719662,
+    "name": "Tests (Split 3/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719662",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719655,
+    "name": "Tests (Split 15/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719655",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719636,
+    "name": "Tests (Split 6/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719636",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719615,
+    "name": "Tests (Split 1/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719615",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719609,
+    "name": "Tests (Split 9/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719609",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719565,
+    "name": "Tests (Split 4/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719565",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719562,
+    "name": "Tests (Split 5/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719562",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832719537,
+    "name": "Tests (Split 2/20)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832719537",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832629645,
+    "name": "Docs-Only Marker (OMN-16662)",
+    "status": "completed",
+    "conclusion": "skipped",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832629645",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628281,
+    "name": "SEA E2E Acceptance + Error Chains (OMN-12660)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628281",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628212,
+    "name": "Integration Silent-Skip Guard (OMN-14172)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628212",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628138,
+    "name": "Generated-Node Golden Chain Gate (OMN-13624)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628138",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628104,
+    "name": "E2E Workflow Runner (inmemory bus)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628104",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628075,
+    "name": "Generated Event Chains (walker paths)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628075",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628050,
+    "name": "Detect Changes",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628050",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628012,
+    "name": "Golden Chain Suite (inmemory bus)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628012",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832628004,
+    "name": "typecheck",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832628004",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832533172,
+    "name": "lint",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832533172",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832533041,
+    "name": "Sibling Release Compatibility Gate (OMN-20381)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832533041",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832533024,
+    "name": "uv.lock Pin Reachability",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832533024",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832533010,
+    "name": "zone-filter / Zone Filter (docs-only check)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832533010",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532999,
+    "name": "Contract Compliance Check",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532999",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532955,
+    "name": "Runtime Sweep",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532955",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532933,
+    "name": "Event Registry Drift",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532933",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532914,
+    "name": "Compliance Sweep",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532914",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532892,
+    "name": "Dependency Health Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532892",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532873,
+    "name": "Workflow Module Resolution",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532873",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532856,
+    "name": "Core-Only Install Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532856",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532843,
+    "name": "Contract Sweep Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532843",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532841,
+    "name": "Customer Clean-Install Delegate Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532841",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532762,
+    "name": "Aislop Sweep (strict, PR diff)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532762",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532615,
+    "name": "Topic Enum Drift Check",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532615",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532577,
+    "name": "Topic Naming Lint",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532577",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832532510,
+    "name": "Topic Drift Check",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832532510",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832517763,
+    "name": "validate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154892/job/113832517763",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181398
+    }
+   },
+   {
+    "id": 113832503550,
+    "name": "market-skill-baseline",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155005/job/113832503550",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181693
+    }
+   },
+   {
+    "id": 113832491107,
+    "name": "dep-health / scan",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155117/job/113832491107",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181983
+    }
+   },
+   {
+    "id": 113832073312,
+    "name": "JS Toolchain Hermetic (OMN-18012)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113832073312",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113832038727,
+    "name": "PR Arch Review Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154701/job/113832038727",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180833
+    }
+   },
+   {
+    "id": 113831968668,
+    "name": "Omni Standards Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154723/job/113831968668",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180905
+    }
+   },
+   {
+    "id": 113831943674,
+    "name": "Architectural Compliance Lint",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154701/job/113831943674",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180833
+    }
+   },
+   {
+    "id": 113831911131,
+    "name": "Runner Route (OMN-18031) / route",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831911131",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831911020,
+    "name": "Customer Path Boundary (OMN-18012)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831911020",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910987,
+    "name": "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910987",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910933,
+    "name": "Wire Compatibility Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910933",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910926,
+    "name": "contract-topic-graph",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910926",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910921,
+    "name": "no-noncanonical-lifecycle-classes",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910921",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910917,
+    "name": "Event Chain Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910917",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910907,
+    "name": "Canonical File Shape (OMN-20304)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910907",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910858,
+    "name": "CI Summary",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910858",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910737,
+    "name": "Release Staleness (OMN-18010)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910737",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910730,
+    "name": "merge-hold-gate / evaluate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910730",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910714,
+    "name": "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910714",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910687,
+    "name": "Merge Reason-Code Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910687",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910683,
+    "name": "Repo Evidence Dependency",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910683",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910576,
+    "name": "Release Identity Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910576",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910535,
+    "name": "Merge Hold Gate (OMN-15483)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910535",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910504,
+    "name": "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910504",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910434,
+    "name": "Shape-Gate Independence (OMN-20298)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910434",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831910412,
+    "name": "Direct Model Call Gate (OMN-20287)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934156694/job/113831910412",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779186351
+    }
+   },
+   {
+    "id": 113831907762,
+    "name": "delegation-health-check / Delegation Health Check",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155878/job/113831907762",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779184097
+    }
+   },
+   {
+    "id": 113831905495,
+    "name": "call / validate-docs",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155825/job/113831905495",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183927
+    }
+   },
+   {
+    "id": 113831905361,
+    "name": "pr-title / check-title",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155832/job/113831905361",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183848
+    }
+   },
+   {
+    "id": 113831905335,
+    "name": "call-reject-skip-token / scan / reject-skip-gate-token",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155706/job/113831905335",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183638
+    }
+   },
+   {
+    "id": 113831905212,
+    "name": "kb-doc-gate / kb-doc-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155685/job/113831905212",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183567
+    }
+   },
+   {
+    "id": 113831905203,
+    "name": "public-repo-hygiene / public-repo-hygiene",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155771/job/113831905203",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183781
+    }
+   },
+   {
+    "id": 113831905097,
+    "name": "imperative-contract-guard / Imperative Contract Guard",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155744/job/113831905097",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183726
+    }
+   },
+   {
+    "id": 113831905055,
+    "name": "required-check-skip-guard / check-skip-vectors",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155824/job/113831905055",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183931
+    }
+   },
+   {
+    "id": 113831904602,
+    "name": "advisory-job-gate / advisory-job-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155772/job/113831904602",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779183803
+    }
+   },
+   {
+    "id": 113831904236,
+    "name": "tests+coverage (shadow)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155445/job/113831904236",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182886
+    }
+   },
+   {
+    "id": 113831904183,
+    "name": "lint (shadow)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155445/job/113831904183",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182886
+    }
+   },
+   {
+    "id": 113831903956,
+    "name": "dispatcher-route-coverage",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155164/job/113831903956",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182000
+    }
+   },
+   {
+    "id": 113831903909,
+    "name": "shell-hygiene",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154985/job/113831903909",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181642
+    }
+   },
+   {
+    "id": 113831903836,
+    "name": "typecheck (shadow)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155445/job/113831903836",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182886
+    }
+   },
+   {
+    "id": 113831903665,
+    "name": "CodeQL Security Analysis (python)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155094/job/113831903665",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181927
+    }
+   },
+   {
+    "id": 113831903633,
+    "name": "Secret Scanning",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155094/job/113831903633",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181927
+    }
+   },
+   {
+    "id": 113831903513,
+    "name": "Repo Evidence Dependency",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155117/job/113831903513",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181983
+    }
+   },
+   {
+    "id": 113831903468,
+    "name": "No Faked Boundary Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155097/job/113831903468",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181960
+    }
+   },
+   {
+    "id": 113831903328,
+    "name": "AC1 exact revision row on PostgreSQL 16",
+    "status": "completed",
+    "conclusion": "skipped",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154757/job/113831903328",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180967
+    }
+   },
+   {
+    "id": 113831903311,
+    "name": "Dependency Security Scan",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155094/job/113831903311",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181927
+    }
+   },
+   {
+    "id": 113831903167,
+    "name": "subscriber-dispatcher-resolution",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155123/job/113831903167",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182002
+    }
+   },
+   {
+    "id": 113831903098,
+    "name": "Repo Evidence Dependency",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155005/job/113831903098",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181693
+    }
+   },
+   {
+    "id": 113831903033,
+    "name": "node-drift-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155173/job/113831903033",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779182134
+    }
+   },
+   {
+    "id": 113831902850,
+    "name": "state-coverage-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155099/job/113831902850",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181937
+    }
+   },
+   {
+    "id": 113831902846,
+    "name": "receipt-honesty",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154949/job/113831902846",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181517
+    }
+   },
+   {
+    "id": 113831902815,
+    "name": "skill-mapping-input-coverage-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154845/job/113831902815",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181278
+    }
+   },
+   {
+    "id": 113831902686,
+    "name": "BYOK Catalogue No House Entry",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154928/job/113831902686",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181475
+    }
+   },
+   {
+    "id": 113831902681,
+    "name": "contract-walker (report-only)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154968/job/113831902681",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181596
+    }
+   },
+   {
+    "id": 113831902542,
+    "name": "Stale TODO Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154969/job/113831902542",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181592
+    }
+   },
+   {
+    "id": 113831902537,
+    "name": "Leaked Literals Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155034/job/113831902537",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181775
+    }
+   },
+   {
+    "id": 113831902511,
+    "name": "OCC Emitter Golden Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154919/job/113831902511",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181444
+    }
+   },
+   {
+    "id": 113831902491,
+    "name": "contract-validation",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154790/job/113831902491",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181140
+    }
+   },
+   {
+    "id": 113831902386,
+    "name": "routing-input-model-fit",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902386",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831902376,
+    "name": "Git env scrub gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154952/job/113831902376",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181537
+    }
+   },
+   {
+    "id": 113831902327,
+    "name": "no-literal-event-type-in-tests",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902327",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831902285,
+    "name": "key-grain-declared",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902285",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831902256,
+    "name": "mixed-category-routing",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902256",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831902229,
+    "name": "Repo Evidence Dependency",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154892/job/113831902229",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181398
+    }
+   },
+   {
+    "id": 113831902195,
+    "name": "handler-event-type-source",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902195",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831902042,
+    "name": "no-baseline-refreeze",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831902042",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831901846,
+    "name": "No Coding Plan Endpoint",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154872/job/113831901846",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181263
+    }
+   },
+   {
+    "id": 113831901800,
+    "name": "local-ingress-alias-collision",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934155002/job/113831901800",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181690
+    }
+   },
+   {
+    "id": 113831901739,
+    "name": "ONEX Change Control Schema Compatibility",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154818/job/113831901739",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181207
+    }
+   },
+   {
+    "id": 113831901705,
+    "name": "URL Authority Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154750/job/113831901705",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181013
+    }
+   },
+   {
+    "id": 113831901625,
+    "name": "Canonical Inference Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154810/job/113831901625",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181135
+    }
+   },
+   {
+    "id": 113831901608,
+    "name": "Routing Tier Bindability",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154765/job/113831901608",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181043
+    }
+   },
+   {
+    "id": 113831901567,
+    "name": "Dep Provenance Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154931/job/113831901567",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181486
+    }
+   },
+   {
+    "id": 113831901415,
+    "name": "non-dev-base-guard",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154747/job/113831901415",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180986
+    }
+   },
+   {
+    "id": 113831901361,
+    "name": "wheel-content-parity",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154833/job/113831901361",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181262
+    }
+   },
+   {
+    "id": 113831901330,
+    "name": "main-target-guard",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154737/job/113831901330",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180957
+    }
+   },
+   {
+    "id": 113831901304,
+    "name": "Projection Exposure Drift Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154816/job/113831901304",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779181205
+    }
+   },
+   {
+    "id": 113831901266,
+    "name": "Precommit Fail-Loud Gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154669/job/113831901266",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180715
+    }
+   },
+   {
+    "id": 113831901225,
+    "name": "Repository Structure Validation",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154723/job/113831901225",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180905
+    }
+   },
+   {
+    "id": 113831901109,
+    "name": "Enforce validator-requirements.yaml (OMN-13291)",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154702/job/113831901109",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180835
+    }
+   },
+   {
+    "id": 113831901075,
+    "name": "Resolve Bot Token",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154701/job/113831901075",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180833
+    }
+   },
+   {
+    "id": 113831901072,
+    "name": "CI Naming Convention",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154723/job/113831901072",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180905
+    }
+   },
+   {
+    "id": 113831901017,
+    "name": "Legacy Compatibility Check",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154723/job/113831901017",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180905
+    }
+   },
+   {
+    "id": 113831900952,
+    "name": "deploy-gate / deploy-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154714/job/113831900952",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180859
+    }
+   },
+   {
+    "id": 113831900824,
+    "name": "fsm-handler-drift",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154634/job/113831900824",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180593
+    }
+   },
+   {
+    "id": 113831900737,
+    "name": "pypi-pin-resolvability",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154672/job/113831900737",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180725
+    }
+   },
+   {
+    "id": 113831900730,
+    "name": "Ecosystem Integration Validation",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154723/job/113831900730",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180905
+    }
+   },
+   {
+    "id": 113831900506,
+    "name": "node-migration-vendor-parity-gate",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934154606/job/113831900506",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779180515
+    }
+   },
+   {
+    "id": 113831891172,
+    "name": "repo-evidence / verify",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934150970/job/113831891172",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779170113
+    }
+   },
+   {
+    "id": 113831891167,
+    "name": "repo-evidence / dod-verify",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "94759d8a50906d31d97ef23e53e82ae8ebbb54db",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37934150970/job/113831891167",
+    "app": {
+     "slug": "github-actions"
+    },
+    "check_suite": {
+     "id": 102779170113
+    }
+   }
+  ]
+ }
+}
