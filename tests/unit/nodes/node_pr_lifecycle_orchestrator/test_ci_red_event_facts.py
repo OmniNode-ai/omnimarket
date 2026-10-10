@@ -80,7 +80,7 @@ async def test_runner_class_is_decided_from_the_event_conclusions() -> None:
     decision, reads = await decide(red(("unit", "timed_out")))
     assert decision.red_class == EnumCiRedClass.RUNNER
     assert decision.action == EnumCiRedAction.RERUN_FAILED
-    assert "unread=none" in decision.evidence
+    assert "unread=annotations" in decision.evidence
     assert reads == 0
 
 
