@@ -10,8 +10,10 @@ model on two hosts agreed on a critical finding in 2 of 8 runs and both were
 false; paired with gpt-oss-120b it blocked nothing.
 
 The roster is now ``qwen3-review`` (Qwen3.8-27B, .201) and ``local-studio-planner``
-(Qwen3.6-35B-A3B on the .200 Mac Studio's :8131, registered in omniintelligence#945 as
-``gpt-oss-review`` and renamed in omniintelligence#1014).
+(registered in omniintelligence#945 as ``gpt-oss-review`` and renamed in
+omniintelligence#1014). Since RULING 2026-10-10T16:28:58Z (one model on the Mac
+Studio) it is the Studio's Qwen3.8-27B on port 8130, the same model as qwen3-review on
+a second host; a distinct second voter is open under OMN-20889.
 Both are lab models: private diffs never go to a third-party cloud reviewer
 (operator, 2026-09-25; OPERATOR-CONSENT on the rolling ledger, row 4842).
 .200 is always on, so there is no single-model pass: a lost reviewer leaves
