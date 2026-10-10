@@ -47,3 +47,10 @@ dod_evidence:
         check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute -q -p no:randomly -k "venv_divergence_alarm_after_30m"'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20851-deploy-probe"
+    description: "Deploy probe. The throughput tick decision handler at the checked-out commit carries check_unplaced_lanes, the ALARM finding this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def check_unplaced_lanes'"
+        cwd: "${OMNI_HOME}/omnimarket"
