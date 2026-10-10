@@ -712,6 +712,36 @@ def scrub_text(
     return _scrub_str(text, contract, hits), hits
 
 
+def _cut_outside_references(cut: int, spans: list[tuple[int, int]]) -> int:
+    """Move a cut that falls inside a reference back to that reference's start.
+
+    OMN-20926: a reference cut in two is two strings no scrub keeps and no
+    reader can resolve; the fan-out would scrub its first half as a label.
+    """
+    for start, end in spans:
+        if start < cut < end:
+            return start
+    return cut
+
+
+def _chunks_keeping_references(
+    kept: str, step: int, spans: list[tuple[int, int]]
+) -> tuple[str, ...]:
+    """Split ``kept`` into chunks of at most ``step``, never inside a reference."""
+    chunks: list[str] = []
+    pos = 0
+    while pos < len(kept):
+        cut = min(pos + step, len(kept))
+        if cut < len(kept):
+            moved = _cut_outside_references(cut, spans)
+            # A reference is far shorter than a chunk, so this only fails for a
+            # degenerate step; then cut where the step says rather than loop.
+            cut = moved if moved > pos else cut
+        chunks.append(kept[pos:cut])
+        pos = cut
+    return tuple(chunks) or ("",)
+
+
 def plan_content_chunks(
     text: str, topic: str, *, contract_path: Path | None = None
 ) -> ContentPlan:
@@ -731,9 +761,9 @@ def plan_content_chunks(
     if policy is None or policy.content_policy is None:
         raise ValueError(f"topic {topic!r} declares no content_policy")
     bound = policy.content_policy
-    kept = text[: bound.max_content_chars]
-    step = bound.chunk_chars
-    chunks = tuple(kept[i : i + step] for i in range(0, len(kept), step)) or ("",)
+    spans = reference_spans(text, contract)
+    kept = text[: _cut_outside_references(bound.max_content_chars, spans)]
+    chunks = _chunks_keeping_references(kept, bound.chunk_chars, spans)
     return ContentPlan(
         chunks=chunks,
         original_chars=len(text),
