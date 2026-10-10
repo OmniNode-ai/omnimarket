@@ -156,7 +156,17 @@ requirements:
       - id: "AC26"
         statement: |-
           AC26: when the budget expires at stage=inference on the customer OpenRouter route, the terminal names the provider endpoint and keeps the earlier 429 rung and the in-flight call as the last rung with failure_class timeout -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q fails at the merge base
+  - id: "req-budget-cancel-cause-timeout"
+    statement: |-
+      A delegation the handler budget cancelled names timeout as its terminal failure cause, and any earlier quality-gate refusals stay on their own rungs in its attempts.
+    acceptance:
+      - id: "AC27"
+        statement: |-
+          AC27: a budget-cancelled run whose earlier rungs record a quality-gate refusal and a 429, in either order, terminates with status timeout and cause timeout and keeps the refused rung in attempts, while a run that ended on its own ladder after a gate refusal still names quality_gate_refused -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q fails at the merge base
 evidence_requirements:
+  - kind: "tests"
+    description: "A budget-cancelled run names timeout and keeps its gate refusal; a run that ended on its own ladder is still gate-decided."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q"
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
     command: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
@@ -424,3 +434,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k retry_on_the_customer_route"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC26"]
+  - id: "dod-omn17427-ac27-budget-cancel-cause-timeout"
+    description: "A budget-cancelled run names timeout and keeps its gate refusal in attempts, in either order of events."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC27"]

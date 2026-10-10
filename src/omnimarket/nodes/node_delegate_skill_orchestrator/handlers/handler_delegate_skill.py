@@ -942,7 +942,19 @@ def _response_from_result(
     # rung's 429 on ``6ce51f77``) is the last thing that went wrong, not what
     # decided the run, and the response model refuses that contradiction.
     # Otherwise an explicit cause stays authoritative, as before.
+    #
+    # Operator RULING 2026-10-10T00:27:40Z: a run the handler budget cancelled
+    # (``budget_cancelled_result``: status timeout, explicit cause timeout)
+    # names timeout, whatever its earlier rungs record. The budget stopped the
+    # ladder with a rung in flight, so the gate did not decide it; any earlier
+    # gate refusals stay on their own rungs in ``attempts``.
     if (
+        status_value == "timeout"
+        and explicit_terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.TIMEOUT
+    ):
+        terminal_failure_cause = EnumDelegationTerminalFailureCause.TIMEOUT
+    elif (
         terminal_failure_cause
         is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     ):
