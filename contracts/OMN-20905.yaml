@@ -11,19 +11,19 @@ requirements:
     statement: "The classify handler accepts the delegated model's recorded answers to this week's operator messages and maps each to the kinds a reader expects, falls back deterministically when the model cannot answer, and discards an answer whose quote is not an exact substring of the message."
     acceptance:
       - id: "AC1"
-        statement: "AC1: the classify handler maps this week's sample operator messages to the expected kinds and refuses a model answer whose quote is not a substring of the message -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute -q"
+        statement: "AC1: the classify handler maps this week's sample operator messages to the expected kinds and refuses a model answer whose quote is not a substring of the message -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_handler_utterance_classify.py tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py -q"
   - id: "req-rows-on-the-ledger"
     statement: "A captured prompt with a decision and an ask yields two ledger rows with the verbatim words and the session id; a machine injection yields none; a failed append keeps the prompt and the retry writes no row twice."
     acceptance:
       - id: "AC2"
-        statement: "AC2: a captured prompt with a decision and an ask yields two ledger rows with the verbatim words and session id, and a machine injection yields none -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_effect -q"
+        statement: "AC2: a captured prompt with a decision and an ask yields two ledger rows with the verbatim words and session id, and a machine injection yields none -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: classification of this week's recorded samples, the fallback and the refusal of a non-substring quote; plus the rows, open asks, drift and guard handlers and the golden chain."
-    command: "uv run pytest tests/unit/nodes/node_operator_capture_compute -q -p no:randomly"
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_handler_utterance_classify.py tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py -q -p no:randomly"
   - kind: "tests"
     description: "AC2: inbox to ledger rows, machine injections skipped, retry without duplicates, guard capture-on-refuse, digest and push."
-    command: "uv run pytest tests/unit/nodes/node_operator_capture_effect -q -p no:randomly"
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,7 +34,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_handler_utterance_classify.py tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20905-ac2-rows"
@@ -42,6 +42,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_effect -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
