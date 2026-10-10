@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20866"
+title: "The PR landing orchestrator leaves shadow mode on the lab dev lane: its config comes from the contract and companion commands stop being sent as dry runs"
+summary: "node_pr_landing_orchestrator builds PrLandingOrchestratorConfig from the landing_config block of its contract.yaml (mode per repository, companion-exempt, queue and observed-prompt repositories, arm policy), wires classify_head_checks as its head-check classifier with the base branch's required contexts read by the GitHub landing effect, and runs the omnimarket canary in enforce for reads and the arm, companion-exempt, with rerun_runs, update_branch and disarm kept dry_run everywhere. AC3 is read live on the dev lane after the deploy agent rolls it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "The handler builds PrLandingOrchestratorConfig from contract.yaml, and a test refuses a handler that ignores the declared mode."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the handler builds PrLandingOrchestratorConfig from contract.yaml and a test refuses a handler that ignores the declared mode -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k config"
+  - id: "req-ac2"
+    statement: "For a canary repository in enforce, a companion command is sent with dry_run false or the repository is companion-exempt, and a replay test reaches READY then ARMED for a green PR."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: for a canary repository in enforce, a companion command is sent with dry_run false, or the repository is companion-exempt, and a replay test reaches READY then ARMED for a green PR -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k enforce"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the contract's landing_config decides each repository's mode; a handler on the code default fails."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k config"
+  - kind: "tests"
+    description: "AC2: the omnimarket canary, companion-exempt, reaches READY then ARMED with an enforce arm on recorded check runs; reruns stay dry_run; a declined companion outside the exempt set needs an agent."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k enforce"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20866-ac1"
+    description: "AC1: the contract's landing_config decides each repository's mode; a handler on the code default fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k config"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20866-ac2"
+    description: "AC2: the omnimarket canary reaches READY then ARMED with an enforce arm on recorded check runs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator -q -k enforce"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
