@@ -493,8 +493,13 @@ class TestCutOverCallerAbsent:
                 raise GitHubApiError("Not Found", status_code=404)
             raise AssertionError(f"no REST call expected after the decline: {path}")
 
+        def fake_rest_array(method: str, path: str, *, token=None, body=None) -> list:
+            reads.append(path)
+            return [{"name": "ci.yml"}, {"name": "call-repo-evidence-gate.yml"}]
+
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
             patch.object(
                 emitter,
@@ -509,8 +514,43 @@ class TestCutOverCallerAbsent:
         assert action.startswith("skip:CALLER_ABSENT"), action
         assert "OmniNode-ai/omnimarket#321" in action
         assert reads == [
-            f"/repos/OmniNode-ai/omnimarket/contents/{_CALLER_PATH}?ref=dev"
+            f"/repos/OmniNode-ai/omnimarket/contents/{_CALLER_PATH}?ref=dev",
+            "/repos/OmniNode-ai/omnimarket/contents/.github/workflows?ref=dev",
         ]
+
+    def test_unreadable_workflows_directory_is_not_a_cut_over(
+        self, tmp_path: Path
+    ) -> None:
+        # A token that cannot read contents gets 404 for the caller on a private
+        # repository too; only a readable workflows directory that lacks the
+        # caller is a cut-over, so an unreadable one raises instead of declining.
+        pr_data = self._pr_data()
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                return dict(pr_data)
+            if _CALLER_PATH in path:
+                raise GitHubApiError("Not Found", status_code=404)
+            raise AssertionError(f"unexpected REST call: {path}")
+
+        def fake_rest_array(method: str, path: str, *, token=None, body=None) -> list:
+            raise GitHubApiError("Not Found", status_code=404)
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch.object(
+                emitter,
+                "_clone_and_branch",
+                side_effect=AssertionError("must not clone"),
+            ),
+            pytest.raises(GitHubApiError),
+        ):
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
     def test_base_with_caller_still_authors(self, tmp_path: Path) -> None:
         # Positive control: a repository still on change control keeps its

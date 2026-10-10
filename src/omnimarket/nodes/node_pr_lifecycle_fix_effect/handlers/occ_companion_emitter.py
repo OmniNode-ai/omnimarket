@@ -2796,19 +2796,32 @@ class OccCompanionEmitter:
         """Return a skip action when the PR's base branch has no autobind caller.
 
         Reads ``AUTOBIND_CALLER_WORKFLOW_PATH`` at the base branch head (the
-        repository's default branch when the payload names no base). Only a 404
-        reads as cut over; any other failure propagates, because an unreadable
+        repository's default branch when the payload names no base). A 404 is
+        a cut-over only when the base branch's workflows directory reads and
+        lacks the caller: a token with no contents access also gets 404 on a
+        private repository. Any other failure propagates, because an unreadable
         caller is not evidence that the repository left change control.
         """
         base = pr_data.get("base")
         base_ref = base.get("ref") if isinstance(base, dict) else None
-        path = f"/repos/{owner}/{repo_name}/contents/{AUTOBIND_CALLER_WORKFLOW_PATH}"
+        query = ""
         if isinstance(base_ref, str) and base_ref:
-            path = f"{path}?ref={urllib.parse.quote(base_ref, safe='')}"
+            query = f"?ref={urllib.parse.quote(base_ref, safe='')}"
+        contents = f"/repos/{owner}/{repo_name}/contents"
         try:
-            rest_json("GET", path, token=token)
+            rest_json(
+                "GET", f"{contents}/{AUTOBIND_CALLER_WORKFLOW_PATH}{query}", token=token
+            )
         except GitHubApiError as exc:
             if exc.status_code != 404:
+                raise
+            workflows_dir, _, caller_name = AUTOBIND_CALLER_WORKFLOW_PATH.rpartition(
+                "/"
+            )
+            listing = rest_json_array(
+                "GET", f"{contents}/{workflows_dir}{query}", token=token
+            )
+            if any(entry.get("name") == caller_name for entry in listing):
                 raise
             return (
                 f"skip:CALLER_ABSENT — {owner}/{repo_name}#{pr_number}: the base "
