@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20838"
+title: "dod_verify reads PR facts from the canonical clone and the PR watcher's state"
+summary: "HandlerDodEvidenceGithubEffect reads each PR fact first from DodEvidenceLocalSource (the PR watcher's state and the canonical clone) and runs a gh read only when neither holds that fact; the required-context set is cached once per repo and base."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The dod_verify local-reads tests pass at the PR head."
+    command: 'uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20838-local-reads-tests"
+    description: "The dod_verify local-reads tests pass at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
