@@ -1,16 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Reasons lab-fill work is skipped (OMN-20662)."""
+"""Reasons lab-fill work is skipped (OMN-20662); shared with the pr-land fallback rule (OMN-20864)."""
 
-from enum import StrEnum
+from omnimarket.models.lab_fill.enum_lab_fill_skip_reason import EnumLabFillSkipReason
 
-
-class EnumLabFillSkipReason(StrEnum):
-    """First matching selection gate."""
-
-    OWNED = "owned"
-    HANDED_OFF = "handed-off"
-    UNCHANGED_INPUT = "unchanged-input"
-    DISPATCH_LIMIT = "dispatch-limit"
-    OUT_OF_SCOPE = "out-of-repository-scope"
-    IMPLEMENTATION_MERGED = "implementation-merged"
+__all__ = ["EnumLabFillSkipReason"]

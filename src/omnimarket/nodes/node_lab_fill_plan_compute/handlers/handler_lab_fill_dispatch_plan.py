@@ -7,6 +7,11 @@ candidate; keeps one candidate per PR and per ticket (the more urgent kind wins)
 orders tier 1 by kind and ticket and the approved tier by declared value; dispatches
 at most the run's budget; counts a slot on the host with the most lanes left that
 holds the lane's engine. A lane is pinned only when its work names a host.
+
+OMN-20864: a pr-land item (the idle-slot fallback lab-fill selection plans on a parked, escalated or
+unowned-red PR) ranks after every other kind, so it takes only slots ordinary work leaves idle. It keeps
+the selection's order, takes the run's parent ticket when its PR names none, is deduplicated by PR only,
+and its lane is named for the PR.
 """
 
 from __future__ import annotations
@@ -27,7 +32,12 @@ from ..models import (
 from .helpers_js_value import get, has_word, has_word_stem, text_of, truthy, words
 
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
+PR_LAND = "pr-land"
+PR_KINDS = ("pr-red", "pr-stalled", PR_LAND)
 KINDS = ("pr-red", "pr-stalled", "defect", "ticket", *APPROVED_KINDS)
+# The kinds a plan dispatches. pr-land is not an enumerated source kind (the STATUS row's per-kind cells
+# iterate KINDS): lab-fill selection's idle-slot fallback produces it (OMN-20864).
+DISPATCH_KINDS = (*KINDS, PR_LAND)
 # Lower first: a red PR blocks a merge now, a stalled one blocks it soon, a defect
 # degrades every lane, a ticket is new work.
 KIND_PRIORITY = {
@@ -38,6 +48,7 @@ KIND_PRIORITY = {
     "process-fix": 4,
     "partial-node": 4,
     "wiring": 4,
+    PR_LAND: 5,
 }
 LANE = "lab-fill"
 # The dispatched lane's ROUTE line. The runner refuses a --model or --effort that
@@ -76,6 +87,9 @@ def _run_tag(run_key: str) -> str:
 
 
 def _lane_name(candidate: object, tag: str) -> str:
+    if get(candidate, "kind") == PR_LAND:
+        repo, _, number = _pr_key(candidate).partition("#")
+        return f"{LANE}-land-{re.sub(r'[^a-z0-9_-]', '', repo)}-{number}-{tag}"
     ticket = re.sub(r"[^a-z0-9]", "", text_of(get(candidate, "ticket")).lower())
     return f"{LANE}-{ticket}-{tag}"
 
@@ -88,7 +102,7 @@ def skip_reason(
         return "malformed"
     c = candidate
     kind = c.get("kind")
-    if kind not in KINDS:
+    if kind not in DISPATCH_KINDS:
         return "unknown-kind"
     ticket_raw = c.get("ticket")
     ticket = ticket_raw.strip() if isinstance(ticket_raw, str) else ""
@@ -109,7 +123,7 @@ def skip_reason(
         return "done"
     if approved and truthy(c.get("blocked_until")):
         return f"blocked-until:{text_of(c['blocked_until'])}"
-    is_pr = kind in ("pr-red", "pr-stalled")
+    is_pr = kind in PR_KINDS
     if is_pr and _PR_RE.fullmatch(text_of(c.get("pr"))) is None:
         return "no-pr"
     if kind in ("ticket", "defect") and ticket == cfg.parent_ticket:
@@ -128,7 +142,9 @@ def skip_reason(
             return f"excluded-area:{area}"
     milestone = text_of(c.get("milestone")).strip().lower()
     in_milestone = milestone == "" or milestone == cfg.milestone.lower()
-    if cfg.project_id:
+    if kind == PR_LAND:
+        scoped = not cfg.pr_repos or text_of(c.get("repo")).lower() in cfg.pr_repos
+    elif cfg.project_id:
         scoped = (
             text_of(c.get("repo")).lower() in cfg.pr_repos
             if is_pr
@@ -188,6 +204,8 @@ def _compare(x: dict[str, object], y: dict[str, object]) -> int:
         return by_kind
     if x["kind"] in APPROVED_KINDS and y["kind"] in APPROVED_KINDS:
         return 0
+    if x["kind"] == PR_LAND and y["kind"] == PR_LAND:
+        return 0
     by_ticket = _ticket_number(x["ticket"]) - _ticket_number(y["ticket"])
     if by_ticket:
         return by_ticket
@@ -206,6 +224,12 @@ class HandlerLabFillDispatchPlan:
         skipped: list[ModelLabFillSkipEntry] = []
         ok: list[dict[str, object]] = []
         for candidate in request.candidates:
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("kind") == PR_LAND
+                and not text_of(candidate.get("ticket")).strip()
+            ):
+                candidate = {**candidate, "ticket": cfg.parent_ticket}
             why = skip_reason(candidate, cfg, fenced)
             if why:
                 skipped.append(_entry(candidate, cfg, why))
@@ -218,12 +242,14 @@ class HandlerLabFillDispatchPlan:
         unique: list[dict[str, object]] = []
         for c in ok:
             key = _pr_key(c)
-            if (key and key in seen_pr) or c["ticket"] in seen_ticket:
+            by_ticket = c["kind"] != PR_LAND
+            if (key and key in seen_pr) or (by_ticket and c["ticket"] in seen_ticket):
                 skipped.append(_entry(c, cfg, "duplicate"))
                 continue
             if key:
                 seen_pr.add(key)
-            seen_ticket.add(c["ticket"])
+            if by_ticket:
+                seen_ticket.add(c["ticket"])
             unique.append(c)
         slots: dict[str, _Slot] = {}
         for host in request.capacity.hosts:

@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20864"
+title: "Idle lab slots default to per-PR landing lanes on parked and escalated PRs"
+summary: "Lab-fill selection plans a pr-land lane for every lab slot its ordinary work leaves idle, on an open PR the landing controller parked, escalated or left red with no owner, and the merge-throughput tick's lab-headroom FIX names the same lanes through the same shared rule (omnimarket.handlers.rules_lab_fill_pr_land). The facts arrive typed in the request (pr-state-observed, ci-red-triage-decided, pr-landing-transitioned, the controller's facts and the hold rows). A PR under an in-force HOLD is SKIP_HELD naming the hold; a PR blocked on a cause no lane can fix is SKIP_BLOCKED_UNFIXABLE until its head or that cause changes; an unreadable hold source plans nothing. The lab-fill dispatch plan takes the pr-land kind last and renders a pr-land brief, so the lane launches through the existing lab-fill effect."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-idle-slots-plan-pr-land"
+    statement: "Idle lab slots fall back to pr-land lanes on parked, escalated or unowned-red PRs, in lab-fill and in the throughput tick."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: lab-fill with zero ordinary candidates and at least one parked, escalated or unowned-red open PR dispatches a pr-land lane for it -- falsifier: pytest ratchet test with zero candidates and one parked PR fixture asserts a pr-land dispatch
+      - id: "AC2"
+        statement: |-
+          AC2: the merge-throughput tick's lab-headroom FIX uses the same fallback -- falsifier: pytest test of the headroom FIX with idle slots and a parked PR asserts a pr-land dispatch
+      - id: "AC3"
+        statement: |-
+          AC3: with idle slots and no parked, escalated or unowned-red PRs the fallback dispatches nothing and records why -- falsifier: pytest test asserting no dispatch and a recorded reason
+  - id: "req-held-and-unfixable-prs-skipped"
+    statement: "The fallback skips held PRs and PRs blocked on a cause no lane can fix."
+    acceptance:
+      - id: "AC-M1"
+        statement: |-
+          AC-M1 (stay-out hold): given an open PR under a stay-out hold and an idle slot, the selection compute returns SKIP_HELD naming the hold id, no pr-land dispatch is emitted, and the hold list is read in code from the hold source; an unreadable hold source fails loud (typed error) and never dispatches
+      - id: "AC-M8"
+        statement: |-
+          AC-M8 (blocked PRs not retried): given a PR whose last landing outcome is blocked on a cause class the lane cannot fix (required-approval, base-red, held, external-owner) and no new head or cause change since, the selection compute returns SKIP_BLOCKED_UNFIXABLE with the cause and no dispatch; a new head sha or a cleared cause makes it eligible again
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
+    command: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py tests/nodes/node_lab_fill_plan_compute/test_lab_fill_pr_land_dispatch.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2 and AC3: the throughput tick's lab-headroom FIX."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20864-ac1"
+    description: "AC1: zero ordinary candidates and one parked PR plan a pr-land dispatch through the lab-fill dispatch plan."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py tests/nodes/node_lab_fill_plan_compute/test_lab_fill_pr_land_dispatch.py -q -p no:randomly -k "ac1 or pr_land_items or brief"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20864-ac2"
+    description: "AC2: the headroom FIX with idle slots and a parked PR names a pr-land dispatch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly -k "ac2 or full_lab or unchanged"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20864-ac3"
+    description: "AC3: idle slots and no fallback PR plan nothing and record why, in selection and in the tick."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly -k "ac3"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20864-acm1"
+    description: "AC-M1: a held PR is SKIP_HELD naming the hold id, holds are read in code, an unreadable hold source is a typed failure."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly -k "acm1 or hold_source"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC-M1"]
+  - id: "dod-omn20864-acm8"
+    description: "AC-M8: a PR blocked on an unfixable cause is SKIP_BLOCKED_UNFIXABLE until a new head or a cleared cause."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py -q -p no:randomly -k "acm8 or base_or_a_shared_cause"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC-M8"]
+  - id: "dod-omn20864-deploy"
+    description: "Deploy: the dev lane's runtime imports the shared pr-land fallback rule after the deploy agent rolls the merge."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'docker exec omninode-runtime python -c "from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback"'
+    binds_ac: ["AC1", "AC2"]
