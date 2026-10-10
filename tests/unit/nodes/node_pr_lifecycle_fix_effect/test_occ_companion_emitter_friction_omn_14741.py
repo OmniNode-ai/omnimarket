@@ -454,6 +454,141 @@ class TestF17Suppression:
 
 
 # ---------------------------------------------------------------------------
+# OMN-20074 — a cut-over repository gets no companion
+# ---------------------------------------------------------------------------
+
+_CALLER_PATH = ".github/workflows/call-occ-autobind.yml"
+
+
+@pytest.mark.unit
+class TestCutOverCallerAbsent:
+    """The emitter stops minting for a repository whose base branch no longer
+    carries its autobind caller (OMN-20074, OCC retirement S6).
+
+    omnibase_infra deleted ``call-occ-autobind.yml`` from ``dev`` at fe7342543,
+    yet OCC#13507 was minted six hours later for omnibase_infra#4629: the
+    ``ready_for_review`` event ran the deleted caller from a test-merge commit
+    GitHub had built against the pre-cut-over ``dev``. The cut-over state is
+    read from the repository's own base branch, never from a list of repos.
+    """
+
+    @staticmethod
+    def _pr_data() -> dict[str, object]:
+        pr_data = _default_pr_data()
+        pr_data["base"] = {"ref": "dev", "repo": {"private": False}}
+        return pr_data
+
+    def test_base_without_caller_is_declined_with_zero_side_effects(
+        self, tmp_path: Path
+    ) -> None:
+        pr_data = self._pr_data()
+        emitter = OccCompanionEmitter()
+        reads: list[str] = []
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                return dict(pr_data)
+            if _CALLER_PATH in path:
+                reads.append(path)
+                raise GitHubApiError("Not Found", status_code=404)
+            raise AssertionError(f"no REST call expected after the decline: {path}")
+
+        def fake_rest_array(method: str, path: str, *, token=None, body=None) -> list:
+            reads.append(path)
+            return [{"name": "ci.yml"}, {"name": "call-repo-evidence-gate.yml"}]
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch.object(
+                emitter,
+                "_clone_and_branch",
+                side_effect=AssertionError("must not clone"),
+            ),
+        ):
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.WINDOW
+            )
+
+        assert action.startswith("skip:CALLER_ABSENT"), action
+        assert "OmniNode-ai/omnimarket#321" in action
+        assert reads == [
+            f"/repos/OmniNode-ai/omnimarket/contents/{_CALLER_PATH}?ref=dev",
+            "/repos/OmniNode-ai/omnimarket/contents/.github/workflows?ref=dev",
+        ]
+
+    def test_unreadable_workflows_directory_is_not_a_cut_over(
+        self, tmp_path: Path
+    ) -> None:
+        # A token that cannot read contents gets 404 for the caller on a private
+        # repository too; only a readable workflows directory that lacks the
+        # caller is a cut-over, so an unreadable one raises instead of declining.
+        pr_data = self._pr_data()
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                return dict(pr_data)
+            if _CALLER_PATH in path:
+                raise GitHubApiError("Not Found", status_code=404)
+            raise AssertionError(f"unexpected REST call: {path}")
+
+        def fake_rest_array(method: str, path: str, *, token=None, body=None) -> list:
+            raise GitHubApiError("Not Found", status_code=404)
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch.object(
+                emitter,
+                "_clone_and_branch",
+                side_effect=AssertionError("must not clone"),
+            ),
+            pytest.raises(GitHubApiError),
+        ):
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
+
+    def test_base_with_caller_still_authors(self, tmp_path: Path) -> None:
+        # Positive control: a repository still on change control keeps its
+        # companion, so the decline is not over-broad.
+        emitter = OccCompanionEmitter()
+        action, clone_root, _ = _run_emit(emitter, tmp_path, pr_data=self._pr_data())
+        assert action.startswith("authored OCC companion"), action
+        assert (clone_root / "contracts" / "OMN-9999.yaml").is_file()
+
+    def test_unreadable_caller_fails_loudly(self, tmp_path: Path) -> None:
+        # Only a 404 reads as "cut over"; any other failure is not evidence of
+        # a cut-over and must not be swallowed into a decline or a mint.
+        pr_data = self._pr_data()
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                return dict(pr_data)
+            if _CALLER_PATH in path:
+                raise GitHubApiError("Server Error", status_code=502)
+            raise AssertionError(f"unexpected REST call: {path}")
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch.object(
+                emitter,
+                "_clone_and_branch",
+                side_effect=AssertionError("must not clone"),
+            ),
+            pytest.raises(GitHubApiError),
+        ):
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
+
+
+# ---------------------------------------------------------------------------
 # F-04 — pre-existing contract gets THIS PR's base rows + stays eligible
 # ---------------------------------------------------------------------------
 
