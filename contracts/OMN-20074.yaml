@@ -28,6 +28,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: classify_plugin_manifest_version_only admits omniclaude#2644's shape (only the version of .claude-plugin/plugin.json and of the marketplace entry moves, increasing) and refuses another key, a non-increasing or non-numeric version, a path outside .claude-plugin manifests, an unreadable, added or deleted manifest, no moved version and too many files; classify_dependency_pin_only admits omniclaude#2646's tool.uv.override-dependencies rev move and still refuses it beside project.scripts -- falsifier: uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q fails at the merge base
+  - id: "req-deploy-gate-reads-repo-contract"
+    statement: |-
+      omnimarket's deploy gate reads the cited ticket's deploy evidence from this repository's contracts/OMN-<n>.yaml at the pull request head, the contract repo-evidence / dod-verify reads, with the pinned validator's strictness unchanged and no change control checkout.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: .github/workflows/deploy-gate.yml checks out the pull request head's contracts/ and hands that directory to the pinned omniclaude deploy-gate action, and no step reads onex_change_control -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -38,6 +45,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The writer-app bump classifiers admit the two real omniclaude bump shapes and refuse every other change."
     command: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
+  - kind: "tests"
+    description: "The deploy gate reads the pull request head's repo contracts and no change control tree."
+    command: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -67,3 +77,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20074-deploy-gate-repo-contract"
+    description: "The deploy gate hands the pull request head's contracts/ to the pinned validator and reads no change control tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
