@@ -26,6 +26,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -88,6 +90,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_observation import (
+    ModelLlmDelegationCallObservation,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
 )
@@ -107,6 +112,29 @@ from omnimarket.routing.byok_provider_backends import (
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
+
+#: Who is told about each provider call while the effect is still running. A
+#: caller that can cancel the effect (the delegation handler's execution
+#: budget) binds one so the calls already made survive the cancellation: on a
+#: customer route the effect may call a second model after a 429 on the first,
+#: and both calls exist only here until the effect returns. ``None`` (the
+#: default) reports nothing.
+current_call_observer: ContextVar[
+    Callable[[ModelLlmDelegationCallObservation], None] | None
+] = ContextVar("llm_delegation_call_observer", default=None)
+
+
+def _report_call(observation: ModelLlmDelegationCallObservation) -> None:
+    """Hand ``observation`` to the bound observer; a failing observer never fails the call."""
+    observer = current_call_observer.get()
+    if observer is None:
+        return
+    try:
+        observer(observation)
+    except Exception:  # evidence reporting must never change the call
+        logger.warning("delegation call observer failed", exc_info=True)
+
+
 _subscribe = contract_subscribe_topics(_CONTRACT)
 _publish = contract_publish_topics(_CONTRACT)
 
@@ -730,6 +758,27 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
+        """Make one provider call and report it to the bound observer when it ends."""
+        result = self._post_one_call(request, endpoint_url, event_publisher)
+        _report_call(
+            ModelLlmDelegationCallObservation(
+                phase="finished",
+                model_id=request.model_id,
+                secret_source=result.secret_source,
+                success=result.success,
+                failure_class=result.failure_class,
+                http_status=result.http_status,
+                error_message=result.error_message or "",
+            )
+        )
+        return result
+
+    def _post_one_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
         messages: list[dict[str, str]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
@@ -811,6 +860,13 @@ class HandlerLlmDelegationCall:
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
+            _report_call(
+                ModelLlmDelegationCallObservation(
+                    phase="started",
+                    model_id=request.model_id,
+                    secret_source=secret_source,
+                )
+            )
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.

@@ -14,6 +14,10 @@ from __future__ import annotations
 
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     HandlerLlmDelegationCall,
+    current_call_observer,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_observation import (
+    ModelLlmDelegationCallObservation,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
@@ -24,6 +28,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 
 __all__ = [
     "HandlerLlmDelegationCall",
+    "ModelLlmDelegationCallObservation",
     "ModelLlmDelegationCallRequest",
     "ModelLlmDelegationCallResult",
+    "current_call_observer",
 ]
