@@ -46,11 +46,12 @@ dod_evidence:
         check_value: |-
           set -eu
           uv sync --locked --quiet
-          export PATH="$PWD/.venv/bin:$PATH"
+          bin="$(uv run python -c 'import os, sys; print(os.path.dirname(sys.executable))')"
+          export PATH="$bin:$PATH"
           HOME="$(mktemp -d)"
           export HOME
           onex local init > /dev/null
-          python -c '
+          "$bin/python" -c '
           import subprocess
           from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter, default_evidence_db_path
           tenant = next(l.split()[1] for l in subprocess.run(["onex", "local", "identity"], check=True, capture_output=True, text=True).stdout.splitlines() if l.strip().startswith("tenant_id:"))
@@ -73,11 +74,11 @@ dod_evidence:
           done
           code="$(curl -sS -o "$HOME/savings.json" -w '%{http_code}' "$url/projection/onex.snapshot.projection.delegation.savings.v1")"
           if [ "$code" != 200 ]; then
-            store="$(python -c 'import sqlite3; from omnimarket.projection.sqlite_database import default_evidence_db_path as p; d = p(); print(d, sorted(r[0] for r in sqlite3.connect(str(d)).execute("select name from sqlite_master")))')"
+            store="$("$bin/python" -c 'import sqlite3; from omnimarket.projection.sqlite_database import default_evidence_db_path as p; d = p(); print(d, sorted(r[0] for r in sqlite3.connect(str(d)).execute("select name from sqlite_master")))')"
             echo "savings.v1 answered HTTP $code: $(tr '\n' ' ' < "$HOME/savings.json") dashboard: $(tr '\n' ' ' < "$HOME/dashboard.out") store: $store" >&2
             exit 1
           fi
-          python -c '
+          "$bin/python" -c '
           import json, sys
           body = json.load(open(sys.argv[1]))
           basis = {s["session_id"]: s["usage_source"] for row in body["rows"] for s in row["sessions"]}
