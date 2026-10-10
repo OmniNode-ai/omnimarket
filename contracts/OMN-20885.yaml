@@ -12,10 +12,20 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: .github/workflows/onex-schema-compat.yml checks out no onex_change_control and its compatibility step passes on this repository's contracts, fails on a planted contract whose schema_version major differs from omnibase_core ModelTicketContract's, fails on an unparseable version and on a contracts directory with no OMN-*.yaml -- falsifier: uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q fails"
+  - id: "req-contract-compliance-core-validator"
+    statement: "Contract Compliance Check and contract-validation validate this repository's own ticket contracts with omnibase_core's ModelTicketContract, with no onex_change_control checkout, install or auth preflight, under unchanged job and context names."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the ci.yml Contract Compliance Check job checks out and installs no onex_change_control and its validation step passes every contracts/OMN-*.yaml of this repository, passes a clean planted contract, and fails a planted contract with a binds_ac entry that is not a criterion label and one with a binds_ac item of check_type command_exit_0, naming the file and the rule -- falsifier: uv run pytest tests/ci/test_contract_compliance_core_validator_omn20885.py -q fails"
+      - id: "AC4"
+        statement: "AC4: .github/workflows/contract-validation.yml has no onex_change_control checkout or auth preflight, keeps its workflow and job names, and its validation step (the same body as Contract Compliance Check) passes a clean branch-ticket contract and fails each of the two refused binds_ac shapes, naming the file and the rule -- falsifier: uv run pytest tests/ci/test_contract_compliance_core_validator_omn20885.py -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC2: the workflow's own compatibility step, run against the repo contracts and planted ones, admits the repo and refuses a major mismatch."
     command: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3, AC4: both jobs' validation steps, run against the repo contracts and planted ones, admit the repo and a clean contract and refuse the two binds_ac shapes."
+    command: "uv run pytest tests/ci/test_contract_compliance_core_validator_omn20885.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,3 +39,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20885-ac3-contract-compliance-core"
+    description: "AC3: Contract Compliance Check validates this repository's contracts with omnibase_core and refuses both planted binds_ac shapes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_compliance_core_validator_omn20885.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20885-ac4-contract-validation-core"
+    description: "AC4: contract-validation validates the branch-ticket contract with omnibase_core and refuses both planted binds_ac shapes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_compliance_core_validator_omn20885.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

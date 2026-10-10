@@ -21,7 +21,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn18967-ac1-prose-no-think-at-provider-boundary"
+  - id: "dod-omn18967-ac1-prose-no-think-provider"
     description: "AC1 hosted probe. The bridge tests assert the provider POST for each prose task class."
     source: "manual"
     checks:

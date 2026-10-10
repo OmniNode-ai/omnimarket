@@ -2724,6 +2724,12 @@ jobs:
       baseline-path: scripts/validation/state_coverage_baseline.txt
       parser: line-set
 
+  # OMN-20885: validates THIS repository's contracts/OMN-*.yaml with the installed
+  # omnibase_core ModelTicketContract (core>=0.47.39 also refuses a binds_ac entry
+  # that is not a criterion label and a binds_ac item with check_type
+  # command_exit_0). It used to check out and install onex_change_control and run
+  # its validate-yaml over that repository's contracts, never this one's. The step
+  # body is the same as contract-validation.yml's "Run contract validation".
   contract-compliance:
     needs: occ-preflight
     name: Contract Compliance Check
@@ -2731,33 +2737,44 @@ jobs:
     if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-      - name: Checkout onex_change_control
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
-          path: onex_change_control
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           enable-cache: true
-          cache-dependency-glob: 'onex_change_control/uv.lock'
+          cache-dependency-glob: 'uv.lock'
 
-      - name: Install onex_change_control
-        working-directory: onex_change_control
+      - name: Install omnimarket dependencies
         run: uv sync --locked
 
       - name: Validate contract YAML files
-        working-directory: onex_change_control
         run: |
-          mapfile -t CONTRACTS < <(find "$GITHUB_WORKSPACE/onex_change_control/contracts" -maxdepth 1 -type f -name "OMN-*.yaml" 2>/dev/null)
-          if [ "${#CONTRACTS[@]}" -eq 0 ]; then
-            echo "No contract YAML files found — skipping validation"
-            exit 0
-          fi
-          uv run validate-yaml "${CONTRACTS[@]}"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          uv run python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          from omnibase_core.models.errors.model_onex_error import ModelOnexError
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+
+          # Named contracts, or every contracts/OMN-*.yaml when none are named.
+          paths = [Path(arg) for arg in sys.argv[1:]] or sorted(Path("contracts").glob("OMN-*.yaml"))
+          if not paths:
+              print("::error::contracts/ holds no OMN-*.yaml ticket contract")
+              sys.exit(1)
+
+          broken = []
+          for path in paths:
+              try:
+                  ModelTicketContract.from_yaml(path.read_text(encoding="utf-8"))
+              except (OSError, ModelOnexError) as exc:
+                  broken.append((path, " ".join(str(exc).split())))
+
+          for path, reason in broken:
+              print(f"::error file={path.as_posix()}::{path.as_posix()}: {reason}")
+          if broken:
+              print(f"ERROR: {len(broken)} of {len(paths)} ticket contract(s) fail omnibase_core's ModelTicketContract.")
+              sys.exit(1)
+          print(f"OK: {len(paths)} ticket contract(s) pass omnibase_core's ModelTicketContract.")
+          PY
 
   # ============================================================================
   # CONTRACT SWEEP GATE (OMN-14542, class fix, parent OMN-14531)
