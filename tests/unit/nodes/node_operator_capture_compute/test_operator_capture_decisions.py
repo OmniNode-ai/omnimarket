@@ -407,3 +407,24 @@ def test_drift_needs_the_operators_own_words_to_match() -> None:
         .matches
         == ()
     )
+
+
+def test_open_asks_a_correction_withdraws_an_ask_captured_in_error() -> None:
+    correction = (
+        "2026-10-09T12:00:00Z | CORRECTION | lane=capture-asks | corrects=2026-10-08T10:00:00Z | "
+        "closes-ask=ask-0123456789,ask-abcdefabcd | scheduled prompt, not the operator"
+    )
+    folded = HandlerOpenAsks().handle(
+        ModelOpenAsksRequest(rows=(ASK_ROW, correction), now=NOW)
+    )
+    assert folded.open_asks == ()
+    assert folded.dropped == 1
+
+
+def test_open_asks_age_from_when_the_operator_said_it() -> None:
+    backfilled = ASK_ROW_2.replace(
+        "session=s2", "session=s2 | said=2026-10-08T09:00:00Z"
+    )
+    folded = HandlerOpenAsks().handle(ModelOpenAsksRequest(rows=(backfilled,), now=NOW))
+    assert folded.open_asks[0].stamp == "2026-10-08T09:00:00Z"
+    assert folded.open_asks[0].overdue

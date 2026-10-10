@@ -7,7 +7,8 @@ Pure fold over ledger rows, with the evaluating time handed in. An ask is a capt
 later row of any lane cites ``closes-ask=<id>`` together with ``evidence=`` naming a merged pull
 request (``repo#n`` or its URL), a TERMINAL or a RULING (by type and stamp). A ``closes-ask`` row
 without such evidence closes nothing: "done" is a claim, not evidence. The operator drops an ask
-by saying ``drop ask-<id>``, which the capture records as ``state=dropped``.
+by saying ``drop ask-<id>``, which the capture records as ``state=dropped``. An ask captured in
+error is withdrawn by a CORRECTION row citing ``closes-ask=<id>``.
 
 The digest is what the session start block shows: the open asks, oldest first, with their age
 and the operator's words, and the ones waiting longer than the overdue bound marked for the
@@ -33,6 +34,7 @@ _EVIDENCE = re.compile(
     r"\b(?:TERMINAL|RULING)[ :]+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)"
 )
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+_STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 
 
 def _cells(rest: str) -> dict[str, str]:
@@ -61,14 +63,15 @@ class HandlerOpenAsks:
     """Fold asks and their closures; render the digest."""
 
     def handle(self, request: ModelOpenAsksRequest) -> ModelOpenAsks:
-        asks: dict[str, tuple[str, str, str]] = {}
+        # ask id -> (when the operator said it, session, words, the row's own stamp)
+        asks: dict[str, tuple[str, str, str, str]] = {}
         closed: set[str] = set()
         dropped: set[str] = set()
         for row in request.rows:
             match = _ROW.match(row.rstrip("\n"))
             if not match:
                 continue
-            stamp, _kind, rest = match.groups()
+            stamp, row_kind, rest = match.groups()
             cells = _cells(rest)
             ask = cells.get("ask", "")
             if (
@@ -79,28 +82,34 @@ class HandlerOpenAsks:
                 and ask not in asks
             ):
                 quoted = _QUOTED.findall(rest)
+                said = cells.get("said", "")
                 asks[ask] = (
-                    stamp,
+                    said if _STAMP.fullmatch(said) else stamp,
                     cells.get("session", ""),
                     quoted[-1] if quoted else "",
+                    stamp,
                 )
                 continue
             targets = [
                 t.strip() for t in cells.get("closes-ask", "").split(",") if t.strip()
             ]
             for target in targets:
-                if target not in asks or asks[target][0] > stamp:
+                if target not in asks or asks[target][3] > stamp:
                     continue
                 if (
                     cells.get("state") == "dropped"
                     and cells.get("lane") == "operator-capture"
                 ):
                     dropped.add(target)
+                elif row_kind == "CORRECTION":
+                    # An ask captured in error (words that were not the operator's) is
+                    # withdrawn by a CORRECTION citing it: the correction is its own evidence.
+                    dropped.add(target)
                 elif has_closing_evidence(cells.get("evidence", "")):
                     closed.add(target)
         now = request.now if request.now.tzinfo else request.now.replace(tzinfo=UTC)
         open_asks: list[ModelOpenAsk] = []
-        for ask, (stamp, session, words) in asks.items():
+        for ask, (stamp, session, words, _row_stamp) in asks.items():
             if ask in closed or ask in dropped:
                 continue
             at = datetime.strptime(stamp, _STAMP_FORMAT).replace(tzinfo=UTC)

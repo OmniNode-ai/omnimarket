@@ -132,9 +132,10 @@ def test_golden_chain_error_leg_uncaptured_dispatch_is_refused_then_recorded(
     transcript.write_text(
         json.dumps(
             {
-                "type": "queue-operation",
-                "operation": "enqueue",
-                "content": "Also port the ledger roll.",
+                "type": "user",
+                "message": {"role": "user", "content": "Also port the ledger roll."},
+                "origin": {"kind": "human"},
+                "turnOrigin": "human",
             }
         )
         + "\n"

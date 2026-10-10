@@ -3,10 +3,13 @@
 """Find the operator's own messages in a Claude Code session transcript (JSON lines).
 
 An operator message is a ``user`` entry whose content is text (not a tool result), that is not
-marked ``isMeta`` (a scheduled or injected prompt) or ``isSidechain`` (a subagent), and that is
-not a machine injection; or a ``queue-operation`` enqueue with text content (a message typed
-while a turn was running, which never fires the prompt hook). Only the tail of the file is read,
-so a long session costs the same as a short one.
+marked ``isMeta`` or ``isSidechain`` (a subagent), whose origin is human (``origin.kind`` or
+``turnOrigin`` is ``human``; a transcript too old to carry either counts as human), and that is
+not a machine injection. Scheduled prompts (``turnOrigin`` ``scheduled``), task notifications and
+wake-ups carry another origin and are never the operator. A message typed while a turn was
+running is written as such an entry when the turn takes it, so the guard sees it even though it
+never fired the prompt hook. ``queue-operation`` entries are not read: a scheduler queues there
+too. Only the tail of the file is read, so a long session costs the same as a short one.
 """
 
 from __future__ import annotations
@@ -38,19 +41,25 @@ def _text_of(content: Any) -> str | None:
     return None
 
 
+def _is_human(entry: dict[str, Any]) -> bool:
+    origin = entry.get("origin")
+    turn = entry.get("turnOrigin")
+    if isinstance(origin, dict) and origin.get("kind") is not None:
+        return bool(origin.get("kind") == "human")
+    if turn is not None:
+        return bool(turn == "human")
+    return True
+
+
 def _operator_text(entry: dict[str, Any]) -> str | None:
-    kind = entry.get("type")
-    if kind == "user":
-        if entry.get("isMeta") or entry.get("isSidechain"):
-            return None
-        message = entry.get("message")
-        if not isinstance(message, dict) or message.get("role") not in {None, "user"}:
-            return None
-        text = _text_of(message.get("content"))
-    elif kind == "queue-operation" and entry.get("operation") == "enqueue":
-        text = _text_of(entry.get("content"))
-    else:
+    if entry.get("type") != "user" or entry.get("isMeta") or entry.get("isSidechain"):
         return None
+    if not _is_human(entry):
+        return None
+    message = entry.get("message")
+    if not isinstance(message, dict) or message.get("role") not in {None, "user"}:
+        return None
+    text = _text_of(message.get("content"))
     if text is None or not text.strip() or is_machine_injection(text):
         return None
     return text

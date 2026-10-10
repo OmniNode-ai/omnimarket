@@ -237,8 +237,21 @@ def test_transcript_reader_finds_only_operator_messages(tmp_path: Path) -> None:
         {
             "type": "queue-operation",
             "operation": "enqueue",
-            "content": "Also file the Slack ticket.",
+            "content": "Confirm lane x placed.",
         },
+        _user(
+            "Also file the Slack ticket.", origin={"kind": "human"}, turnOrigin="human"
+        ),
+        _user(
+            "<command-message>omni:queue-status</command-message>",
+            turnOrigin="scheduled",
+        ),
+        _user("Re-dispatch the two lanes.", origin=None, turnOrigin="scheduled"),
+        _user(
+            "task done",
+            origin={"kind": "task-notification"},
+            turnOrigin="task_notification",
+        ),
         _user(
             [{"type": "text", "text": "Look at this"}, {"type": "image", "source": {}}]
         ),

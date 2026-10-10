@@ -18,6 +18,7 @@ untouched text stays in the local capture store under ``capture=<id>``.
 from __future__ import annotations
 
 import re
+from datetime import UTC
 
 from omnimarket.models.operator_capture import (
     EnumClassifierSource,
@@ -61,6 +62,7 @@ class HandlerCaptureRows:
             f"session={_cell(utterance.session_id)}",
             f"source={_cell(utterance.source)}",
             f"capture={utterance.capture_id}",
+            f"said={utterance.captured_at.astimezone(UTC).strftime(STAMP_FORMAT)}",
         ]
         rows: list[str] = []
         for item in classification.items:
