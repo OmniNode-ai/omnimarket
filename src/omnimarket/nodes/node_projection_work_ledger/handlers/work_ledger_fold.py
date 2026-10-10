@@ -112,6 +112,7 @@ def fold_row(request: ModelWorkLedgerFoldRequest) -> ModelWorkLedgerFoldResult:
         tickets=event.tickets,
         raw_row=event.raw_row,
         source=event.source,
+        ledger_seq=request.ledger_seq,
     )
 
     def op(key: str, kind: Kind, which: Op, **fields: object) -> ModelWorkLedgerStateOp:

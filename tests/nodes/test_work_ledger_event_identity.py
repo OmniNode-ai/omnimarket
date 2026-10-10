@@ -120,7 +120,11 @@ async def source_database(monkeypatch):
     schema = "m3_" + uuid4().hex
     migration_root = Path(module.__file__).parents[1] / "migrations"
     await conn.execute(f'CREATE SCHEMA "{schema}"')
-    for name in ("0000_create_work_ledger.sql", "0002_work_ledger_typed_records.sql"):
+    for name in (
+        "0000_create_work_ledger.sql",
+        "0002_work_ledger_typed_records.sql",
+        "0003_work_ledger_seq.sql",
+    ):
         await conn.execute(
             (migration_root / name).read_text().replace("omninode_internal", schema)
         )

@@ -28,6 +28,7 @@ class ModelWorkLedgerRowRecord(BaseModel):
     tickets: tuple[str, ...]
     raw_row: str
     source: str
+    ledger_seq: int | None = None
 
 
 class ModelWorkLedgerStateOp(BaseModel):

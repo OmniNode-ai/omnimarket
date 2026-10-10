@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Read-only check with no subscription: invoked by `python -m ...gap_check` on a host
+# with the lab database DSN, and its shared reader is the witness another node reads
+# in-process. `experimental` is the drift gate's marker for an intentionally
+# unsubscribed node; the topic graph sees it as an externally triggered ingress root.
+# No handler_routing block, so runtime auto-wiring never attaches it.
+name: work_ledger_seq_gap_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Read-only examination of work ledger sequence gaps and duplicates.
+input_model: omnimarket.nodes.node_work_ledger_seq_gap_effect.models.model_work_ledger_seq_gap_request.ModelWorkLedgerSeqGapRequest
+output_model: omnimarket.models.model_work_ledger_seq_gap_report.ModelWorkLedgerSeqGapReport
+handler:
+  module: omnimarket.nodes.node_work_ledger_seq_gap_effect.handlers.handler_work_ledger_seq_gap
+  class: HandlerWorkLedgerSeqGap
+  input_model: omnimarket.nodes.node_work_ledger_seq_gap_effect.models.model_work_ledger_seq_gap_request.ModelWorkLedgerSeqGapRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+work_ledger_seq_gap:
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0003_work_ledger_seq.sql"
+      access: read
+      role: work_ledger_rows
+metadata:
+  transport_type: postgres
