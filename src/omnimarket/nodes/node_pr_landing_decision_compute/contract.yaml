@@ -62,6 +62,11 @@ description: >
   outcomes recorded, DEGRADED reasons, violations, the named gate of every
   gated PR, the named reason every green, CLEAN PR was not merged, and the
   next state to write ahead of acting. Deterministic in any input order.
+  Fail-closed on its own coverage invariant: a tick that would leave an open,
+  green, CLEAN PR with neither a merge on its head nor a named land_skip
+  returns no decision and raises LandingCoverageError (deterministic for the
+  same facts, no side effect), which runtime_dispatch reports on the declared
+  failure terminal event; the caller acts on nothing from that tick.
 input_model:
   name: "ModelLandingFacts"
   module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"

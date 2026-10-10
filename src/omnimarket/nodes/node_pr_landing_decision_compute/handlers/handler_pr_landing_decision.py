@@ -1705,7 +1705,13 @@ def land_coverage_gaps(
 
 
 class LandingCoverageError(RuntimeError):
-    """A green, CLEAN, open PR left this tick with no merge and no named reason."""
+    """A green, CLEAN, open PR left this tick with no merge and no named reason.
+
+    The contract's declared failure outcome: ``decide_landing`` raises it instead
+    of returning a decision that silently drops a PR. It is a pure function of the
+    facts (same facts, same raise, no side effect), and runtime dispatch reports it
+    on the contract's failure terminal event, so the caller acts on nothing.
+    """
 
 
 def _priority(
@@ -1862,6 +1868,8 @@ class HandlerPrLandingDecision:
     """The landing decision: pure definition-B compute over one tick's facts."""
 
     def handle(self, request: ModelLandingFacts) -> ModelLandingDecision:
+        """Decide one tick; raises ``LandingCoverageError`` (the contract's failure
+        outcome) rather than return a decision that leaves a green, CLEAN PR unnamed."""
         return decide_landing(request)
 
 

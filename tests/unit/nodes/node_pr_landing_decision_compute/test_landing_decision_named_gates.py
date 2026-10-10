@@ -28,7 +28,12 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
+    handler_pr_landing_decision,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
+    HandlerPrLandingDecision,
+    LandingCoverageError,
     decide_landing,
     land_coverage_gaps,
 )
@@ -346,3 +351,18 @@ def test_fleet_a_green_pr_with_no_merge_and_no_skip_is_a_gap() -> None:
         }
     )
     assert land_coverage_gaps(facts, dropped) == ("acme/app#1", "acme/app#8")
+
+
+@pytest.mark.unit
+def test_fleet_a_gap_fails_the_tick_with_no_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tick whose land_skips would drop a green, CLEAN PR returns no decision."""
+    facts = _facts(_fleet())
+    monkeypatch.setattr(handler_pr_landing_decision, "_land_skips", lambda _t: ())
+    for _ in range(2):  # deterministic: the same facts raise the same way
+        with pytest.raises(LandingCoverageError) as raised:
+            HandlerPrLandingDecision().handle(facts)
+        assert str(raised.value).endswith(
+            "acme/app#10, acme/app#11, acme/app#8, acme/app#9, acme/lib#12, acme/run#15"
+        )
