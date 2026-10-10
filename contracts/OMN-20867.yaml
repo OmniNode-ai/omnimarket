@@ -27,6 +27,11 @@ requirements:
         statement: 'AC3: one scheduled fire per interval and none on ticks inside interval -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
       - id: "AC4"
         statement: 'AC4: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish scheduled fires on terminal topics, no host env or process in routes -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+  - id: "req-tick-window-exactly-once"
+    statement: "No tick-schedule window is lost to tick jitter, and a runtime tick dead-letters nothing"
+    acceptance:
+      - id: "AC5"
+        statement: 'AC5: under jittered tick periods each lab-fill, hourly, throughput and audit-trail daily window fires on exactly one tick, and one runtime tick writes no dead letter and one record per prune completed topic -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k "jittered or one_tick_is_one_record"'
 evidence_requirements:
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
@@ -74,3 +79,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2", "AC3", "AC4"]
+  - id: "dod-omn20867-tick-window-exactly-once"
+    description: "Jittered ticks fire every window exactly once, one tick dead-letters nothing, and the prune scheduled run has a declared destination, at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k "jittered or one_tick_is_one_record"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k "declared_destination"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
