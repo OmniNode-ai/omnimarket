@@ -63,6 +63,12 @@ def _label_names(nodes: object, context: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _merge_state_status(pr: object) -> str | None:
+    """The GraphQL mergeStateStatus in the REST mergeable_state's lower case."""
+    value = pr.get("mergeStateStatus") if isinstance(pr, dict) else None
+    return value.lower() if isinstance(value, str) else None
+
+
 class ModelGithubPrStateFact(BaseModel):
     """Head, draft flag, title, labels, open state, merged and auto-merge state."""
 
@@ -95,8 +101,10 @@ class ModelGithubPrStateFact(BaseModel):
     mergeable_state: str | None = Field(
         default=None,
         description=(
-            "REST read only: GitHub's mergeable_state (clean, blocked, behind, "
-            "dirty, unstable, has_hooks, draft or unknown), as reported (OMN-20866)."
+            "GitHub's merge state (clean, blocked, behind, dirty, unstable, "
+            "has_hooks, draft or unknown), as reported (OMN-20866): the REST "
+            "read's mergeable_state, or the GraphQL policy read's "
+            "mergeStateStatus in lower case. None when GitHub reported none."
         ),
     )
 
@@ -176,6 +184,7 @@ class ModelGithubPrStateFact(BaseModel):
             auto_merge_allowed=_require_bool(
                 repository, "autoMergeAllowed", f"{ctx}.repository"
             ),
+            mergeable_state=_merge_state_status(pr),
         )
 
 

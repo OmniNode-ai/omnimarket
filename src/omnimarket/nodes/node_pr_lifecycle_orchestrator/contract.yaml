@@ -48,8 +48,14 @@ handler_routing:
 
 # Plan slice: acting stays off until the landing controller stops dispatching
 # for these same classes, so the two controllers cannot launch competing fixes.
+# claims: decisions and owners are durable claims, read back (read-only) from the
+# ledger rows node_pr_lifecycle_state_reducer projects from ci-red-triage-decided,
+# so a runtime restart forgets neither. With the DSN unset every start is withheld.
 ci_red_triage:
   act: false
+  claims:
+    table: pr_lifecycle_ledger_entries
+    dsn_env: OMNIDASH_ANALYTICS_DB_URL
 
 published_events:
   - event_type: PrLifecycleStartCommand

@@ -9,10 +9,7 @@ clusters and keys stay check-level. Shared facts and results live in
 omnimarket.models so readers never import private node models.
 """
 
-import hashlib
-
 from omnimarket.handlers.cause_signature import (
-    CAUSE_PREFIX,
     UNREAD,
     cause_key,
     normalize_signature,
@@ -21,6 +18,7 @@ from omnimarket.models.ci_red_triage import (
     EnumCiRedClass,
     ModelCiRedClassification,
     ModelCiRedFacts,
+    ci_red_cause_key,
     ci_red_repo_slug,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
@@ -159,8 +157,7 @@ def classify_ci_red(facts: ModelCiRedFacts) -> ModelCiRedClassification:
                 check = best
                 members = clusters[best]
                 red_class = EnumCiRedClass.SHARED_CAUSE
-                digest = hashlib.sha256(check.encode()).hexdigest()[:12]
-                cause = f"{CAUSE_PREFIX}{slug}:{digest}"
+                cause = ci_red_cause_key(slug, check)
                 owner_key = cause
                 reason = (
                     "check-level cause reaches cluster_min_members (annotations unread)"

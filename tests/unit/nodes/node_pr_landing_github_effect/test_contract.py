@@ -147,9 +147,12 @@ def test_contract_declares_the_seven_operations_and_two_modes() -> None:
 
 
 def test_contract_version_is_bumped_for_the_wiring() -> None:
-    """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus."""
+    """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus.
+
+    1.3.0 (OMN-20866): an arm of a PR GitHub reports mergeable now merges it.
+    """
     contract = _load(_CONTRACT)
-    assert contract["contract_version"] == {"major": 1, "minor": 2, "patch": 0}
+    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
 
 
 def test_contract_models_resolve_to_the_seam_models() -> None:
