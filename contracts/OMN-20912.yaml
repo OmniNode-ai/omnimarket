@@ -36,6 +36,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20912-ac1-gateway-reads-deploy-probe"
+    description: "AC1 deploy probe: the gateway model module GitHub serves at the checked-out commit declares the job_log_tail operation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'JOB_LOG_TAIL = \"job_log_tail\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn20912-ac1-gateway-reads"
     description: "AC1: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text and releases answer on a recorded fake transport, with paging inside the node and typed size refusals."
     source: "manual"
@@ -52,11 +60,27 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20912-ac2-repo-write-effect-deploy-probe"
+    description: "AC2 deploy probe: the write effect contract GitHub serves at the checked-out commit declares its failure topic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'failure: onex.evt.omnimarket.github-repo-write-failed.v1'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
   - id: "dod-omn20912-ac3-source-control-adapter"
     description: "AC3: the omnibase_spi ProtocolSourceControl adapter on the shared transport passes its protocol conformance test."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20912-ac3-source-control-adapter-deploy-probe"
+    description: "AC3 deploy probe: the adapter module GitHub serves at the checked-out commit declares HandlerSourceControlGithub."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/handlers/handler_source_control_github.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^class HandlerSourceControlGithub:'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
