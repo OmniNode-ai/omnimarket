@@ -11,9 +11,6 @@ from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_che
 from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_pr_merged_observation import (
     ModelGitHubPrMergedObservation,
 )
-from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation import (
-    ModelGitHubPrStateObservation,
-)
 from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_webhook_delivery import (
     ModelGitHubWebhookDelivery,
 )
@@ -25,7 +22,6 @@ __all__: list[str] = [
     "ModelGitHubBranchHeadObservation",
     "ModelGitHubCheckRunObservation",
     "ModelGitHubPrMergedObservation",
-    "ModelGitHubPrStateObservation",
     "ModelGitHubWebhookDelivery",
     "ModelGitHubWorkflowRunObservation",
 ]

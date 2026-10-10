@@ -11,10 +11,12 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
     ModelGitHubPrMergedObservation,
-    ModelGitHubPrStateObservation,
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.webhook_fold import (
     WebhookFoldError,

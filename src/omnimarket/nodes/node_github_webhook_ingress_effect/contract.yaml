@@ -29,6 +29,12 @@ contract_version:
   minor: 0
   patch: 1
 node_version: "0.1.1"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
 description: >
   Consumes signed GitHub webhook deliveries from onex.cmd.github.webhook-delivery.v1, re-verifies the X-Hub-Signature-256 HMAC over the exact received bytes in constant time, refuses (typed error, dead-lettered) any delivery it cannot verify or parse, and folds pull_request, pull_request_review and summary check_run deliveries into partial PR-state observations on onex.evt.github.pr-status.v1 plus one merged event per merge on onex.evt.github.pr-merged.v1. Push and summary check_run deliveries also produce watched branch ref advances, branch-head CI verdicts and distinct merge-group verdicts on onex.evt.github.branch-head.v1. Any completed check_run with a red conclusion also yields one observation per pull request on onex.evt.github.check-run.v1, and workflow_run deliveries yield run-id-to-workflow-name observations on onex.evt.github.workflow-run.v1. Refuses every delivery when no webhook secret is configured.
 
@@ -82,7 +88,7 @@ published_events:
 # pre-PR slot).
 runtime_dispatch:
   terminal_events:
-    - "onex.evt.github.webhook-delivery-refused.v1"
+    success: "onex.evt.github.webhook-delivery-refused.v1"
 handler_routing:
   routing_strategy: "operation_match"
   handlers:

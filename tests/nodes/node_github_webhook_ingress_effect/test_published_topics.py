@@ -8,12 +8,17 @@ from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_infra.runtime.contract_terminal_events import (
+    extract_terminal_event_topics,
+)
 
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
     ModelGitHubCheckRunObservation,
     ModelGitHubPrMergedObservation,
-    ModelGitHubPrStateObservation,
     ModelGitHubWorkflowRunObservation,
 )
 
@@ -58,9 +63,14 @@ def test_the_failure_terminal_is_the_refused_delivery_topic() -> None:
     contract = _contract()
     dispatch = contract["runtime_dispatch"]
     assert isinstance(dispatch, dict)
-    assert dispatch["terminal_events"] == [
-        "onex.evt.github.webhook-delivery-refused.v1"
-    ]
+    # The runtime reads terminal declarations through this one function; the
+    # mapping form (the shape every omnimarket node uses) and the sequence form
+    # the node had in omnibase_infra normalize to the same single topic.
+    refused = "onex.evt.github.webhook-delivery-refused.v1"
+    assert extract_terminal_event_topics(contract) == (refused,)
+    assert extract_terminal_event_topics(
+        {"runtime_dispatch": {"terminal_events": [refused]}}
+    ) == (refused,)
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
     assert "onex.evt.github.webhook-delivery-refused.v1" in event_bus["publish_topics"]

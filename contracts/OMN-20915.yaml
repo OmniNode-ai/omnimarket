@@ -20,7 +20,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1 (omnimarket half): the two moved nodes discover from omnimarket's contracts, wire through the real auto-wiring on an in-memory bus, and keep their poller, fold and refusal behaviour. The dev-lane consumer-group readback is recorded in the pull request body and a later pull request comment."
-    command: "uv run pytest tests/nodes/node_github_pr_poller_effect tests/nodes/node_github_webhook_ingress_effect -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_github_pr_poller_effect/test_runtime_profile.py tests/nodes/node_github_pr_poller_effect/test_triage_state.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_runtime_tick_omn20590.py tests/nodes/node_github_pr_poller_effect/test_handler_github_api_poll.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_api_poll.py tests/nodes/node_github_webhook_ingress_effect/test_handler_github_webhook_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py tests/nodes/node_github_webhook_ingress_effect/test_published_topics.py tests/nodes/node_github_webhook_ingress_effect/test_integration_check_run_workflow_run_observations_omn20743.py tests/nodes/node_github_webhook_ingress_effect/test_golden_chain_webhook_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py tests/nodes/node_github_webhook_ingress_effect/test_golden_chain_door_to_ingress_seam.py -q -p no:randomly"
   - kind: "tests"
     description: "AC3 (omnimarket half): the triage reads on the omnimarket transport return the augmented PR payloads, page, and degrade as the poller expects."
     command: "uv run pytest tests/test_github_api_triage.py -q -p no:randomly"
@@ -34,7 +34,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_github_pr_poller_effect tests/nodes/node_github_webhook_ingress_effect -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_github_pr_poller_effect/test_runtime_profile.py tests/nodes/node_github_pr_poller_effect/test_triage_state.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_runtime_tick_omn20590.py tests/nodes/node_github_pr_poller_effect/test_handler_github_api_poll.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_api_poll.py tests/nodes/node_github_webhook_ingress_effect/test_handler_github_webhook_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py tests/nodes/node_github_webhook_ingress_effect/test_published_topics.py tests/nodes/node_github_webhook_ingress_effect/test_integration_check_run_workflow_run_observations_omn20743.py tests/nodes/node_github_webhook_ingress_effect/test_golden_chain_webhook_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py tests/nodes/node_github_webhook_ingress_effect/test_golden_chain_door_to_ingress_seam.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20915-ac3-triage-reads-on-one-transport"

@@ -17,12 +17,14 @@ from omnimarket.events.topics import (
     GITHUB_CHECK_RUN_TOPIC_V1,
     GITHUB_WORKFLOW_RUN_TOPIC_V1,
 )
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.handlers import (
     HandlerGitHubWebhookIngress,
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubCheckRunObservation,
-    ModelGitHubPrStateObservation,
     ModelGitHubWebhookDelivery,
     ModelGitHubWorkflowRunObservation,
 )

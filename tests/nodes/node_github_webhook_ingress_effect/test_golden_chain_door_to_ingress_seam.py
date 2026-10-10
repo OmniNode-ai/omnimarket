@@ -37,12 +37,14 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_for
     ServiceGatewayForwarder,
 )
 
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.handlers import (
     HandlerGitHubWebhookIngress,
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubPrMergedObservation,
-    ModelGitHubPrStateObservation,
     ModelGitHubWebhookDelivery,
 )
 

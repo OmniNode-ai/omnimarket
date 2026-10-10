@@ -32,7 +32,7 @@ handler_routing:
     - operation: pr_head_observed
       topic: onex.evt.github.pr-status.v1
       message_category: event
-      event_model: omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation.ModelGitHubPrStateObservation
+      event_model: omnimarket.models.model_github_pr_state_observation.ModelGitHubPrStateObservation
       handler_module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
       handler:
         name: HandlerBranchClaimCheck

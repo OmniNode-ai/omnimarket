@@ -28,6 +28,9 @@ from omnibase_infra.runtime.models.model_secret_resolver_config import (
 )
 from omnibase_infra.runtime.secret_resolver import SecretResolver
 
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.handlers import (
     HandlerGitHubWebhookIngress,
 )
@@ -40,7 +43,6 @@ from omnimarket.nodes.node_github_webhook_ingress_effect.handlers.handler_github
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
     ModelGitHubPrMergedObservation,
-    ModelGitHubPrStateObservation,
     ModelGitHubWebhookDelivery,
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.webhook_fold import (

@@ -52,11 +52,13 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from omnimarket.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
     ModelGitHubCheckRunObservation,
     ModelGitHubPrMergedObservation,
-    ModelGitHubPrStateObservation,
     ModelGitHubWorkflowRunObservation,
 )
 

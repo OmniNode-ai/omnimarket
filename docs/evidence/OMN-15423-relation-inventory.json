@@ -6546,7 +6546,9 @@
       "owner_declaration": "node_pr_merged_projection",
       "partitioning": [],
       "producer": "node_pr_merged_projection",
-      "readers": [],
+      "readers": [
+        "node_github_webhook_ingress_effect"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_pr_merged_projection"
@@ -6600,6 +6602,7 @@
       "producer": "node_projection_pr_state",
       "readers": [
         "node_dod_verify",
+        "node_github_webhook_ingress_effect",
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
