@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import json
 import re
+from html import escape
 from typing import Protocol
 
 from omnibase_core.validation.runtime_ops_verb_loader import (
@@ -365,6 +366,22 @@ class RepoEvidenceCheckRunsReader(Protocol):
     ) -> tuple[ModelRepoEvidenceCheckRun, ...] | None: ...
 
 
+def _diagnostic_text(value: object) -> str:
+    """Render external evidence as inert, single-line diagnostic text.
+
+    Contract fields, probe errors and ticket text are untrusted. Escape markup
+    and quotes for display, and render control characters (including terminal
+    escapes and Unicode line/direction controls) visibly instead of executing
+    them or letting them forge a second log line. Only presentation changes;
+    probes and contract comparisons always use the original values.
+    """
+    return escape(
+        "".join(
+            char if char.isprintable() else ascii(char)[1:-1] for char in str(value)
+        )
+    )
+
+
 def _repo_contract_or_refusal(
     read: ModelRepoContractRead, ticket_id: str, source: str
 ) -> dict[str, object] | ModelRepoEvidenceVerdict:
@@ -373,8 +390,9 @@ def _repo_contract_or_refusal(
         return ModelRepoEvidenceVerdict(
             outcome=EnumRepoEvidenceOutcome.REFUSED,
             detail=(
-                f"{source}: {default_contract_path(ticket_id)} is {read.status.value}"
-                f" ({read.error or 'contract absent'}); restore readable evidence."
+                f"{_diagnostic_text(source)}: "
+                f"{_diagnostic_text(default_contract_path(ticket_id))} is {read.status.value}"
+                f" ({_diagnostic_text(read.error or 'contract absent')}); restore readable evidence."
             ),
         )
     named = read.contract.get("ticket_id")
@@ -382,7 +400,8 @@ def _repo_contract_or_refusal(
         return ModelRepoEvidenceVerdict(
             outcome=EnumRepoEvidenceOutcome.REFUSED,
             detail=(
-                f"{source}: contract names ticket_id {named!r}, not {ticket_id}; "
+                f"{_diagnostic_text(source)}: contract names ticket_id "
+                f"{_diagnostic_text(repr(named))}, not {_diagnostic_text(ticket_id)}; "
                 "correct the ticket binding."
             ),
         )
@@ -450,7 +469,7 @@ def evaluate_repo_evidence(
             outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED,
             detail="no merged product PR to read repo evidence from",
         )
-    contract_path = default_contract_path(ticket_id)
+    contract_path = _diagnostic_text(default_contract_path(ticket_id))
     contracts: list[tuple[ModelTicketMergedPr, dict[str, object]]] = []
     for (repo, number), pr in candidates.items():
         read = read_repo_contract(repo, pr.merge_commit_sha, ticket_id)
@@ -489,7 +508,7 @@ def evaluate_repo_evidence(
             return ModelRepoEvidenceVerdict(
                 outcome=EnumRepoEvidenceOutcome.REFUSED,
                 detail=(
-                    f"{source} at head {pr.head_sha}: check runs unreadable; "
+                    f"{_diagnostic_text(source)} at head {_diagnostic_text(pr.head_sha)}: check runs unreadable; "
                     "restore GitHub check-run access."
                 ),
             )
@@ -501,8 +520,8 @@ def evaluate_repo_evidence(
         ]
         if not kept:
             skipped.append(
-                f"{source} carries {contract_path} but no "
-                f"{REPO_EVIDENCE_CHECK_NAME} run on head {pr.head_sha[:12]}"
+                f"{_diagnostic_text(source)} carries {contract_path} but no "
+                f"{REPO_EVIDENCE_CHECK_NAME} run on head {_diagnostic_text(pr.head_sha[:12])}"
             )
             continue
         engaged.append((pr, contract, kept))
@@ -517,6 +536,7 @@ def evaluate_repo_evidence(
     for pr, contract, kept in engaged:
         source = f"{pr.repo}#{pr.pr_number}"
         context = f"{source} at head {pr.head_sha} and merge {pr.merge_commit_sha}"
+        safe_context = _diagnostic_text(context)
         # Check-run ids only grow, so the newest copy is the highest id: a rerun
         # still in progress must not lose to an older success.
         run = max(kept, key=lambda r: r.id)
@@ -524,8 +544,9 @@ def evaluate_repo_evidence(
             return ModelRepoEvidenceVerdict(
                 outcome=EnumRepoEvidenceOutcome.REFUSED,
                 detail=(
-                    f"{context}: {REPO_EVIDENCE_CHECK_NAME} run {run.id} has "
-                    f"status={run.status} and conclusion={run.conclusion}; obtain "
+                    f"{safe_context}: {REPO_EVIDENCE_CHECK_NAME} run {run.id} has "
+                    f"status={_diagnostic_text(run.status)} and "
+                    f"conclusion={_diagnostic_text(run.conclusion)}; obtain "
                     "a completed success."
                 ),
             )
@@ -538,16 +559,17 @@ def evaluate_repo_evidence(
             return ModelRepoEvidenceVerdict(
                 outcome=EnumRepoEvidenceOutcome.REFUSED,
                 detail=(
-                    f"{context}: contract changed between the verified head and "
+                    f"{safe_context}: contract changed between the verified head and "
                     "the merge commit, so the check run does not cover what "
                     "merged; verify the merged contract in a new PR."
                 ),
             )
-        sources.append(f"{context} ({REPO_EVIDENCE_CHECK_NAME} run {run.id})")
+        sources.append(f"{safe_context} ({REPO_EVIDENCE_CHECK_NAME} run {run.id})")
         governing.append(contract)
         for label, item_ids in _contract_bindings(contract).items():
             bindings.setdefault(label, []).extend(
-                f"{item_id} ({source})" for item_id in item_ids
+                f"{_diagnostic_text(item_id)} ({_diagnostic_text(source)})"
+                for item_id in item_ids
             )
 
     context = ", ".join(sources)
@@ -568,7 +590,7 @@ def evaluate_repo_evidence(
             outcome=EnumRepoEvidenceOutcome.REFUSED,
             detail=(
                 f"{context}: acceptance criteria carry no label and cannot be "
-                f"bound by `binds_ac`: {'; '.join(unlabelled)}; label each "
+                f"bound by `binds_ac`: {_diagnostic_text('; '.join(unlabelled))}; label each "
                 "criterion."
             ),
         )
