@@ -377,6 +377,37 @@ profiles:
   # Scoped to the model that was measured. Qwen3.6-35B-A3B on the Studio planner
   # rung is not matched by this pattern and keeps its own thinking-off profile.
   # `complex_reasoning` was not part of the replay and stays on the profile above.
+  #
+  # OMN-19267: thinking stays on, bounded so one call fits the effect's 120 s
+  # per-call ceiling (node_llm_delegation_call_effect contract.yaml
+  # `timeout_seconds`). The replay above was measured against the backend's
+  # 300 s timeout; under the 120 s ceiling an unbounded trace timed out on the
+  # vLLM rung and ran out of max_tokens on the llama.cpp GPU rung (run
+  # 26dc1045, 2026-10-10).
+  #
+  # Measured 2026-10-10 with in-process `onex delegate --task-type reasoning`
+  # pinned to one rung, three stored reasoning prompts x 5 runs, rung latency:
+  #   no budget    vLLM rung        6 of 15 within 120 s, max 195.9 s,
+  #                                 up to 16901 tokens
+  #   no budget    llama.cpp GPU   10 of 15 within 120 s, max 205.8 s,
+  #                                 one timeout
+  #   budget 4096  vLLM rung       14 of 15 within 120 s, max 123.1 s
+  #   budget 2048  vLLM rung       15 of 15 within 120 s, max 60.9 s
+  #   budget 2048  llama.cpp GPU   15 of 15 within 120 s, max 42.8 s
+  #   budget 1024  vLLM rung       14 of 15 answered, one cancelled at 150 s
+  # Every 2048 answer was accepted by the class gate and non-empty. vLLM
+  # overran its cap on 3 of its 45 capped runs; the worst at 2048 was 4651
+  # tokens in 60.9 s.
+  #
+  # Two spellings, because the servers differ and each ignores the other's
+  # field (live probes 2026-10-10): vLLM reads `thinking_token_budget`,
+  # llama.cpp reads `thinking_budget_tokens`. The chat template's own
+  # `reasoning_effort` switch (default xhigh) did not bound the trace: `low`
+  # still thought for 6605 tokens on one prompt.
+  #
+  # Not fitted: the Mac Studio planner rung serves this model at 11 to 17
+  # tokens/s, so at 2048 it answered in 123 to 196 s (3 of 3 over 120 s). Its
+  # place on the reasoning ladder is a routing question, not this profile's.
   - profile_id: local-qwen38-reasoning-thinking-on
     enabled: true
     model_name_patterns:
@@ -386,6 +417,8 @@ profiles:
     request_options:
       chat_template_kwargs:
         enable_thinking: true
+      thinking_token_budget: 2048
+      thinking_budget_tokens: 2048
 
   # OMN-17427: the .200 Mac Studio planner rung (backend local-studio-planner,
   # llama.cpp on :8130) serves Qwen3.6-35B-A3B under the alias
