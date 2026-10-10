@@ -55,7 +55,7 @@ ORG_REPOS=(
   omnidash
   omnicursor
   omnigemini
-  knowledge-base
+  knowledge_base
   omnibase
 )
 

@@ -60,6 +60,8 @@ _PROJECT_UUID = "e5010c63-94b3-43ed-9554-0d2dcf3c4e36"
 _TENANT_ID = "af432b87"
 # onex-allow-test-fixture OMN-16944 reason="synthetic BYOK key literal round-tripped through a hermetic in-memory store; never a real credential"
 _SUBMITTED_VALUE = "sk-or-v1-omn16944-synthetic-round-trip-value"
+# OMN-20844: the customer chooses the OpenRouter model their key runs.
+_CHOSEN_MODEL = "openai/gpt-5-nano"
 
 
 class _HermeticInfisicalStore:
@@ -204,6 +206,8 @@ async def _register(store: _HermeticInfisicalStore) -> str:
             name="omn16944-round-trip",
             provider="openrouter",
             key_value=_SUBMITTED_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=_CHOSEN_MODEL,
         ),
         tenant_id=_TENANT_ID,
         secret_store=store,

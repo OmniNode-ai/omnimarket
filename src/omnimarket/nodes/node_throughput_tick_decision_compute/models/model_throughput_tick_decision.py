@@ -44,6 +44,30 @@ class ModelLabReceipt(BaseModel):
         description="False when the receipt's pid is not an integer; such a running receipt is skipped.",
     )
     readings: list[str] = Field(default_factory=list)
+    lane: str | None = Field(
+        default=None, description="The lane the receipt dispatched (OMN-20840)."
+    )
+    run_id: str | None = None
+    brief: str | None = Field(
+        default=None,
+        description="The brief path the lane ran; a later receipt of the same brief supersedes a failed one.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Why the lane ended as it did, as the receipt records it (refusal, failure or error).",
+    )
+    path: str | None = Field(
+        default=None, description="Where the caller read the receipt."
+    )
+
+
+class ModelOpenPoint(BaseModel):
+    """The open PR count one earlier tick run recorded (OMN-20840)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    at: str = Field(pattern=_TS)
+    open: int = Field(ge=0)
 
 
 class ModelLabReadingParse(BaseModel):
@@ -156,6 +180,36 @@ class ModelThroughputTickRequest(BaseModel):
         description="Lab-headroom facts; None skips the finding (and its `checked` entry).",
     )
 
+    park_max_hours: float = Field(
+        default=2.0,
+        ge=0,
+        description=(
+            "A park over a repository under its floor with zero merges in the window covers it as a NOTE "
+            "only while it ends within this many hours; a longer park is MISSING (OMN-20840)."
+        ),
+    )
+    dispatch_window_hours: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Receipts started this many hours back that ended without running are findings; None skips "
+            "the dispatches finding (and its `checked` entry)."
+        ),
+    )
+    open_history: list[ModelOpenPoint] | None = Field(
+        default=None,
+        description=(
+            "Open counts earlier tick runs recorded, oldest first; None skips the open-trend finding "
+            "(and its `checked` entry)."
+        ),
+    )
+    open_rise_pct: float = Field(default=10.0, ge=0)
+    open_history_max_age_hours: float = Field(
+        default=3.0,
+        gt=0,
+        description="Points older than this belong to another session and are not a trend.",
+    )
+
 
 class ModelThroughputTickResult(BaseModel):
     """The tick's finding lines and its status line, exactly as the retired script printed them."""
@@ -168,3 +222,7 @@ class ModelThroughputTickResult(BaseModel):
     unknown: list[str]
     checked: list[str]
     exit_code: int = Field(ge=0, le=1)
+    open_count: int | None = Field(
+        default=None,
+        description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
+    )

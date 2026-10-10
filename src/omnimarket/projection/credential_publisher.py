@@ -68,6 +68,7 @@ from omnimarket.routing.byok_model_discovery import (
     ModelByokModelDiscovery,
     describe_discovery_refusal,
     discover_byok_model,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_plan_detection import (
     ModelByokPlanDetection,
@@ -266,6 +267,20 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
             "tries the key against the provider's plans to find out. A plan the "
             "provider's terms bar from third-party systems (glm: 'coding_plan') "
             "is refused with a typed code, never routed."
+        ),
+    )
+
+    model: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "OMN-20844. The model this key runs, as the provider names it. It is "
+            "checked against the provider's own model list for the key and "
+            "recorded with the credential. Required for a provider where the "
+            "customer chooses the model (openrouter): without it the key is "
+            "refused with BYOK_MODEL_NOT_CHOSEN rather than given a model the "
+            "customer did not choose."
         ),
     )
 
@@ -653,11 +668,28 @@ async def _resolve_registration_model(
 
     Raises:
         CredentialKeyRefusedError: the provider refused the key, refused on its
-            billing, or lists none of the catalogue's preferred models for it.
+            billing, or lists none of the catalogue's preferred models for it;
+            or (OMN-20844) the list does not name the model the customer chose,
+            or the customer chooses the model for this provider and chose none.
     """
+    backend = resolve_byok_provider_backend(request.provider, plan=plan)
+    if request.model is not None:
+        # OMN-20844: the customer's own choice, checked against their key's list.
+        if backend is None:
+            return request.model
+        chosen = await model_discoverer(
+            backend, request.key_value, chosen=request.model
+        )
+        refusal = describe_discovery_refusal(chosen)
+        if refusal is not None:
+            raise CredentialKeyRefusedError(request.provider, chosen.outcome, refusal)
+        return request.model
+    if backend is not None and backend.customer_chooses_model:
+        raise CredentialKeyRefusedError(
+            request.provider, "not_chosen", model_not_chosen_message(request.provider)
+        )
     if known is not None:
         return known
-    backend = resolve_byok_provider_backend(request.provider, plan=plan)
     if backend is None:
         return None
     discovery = await model_discoverer(backend, request.key_value)

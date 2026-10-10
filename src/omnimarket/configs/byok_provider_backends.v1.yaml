@@ -65,6 +65,21 @@
 #   is a default and not a constraint. A per-tenant model override belongs in
 #   the overlay row's `model_name`, which is already per-tenant.
 #
+# THE CUSTOMER CHOOSES THE MODEL (OMN-20844)
+#
+#   A row with `customer_chooses_model: true` never picks a model for the
+#   customer. Registration takes the model the customer names (`--model` on
+#   `onex secret set`, `onex models add` and `onex secret register-tenant-key`,
+#   `model` on the hosted intake), checks it against the key's own list from
+#   `models_url`, and stores it with the credential; with no model named a
+#   terminal is asked for one and a script or the intake is refused with
+#   BYOK_MODEL_NOT_CHOSEN. `onex delegate --model` overrides it per call. A
+#   credential with no stored model is refused the same way at call time, and a
+#   call on a model `model_preference` does not match (one the customer named)
+#   is never re-aimed at one it does. `model_preference` stays, so a credential
+#   whose model the catalogue picked before this change keeps its one-shot
+#   re-aim; a `:free` model is still a choice the customer may make.
+#
 # DRIFT IS GATED, NOT TRUSTED
 #
 #   `endpoint_url` below is duplicated from bifrost_delegation.yaml deliberately
@@ -185,6 +200,10 @@ providers:
     # newest generation first; the second is the free Qwen coder family.
     # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
     models_url: "https://openrouter.ai/api/v1/models"
+    # OMN-20844: the customer names the model their OpenRouter key runs; see
+    # "THE CUSTOMER CHOOSES THE MODEL" above. The preferences below re-aim only
+    # a model the catalogue picked for a credential registered before that.
+    customer_chooses_model: true
     model_preference:
       # Google-hosted instruction-tuned family first. The nemotron-ultra slug
       # below answered "Upstream error from Nvidia: Service temporarily
@@ -211,7 +230,8 @@ providers:
     # "provider_unavailable"}}} at 2026-09-12T19:11:59Z, and an immediate
     # re-probe of the same slug on the same key returned content. Two retries
     # (three attempts, ~75s at the observed 23-27s per call) sit well inside
-    # the CLI's own 240s budget and cost the customer nothing on a free slug.
+    # the CLI's own 240s budget. Only a transient failure is retried; on a paid
+    # model the customer chose, the spend is the customer's own (INV-068).
     max_retries: 2
     # Both mirror the same platform rung. They land in the overlay row's own
     # nullable columns; the routing reducer falls back to its platform
@@ -219,7 +239,10 @@ providers:
     timeout_ms: 300000
     max_tokens: 65536
     limit_model:
-      billing: free_tier
+      # OMN-20844: the customer chooses the model, and a paid model bills the
+      # customer's OpenRouter credits per token, so the row is pay-as-you-go.
+      # The window below still describes a `:free` model the customer chooses.
+      billing: pay_as_you_go
       counter_scope: model
       windows:
         # OpenRouter meters `:free` slugs per model and publishes no fixed

@@ -35,18 +35,18 @@ hardcode topic strings or construct their own collaborators.
 ## Documentation
 
 Architecture, guides, and reference documentation for this repo live in the
-[OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge-base), not in
+[OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge_base), not in
 this repository:
 
-- [Package model](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-package-model.md) — layers, node package shape, contract rules
-- [Skill, package, and node boundaries](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-skill-package-node-boundaries.md)
-- [Dependency boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-dependency-boundary.md)
-- [Event registry](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-event-registry.md)
-- [Build-loop migration boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-build-loop-boundary.md)
-- [Node catalog](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-catalog.md)
-- [Node metadata reference](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-metadata.md)
-- [Node testing pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-node-testing.md) — including how to add a node to the harness
-- [Skill-backing node pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-skill-backing-node-pattern.md)
+- [Package model](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-package-model.md) — layers, node package shape, contract rules
+- [Skill, package, and node boundaries](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-skill-package-node-boundaries.md)
+- [Dependency boundary](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-dependency-boundary.md)
+- [Event registry](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-event-registry.md)
+- [Build-loop migration boundary](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-build-loop-boundary.md)
+- [Node catalog](https://github.com/OmniNode-ai/knowledge_base/blob/main/reference/omnimarket-node-catalog.md)
+- [Node metadata reference](https://github.com/OmniNode-ai/knowledge_base/blob/main/reference/omnimarket-node-metadata.md)
+- [Node testing pattern](https://github.com/OmniNode-ai/knowledge_base/blob/main/guides/omnimarket-node-testing.md) — including how to add a node to the harness
+- [Skill-backing node pattern](https://github.com/OmniNode-ai/knowledge_base/blob/main/guides/omnimarket-skill-backing-node-pattern.md)
 
 Governance policy and operator runbooks are not part of this repository.
 

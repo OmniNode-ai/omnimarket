@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20840"
+title: "the throughput tick node names a long park, an unread host, a lane that never ran and a rising open count"
+summary: "node_throughput_tick_decision_compute turns four blindspots from NOTE into findings: a park past park_max_hours over a floor-stalled repository with zero merges is MISSING, a lab host with no recent placement reading is UNKNOWN, a runner receipt in dispatch_window_hours that ended without running is MISSING dispatch:<lane>, and an open count rising more than open_rise_pct across three tick runs is MISSING open-trend."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "A park lasting past park_max_hours over a floor-stalled repository with zero merges is MISSING."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A park lasting past park_max_hours over a floor-stalled repository with zero merges is MISSING, naming the park end; a lease, a short park or a repository with a merge keeps the NOTE."
+  - id: "req-ac2"
+    statement: "A lab host with no recent placement reading is UNKNOWN."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: A lab host with no placement reading in the last 15 minutes is UNKNOWN, naming the read that refreshes it."
+  - id: "req-ac3"
+    statement: "A runner receipt in the dispatch window that ended without running is MISSING until its brief or lane runs."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: A runner receipt started in dispatch_window_hours that ended without running is MISSING dispatch:<lane> until a later receipt of the same brief or lane is running or done; no window skips the finding."
+  - id: "req-ac4"
+    statement: "An open count rising more than open_rise_pct across three tick runs is MISSING."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: An open count up more than open_rise_pct across the last three tick runs is MISSING open-trend, and the result carries open_count for the caller to record."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: a long park over a floor-stalled repository with zero merges is MISSING."
+    command: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "park or lease"'
+  - kind: "tests"
+    description: "AC2: a lab host with no recent reading is UNKNOWN."
+    command: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "no_recent_reading"'
+  - kind: "tests"
+    description: "AC3: a recent receipt that never ran is MISSING until its brief runs."
+    command: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "receipt or window"'
+  - kind: "tests"
+    description: "AC4: a rising open count is MISSING and the open count is returned."
+    command: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "open or history"'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20840-ac1"
+    description: "AC1: a long park over a floor-stalled repository with zero merges is MISSING."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "park or lease"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20840-ac2"
+    description: "AC2: a lab host with no recent reading is UNKNOWN."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "no_recent_reading"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20840-ac3"
+    description: "AC3: a recent receipt that never ran is MISSING until its brief runs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "receipt or window"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20840-ac4"
+    description: "AC4: a rising open count is MISSING and the open count is returned."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q -p no:randomly -k "open or history"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
