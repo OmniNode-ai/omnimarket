@@ -515,6 +515,7 @@ node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
 node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
+node_projection_automation_liveness = "omnimarket.nodes.node_projection_automation_liveness"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"

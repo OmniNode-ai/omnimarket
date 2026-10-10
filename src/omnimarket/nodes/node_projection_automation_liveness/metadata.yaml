@@ -1,0 +1,51 @@
+name: projection_automation_liveness
+version: "1.0.0"
+description: >
+  Keeps one liveness row per declared automatic process and host, an
+  append-only run history and the alarm episodes with their delivery and
+  recording receipts, from the automation-liveness events.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - automation-liveness
+  - reducer
+ownership:
+  automation_liveness_state:
+    ddl_owner: omnimarket.nodes.node_projection_automation_liveness
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_automation_liveness.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      The liveness events are owned by omnimarket and this projection is their
+      only recording consumer, like every other node_projection_* read model.
+  automation_run_history:
+    ddl_owner: omnimarket.nodes.node_projection_automation_liveness
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_automation_liveness.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: Created by the same migration as the state relation.
+  automation_alarm_episodes:
+    ddl_owner: omnimarket.nodes.node_projection_automation_liveness
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_automation_liveness.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: Created by the same migration as the state relation.
+pack: "data"
+display_name: "Projection: Automation Liveness"
+node_role: "effect"
