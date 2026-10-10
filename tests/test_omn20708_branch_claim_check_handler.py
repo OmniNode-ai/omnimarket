@@ -9,10 +9,10 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_infra.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation import (
+
+from omnimarket.models.model_github_pr_state_observation import (
     ModelGitHubPrStateObservation,
 )
-
 from omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check import (
     HandlerBranchClaimCheck,
 )

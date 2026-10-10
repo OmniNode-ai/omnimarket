@@ -477,6 +477,69 @@ class GitHubHttpTransport:
 
         return all_prs
 
+    def fetch_open_prs_for_triage(self, repo: str) -> list[dict[str, Any]]:
+        """Fetch open PR REST payloads augmented for deterministic triage.
+
+        A failed PR list raises ``GitHubApiError``; the per-PR status and review
+        reads degrade to their neutral values (see the two helpers below).
+        """
+        per_page = 100
+        page = 1
+        all_prs: list[dict[str, Any]] = []
+        while True:
+            batch = rest_json_array(
+                "GET",
+                f"/repos/{repo}/pulls?state=open&per_page={per_page}&page={page}",
+                token=self._token,
+            )
+            all_prs.extend(batch)
+            if len(batch) < per_page:
+                break
+            page += 1
+
+        for pr in all_prs:
+            pr_number = pr.get("number")
+            if not isinstance(pr_number, int):
+                continue
+            head = pr.get("head")
+            sha = str(head.get("sha", "")) if isinstance(head, dict) else ""
+            pr["combined_status"] = self.fetch_combined_status(repo, sha)
+            pr["review_states"] = self.fetch_review_states(repo, pr_number)
+        return all_prs
+
+    def fetch_combined_status(self, repo: str, sha: str) -> str:
+        """Fetch the combined commit status for a head sha; ``pending`` if unreadable."""
+        if not sha:
+            return "pending"
+        try:
+            data = rest_json(
+                "GET", f"/repos/{repo}/commits/{sha}/status", token=self._token
+            )
+        except GitHubApiError:
+            return "pending"
+        return str(data.get("state", "pending"))
+
+    def fetch_review_states(self, repo: str, pr_number: int) -> list[str]:
+        """Fetch each reviewer's latest approving or change-requesting state."""
+        try:
+            reviews = rest_json_array(
+                "GET", f"/repos/{repo}/pulls/{pr_number}/reviews", token=self._token
+            )
+        except GitHubApiError:
+            return []
+        latest: dict[str, str] = {}
+        for review in reviews:
+            user = review.get("user")
+            login = (
+                str(user.get("login", "unknown"))
+                if isinstance(user, dict)
+                else "unknown"
+            )
+            state = str(review.get("state", ""))
+            if state in {"APPROVED", "CHANGES_REQUESTED"}:
+                latest[login] = state
+        return list(latest.values())
+
     def fetch_branch_protection(self, repo: str) -> int | None:
         """Fetch required_approving_review_count via REST API."""
         data = self._rest_get(f"/repos/{repo}/branches/main/protection")
