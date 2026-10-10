@@ -12,12 +12,15 @@ classifier and arm gate to READY then an enqueue, dry_run as the contract
 declares it and enforce once its mode is flipped; a held PR and a DIRTY PR are
 not enqueued; reruns, update-branch and disarm stay dry_run. The three
 repositories whose change-control cut-over has not landed keep the companion
-step and stay in dry_run.
+step and stay in dry_run. Every handler here reads the contract's ledger gate
+facts through a fixed reader: no hold in force and a PASS lab proof for every
+head (test_pr_landing_gate_facts_omn_20866 withholds on them).
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -51,7 +54,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingre
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.contract_config import (
     CONFIG_KEY,
     CONTRACT_PATH,
+    GATE_FACTS_KEY,
     config_from_block,
+    gate_facts_from_block,
     load_contract_config,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
@@ -71,6 +76,7 @@ from tests.unit.nodes.node_pr_landing_orchestrator._builders import (
     T0,
     answer,
     only_request,
+    passing_gate_facts,
     prompt,
     requests_in,
 )
@@ -93,31 +99,39 @@ def _recorded(name: str) -> dict[str, Any]:
     return data
 
 
-def _contract_block() -> dict[str, Any]:
-    contract = yaml.safe_load(CONTRACT_PATH.read_text("utf-8"))
-    block: dict[str, Any] = contract[CONFIG_KEY]
-    return block
+def _contract() -> dict[str, Any]:
+    contract: dict[str, Any] = yaml.safe_load(CONTRACT_PATH.read_text("utf-8"))
+    return contract
 
 
 def _flipped(repository: str) -> PrLandingOrchestratorConfig:
-    """The contract's own block with one repository's mode set to enforce."""
-    block = _contract_block()
+    """The contract's own blocks with one repository's mode set to enforce."""
+    contract = _contract()
+    block: dict[str, Any] = contract[CONFIG_KEY]
     block["github_mode_by_repository"] = {
         **block["github_mode_by_repository"],
         repository: "enforce",
     }
-    return config_from_block(block)
+    return replace(
+        config_from_block(block),
+        gate_facts=gate_facts_from_block(contract[GATE_FACTS_KEY]),
+    )
 
 
 def _handler(
     config: PrLandingOrchestratorConfig | None = None,
 ) -> HandlerPrLandingOrchestrator:
-    """The handler as the runtime builds it: real reducer, gate and classifier."""
+    """The handler as the runtime builds it: real reducer, gate and classifier.
+
+    The ledger gate facts read no hold in force and a PASS lab proof for every
+    head, so a green head reaches the arm gate.
+    """
     return HandlerPrLandingOrchestrator(
         reducer=HandlerPrLandingReducer(),
         arm_gate=HandlerPrArmGate(),
         config=config,
         store=InMemoryPrLandingRowStore(),
+        gate_facts=passing_gate_facts(),
     )
 
 
