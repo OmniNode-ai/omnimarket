@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20865"
+title: "Named gate reasons and land skips in the PR landing decision"
+summary: "node_pr_landing_decision_compute gains gate_reasons on its PR facts, gates and land_skips on its decision, and a coverage check: a gate suspension without reasons is refused, a gate of only red-premised reasons is released on a green CLEAN head older than two ticks, and a green CLEAN PR with neither a merge nor a named skip raises LandingCoverageError."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-gates-are-named"
+    statement: "Every gate suspension carries named reasons."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A gate suspension with no gate_reasons is refused at validation -- falsifier: test_unnamed_gate_suspension_is_refused failing
+  - id: "req-no-silent-green-pr"
+    statement: "Every green, CLEAN, open PR gets a merge or a named skip."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: A 15-PR fleet of green CLEAN unarmed PRs gives a merge or a named skip for each, and a PR with neither is a coverage gap -- falsifier: test_fleet_fifteen_green_unarmed_each_get_a_merge_or_a_named_skip and test_fleet_a_green_pr_with_no_merge_and_no_skip_is_a_gap failing
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the named-gate tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20865-ac1-gates-named"
+    description: "AC1: a gate suspension with no reasons is refused, and every gate row carries its reasons."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly -k 'unnamed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20865-ac2-coverage"
+    description: "AC2: the whole decision package passes, including the fleet coverage tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
