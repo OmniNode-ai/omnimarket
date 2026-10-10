@@ -54,7 +54,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import yaml
 
@@ -233,6 +233,9 @@ _CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
 _GIT_TIMEOUT_SECONDS = 120
 
 _OCC_REPO = OCC_REPO
+# OMN-20074: every product repository on change control calls the autobind
+# through this caller; deleting it is that repository's cut-over.
+AUTOBIND_CALLER_WORKFLOW_PATH: Final[str] = ".github/workflows/call-occ-autobind.yml"
 
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
@@ -881,6 +884,25 @@ class OccCompanionEmitter:
             )
             logger.warning("occ_companion_emitter: %s", action)
             return action
+
+        # OMN-20074: a repository that has cut over from change control deleted
+        # its autobind caller; the absence of that caller on the PR's base branch
+        # is the cut-over state, read from the repository itself rather than a
+        # list here. It still has to be read: GitHub runs a ``pull_request``
+        # event's workflows from the PR's test-merge commit, which can predate
+        # the cut-over (OCC#13507 was minted for omnibase_infra#4629 from a merge
+        # ref built against pre-cut-over ``dev``), and the scheduled re-mint in
+        # this repository publishes for every product repository.
+        caller_absent = self._caller_absent_reason(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            pr_data=pr_data,
+            token=token,
+        )
+        if caller_absent is not None:
+            logger.warning("occ_companion_emitter: %s", caller_absent)
+            return caller_absent
 
         # OMN-14255: the receipt must cite the actual squash ``mergeCommit.oid``
         # once the PR has landed — NOT the pre-merge ``headRefOid``. On these
@@ -2761,6 +2783,40 @@ class OccCompanionEmitter:
         if not isinstance(repo_obj, dict):
             return False
         return bool(repo_obj.get("private"))
+
+    @staticmethod
+    def _caller_absent_reason(
+        *,
+        owner: str,
+        repo_name: str,
+        pr_number: int,
+        pr_data: dict[str, object],
+        token: str,
+    ) -> str | None:
+        """Return a skip action when the PR's base branch has no autobind caller.
+
+        Reads ``AUTOBIND_CALLER_WORKFLOW_PATH`` at the base branch head (the
+        repository's default branch when the payload names no base). Only a 404
+        reads as cut over; any other failure propagates, because an unreadable
+        caller is not evidence that the repository left change control.
+        """
+        base = pr_data.get("base")
+        base_ref = base.get("ref") if isinstance(base, dict) else None
+        path = f"/repos/{owner}/{repo_name}/contents/{AUTOBIND_CALLER_WORKFLOW_PATH}"
+        if isinstance(base_ref, str) and base_ref:
+            path = f"{path}?ref={urllib.parse.quote(base_ref, safe='')}"
+        try:
+            rest_json("GET", path, token=token)
+        except GitHubApiError as exc:
+            if exc.status_code != 404:
+                raise
+            return (
+                f"skip:CALLER_ABSENT — {owner}/{repo_name}#{pr_number}: the base "
+                f"branch {base_ref or '(default)'} carries no "
+                f"{AUTOBIND_CALLER_WORKFLOW_PATH}, so the repository has cut over "
+                "from change control and gets no companion (OMN-20074)"
+            )
+        return None
 
     @staticmethod
     def _suppression_reason(pr_data: dict[str, object]) -> str | None:
