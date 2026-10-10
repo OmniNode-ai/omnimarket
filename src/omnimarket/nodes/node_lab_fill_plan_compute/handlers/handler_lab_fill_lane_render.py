@@ -17,6 +17,9 @@ TASKS = {
     "pr-stalled": "Take over {pr} ({ticket}), stalled since {stalled} with no live owner. Bring it current with its base, answer its open review threads, and make its required checks green on the PR's own branch in a worktree at {where}. Push a rebase with --force-with-lease.",
     "defect": "Fix the {pillar} defect {ticket}: {title}. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
     "ticket": "Work {ticket}: {title}. Read the ticket's acceptance criteria live, build the smallest change that meets them with tests, in a worktree at {where}, and open one PR whose title contains {ticket}.",
+    # OMN-20864, operator RULING 2026-10-10T04:08:23Z: an idle lab slot lands a PR the landing controller
+    # parked, escalated or left red with no owner, as a per-PR landing lane.
+    "pr-land": "Land {pr} ({ticket}) with /omni:pr-land. Lab-fill chose it for an idle lab slot ({title}): under operator RULING 2026-10-10T04:08:23Z a per-PR landing lane is the default work for an open PR the landing controller parked, escalated or left red with no owner. Run pr-land end to end on its exact head: claim, live read, hold check, CI triage, a fix on the PR's own branch in a worktree at {where}, then land it. If what is left is a cause this lane cannot fix on the PR, write your TERMINAL with outcome=blocked and cause=<required-approval|base-red|held|external-owner> and stop: lab-fill does not send it again until its head or that cause changes.",
 }
 APPROVED_TASK = "Finish approved {kind} {id} ({ticket}) in {repo}. Its goal and acceptance check are row {id} of the approved-work list, read by id when this brief was written:\n{marker}\nRead the ticket live and integrate existing work before building. Close-out scope: process fixes and finishing or wiring partially built work only. Worktree: {where}. Run focused RED tests first, open a PR and hand it off."
 LINES = [
@@ -29,6 +32,19 @@ LINES = [
     "OWNERSHIP FIRST: run pr_claim_registry_cli.py list and read the ledger (lane_brief.py grep {subject}, onex-claim-index) for a live peer. If a live lane owns {subject}, write your TERMINAL with outcome=skipped-owned naming that lane, and stop.",
     "RULES: plain commit, pre-commit, focused tests only; no merge by hand, no arming, no pkill, no stash, no --no-verify, no skip tokens, no hooksPath override, no allowlist or baseline widening, no new scripts; canonical shape only (OMN-20295): new capability is a node with a contract.yaml, a handler and bus topics, you wire the existing node or handler before building, and you add no standalone module, CLI tool or script; never flip a ticket Done. gh under 40 calls. Ledger CLAIM, STATUS and TERMINAL through /omni:ledger-write with parent={parent_lane}. Hand a green PR to {landing_lane} with one needs=land MSG through /omni:pr-handoff, and stop.",
 ]
+
+
+# A pr-land lane lands through /omni:pr-land itself, so its rules replace the hand-off ones.
+PR_LAND_RULES = (
+    (
+        "no merge by hand, no arming, ",
+        "merge and arm only through /omni:pr-land on the PR's exact head, ",
+    ),
+    (
+        "Hand a green PR to {landing_lane} with one needs=land MSG through /omni:pr-handoff, and stop.",
+        "If pr-land cannot land it, hand it to {landing_lane} with one needs=land MSG through /omni:pr-handoff, and stop.",
+    ),
+)
 
 
 class HandlerLabFillLaneRender:
@@ -80,11 +96,15 @@ class HandlerLabFillLaneRender:
         ]
         if not fallback and getattr(item, "repo_source", None):
             parts.extend([LINES[5].format_map(values), ""])
+        rules = LINES[7]
+        if item.kind == "pr-land":
+            for old, new in PR_LAND_RULES:
+                rules = rules.replace(old, new)
         parts.extend(
             [
                 LINES[6].format_map(values),
                 "",
-                LINES[7].format_map(values),
+                rules.format_map(values),
                 "",
                 "RETURN: per PR the quoted cause and what you did, with its checks at your last read.",
             ]

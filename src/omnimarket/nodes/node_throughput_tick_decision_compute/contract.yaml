@@ -66,6 +66,7 @@ inputs:
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
   lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
+  pr_land: {type: object, required: false, description: "Open PRs with their landing facts and hold source (OMN-20864); the lab-headroom FIX then names pr-land lanes for idle slots on parked, escalated or unowned-red PRs."}
   park_max_hours: {type: float, required: false, description: "A park over a floor-stalled repository with zero merges covers it only while it ends within this many hours (default 2)."}
   dispatch_window_hours: {type: float, required: false, description: "Runner receipts started this many hours back that ended without running are findings; omitted skips the dispatches finding."}
   open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}

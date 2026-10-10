@@ -15,7 +15,7 @@ from ..models import (
 from .helpers_js_value import UNDEFINED, get, js_str, num, round_half_up, truthy
 
 
-def _host(
+def host_capacity(
     reading: object, policy: ModelLabFillHeadroomPolicy
 ) -> ModelLabFillHostCapacity:
     """One host's lanes: the smaller of its real idle and the runner's own slots.
@@ -109,7 +109,7 @@ class HandlerLabFillCapacity:
     def handle(
         self, request: ModelLabFillCapacityRequest
     ) -> ModelLabFillCapacityResult:
-        hosts = [_host(reading, request.policy) for reading in request.readings]
+        hosts = [host_capacity(reading, request.policy) for reading in request.readings]
         lab = tuple(h for h in hosts if h.reason != "launching-host")
         free = sum(h.lanes for h in lab)
         return ModelLabFillCapacityResult(

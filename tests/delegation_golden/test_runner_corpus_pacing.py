@@ -154,12 +154,46 @@ class TestLaneServingConcurrencyIsRead:
 class TestPerCaseDeadlineReadsTheBoundThatBinds:
     """The deadline comes from the node that serves the probe, not another one."""
 
-    def test_deadline_is_the_handler_execution_budget_plus_margin(self) -> None:
+    def test_deadline_is_the_handler_cancel_bound_plus_margin(self) -> None:
         assert (
             runner_module.per_case_timeout_s()
-            == float(runner_module.declared_handler_budget_s())
+            == float(runner_module.handler_cancel_bound_s())
             + runner_module.projection_margin_s()
         )
+
+    def test_deadline_outlives_the_handler_budget_terminal(self) -> None:
+        """A case that runs to budget must be SEEN to run to budget (OMN-18349).
+
+        The delegate-skill handler commits its budget-timeout terminal at the
+        task class's ceiling plus its terminal delivery margin after pickup,
+        and pickup is never before publish. The deadline, counted from publish,
+        has to outlive that terminal by a projection margin, or the probe
+        scores the case "no delegation_events row" moments before the row it
+        is waiting for lands -- as it did for I9 on run 38035283766, both
+        attempts, and for I8 on the first.
+
+        The bound is read here from the task-class authority directly, not
+        from the runner, so the runner cannot satisfy this by agreeing with
+        itself.
+        """
+        from omnimarket.inference.task_class_authority import (
+            resolve_task_class_execution_budget,
+        )
+
+        deadline = runner_module.per_case_timeout_s()
+        for case in load_corpus().integration_cases():
+            budget = resolve_task_class_execution_budget(case.task_type)
+            cancel_after_pickup = (
+                budget.task_class_timeout_ceiling_seconds
+                + budget.terminal_delivery_margin_seconds
+            )
+            assert (
+                deadline >= cancel_after_pickup + runner_module.projection_margin_s()
+            ), (
+                f"{case.id} ({case.task_type}): the handler commits its budget "
+                f"terminal {cancel_after_pickup}s after pickup, but the probe "
+                f"gives up {deadline}s after publish"
+            )
 
     def test_deadline_is_not_the_other_node_completion_bound(self) -> None:
         """The regression this replaces: patience taken from a different contract.
@@ -171,7 +205,7 @@ class TestPerCaseDeadlineReadsTheBoundThatBinds:
         from omnimarket.cloud.completion_bound import read_declared_completion_bound
 
         other_node_bound = float(read_declared_completion_bound().max_wall_seconds)
-        assert runner_module.declared_handler_budget_s() < other_node_bound
+        assert runner_module.handler_cancel_bound_s() < other_node_bound
         assert runner_module.per_case_timeout_s() < other_node_bound
 
     def test_explicit_override_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.cause_signature import cause_key, normalize_signature
 from omnimarket.models.ci_red_triage import (
     EnumCiRedClass,
     ModelCiRedPeer,
@@ -225,3 +226,95 @@ def test_full_slug_is_preserved() -> None:
 def test_invalid_event_rejected(updates: dict[str, Any], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         ModelCiRunFailedEvent.model_validate({**event().model_dump(), **updates})
+
+
+def annotated(
+    peer_count: int,
+    own: dict[str, str],
+    peer_text: dict[int, dict[str, str]],
+    checks: tuple[str, ...] = ("check",),
+) -> ModelCiRedFacts:
+    return ModelCiRedFacts(
+        event=event(checks, peers(peer_count, checks)),
+        annotations=own,
+        peer_annotations=peer_text,
+        annotations_read=True,
+    )
+
+
+def test_r4_annotation_level_key_matches_the_controller_signature() -> None:
+    text = "pull request cites OMN-17292 but carries no contracts/OMN-17292.yaml"
+    other = "pull request cites OMN-18606 but carries no contracts/OMN-18606.yaml"
+    result = classify_ci_red(
+        annotated(3, {"check": text}, {2: {"check": other}, 3: {"check": text}})
+    )
+    assert result.red_class == EnumCiRedClass.SHARED_CAUSE
+    assert result.members == (1, 2, 3)
+    assert (
+        result.cause_key
+        == result.owner_key
+        == cause_key("OmniNode-ai/omniclaude", normalize_signature("check", text))
+    )
+    assert result.reason == "annotation-level cause reaches cluster_min_members"
+
+
+@pytest.mark.parametrize(
+    ("own", "peer_text"),
+    [
+        ({"check": ""}, {2: {"check": "boom"}, 3: {"check": "boom"}}),
+        ({}, {2: {"check": "boom"}, 3: {"check": "boom"}}),
+        ({"check": "boom"}, {2: {"check": "boom"}, 3: {"check": "other"}}),
+        ({"check": "boom"}, {2: {"check": "boom"}}),
+    ],
+)
+def test_r4_unread_or_different_signatures_never_cluster(
+    own: dict[str, str], peer_text: dict[int, dict[str, str]]
+) -> None:
+    result = classify_ci_red(annotated(3, own, peer_text))
+    assert result.red_class == EnumCiRedClass.PR_OWN
+    assert result.cause_key is None
+
+
+def test_r4_a_cluster_mostly_inside_a_chosen_cause_is_absorbed() -> None:
+    # (a, x) holds 2-6 and leads on the tie; (b, y) holds 1-5, 4 of 5 inside it:
+    # absorbed, so PR 1, whose a-annotation differs, is in the (a, x) cause.
+    peer_text = {n: {"a": "x", "b": "y"} for n in (2, 3, 4, 5)} | {6: {"a": "x"}}
+    facts = ModelCiRedFacts(
+        event=event(
+            ("a", "b"),
+            tuple(
+                ModelCiRedPeer(
+                    pr_number=n,
+                    head_sha=f"head-{n}",
+                    armed=True,
+                    red_contexts=("a",) if n == 6 else ("a", "b"),
+                )
+                for n in (2, 3, 4, 5, 6)
+            ),
+        ),
+        annotations={"a": "z", "b": "y"},
+        peer_annotations=peer_text,
+        annotations_read=True,
+    )
+    result = classify_ci_red(facts)
+    assert result.red_class == EnumCiRedClass.SHARED_CAUSE
+    assert result.check == "a"
+    assert result.members == (1, 2, 3, 4, 5, 6)
+    assert result.cause_key == cause_key(
+        "OmniNode-ai/omniclaude", normalize_signature("a", "x")
+    )
+    # Under the ratio (PR 5 off b), (b, y) holds 1-4 with 3 of 4 inside: PR 1 owns its red.
+    peer_text[5] = {"a": "x"}
+    apart = classify_ci_red(facts.model_copy(update={"peer_annotations": peer_text}))
+    assert apart.red_class == EnumCiRedClass.PR_OWN
+
+
+def test_r4_unread_annotations_keep_check_level_clusters_and_key() -> None:
+    result = classify_ci_red(
+        ModelCiRedFacts(event=event(peers=peers(3)), annotations={"check": "boom"})
+    )
+    assert result.red_class == EnumCiRedClass.SHARED_CAUSE
+    assert result.cause_key == (
+        "cause:OmniNode-ai/omniclaude:" + hashlib.sha256(b"check").hexdigest()[:12]
+    )
+    assert result.reason.endswith("(annotations unread)")

@@ -15,6 +15,9 @@ description: >
   choice, dispatch planning, ownership and completion, authorized lane briefs and
   structured launches, receipt placement, single engine fallbacks and status with
   idle diagnostics. Identities, reader facts and observed times arrive in requests.
+  Headroom comes from the pool hosts' capacity advertisements on the bus; a host
+  with idle runner slots and no fresh advertisement is a HEADROOM_UNKNOWN failure,
+  published on the failure terminal.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -66,6 +69,18 @@ handler_routing:
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_status
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusResult
+  - operation: plan_lab_fill_headroom
+    handler:
+      name: HandlerLabFillHeadroomPlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_headroom_plan
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanResult
+  - operation: verify_lab_fill_fanout
+    handler:
+      name: HandlerLabFillFanoutReadback
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fanout_readback
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -77,15 +92,30 @@ event_bus:
   - onex.cmd.omnimarket.lab-fill-plan-requested.v1
   publish_topics:
   - onex.evt.omnimarket.lab-fill-plan-decided.v1
+  - onex.evt.omnimarket.lab-fill-plan-failed.v1
+config:
+  lab_fill_plan:
+    headroom:
+      # The lab-work serve process on each pool host publishes this every 10 s
+      # (node_lab_work_unit_effect capacity block).
+      reading_topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+      # A reading older than this, or dated this far in the future, is not fresh:
+      # a host with idle slots then fails HEADROOM_UNKNOWN (OMN-20867).
+      max_age_seconds: 60
 terminal_event: onex.evt.omnimarket.lab-fill-plan-decided.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-fill-plan-decided.v1
+    failure: onex.evt.omnimarket.lab-fill-plan-failed.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.lab-fill-plan-decided.v1
+- onex.evt.omnimarket.lab-fill-plan-failed.v1
 metadata:
   ticket: OMN-20668
   origin_tickets:
   - OMN-17427
   - OMN-20662
+  - OMN-20867
   transport_type: kafka
 lifecycle: experimental

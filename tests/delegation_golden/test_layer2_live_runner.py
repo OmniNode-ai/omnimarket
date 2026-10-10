@@ -299,13 +299,13 @@ class TestDeclaredPollBound:
     def test_poll_bound_is_a_declared_bound_not_a_literal(self) -> None:
         from tests.delegation_golden.runner import (
             DEFAULT_PROJECTION_MARGIN_S,
-            declared_handler_budget_s,
+            handler_cancel_bound_s,
             per_case_timeout_s,
         )
 
         assert (
             per_case_timeout_s()
-            == float(declared_handler_budget_s()) + DEFAULT_PROJECTION_MARGIN_S
+            == float(handler_cancel_bound_s()) + DEFAULT_PROJECTION_MARGIN_S
         )
 
     def test_explicit_override_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:

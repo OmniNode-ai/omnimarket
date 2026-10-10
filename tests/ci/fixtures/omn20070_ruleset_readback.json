@@ -1,0 +1,78 @@
+{
+ "repos/OmniNode-ai/omnimarket/actions/runs/37222630162": {
+  "event": "pull_request_target",
+  "path": ".github/workflows/call-repo-evidence-gate.yml"
+ },
+ "repos/OmniNode-ai/omnimarket/check-runs/110981993271": {
+  "app": {
+   "id": 15368
+  },
+  "conclusion": "success",
+  "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37050373022/job/110981993271",
+  "id": 110981993271,
+  "name": "repo-evidence / dod-verify",
+  "status": "completed"
+ },
+ "repos/OmniNode-ai/omnimarket/check-runs/110982013438": {
+  "app": {
+   "id": 15368
+  },
+  "conclusion": "failure",
+  "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37050379365/job/110982013438",
+  "id": 110982013438,
+  "name": "repo-evidence / dod-verify",
+  "status": "completed"
+ },
+ "repos/OmniNode-ai/omnimarket/check-runs/111536237889": {
+  "app": {
+   "id": 15368
+  },
+  "conclusion": "failure",
+  "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37236395975/job/111536237889",
+  "id": 111536237889,
+  "name": "repo-evidence / dod-verify",
+  "status": "completed"
+ },
+ "repos/OmniNode-ai/omnimarket/check-suites/100822311744/check-runs": {
+  "check_runs": [
+   {
+    "app": {
+     "id": 15368
+    },
+    "conclusion": "failure",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37222630162/job/111495889698",
+    "id": 111495889698,
+    "name": "repo-evidence / dod-verify",
+    "status": "completed"
+   },
+   {
+    "app": {
+     "id": 15368
+    },
+    "conclusion": "skipped",
+    "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/37222630162/job/111495890548",
+    "id": 111495890548,
+    "name": "repo-evidence / verify",
+    "status": "completed"
+   }
+  ]
+ },
+ "repos/OmniNode-ai/omnimarket/rules/branches/dev": [
+  {
+   "parameters": {
+    "do_not_enforce_on_create": false,
+    "required_status_checks": [
+     {
+      "context": "repo-evidence / dod-verify",
+      "integration_id": 15368
+     }
+    ],
+    "strict_required_status_checks_policy": false
+   },
+   "ruleset_id": 24462257,
+   "ruleset_source": "OmniNode-ai/omnimarket",
+   "ruleset_source_type": "Repository",
+   "type": "required_status_checks"
+  }
+ ]
+}

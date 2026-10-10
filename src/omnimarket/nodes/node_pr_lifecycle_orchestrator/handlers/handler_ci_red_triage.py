@@ -22,6 +22,11 @@ from omnimarket.events.topics import (
     CI_RUN_FAILED_TOPIC_V1,
     PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1,
 )
+from omnimarket.handlers.cause_signature import (
+    ANNOTATION_CHUNK,
+    annotation_query,
+    first_failure_annotations,
+)
 from omnimarket.models.ci_red_triage import (
     EnumCiRedAction,
     EnumCiRedClass,
@@ -48,7 +53,11 @@ class ProtocolCiRedFactsReader(Protocol):
 
 
 class GhCiRedFactsReader:
-    """Read newest check runs via GET only; a failed read leaves facts unread."""
+    """Read only: newest check runs via REST GET, failure annotations via one GraphQL query per chunk.
+
+    A failed check read leaves conclusions and base unread; a failed annotation
+    read leaves annotations unread (check-level clustering).
+    """
 
     @staticmethod
     def _checks(slug: str, ref: str) -> dict[str, str]:
@@ -78,25 +87,67 @@ class GhCiRedFactsReader:
                 newest[name] = (key, conclusion)
         return {name: conclusion for name, (_, conclusion) in newest.items()}
 
+    @staticmethod
+    def _annotations(
+        event: ModelCiRunFailedEvent,
+    ) -> tuple[dict[str, str] | None, dict[int, dict[str, str]]]:
+        """The first failure annotation per failing check of the PR and its armed peers, each at its own head."""
+        slug = ci_red_repo_slug(event.repo)
+        heads = {event.pr_number: event.head_sha} | {
+            peer.pr_number: peer.head_sha for peer in event.peers if peer.armed
+        }
+        numbers = sorted(heads)
+        read: dict[int, dict[str, str]] = {}
+        for start in range(0, len(numbers), ANNOTATION_CHUNK):
+            chunk = numbers[start : start + ANNOTATION_CHUNK]
+            query = annotation_query([(slug, number) for number in chunk])
+            result = subprocess.run(
+                ["gh", "api", "graphql", "-f", f"query={query}"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=20,
+            )
+            data = json.loads(result.stdout).get("data") or {}
+            for i, number in enumerate(chunk):
+                node = (data.get(f"a{i}") or {}).get("pullRequest")
+                annotations = first_failure_annotations(node, heads[number])
+                if annotations is not None:
+                    read[number] = annotations
+        own = read.pop(event.pr_number, None)
+        return own, read
+
     def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        checks: dict[str, object] = {}
         try:
             slug = ci_red_repo_slug(event.repo)
             head = self._checks(slug, event.head_sha)
             base = self._checks(slug, event.base)
-            return ModelCiRedFacts(
-                event=event,
-                check_conclusions=head,
-                base_red_checks=tuple(
+            checks = {
+                "check_conclusions": head,
+                "base_red_checks": tuple(
                     sorted(
                         name
                         for name, conclusion in base.items()
                         if conclusion in {"failure", "timed_out"}
                     )
                 ),
-                base_read=True,
-            )
+                "base_read": True,
+            }
         except Exception:
-            return ModelCiRedFacts(event=event)
+            checks = {}
+        annotations: dict[str, object] = {}
+        try:
+            own, peers = self._annotations(event)
+            if own is not None:
+                annotations = {
+                    "annotations": own,
+                    "peer_annotations": peers,
+                    "annotations_read": True,
+                }
+        except Exception:
+            annotations = {}
+        return ModelCiRedFacts.model_validate({"event": event, **checks, **annotations})
 
 
 class HandlerCiRedTriage:
@@ -221,6 +272,8 @@ class HandlerCiRedTriage:
                 unread.append("head conclusions: " + ", ".join(missing))
             if not facts.base_read:
                 unread.append("base checks")
+            if not facts.annotations_read:
+                unread.append("annotations")
             evidence = (
                 f"class={classification.red_class} check={classification.check} action={action} "
                 f"owner_key={owner_key} members={classification.members} run_id={run_id} "

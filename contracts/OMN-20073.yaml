@@ -27,6 +27,17 @@ requirements:
         statement: "omnimarket deletes the callers that mint, heal, wait on or verify a PR's OCC companion (call-occ-preflight.yml, call-occ-autobind.yml, occ-autobind-mint-verify.yml, occ-companion-merge-heal.yml, occ-receipt-runner.yml, call-receipt-gate.yml, the OCC Companion Merged Gate job); CI Summary expects no companion context (occ-preflight / eligibility, verify / verify) and keeps the two emitter tests; the required-checks manifest names none of the four OCC contexts branch protection dropped; so a pull request merges gated by repo-evidence / dod-verify with no OCC companion -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q"
       - id: "AC7"
         statement: "omnimarket deletes the report-only OCC observers that computed, planned or attested a PR's OCC companion (call-occ-companion-observe.yml, call-occ-companion-author.yml, call-occ-attestation-observe.yml), so no pull_request workflow in omnimarket reads or writes an OCC companion or observation -- falsifier: uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
+  - id: "req-queue-hold"
+    statement: "A queued PR is not admitted around its hold while the repo-evidence context is not produced for merge_group."
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: no merge queue is active on omnimarket dev, so no queued pull request exists to be admitted around its hold, repo-evidence / dod-verify is required there by an active ruleset and the caller does not run on merge_group, and every auto-merge arming step is gated on the hold check -- falsifier: uv run pytest tests/ci/test_ruleset_readback_omn20073.py -q -k queue_not_admitted
+# Linear AC4 (the rollback drill restores the pre-cutover context set) is deliberately
+# not declared, so it is unbound. A drill reads back the context set after a protection
+# change, and no workflow consumes a protection payload, so a fixture test would prove
+# nothing about the rollback. The drill needs a protection write on a scratch branch;
+# the exact steps went to orchestrator-9f8a.
 evidence_requirements:
   - kind: "tests"
     description: "Execute the workflow pollers against success, failure, absence, skip, cancellation, app identity and newer-head-check fixtures."
@@ -49,6 +60,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The report-only OCC observer callers are deleted."
     command: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
+  - kind: "tests"
+    description: "No merge queue is active on dev, the evidence context is not a merge_group context, and arming is gated on the hold check."
+    command: "uv run pytest tests/ci/test_ruleset_readback_omn20073.py -q -k queue_not_admitted"
+  - kind: "tests"
+    description: "Every arming step of auto-merge.yml carries the hold condition."
+    command: "uv run pytest tests/ci/test_auto_merge_hold_omn18179.py -q -k every_arming_step_is_gated_on_the_hold_check"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -110,3 +127,14 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_occ_callers_removed_omn20073.py -q -k observer"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
+  - id: "dod-queue-not-admitted-around-hold"
+    description: "The live rules show no merge queue on dev, the caller has no merge_group trigger and the evidence context is required from GitHub Actions; the arming steps are gated on the hold check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20073.py -q -k queue_not_admitted"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_auto_merge_hold_omn18179.py -q -k every_arming_step_is_gated_on_the_hold_check"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]

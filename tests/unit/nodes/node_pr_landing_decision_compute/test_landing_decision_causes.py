@@ -83,10 +83,7 @@ def sha(subject: str, n: int) -> str:
 
 
 def key_for(check: str = CHECK, text: str = ANN, repo: str = REPO) -> str:
-    from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
-        cause_key,
-        normalize_signature,
-    )
+    from omnimarket.handlers.cause_signature import cause_key, normalize_signature
 
     return cause_key(repo, normalize_signature(check, text))
 
@@ -318,7 +315,7 @@ def three() -> list[Pr]:
 # ------------------------------------------------------------------ signature
 @pytest.mark.unit
 def test_normalize_signature_replaces_what_varies_per_pr() -> None:
-    from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
+    from omnimarket.handlers.cause_signature import (
         UNREAD,
         normalize_annotation,
         normalize_signature,
