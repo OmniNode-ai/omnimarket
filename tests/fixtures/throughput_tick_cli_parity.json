@@ -389,10 +389,10 @@
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omnimarket 2",
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 11 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
      "NOTE escalated:cause:OmniNode-ai/omnibase_infra:abc | parked cause cause:OmniNode-ai/omnibase_infra:abc until 2026-10-09T08:00:00Z",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest 2026-10-09T05:30:00Z): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h202 | incomplete placement reading; no dispatch",
      "NOTE lab-headroom:h101 | limited mark unreadable; no dispatch",
-     "THROUGHPUT STALL n=1 unknown=0: controller"
+     "THROUGHPUT STALL n=2 unknown=1: controller, lab-headroom:h201"
     ]
    },
    "name": "case-394",
@@ -2152,9 +2152,9 @@
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omniclaude 1",
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 16 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
      "NOTE lab-headroom:h201 | limited mark unreadable; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | limited mark unreadable; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=0: controller, merges, floor:OmniNode-ai/omniclaude"
+     "THROUGHPUT STALL n=4 unknown=1: controller, merges, floor:OmniNode-ai/omniclaude, lab-headroom:h202"
     ]
    },
    "name": "case-46",
@@ -2719,8 +2719,8 @@
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omnibase_infra 1, OmniNode-ai/omniclaude 1",
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 11 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
      "NOTE escalated:cause:OmniNode-ai/omnibase_infra:abc | escalated at tick 11 (red) and no cause covers it yet: the controller has one more tick to cover it",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=3: merges, floor:OmniNode-ai/omniclaude, floor:OmniNode-ai/omnimarket"
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=4 unknown=4: merges, floor:OmniNode-ai/omniclaude, floor:OmniNode-ai/omnimarket, lab-headroom:h201"
     ]
    },
    "name": "case-30",
@@ -4281,9 +4281,9 @@
      "NOTE floors met: OmniNode-ai/omnimarket 3/h",
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omnibase_infra 1, OmniNode-ai/omniclaude 1",
      "NOTE lab-headroom:h202 | unavailable in host table; no dispatch",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | limited until 2026-10-09T07:00:00Z; no dispatch",
-     "THROUGHPUT STALL n=2 unknown=0: controller, controller"
+     "THROUGHPUT STALL n=3 unknown=1: controller, controller, lab-headroom:h201"
     ]
    },
    "name": "case-661",
@@ -4598,8 +4598,8 @@
      "NOTE lab-headroom:h999 | unavailable in host table; no dispatch",
      "NOTE lab-headroom:h201 | limited mark unreadable; no dispatch",
      "MISSING lab-headroom:h202 | running lanes 1 of cap 4, free slots 3 | FIX: dispatch up to 3 lanes of the session's pillar work to h202 through the remote-lane runner; never pin to a host without headroom",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=0: controller, merges, lab-headroom:h202"
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest 2026-10-08T20:00:00Z): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=4 unknown=1: controller, merges, lab-headroom:h202, lab-headroom:h101"
     ]
    },
    "name": "case-0",
@@ -5250,10 +5250,10 @@
      "MISSING controller | mode=act status=FAILED at tick 14 refusal=-: the tick acted on nothing | FIX: env -u PYTHONPATH /opt/homebrew/bin/python3.13 ~/.omninode/landing-controller/skills/merge-drain/scripts/landing_controller.py status, then fix the refusal /omni:landing-controller names (a HASH-MISMATCH or G-ACT-MISSING is a skill PR and a re-install; QUOTA is the GitHub quota consumer); never launch the retired Claude drain",
      "UNKNOWN merges | cannot read watcher state /case/watcher.json: Expecting value: line 1 column 3 (char 2) | FIX: launchctl kickstart -k gui/$(id -u)/ai.omninode.pr-watcher and read its err log",
      "UNKNOWN floors | cannot read watcher state /case/watcher.json: Expecting value: line 1 column 3 (char 2) | FIX: launchctl kickstart -k gui/$(id -u)/ai.omninode.pr-watcher and read its err log",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "MISSING lab-headroom:h101 | running lanes 1 of cap 6, free slots 3 | FIX: dispatch up to 3 lanes of the session's pillar work to h101 through the remote-lane runner; never pin to a host without headroom",
-     "THROUGHPUT STALL n=5 unknown=2: controller, controller, lab-headroom:h101, merges, floors"
+     "THROUGHPUT STALL n=7 unknown=4: controller, controller, lab-headroom:h101, merges, floors, lab-headroom:h201, lab-headroom:h202"
     ]
    },
    "name": "case-15",
@@ -5797,10 +5797,10 @@
      "MISSING floor:OmniNode-ai/omnimarket | OmniNode-ai/omnimarket merged 3 in 2h (1.5/h, floor 2/h) with 1 PRs waiting; last merge 0.3h ago; causes=unread cause_leases=unread cause_members=unread cause_exhausted=unread fixer_hold=unread | FIX: the controller owns this fix: read its status through /omni:landing-controller (landing_controller.py status); a fixer HOLD, a spent cause budget or no capacity is reported there and released by the operator; the session starts no fix work for it",
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omnibase_infra 1, OmniNode-ai/omniclaude 1",
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 16 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | limited mark unreadable; no dispatch",
-     "THROUGHPUT STALL n=1 unknown=0: floor:OmniNode-ai/omnimarket"
+     "THROUGHPUT STALL n=3 unknown=2: floor:OmniNode-ai/omnimarket, lab-headroom:h201, lab-headroom:h202"
     ]
    },
    "name": "case-44",
@@ -6062,10 +6062,10 @@
      "UNKNOWN controller | cannot read last tick: [Errno 2] No such file or directory: '/case/landing/ticks.jsonl' | FIX: bash \"$OMNIBASE_INTERNAL/launchd/landing-controller/install.sh\" --status, then --act --g-act-dir <dir> once G-ACT verifies (/omni:landing-controller); never launch the retired Claude drain",
      "MISSING merges | 1 merges in 60 min with 7 open (< 5/h is a stall) | FIX: the merge-throughput tick's procedure: find the cause live and dispatch ONE targeted fix lane for that cause (not a drain)",
      "UNKNOWN floors | cannot read the per-repo floors: cannot read floors /case/floors.json: [Errno 2] No such file or directory: '/case/floors.json' | FIX: fix landing_floors.json",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "MISSING lab-headroom:h101 | running lanes 0 of cap 2, free slots 2 | FIX: dispatch up to 2 lanes of the session's pillar work to h101 through the remote-lane runner; never pin to a host without headroom",
-     "THROUGHPUT STALL n=4 unknown=2: merges, lab-headroom:h101, controller, floors"
+     "THROUGHPUT STALL n=6 unknown=4: merges, lab-headroom:h101, controller, floors, lab-headroom:h201, lab-headroom:h202"
     ]
    },
    "name": "case-47",
@@ -6253,8 +6253,8 @@
      "NOTE escalated:OmniNode-ai/omnimarket#9 | owned by landing-L1 cause=cause:OmniNode-ai/omnimarket:zz",
      "NOTE lab-headroom:h201 | limited mark unreadable; no dispatch",
      "MISSING lab-headroom:h202 | running lanes 1 of cap 4, free slots 1 | FIX: dispatch up to 1 lanes of the session's pillar work to h202 through the remote-lane runner; never pin to a host without headroom",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=1: controller, lab-headroom:h202, floors"
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=4 unknown=2: controller, lab-headroom:h202, floors, lab-headroom:h101"
     ]
    },
    "name": "case-48",
@@ -7846,10 +7846,10 @@
      "UNKNOWN controller | heartbeat and last tick timestamp unreadable | FIX: launchctl kickstart -k gui/$(id -u)/ai.omninode.landing-controller, then read ~/.local/state/omni/landing/landing-controller.err.log; never launch the retired Claude drain",
      "NOTE merges last 60 min: 12 (open 4, watcher tick 2026-10-09T05:57:00Z)",
      "NOTE floors do not count report-only authors' PRs (landing policy): OmniNode-ai/omnibase_infra 1, OmniNode-ai/omnimarket 1",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h202 | claude auth expired since 7; log in again; no dispatch",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=2: controller, controller, controller"
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=5 unknown=4: controller, controller, controller, lab-headroom:h201, lab-headroom:h101"
     ]
    },
    "name": "case-107",
@@ -8127,9 +8127,9 @@
      "UNKNOWN floors | cannot read the landing policy: /case/policy.yaml: line 2: policy 'bogus' is not one of land_like_operator, report_only | FIX: python3 plugins/omni/scripts/landing_policy.py, then fix ~/.config/onex/landing_policy.yaml (or $ONEX_LANDING_POLICY)",
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 16 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
      "NOTE lab-headroom:h201 | claude auth expired since 7; log in again; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest 2026-10-09T05:44:00Z): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | auth-expired mark unreadable; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=2: merges, controller, floors"
+     "THROUGHPUT STALL n=4 unknown=3: merges, controller, floors, lab-headroom:h202"
     ]
    },
    "name": "case-111",
@@ -9134,9 +9134,9 @@
      "MISSING controller | mode=act status=OK at tick 13 refusal=QUOTA too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too many calls too m: the tick acted on nothing | FIX: env -u PYTHONPATH /opt/homebrew/bin/python3.13 ~/.omninode/landing-controller/skills/merge-drain/scripts/landing_controller.py status, then fix the refusal /omni:landing-controller names (a HASH-MISMATCH or G-ACT-MISSING is a skill PR and a re-install; QUOTA is the GitHub quota consumer); never launch the retired Claude drain",
      "MISSING merges | 3 merges in 60 min with 3 open (< 5/h is a stall) | FIX: the merge-throughput tick's procedure: find the cause live and dispatch ONE targeted fix lane for that cause (not a drain)",
      "NOTE lab-headroom:h202 | unavailable in host table; no dispatch",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | admission refused: mem_avail 2.0G < 10G; running lanes 3 of cap 2, free slots 0",
-     "THROUGHPUT STALL n=4 unknown=0: controller, controller, controller, merges"
+     "THROUGHPUT STALL n=5 unknown=1: controller, controller, controller, merges, lab-headroom:h201"
     ]
    },
    "name": "case-197",
@@ -9986,9 +9986,9 @@
      "NOTE escalated:OmniNode-ai/omnimarket#9 | escalated at tick 11 (attempts-spent) and no cause covers it yet: the controller has one more tick to cover it",
      "NOTE escalated:cause:OmniNode-ai/omnibase_infra:abc | parked cause cause:OmniNode-ai/omnibase_infra:abc until 2026-10-09T08:00:00Z",
      "MISSING lab-headroom:h201 | running lanes 1 of cap 4, free slots 3 | FIX: dispatch up to 3 lanes of the session's pillar work to h201 through the remote-lane runner; never pin to a host without headroom",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h101 | limited mark unreadable; no dispatch",
-     "THROUGHPUT STALL n=2 unknown=0: floor:OmniNode-ai/omnibase_infra, lab-headroom:h201"
+     "THROUGHPUT STALL n=3 unknown=1: floor:OmniNode-ai/omnibase_infra, lab-headroom:h201, lab-headroom:h202"
     ]
    },
    "name": "case-241",
@@ -10831,8 +10831,8 @@
      "NOTE floors met: OmniNode-ai/omniclaude 1/h",
      "NOTE lab-headroom:h201 | limited mark unreadable; no dispatch",
      "NOTE lab-headroom:h202 | claude auth expired since 2026-10-09T04:00:00Z; log in again; no dispatch",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=3 unknown=1: merges, floor:OmniNode-ai/omnimarket, controller"
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest 2026-10-09T05:30:00Z): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=4 unknown=2: merges, floor:OmniNode-ai/omnimarket, controller, lab-headroom:h101"
     ]
    },
    "name": "case-292",
@@ -11675,9 +11675,9 @@
      "NOTE merges last 60 min: 7 (open 6, watcher tick 2026-10-09T05:59:00Z)",
      "NOTE floors met: OmniNode-ai/omnibase_infra 1/h, OmniNode-ai/omniclaude 2.5/h",
      "NOTE lab-headroom:h201 | auth-expired mark unreadable; no dispatch",
-     "NOTE lab-headroom:h202 | no recent placement reading; no dispatch",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=1 unknown=1: controller"
+     "UNKNOWN lab-headroom:h202 | no placement reading in the last 15 min (newest 2026-10-08T20:00:00Z): its capacity is unread | FIX: read h202's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=3 unknown=3: controller, lab-headroom:h202, lab-headroom:h101"
     ]
    },
    "name": "case-384",
@@ -16479,10 +16479,10 @@
      "UNKNOWN controller | cannot read last tick: [Errno 2] No such file or directory: '/case/landing/ticks.jsonl' | FIX: bash \"$OMNIBASE_INTERNAL/launchd/landing-controller/install.sh\" --status, then --act --g-act-dir <dir> once G-ACT verifies (/omni:landing-controller); never launch the retired Claude drain",
      "NOTE merges last 60 min: 4 (open 6, watcher tick 2026-10-09T05:57:00Z)",
      "MISSING floor:OmniNode-ai/omnimarket | OmniNode-ai/omnimarket merged 1 in 2h (0.5/h, floor 2/h) with 1 PRs waiting; last merge 0.2h ago; causes=unread cause_leases=unread cause_members=unread cause_exhausted=unread fixer_hold=unread | FIX: the controller owns this fix: read its status through /omni:landing-controller (landing_controller.py status); a fixer HOLD, a spent cause budget or no capacity is reported there and released by the operator; the session starts no fix work for it",
-     "NOTE lab-headroom:h201 | no recent placement reading; no dispatch",
+     "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h201's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
      "NOTE lab-headroom:h202 | limited until 2026-10-09T07:00:00Z; no dispatch",
-     "NOTE lab-headroom:h101 | no recent placement reading; no dispatch",
-     "THROUGHPUT STALL n=2 unknown=1: floor:OmniNode-ai/omnimarket, controller"
+     "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest none): its capacity is unread | FIX: read h101's live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a free slot there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host that cannot be read is a lab fault to name to the operator, never free and never full",
+     "THROUGHPUT STALL n=4 unknown=3: floor:OmniNode-ai/omnimarket, controller, lab-headroom:h201, lab-headroom:h101"
     ]
    },
    "name": "case-612",

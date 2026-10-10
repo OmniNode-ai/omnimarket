@@ -59,6 +59,7 @@ from tests.chains.local.harness import (
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
+    shipped_byok_model_name,
     use_local_store,
 )
 
@@ -120,7 +121,11 @@ async def test_golden_chain_store_value_wins_over_every_environment_name(
         house_openrouter_rung(monkeypatch)
 
         customer_ref = register_local_byok_credential(
-            PROVIDER_SLUG, _STORE_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _STORE_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
         assert is_tenant_credential_ref(customer_ref), (
             "the store must mint a tenant-shaped reference; the env exemption "
@@ -155,7 +160,11 @@ async def test_error_chain_an_empty_store_refuses_rather_than_reading_env(
         house_openrouter_rung(monkeypatch)
 
         customer_ref = register_local_byok_credential(
-            PROVIDER_SLUG, _STORE_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _STORE_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
         _empty_the_stored_value(db_path, customer_ref)
         _plant_decoy_environment(monkeypatch, customer_ref)

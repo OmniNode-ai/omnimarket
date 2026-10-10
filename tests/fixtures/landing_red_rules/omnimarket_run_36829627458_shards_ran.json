@@ -1,0 +1,389 @@
+{
+ "source": "OmniNode-ai/omnimarket actions run 36829627458 (head 426509a5ff33), CI jobs: shards ran; Coverage Sweep Gate failed in its Combine shard coverage step",
+ "runs": [
+  [
+   "Release Identity Gate",
+   "completed",
+   "failure",
+   "2026-10-01T08:14:17Z"
+  ],
+  [
+   "Customer Path Boundary (OMN-18012)",
+   "completed",
+   "success",
+   "2026-10-01T08:15:22Z"
+  ],
+  [
+   "Merge Reason-Code Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:14:16Z"
+  ],
+  [
+   "contract-topic-graph",
+   "completed",
+   "success",
+   "2026-10-01T08:15:44Z"
+  ],
+  [
+   "Merge Hold Gate (OMN-15483)",
+   "completed",
+   "success",
+   "2026-10-01T08:14:17Z"
+  ],
+  [
+   "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+   "completed",
+   "success",
+   "2026-10-01T08:14:23Z"
+  ],
+  [
+   "Wire Compatibility Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:15:55Z"
+  ],
+  [
+   "OCC Preflight Dependency",
+   "completed",
+   "success",
+   "2026-10-01T08:14:15Z"
+  ],
+  [
+   "OCC Companion Merged Gate (OMN-15214)",
+   "completed",
+   "success",
+   "2026-10-01T08:14:14Z"
+  ],
+  [
+   "CI Summary",
+   "completed",
+   "failure",
+   "2026-10-01T08:15:24Z"
+  ],
+  [
+   "no-noncanonical-lifecycle-classes",
+   "completed",
+   "success",
+   "2026-10-01T08:14:31Z"
+  ],
+  [
+   "Event Chain Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:15:03Z"
+  ],
+  [
+   "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+   "completed",
+   "success",
+   "2026-10-01T08:14:24Z"
+  ],
+  [
+   "merge-hold-gate / evaluate",
+   "completed",
+   "success",
+   "2026-10-01T08:14:20Z"
+  ],
+  [
+   "Runner Route (OMN-18031) / route",
+   "completed",
+   "success",
+   "2026-10-01T08:14:28Z"
+  ],
+  [
+   "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
+   "completed",
+   "success",
+   "2026-10-01T08:14:21Z"
+  ],
+  [
+   "lint",
+   "completed",
+   "success",
+   "2026-10-01T08:17:57Z"
+  ],
+  [
+   "Topic Naming Lint",
+   "completed",
+   "success",
+   "2026-10-01T08:17:11Z"
+  ],
+  [
+   "Workflow Module Resolution",
+   "completed",
+   "success",
+   "2026-10-01T08:14:25Z"
+  ],
+  [
+   "Aislop Sweep (strict, PR diff)",
+   "completed",
+   "success",
+   "2026-10-01T08:14:32Z"
+  ],
+  [
+   "Compliance Sweep",
+   "completed",
+   "success",
+   "2026-10-01T08:15:17Z"
+  ],
+  [
+   "Event Registry Drift",
+   "completed",
+   "success",
+   "2026-10-01T08:14:58Z"
+  ],
+  [
+   "Core-Only Install Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:14:35Z"
+  ],
+  [
+   "Dependency Health Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:14:46Z"
+  ],
+  [
+   "Runtime Sweep",
+   "completed",
+   "success",
+   "2026-10-01T08:15:48Z"
+  ],
+  [
+   "uv.lock Pin Reachability",
+   "completed",
+   "success",
+   "2026-10-01T08:14:26Z"
+  ],
+  [
+   "Contract Compliance Check",
+   "completed",
+   "success",
+   "2026-10-01T08:15:23Z"
+  ],
+  [
+   "Topic Drift Check",
+   "completed",
+   "success",
+   "2026-10-01T08:15:05Z"
+  ],
+  [
+   "Contract Sweep Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:14:54Z"
+  ],
+  [
+   "Topic Enum Drift Check",
+   "completed",
+   "success",
+   "2026-10-01T08:14:54Z"
+  ],
+  [
+   "Customer Clean-Install Delegate Gate",
+   "completed",
+   "success",
+   "2026-10-01T08:15:10Z"
+  ],
+  [
+   "zone-filter / Zone Filter (docs-only check)",
+   "completed",
+   "success",
+   "2026-10-01T08:14:29Z"
+  ],
+  [
+   "JS Toolchain Hermetic (OMN-18012)",
+   "completed",
+   "failure",
+   "2026-10-01T08:16:40Z"
+  ],
+  [
+   "typecheck",
+   "completed",
+   "success",
+   "2026-10-01T08:16:14Z"
+  ],
+  [
+   "E2E Workflow Runner (inmemory bus)",
+   "completed",
+   "success",
+   "2026-10-01T08:15:28Z"
+  ],
+  [
+   "Integration Silent-Skip Guard (OMN-14172)",
+   "completed",
+   "success",
+   "2026-10-01T08:20:13Z"
+  ],
+  [
+   "Golden Chain Suite (inmemory bus)",
+   "completed",
+   "success",
+   "2026-10-01T08:17:39Z"
+  ],
+  [
+   "Detect Changes",
+   "completed",
+   "success",
+   "2026-10-01T08:14:48Z"
+  ],
+  [
+   "Generated-Node Golden Chain Gate (OMN-13624)",
+   "completed",
+   "success",
+   "2026-10-01T08:15:21Z"
+  ],
+  [
+   "SEA E2E Acceptance + Error Chains (OMN-12660)",
+   "completed",
+   "success",
+   "2026-10-01T08:15:30Z"
+  ],
+  [
+   "Docs-Only Marker (OMN-16662)",
+   "completed",
+   "skipped",
+   "2026-10-01T08:14:29Z"
+  ],
+  [
+   "Tests (Split 9/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:53Z"
+  ],
+  [
+   "Tests (Split 8/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:20Z"
+  ],
+  [
+   "Tests (Split 2/20)",
+   "completed",
+   "failure",
+   "2026-10-01T08:25:55Z"
+  ],
+  [
+   "Tests (Split 11/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:51Z"
+  ],
+  [
+   "Tests (Split 10/20)",
+   "completed",
+   "failure",
+   "2026-10-01T08:30:21Z"
+  ],
+  [
+   "Tests (Split 7/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:37Z"
+  ],
+  [
+   "Tests (Split 4/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:20:36Z"
+  ],
+  [
+   "Tests (Split 3/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:23:28Z"
+  ],
+  [
+   "Tests (Split 6/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:23:04Z"
+  ],
+  [
+   "Tests (Split 5/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:21Z"
+  ],
+  [
+   "Tests (Split 12/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:22:31Z"
+  ],
+  [
+   "Tests (Split 14/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:23:56Z"
+  ],
+  [
+   "Tests (Split 13/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:21Z"
+  ],
+  [
+   "Tests (Split 20/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:20:09Z"
+  ],
+  [
+   "Tests (Split 19/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:30Z"
+  ],
+  [
+   "Tests (Split 1/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:18Z"
+  ],
+  [
+   "Tests (Split 16/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:25Z"
+  ],
+  [
+   "Tests (Split 17/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:23:41Z"
+  ],
+  [
+   "Tests (Split 18/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:21:44Z"
+  ],
+  [
+   "Tests (Split 15/20)",
+   "completed",
+   "success",
+   "2026-10-01T08:20:42Z"
+  ],
+  [
+   "Coverage Sweep Gate",
+   "completed",
+   "failure",
+   "2026-10-01T08:31:33Z"
+  ],
+  [
+   "Skip Count Ratchet (OMN-18776)",
+   "completed",
+   "success",
+   "2026-10-01T08:30:47Z"
+  ],
+  [
+   "Merge test durations",
+   "completed",
+   "skipped",
+   "2026-10-01T08:30:22Z"
+  ]
+ ]
+}

@@ -489,6 +489,12 @@ jobs:
       # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
       - name: Typed decision shadow calibration (OMN-19136)
         run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
+      # OMN-20838: dod_verify reads PR and commit facts from the canonical
+      # clone and the PR watcher's state; this fails when its read layer spawns
+      # gh for a read a local source holds. SYNC with pre-commit hook
+      # 'dod-verify-local-reads-guard'.
+      - name: dod_verify local reads guard (OMN-20838)
+        run: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly

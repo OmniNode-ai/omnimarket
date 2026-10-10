@@ -31,6 +31,8 @@ from omnimarket.inference.local_byok_credential_adapter import (
 pytestmark = pytest.mark.unit
 
 _REF = "llm.openrouter.api_key"
+# OMN-20844: the customer chooses the OpenRouter model their key runs.
+_CHOSEN = ("--model", "openai/gpt-5-nano")
 _VALUE = "sk-customer-key"
 
 
@@ -50,23 +52,23 @@ def _run(args: list[str], stdin: str | None = None) -> object:
 
 class TestSet:
     def test_reads_the_value_from_stdin(self) -> None:
-        result = _run(["set", _REF], stdin=f"{_VALUE}\n")
+        result = _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         assert result.exit_code == 0, result.output
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) == _VALUE
 
     def test_does_not_echo_the_value(self) -> None:
-        result = _run(["set", _REF], stdin=f"{_VALUE}\n")
+        result = _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         assert _VALUE not in result.output
 
     def test_names_the_reference_it_stored(self) -> None:
-        result = _run(["set", _REF], stdin=f"{_VALUE}\n")
+        result = _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         assert _REF in result.output
 
     def test_surrounding_whitespace_is_stripped(self) -> None:
-        _run(["set", _REF], stdin=f"  {_VALUE}  \n")
+        _run(["set", _REF, *_CHOSEN], stdin=f"  {_VALUE}  \n")
 
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) == _VALUE
 
@@ -77,30 +79,32 @@ class TestSet:
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) is None
 
     def test_refuses_an_empty_stdin(self) -> None:
-        result = CliRunner().invoke(secret_group, ["set", _REF], input="\n")
+        result = CliRunner().invoke(secret_group, ["set", _REF, *_CHOSEN], input="\n")
 
         assert result.exit_code != 0
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) is None
 
     def test_refuses_an_overwrite_without_the_force_flag(self) -> None:
-        _run(["set", _REF], stdin="first\n")
+        _run(["set", _REF, *_CHOSEN], stdin="first\n")
 
-        result = CliRunner().invoke(secret_group, ["set", _REF], input="second\n")
+        result = CliRunner().invoke(
+            secret_group, ["set", _REF, *_CHOSEN], input="second\n"
+        )
 
         assert result.exit_code != 0
         assert "--force" in result.output
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) == "first"
 
     def test_force_overwrites(self) -> None:
-        _run(["set", _REF], stdin="first\n")
+        _run(["set", _REF, *_CHOSEN], stdin="first\n")
 
-        result = _run(["set", _REF, "--force"], stdin="second\n")
+        result = _run(["set", _REF, "--force", *_CHOSEN], stdin="second\n")
 
         assert result.exit_code == 0, result.output
         assert asyncio.run(LocalByokCredentialStore().get_secret(_REF)) == "second"
 
     def test_the_stored_file_is_owner_only(self, local_store_at_tmp: Path) -> None:
-        _run(["set", _REF], stdin=f"{_VALUE}\n")
+        _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         mode = stat.S_IMODE(local_store_at_tmp.stat().st_mode)
         assert mode & 0o077 == 0
@@ -108,7 +112,7 @@ class TestSet:
 
 class TestList:
     def test_prints_references_never_values(self) -> None:
-        _run(["set", _REF], stdin=f"{_VALUE}\n")
+        _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         result = _run(["list"])
 
@@ -125,7 +129,7 @@ class TestList:
 
 class TestDelete:
     def test_removes_the_entry(self) -> None:
-        _run(["set", _REF], stdin=f"{_VALUE}\n")
+        _run(["set", _REF, *_CHOSEN], stdin=f"{_VALUE}\n")
 
         result = _run(["delete", _REF])
 

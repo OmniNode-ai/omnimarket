@@ -15,6 +15,9 @@ description: >-
   runs no process, has no clock (the caller supplies now), mutates nothing. Behaviour-preserving
   port of the controller, merges, floors and escalation findings of the retired
   throughput_tick.py, and the lab-headroom finding from the pool, marks and receipts a caller read.
+  OMN-20840: a park lasting past park_max_hours over a repository with zero merges is MISSING, an
+  unread lab host is UNKNOWN, a runner receipt that ended without running is MISSING until its brief
+  runs, and an open count rising more than open_rise_pct across three tick runs is MISSING.
 input_model:
   name: ModelThroughputTickRequest
   module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
@@ -63,6 +66,11 @@ inputs:
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
   lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
+  park_max_hours: {type: float, required: false, description: "A park over a floor-stalled repository with zero merges covers it only while it ends within this many hours (default 2)."}
+  dispatch_window_hours: {type: float, required: false, description: "Runner receipts started this many hours back that ended without running are findings; omitted skips the dispatches finding."}
+  open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}
+  open_rise_pct: {type: float, required: false}
+  open_history_max_age_hours: {type: float, required: false}
 outputs:
   lines: {type: list}
   status_line: {type: str}
@@ -70,6 +78,7 @@ outputs:
   unknown: {type: list}
   checked: {type: list}
   exit_code: {type: int}
+  open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
 terminal_event: onex.evt.omnimarket.throughput-tick-decision-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.throughput-tick-decision-requested.v1
@@ -85,4 +94,4 @@ metadata:
   description: Merge-throughput tick decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-20686]
+  related_tickets: [OMN-20686, OMN-20840]

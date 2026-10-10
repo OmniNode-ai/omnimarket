@@ -138,7 +138,11 @@ async def _run_fault(
                 byok_provider_backends.load_byok_plan_catalog.cache_clear()
 
             register_local_byok_credential(
-                PROVIDER_SLUG, _CUSTOMER_KEY, db_path=db_path
+                PROVIDER_SLUG,
+                _CUSTOMER_KEY,
+                # OMN-20844: the customer chose the model their key runs.
+                model=shipped_byok_model_name(),
+                db_path=db_path,
             )
             response = await run_local_delegation(
                 prompt=_VETO_PROMPT if fault == "gate_veto" else _PROMPT,
