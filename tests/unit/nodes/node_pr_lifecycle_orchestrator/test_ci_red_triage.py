@@ -26,6 +26,10 @@ from omnimarket.models.ci_red_triage import (
     ModelCiRunFailedEvent,
     ci_run_failed_event_id,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims import (
+    ProjectionCiRedClaims,
+    UnboundCiRedClaims,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage import (
     GhCiRedFactsReader,
     HandlerCiRedTriage,
@@ -33,9 +37,14 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_tri
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     ModelPrLifecycleStartCommand,
 )
+from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer import (
+    HandlerPrLifecycleStateReducer,
+)
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red import (
     HandlerDetectCiRed,
 )
+from omnimarket.projection.pr_ledger_projection import PR_LEDGER_PROJECTION_TABLE
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 CHECK = "branch-claim-check / branch-claim-check"
 
@@ -70,6 +79,34 @@ def event(
         if peers
         else (),
     )
+
+
+def claims(database: InmemoryDatabaseAdapter | None = None) -> ProjectionCiRedClaims:
+    return ProjectionCiRedClaims(database or InmemoryDatabaseAdapter())
+
+
+def project(database: InmemoryDatabaseAdapter, outputs: list[Any]) -> None:
+    """What node_pr_lifecycle_state_reducer does with each published decision."""
+    reducer = HandlerPrLifecycleStateReducer()
+    for output in outputs:
+        for decided in output.events:
+            if isinstance(decided, ModelCiRedTriageDecided):
+                reducer.handle_dict(
+                    {
+                        **decided.model_dump(mode="json"),
+                        "_topic": CI_RED_TRIAGE_DECIDED_TOPIC_V1,
+                        "_db": database,
+                    }
+                )
+
+
+def starts_of(outputs: list[Any]) -> list[ModelPrLifecycleStartCommand]:
+    return [
+        ev
+        for output in outputs
+        for ev in output.events
+        if isinstance(ev, ModelPrLifecycleStartCommand)
+    ]
 
 
 class FakeFactsReader:
@@ -132,7 +169,9 @@ async def test_contract_defaults_to_shadow_mode_and_starts_nothing() -> None:
 
 @pytest.mark.asyncio
 async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    )
     outputs = [await handler.handle(event(n, peers=True)) for n in (2606, 2607, 2608)]
     emitted = [ev for output in outputs for ev in output.events]
     starts = [ev for ev in emitted if isinstance(ev, ModelPrLifecycleStartCommand)]
@@ -172,7 +211,9 @@ async def test_ac3_three_shared_reds_have_one_owner_start() -> None:
 
 @pytest.mark.asyncio
 async def test_ac4_duplicate_emits_nothing() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    )
     first = await handler.handle(event().model_dump(mode="json"))
     second = await handler.handle(event())
     assert len(first.events) == 2
@@ -193,7 +234,7 @@ async def test_ac4_event_id_replay_skips_changed_or_failing_facts() -> None:
             )
 
     reader = ChangingFactsReader()
-    handler = HandlerCiRedTriage(facts_reader=reader, act=True)
+    handler = HandlerCiRedTriage(facts_reader=reader, act=True, claims=claims())
     # With readable base facts the deciding check is 'a'; unread facts would
     # select the peer cluster's 'b' and produce a different decision_key.
     red = event(checks=("a", "b")).model_copy(
@@ -223,9 +264,9 @@ async def test_ac4_event_id_replay_skips_changed_or_failing_facts() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("armed", [True, False])
 async def test_pr_own_and_unarmed(armed: bool) -> None:
-    output = await HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True).handle(
-        event(armed=armed)
-    )
+    output = await HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    ).handle(event(armed=armed))
     decision = output.events[-1]
     assert decision.red_class == EnumCiRedClass.PR_OWN
     assert decision.action == (
@@ -266,7 +307,9 @@ async def test_facts_reader_raising_is_unread_conservative_pr_fix() -> None:
 async def test_runner_and_dev_owner_starts(
     facts: FakeFactsReader, action: EnumCiRedAction
 ) -> None:
-    output = await HandlerCiRedTriage(facts_reader=facts, act=True).handle(event())
+    output = await HandlerCiRedTriage(
+        facts_reader=facts, act=True, claims=claims()
+    ).handle(event())
     assert output.events[0].dry_run is False
     assert output.events[0].pr_numbers == (2606,)
     assert output.events[-1].action == action
@@ -274,7 +317,9 @@ async def test_runner_and_dev_owner_starts(
 
 @pytest.mark.asyncio
 async def test_unarmed_observation_does_not_claim_owner() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    )
     unarmed = await handler.handle(event(2606, peers=True, armed=False))
     armed = await handler.handle(event(2607, peers=True))
     assert unarmed.events[-1].action == EnumCiRedAction.RECORD_ONLY
@@ -283,17 +328,199 @@ async def test_unarmed_observation_does_not_claim_owner() -> None:
 
 @pytest.mark.asyncio
 async def test_bounded_owner_and_decision_caches() -> None:
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    )
     handler.MEMORY_LIMIT = 2
     for n in (1, 2, 1, 3):
         await handler.handle(event(n))
     assert (
         len(handler._owners) == len(handler._decided) == len(handler._seen_events) == 2
     )
+    # Nothing was projected, so an evicted owner is unknown to the claims too.
     assert (await handler.handle(event(1))).events == ()
     joined = await handler.handle(event(2))
     assert len(joined.events) == 1
     assert joined.events[0].action == EnumCiRedAction.JOINED_OWNER
+
+
+@pytest.mark.asyncio
+async def test_restart_then_redelivered_decided_head_starts_nothing() -> None:
+    database = InmemoryDatabaseAdapter()
+    before = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    first = [await before.handle(event())]
+    project(database, first)
+    assert len(starts_of(first)) == 1
+    # A runtime restart: a new process, the same projection.
+    after = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    redelivered = [await after.handle(event()), await after.handle(event())]
+    assert [output.events for output in redelivered] == [(), ()]
+    # The same head and check under another failing-check set is the same
+    # decision, so it is not decided again either.
+    widened = await after.handle(event(checks=(CHECK, "CI Summary")))
+    assert widened.events == ()
+
+
+@pytest.mark.asyncio
+async def test_restart_new_decision_joins_owner_claimed_before_restart() -> None:
+    database = InmemoryDatabaseAdapter()
+    before = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    first = [await before.handle(event(n, peers=True)) for n in (2606, 2607)]
+    project(database, first)
+    assert len(starts_of(first)) == 1
+    after = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    third = await after.handle(event(2608, peers=True))
+    assert not starts_of([third])
+    decision = third.events[-1]
+    assert decision.action == EnumCiRedAction.JOINED_OWNER
+    assert decision.orchestrator_run_id == starts_of(first)[0].run_id
+
+
+@pytest.mark.asyncio
+async def test_cause_forming_at_member_three_absorbs_members_one_and_two() -> None:
+    database = InmemoryDatabaseAdapter()
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    peer_1 = ModelCiRedPeer(
+        pr_number=2606, head_sha="head-2606", armed=True, red_contexts=(CHECK,)
+    )
+    peer_2 = ModelCiRedPeer(
+        pr_number=2607, head_sha="head-2607", armed=True, red_contexts=(CHECK,)
+    )
+    outputs = [
+        await handler.handle(event(2606)),
+        await handler.handle(event(2607).model_copy(update={"peers": (peer_1,)})),
+        await handler.handle(
+            event(2608).model_copy(update={"peers": (peer_1, peer_2)})
+        ),
+    ]
+    project(database, outputs)
+    starts = starts_of(outputs)
+    assert [start.pr_numbers for start in starts] == [
+        (2606,),
+        (2607,),
+        (2606, 2607, 2608),
+    ]
+    cause = outputs[-1].events[-1]
+    assert cause.red_class == EnumCiRedClass.SHARED_CAUSE
+    assert f"absorbed={starts[0].run_id},{starts[1].run_id}" in cause.evidence
+    claimed = {
+        row["pr_number"]
+        for row in database.query(
+            PR_LEDGER_PROJECTION_TABLE, {"sweep_id": str(starts[2].correlation_id)}
+        )
+    }
+    assert claimed == {2606, 2607, 2608}
+    # After a restart member 1 goes red at a new head and the detector, its index
+    # empty, attaches no peers: the decision is PR-own, and the cause owns it.
+    after = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims(database)
+    )
+    later = event(2606).model_copy(
+        update={
+            "head_sha": "head-2606-b",
+            "event_id": ci_run_failed_event_id(
+                "omniclaude", 2606, "head-2606-b", (CHECK,)
+            ),
+        }
+    )
+    joined = await after.handle(later)
+    assert not starts_of([joined])
+    decision = joined.events[-1]
+    assert decision.red_class == EnumCiRedClass.PR_OWN
+    assert decision.action == EnumCiRedAction.JOINED_OWNER
+    assert decision.owner_key == cause.owner_key
+    assert decision.orchestrator_run_id == starts[2].run_id
+
+
+class AnnotatedFactsReader:
+    """Every PR's failing check read with the same first failure annotation."""
+
+    def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        same = dict.fromkeys(event.failing_checks, "error: shared cause at line 7")
+        return ModelCiRedFacts(
+            event=event,
+            annotations=same,
+            peer_annotations={
+                peer.pr_number: dict.fromkeys(peer.red_contexts, same[CHECK])
+                for peer in event.peers
+            },
+            annotations_read=True,
+            base_read=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_restart_member_joins_annotation_level_cause() -> None:
+    database = InmemoryDatabaseAdapter()
+    handler = HandlerCiRedTriage(
+        facts_reader=AnnotatedFactsReader(), act=True, claims=claims(database)
+    )
+    formed = await handler.handle(event(2608, peers=True))
+    project(database, [formed])
+    (start,) = starts_of([formed])
+    cause = formed.events[-1]
+    assert cause.red_class == EnumCiRedClass.SHARED_CAUSE
+    assert start.pr_numbers == (2606, 2607, 2608)
+    # After a restart member 1 goes red at a new head with no peers attached;
+    # its annotation still names the claimed cause, so the cause owns it.
+    after = HandlerCiRedTriage(
+        facts_reader=AnnotatedFactsReader(), act=True, claims=claims(database)
+    )
+    later = event(2606).model_copy(
+        update={
+            "head_sha": "head-2606-b",
+            "event_id": ci_run_failed_event_id(
+                "omniclaude", 2606, "head-2606-b", (CHECK,)
+            ),
+        }
+    )
+    joined = await after.handle(later)
+    assert not starts_of([joined])
+    decision = joined.events[-1]
+    assert decision.red_class == EnumCiRedClass.PR_OWN
+    assert decision.action == EnumCiRedAction.JOINED_OWNER
+    assert decision.owner_key == cause.owner_key
+    assert decision.orchestrator_run_id == start.run_id
+
+
+@pytest.mark.asyncio
+async def test_unreadable_claims_withhold_the_start() -> None:
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(),
+        act=True,
+        claims=UnboundCiRedClaims("OMNIDASH_ANALYTICS_DB_URL unset"),
+    )
+    output = await handler.handle(event())
+    assert not starts_of([output])
+    decision = output.events[-1]
+    assert decision.action == EnumCiRedAction.START_PR_FIX
+    assert decision.action_applied is False
+    assert "; decision claim; owner claim start=withheld:claims-unread" in (
+        decision.evidence
+    )
+
+
+@pytest.mark.asyncio
+async def test_shadow_mode_claims_no_owner_rows() -> None:
+    database = InmemoryDatabaseAdapter()
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=False, claims=claims(database)
+    )
+    outputs = [await handler.handle(event(n, peers=True)) for n in (2606, 2607, 2608)]
+    project(database, outputs)
+    rows = database.query(PR_LEDGER_PROJECTION_TABLE)
+    assert len(rows) == 3
+    assert all("claim=owner" not in str(row["evidence"]) for row in rows)
 
 
 @pytest.mark.parametrize(
@@ -325,6 +552,10 @@ def test_contract_routes_dispatch_to_exact_topics(node: str) -> None:
         assert topic in raw["event_bus"]["publish_topics"]
     if node.endswith("orchestrator"):
         assert raw["ci_red_triage"]["act"] is False
+        assert raw["ci_red_triage"]["claims"] == {
+            "table": PR_LEDGER_PROJECTION_TABLE,
+            "dsn_env": "OMNIDASH_ANALYTICS_DB_URL",
+        }
         assert CI_RUN_FAILED_TOPIC_V1 in raw["event_bus"]["subscribe_topics"]
         assert CI_RED_TRIAGE_DECIDED_TOPIC_V1 in raw["event_bus"]["publish_topics"]
         assert (
@@ -650,7 +881,9 @@ async def test_runtime_publishes_red_and_decision_then_reducer_projects() -> Non
     await applier.apply(normalized)
     assert bus.topics == [CI_RUN_FAILED_TOPIC_V1]
 
-    handler = HandlerCiRedTriage(facts_reader=FakeFactsReader(), act=True)
+    handler = HandlerCiRedTriage(
+        facts_reader=FakeFactsReader(), act=True, claims=claims()
+    )
     output = await handler.handle(red.model_dump(mode="json"))
     normalized = _normalize_handler_result(
         output, envelope, None, EnumNodeKind.ORCHESTRATOR
