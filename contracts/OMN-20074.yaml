@@ -42,6 +42,13 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: .github/workflows/deploy-gate.yml checks out the pull request head's contracts/ and hands that directory to the pinned omniclaude deploy-gate action, and no step reads onex_change_control -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q fails at the merge base
+  - id: "req-topic-hook-from-core"
+    statement: |-
+      omnimarket's no-hardcoded-topics pre-commit hook comes from omnibase_core, which exports it under the same hook id, instead of from onex_change_control, with the hook's exclude and settings unchanged.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: .pre-commit-config.yaml declares no-hardcoded-topics once, in an omnibase_core block pinned to a full commit sha, with its exclude (773 characters, sha256 7782a602) and settings unchanged and no onex_change_control block -- falsifier: uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -58,6 +65,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The deploy gate reads the pull request head's repo contracts and no change control tree."
     command: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The topic hook is one omnibase_core block at a full sha with its exclude and settings unchanged and no onex_change_control block."
+    command: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -103,3 +113,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20074-topic-hook-from-core"
+    description: "The no-hardcoded-topics hook is sourced from omnibase_core with its exclude unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
