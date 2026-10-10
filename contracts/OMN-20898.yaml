@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20898"
+title: "omnimarket dev red: test_ci_red_event_facts expects unread=none after durable claims and annotation keys merged"
+summary: "omnimarket dev 4ceedeafe fails test_runner_class_is_decided_from_the_event_conclusions: the test, written before durable claims (OMN-20744) and annotation-level cause keys (OMN-20746) merged, builds the triage handler without a claim store and asserts unread=none. The test now injects an in-memory ProjectionCiRedClaims and asserts annotations are the only unread fact."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ci-red-event-facts-test-current"
+    statement: |-
+      The event-facts triage test matches the merged claims and annotation semantics.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: test_ci_red_event_facts injects an in-memory ProjectionCiRedClaims and asserts unread=annotations start=, so head conclusions, base checks and claims are all read; the origin/dev copy fails 1 of 6 and the fixed copy passes 6 of 6.
+evidence_requirements:
+  - kind: "tests"
+    description: "Event-facts triage tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20898-event-facts-test"
+    description: "The event-facts triage tests pass with an in-memory claim store and the pinned unread evidence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
