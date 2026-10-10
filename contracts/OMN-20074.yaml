@@ -21,6 +21,13 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at fb0c6c2117d5868a398b0920cd0048d0824415b1 (omnibase_core#1914) and its verifier-version ships is_release_artifact_only_diff and classify_dependency_pin_only -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q fails at the merge base
+  - id: "req-writer-bump-classifiers"
+    statement: |-
+      The writer-app exemption classifiers admit omniclaude's two refused bot bump shapes, a plugin manifest version bump and a sibling lock refresh that moves tool.uv.override-dependencies, and still refuse any other change beside them.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: classify_plugin_manifest_version_only admits omniclaude#2644's shape (only the version of .claude-plugin/plugin.json and of the marketplace entry moves, increasing) and refuses another key, a non-increasing or non-numeric version, a path outside .claude-plugin manifests, an unreadable, added or deleted manifest, no moved version and too many files; classify_dependency_pin_only admits omniclaude#2646's tool.uv.override-dependencies rev move and still refuses it beside project.scripts -- falsifier: uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -28,6 +35,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The caller pins the release-cut reusable and its verifier ships the classifiers it imports."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
+  - kind: "tests"
+    description: "The writer-app bump classifiers admit the two real omniclaude bump shapes and refuse every other change."
+    command: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,3 +59,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20074-writer-bump-classifiers"
+    description: "The writer-app bump classifiers admit omniclaude#2644 and #2646 shapes and refuse every other change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
