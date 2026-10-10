@@ -50,7 +50,8 @@ class HandlerDetectCiRedCheckRun:
     The PR's armed, queued and draft facts and its peers come from the watcher observations in the
     shared index, so a PR the index has not seen (a restart, a new PR) waits for the watcher, as does
     a run whose workflow name has not arrived on the workflow-run stream. Neither decides anything
-    early: the watcher path emits for the same head once it observes the red.
+    early: the watcher path emits for the same head once it observes the red. A check the watcher
+    already observed red at this head is the watcher path's event, so it is not emitted twice.
     """
 
     MEMORY_LIMIT = MEMORY_LIMIT
@@ -95,6 +96,10 @@ class HandlerDetectCiRedCheckRun:
             and entry.state == EnumPrState.OPEN
             and not entry.draft
             and workflow is not None
+            and not (
+                entry.head_sha == observation.head_sha
+                and observation.check in entry.red_contexts
+            )
         ):
             head = observation.head_sha
             short = repo_short_name(observation.repo)

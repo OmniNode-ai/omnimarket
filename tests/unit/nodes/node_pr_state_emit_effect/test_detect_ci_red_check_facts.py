@@ -162,6 +162,22 @@ async def test_watcher_observation_of_the_same_red_does_not_emit_twice() -> None
 
 
 @pytest.mark.asyncio
+async def test_a_check_the_watcher_already_observed_red_is_not_emitted_again() -> None:
+    index = CiRedIndex()
+    watcher = HandlerDetectCiRed(index=index)
+    [from_watcher] = (await watcher.handle(wire(v1_red()))).events
+    await HandlerRecordWorkflowRun(index=index).handle(workflow_run())
+    checker = HandlerDetectCiRedCheckRun(index=index)
+    assert (await checker.handle(check_run("unit"))).events == ()
+    # A check the watcher has not yet seen red is the webhook path's to report, with the red it knew.
+    [extended] = (await checker.handle(check_run("lint"))).events
+    assert extended.failing_checks == ("lint", "unit")
+    assert extended.event_id != from_watcher.event_id
+    assert [r.check for r in extended.failing_runs] == ["lint"]
+    assert not extended.carries_check_facts
+
+
+@pytest.mark.asyncio
 async def test_peers_come_from_the_shared_index() -> None:
     index = CiRedIndex()
     watcher = HandlerDetectCiRed(index=index)
