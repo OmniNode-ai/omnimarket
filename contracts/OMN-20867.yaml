@@ -30,7 +30,16 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute tests/gates/test_contract_publish_parity.py -q"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "failure_terminal"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "repaired_nodes"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "not failure_terminal and not repaired_nodes"'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20867-headroom-unknown-cause"
