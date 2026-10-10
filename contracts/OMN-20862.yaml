@@ -12,9 +12,9 @@ requirements:
   - id: "req-drift-is-a-typed-placement-result"
     statement: "Dispatch-venv drift is a typed placement result with one reconcile intent, and equal hashes admit."
     acceptance:
-      - id: "AC-M4"
+      - id: "AC4"
         statement: |-
-          AC-M4: given a launching host whose dispatch venv lock hash differs from the lab host's declared hash, the placement admission returns a typed VENV_DRIFT result naming both hashes and runs the reconcile (or emits a reconcile command) once, rather than rejecting each lane as no-host; given equal hashes it admits. A lane that finds no host because of drift fails the test unless a VENV_DRIFT event was emitted -- falsifier: test_venv_drift_placement.py failing when a fixture whose every host is refused for drift returns anything but VENV_DRIFT with both hashes and exactly one reconcile intent, or when equal hashes do not admit
+          AC4 (AC-M4): given a launching host whose dispatch venv lock hash differs from the lab host's declared hash, the placement admission returns a typed VENV_DRIFT result naming both hashes and runs the reconcile (or emits a reconcile command) once, rather than rejecting each lane as no-host; given equal hashes it admits. A lane that finds no host because of drift fails the test unless a VENV_DRIFT event was emitted -- falsifier: test_venv_drift_placement.py failing when a fixture whose every host is refused for drift returns anything but VENV_DRIFT with both hashes and exactly one reconcile intent, or when equal hashes do not admit
 evidence_requirements:
   - kind: "tests"
     description: "AC-M4: drift returns VENV_DRIFT with both hashes and one reconcile intent, equal hashes admit, and the decision completes over the node's contract."
@@ -31,4 +31,4 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_venv_drift_placement.py tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-M4"]
+    binds_ac: ["AC4"]
