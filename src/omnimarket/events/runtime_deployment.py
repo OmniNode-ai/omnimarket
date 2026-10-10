@@ -478,18 +478,17 @@ class EnumProdGateOutcome(StrEnum):
         English, and the six non-grant refusals were not distinguishable at all.
 
     WHY IT IS NOT ``EnumProdGrantReason``
-        That enum names the seven AUTHORIZATION-GRANT failure modes and nothing
-        else. The gate refuses on twelve distinct branches, six of which are
-        readiness / digest / evidence facts that no grant reason describes. The
-        two vocabularies are kept aligned rather than merged: every
+        That enum names the AUTHORIZATION-GRANT failure modes and nothing
+        else. The gate also refuses on readiness / digest / evidence branches
+        that no grant reason describes. The two vocabularies are kept aligned
+        rather than merged: every
         ``EnumProdGrantReason`` value has a member here with a byte-identical
         value, so ``EnumProdGateOutcome(reason.value)`` resolves and the wire
         token a consumer already branches on does not change.
 
     NOTHING NEW IS COMPUTED
-        Every member corresponds to a branch that already existed and already
-        returned its own decision. This types the branch identity that was
-        previously recoverable only from the sentence.
+        Every member corresponds to a gate decision branch. This types the branch
+        identity that would otherwise be recoverable only from the sentence.
     """
 
     #: Non-prod lane: the gate is a no-op and the deploy proceeds ungated.
@@ -509,6 +508,8 @@ class EnumProdGateOutcome(StrEnum):
     MISSING_ROLLBACK_TARGET = "missing_rollback_target"
 
     # -- authorization-grant refusals; values mirror EnumProdGrantReason exactly
+    GRANT_ANCHOR_UNREADABLE = "grant_anchor_unreadable"
+    GRANT_ANCHOR_UNPARSEABLE = "grant_anchor_unparseable"
     MISSING_PROMOTION_GRANT = "missing_promotion_grant"
     EXPIRED_PROMOTION_GRANT = "expired_promotion_grant"
     GRANT_LANE_MISMATCH = "grant_lane_mismatch"
@@ -624,6 +625,65 @@ _OCC_SATISFIED: frozenset[EnumOccGateState] = frozenset(
 )
 
 
+class EnumGrantResolution(StrEnum):
+    """Outcome of resolving a prod-promotion grant from the durable anchor.
+
+    Only ``RESOLVED`` materializes a grant into the gate command. Every other
+    outcome leaves the grant ``None`` so the prod gate fails closed — there is no
+    silent default and no replay of a consumed grant.
+    """
+
+    RESOLVED = "resolved"
+    ABSENT = "absent"
+    EXPIRED = "expired"
+    CONSUMED = "consumed"
+    # The anchor could not be read (token, HTTP, transport, or API response error).
+    UNREADABLE = "unreadable"
+    # The anchor bytes were read but are not a valid grant registry.
+    UNPARSEABLE = "unparseable"
+    # OMN-14814: dual-control was removed (solo CODEOWNER), so the resolver no
+    # longer PRODUCES this outcome. Retained for enum/wire stability.
+    SELF_GRANTED = "self_granted"
+
+
+GRANT_REFUSAL_RESOLUTIONS = frozenset(
+    {EnumGrantResolution.UNREADABLE, EnumGrantResolution.UNPARSEABLE}
+)
+
+
+class EnumGrantAnchorRefusal(StrEnum):
+    """Why the grant anchor could not be resolved (OMN-20068).
+
+    Carried on every UNREADABLE / UNPARSEABLE refusal so a consumer can tell a
+    token that cannot read the private anchor from a grant file that is not
+    there. GitHub answers 404, not 403, for a private repository the token
+    cannot read, so the HTTP status alone cannot make that distinction; the
+    resolver reads the ``main`` commit first (which needs the same Contents
+    read access as the file) and the stage that answered 404 decides it.
+    """
+
+    #: The contract secret ref did not resolve, or resolved to no value.
+    TOKEN_UNRESOLVED = "token_unresolved"
+    #: GitHub returned 401: the token is bad, expired or revoked.
+    TOKEN_REJECTED = "token_rejected"
+    #: GitHub returned 403: the token lacks a permission, SSO, or rate limit.
+    TOKEN_FORBIDDEN = "token_forbidden"
+    #: 404 on the ``main`` commit read: the token cannot read the repository.
+    REPOSITORY_UNREADABLE = "repository_unreadable"
+    #: 404 on the grant file after the ``main`` commit read succeeded.
+    GRANT_FILE_MISSING = "grant_file_missing"
+    #: Any other HTTP status from the anchor read.
+    HTTP_ERROR = "http_error"
+    #: No HTTP response: DNS, connection, TLS or timeout.
+    TRANSPORT_ERROR = "transport_error"
+    #: GitHub answered, but not with the shape the resolver reads.
+    UNEXPECTED_RESPONSE = "unexpected_response"
+    #: The grant file was read but is not a valid grant registry.
+    REGISTRY_UNPARSEABLE = "registry_unparseable"
+    #: An error the resolver did not classify. Still a refusal.
+    RESOLVER_ERROR = "resolver_error"
+
+
 class EnumProdGrantReason(StrEnum):
     """Typed prod-promotion authorization-grant failure reasons (OMN-13436).
 
@@ -631,6 +691,8 @@ class EnumProdGrantReason(StrEnum):
     exact authorization failure mode without parsing free text.
     """
 
+    GRANT_ANCHOR_UNREADABLE = "grant_anchor_unreadable"
+    GRANT_ANCHOR_UNPARSEABLE = "grant_anchor_unparseable"
     MISSING_PROMOTION_GRANT = "missing_promotion_grant"
     EXPIRED_PROMOTION_GRANT = "expired_promotion_grant"
     GRANT_LANE_MISMATCH = "grant_lane_mismatch"
@@ -712,7 +774,7 @@ class ModelProdPromotionGrant(BaseModel):
     Dual-control is intentionally NOT enforced (OMN-14814): with a single
     CODEOWNER, requiring ``approved_by != requested_by`` would permanently wedge
     prod promotion. The anti-self-*issuance* guarantee is instead that the grant
-    is fetched from ``onex_change_control@main`` (a request cannot author the
+    is fetched from ``omninode_infra@main`` (a request cannot author the
     authorization that approves it), not an approver-identity comparison.
     """
 
@@ -975,6 +1037,14 @@ class ModelProdPromotionInputs(BaseModel):
         default=None,
         description="Approver-issued authorization grant; None means the prod gate fails closed.",
     )
+    grant_refusal: EnumGrantResolution | None = Field(
+        default=None,
+        description="Resolver refusal, set only for UNREADABLE / UNPARSEABLE.",
+    )
+    grant_refusal_detail: str | None = Field(
+        default=None,
+        description="Resolver provenance rendered for the decision reason.",
+    )
     promotion_class: EnumPromotionClass = Field(
         default=EnumPromotionClass.CLEAN_MAIN,
         description=(
@@ -1193,8 +1263,20 @@ def evaluate_prod_promotion_gate(
     Returns a decision rather than raising so the FSM can route to BLOCKED with a
     reason instead of crashing the workflow.
     """
-    # OMN-13656: lineage gate runs FIRST. A stability-candidate / non-main-lineage
-    # image is refused for prod before any readiness/OCC/grant evaluation unless an
+    # Authorization cannot be evaluated when the anchor itself was unreadable.
+    # Refusal provenance must reach the BLOCKED completion regardless of other facts.
+    if inputs.grant_refusal is not None:
+        reason = (
+            EnumProdGrantReason.GRANT_ANCHOR_UNPARSEABLE
+            if inputs.grant_refusal is EnumGrantResolution.UNPARSEABLE
+            else EnumProdGrantReason.GRANT_ANCHOR_UNREADABLE
+        )
+        return _grant_blocked(
+            inputs, reason, inputs.grant_refusal_detail or inputs.grant_refusal.value
+        )
+
+    # OMN-13656: lineage runs next. A stability-candidate / non-main-lineage image
+    # is refused for prod before any readiness/OCC/grant evaluation unless an
     # explicit candidate-authorizing grant exists. This is the first-class guard
     # that a workspace-built (dev-HEAD-sibling) candidate cannot reach prod by
     # default — it is pinnable to dev/stability only.
@@ -1358,7 +1440,7 @@ def _evaluate_promotion_grant(
     boundary). Dual-control (``approved_by != requested_by``) is intentionally NOT
     enforced (OMN-14814): with a single CODEOWNER a second-approver requirement
     would permanently wedge prod promotion. The anti-self-issuance guarantee is
-    that the grant is fetched from ``onex_change_control@main`` upstream, not an
+    that the grant is fetched from ``omninode_infra@main`` upstream, not an
     approver-identity comparison here.
     """
     grant = inputs.promotion_grant
@@ -1889,6 +1971,14 @@ class ModelProdPromotionGateCommand(BaseModel):
             "resolver). None means the prod gate fails closed."
         ),
     )
+    grant_refusal: EnumGrantResolution | None = Field(
+        default=None,
+        description="Resolver refusal, set only for UNREADABLE / UNPARSEABLE.",
+    )
+    grant_refusal_detail: str | None = Field(
+        default=None,
+        description="Resolver provenance rendered for the decision reason.",
+    )
     evaluated_at: datetime | None = Field(
         default=None,
         description=(
@@ -2014,30 +2104,13 @@ class ModelDeployPublishCommand(BaseModel):
 
 
 # Canonical durable anchor the resolver reads the grant from. The grant is
-# fetched from onex_change_control@main (NOT the PR branch) so a redeploy request
+# fetched from omninode_infra@main (NOT the PR branch) so a redeploy request
 # cannot author the authorization that approves it (anti-self-approval, OMN-10971;
 # mirrors reject-deploy-gate-skip.yml's `?ref=main` fetch). The file path inside
 # that repo is fixed by the OMN-13437 schema.
-GRANT_REPO = "OmniNode-ai/onex_change_control"
+GRANT_REPO = "OmniNode-ai/omninode_infra"
 GRANT_FILE_PATH = "grants/prod_promotion_grants.yaml"
 GRANT_FETCH_REF = "main"
-
-
-class EnumGrantResolution(StrEnum):
-    """Outcome of resolving a prod-promotion grant from the durable anchor.
-
-    Only ``RESOLVED`` materializes a grant into the gate command. Every other
-    outcome leaves the grant ``None`` so the prod gate fails closed — there is no
-    silent default and no replay of a consumed grant.
-    """
-
-    RESOLVED = "resolved"
-    ABSENT = "absent"
-    EXPIRED = "expired"
-    CONSUMED = "consumed"
-    # OMN-14814: dual-control was removed (solo CODEOWNER), so the resolver no
-    # longer PRODUCES this outcome. Retained for enum/wire stability.
-    SELF_GRANTED = "self_granted"
 
 
 class ModelProdPromotionGrantResolveCommand(BaseModel):
@@ -2046,7 +2119,7 @@ class ModelProdPromotionGrantResolveCommand(BaseModel):
     Carries the request key ``(promotion_batch_id, image_digest, lane=prod)`` plus
     the requester identity and the deterministic ``evaluated_at`` the resolver
     stamps so the gate compute never calls ``datetime.now()``. The resolver reads
-    the grant from ``onex_change_control@main`` — the command does NOT carry a
+    the grant from ``omninode_infra@main`` — the command does NOT carry a
     caller-supplied grant (a request cannot author its own authorization).
 
     The redeploy ORCHESTRATOR builds this command and the grant resolver EFFECT
@@ -2089,32 +2162,54 @@ class ModelGrantProvenance(BaseModel):
     ``ModelProdPromotionGrant`` DTO (which is approver-authored truth, not
     resolver-observed metadata). Records exactly which durable bytes the resolver
     read so a promotion decision is reproducible from the anchor: the
-    ``onex_change_control@main`` source commit, the grant file path, the matched
+    ``omninode_infra@main`` source commit, the grant file path, the matched
     ``grant_id``, the sha256 of the fetched file content, and whether the grant
     file is CODEOWNERS-protected (the un-forgeable trust property).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    source_commit_sha: str = Field(
-        ...,
+    grant_repo: str = Field(
+        default=GRANT_REPO,
         min_length=1,
-        description="onex_change_control@main commit the grant file was read at.",
+        description="Repository holding the grant anchor (owner/name).",
+    )
+    source_ref: str = Field(
+        default=GRANT_FETCH_REF,
+        min_length=1,
+        description="Ref the anchor was read from.",
+    )
+    http_status: int | None = Field(
+        default=None,
+        description="HTTP status of the failed anchor read; None when no HTTP response was received or the read succeeded.",
+    )
+    refusal_reason: str | None = Field(
+        default=None,
+        description="Why the anchor could not be resolved; set only on an UNREADABLE / UNPARSEABLE resolution.",
+    )
+    refusal_kind: EnumGrantAnchorRefusal | None = Field(
+        default=None,
+        description="Typed refusal class; set on every UNREADABLE / UNPARSEABLE resolution and only then.",
+    )
+    source_commit_sha: str | None = Field(
+        default=None,
+        min_length=1,
+        description="omninode_infra@main commit the grant file was read at; None only on a refusal before the commit was read.",
     )
     grant_file_path: str = Field(
         default=GRANT_FILE_PATH,
         min_length=1,
-        description="Path of the grant file inside onex_change_control.",
+        description="Path of the grant file inside omninode_infra.",
     )
     grant_id: str | None = Field(
         default=None,
         description="grant_id of the matched entry; None when no entry matched.",
     )
-    file_sha256: str = Field(
-        ...,
+    file_sha256: str | None = Field(
+        default=None,
         min_length=64,
         max_length=64,
-        description="sha256 hex of the exact grant-file bytes the resolver parsed.",
+        description="sha256 hex of the exact grant-file bytes the resolver parsed; None only on a refusal before the bytes were read.",
     )
     codeowners_match: bool = Field(
         ...,
@@ -2125,6 +2220,21 @@ class ModelGrantProvenance(BaseModel):
     )
 
 
+def render_grant_refusal(provenance: ModelGrantProvenance) -> str:
+    """Render refusal provenance as one auditable decision-reason line."""
+    kind = provenance.refusal_kind.value if provenance.refusal_kind else "none"
+    detail = (
+        f"{provenance.refusal_reason} "
+        f"(kind={kind} "
+        f"anchor={provenance.grant_repo}:{provenance.grant_file_path} "
+        f"ref={provenance.source_ref} "
+        f"http_status={provenance.http_status if provenance.http_status is not None else 'none'})"
+    )
+    if provenance.source_commit_sha is not None:
+        detail += f" source_commit={provenance.source_commit_sha}"
+    return detail
+
+
 class ModelProdPromotionGrantResolvedEvent(BaseModel):
     """The resolver EFFECT's emitted fact: resolved grant (or None) + provenance.
 
@@ -2132,7 +2242,8 @@ class ModelProdPromotionGrantResolvedEvent(BaseModel):
     onto the gate command. ``grant`` is ``None`` for every non-``RESOLVED``
     outcome so the prod gate fails closed; ``resolution`` carries the typed
     reason. ``provenance`` is always populated — even when no grant matched — so
-    the audit trail records what durable bytes were inspected.
+    the audit trail records what durable bytes were inspected or why the anchor
+    could not be resolved.
 
     The grant resolver EFFECT emits this and the redeploy ORCHESTRATOR consumes
     it, so it lives in this shared owner module.
@@ -2156,6 +2267,38 @@ class ModelProdPromotionGrantResolvedEvent(BaseModel):
         ...,
         description="Durable audit provenance of the bytes the resolver inspected.",
     )
+
+    @model_validator(mode="after")
+    def validate_resolution_provenance(self) -> ModelProdPromotionGrantResolvedEvent:
+        """Require refusal evidence or complete provenance for an inspected anchor."""
+        if self.resolution in GRANT_REFUSAL_RESOLUTIONS:
+            if self.grant is not None:
+                raise ValueError("a grant resolution refusal must have grant=None")
+            if (
+                not self.provenance.refusal_reason
+                or not self.provenance.refusal_reason.strip()
+            ):
+                raise ValueError(
+                    "a grant resolution refusal requires a non-empty refusal_reason"
+                )
+            if self.provenance.refusal_kind is None:
+                raise ValueError("a grant resolution refusal requires a refusal_kind")
+        else:
+            if (
+                self.provenance.source_commit_sha is None
+                or self.provenance.file_sha256 is None
+            ):
+                raise ValueError(
+                    "a non-refusal resolution requires source_commit_sha and file_sha256"
+                )
+            if (
+                self.provenance.refusal_reason is not None
+                or self.provenance.refusal_kind is not None
+            ):
+                raise ValueError(
+                    "a non-refusal resolution must have refusal_reason=None and refusal_kind=None"
+                )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -2314,10 +2457,12 @@ __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
     "GRANT_FETCH_REF",
     "GRANT_FILE_PATH",
+    "GRANT_REFUSAL_RESOLUTIONS",
     "GRANT_REPO",
     "ROLLBACK_ELIGIBLE_PHASES",
     "TERMINAL_PHASES",
     "EnumBuildSource",
+    "EnumGrantAnchorRefusal",
     "EnumGrantResolution",
     "EnumOccGateState",
     "EnumPhaseResult",
@@ -2363,5 +2508,6 @@ __all__ = [
     "lane_target",
     "next_phase",
     "next_verification_phase",
+    "render_grant_refusal",
     "verify_prod_deploy_grant_binding",
 ]
