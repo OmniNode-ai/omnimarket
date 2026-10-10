@@ -30,6 +30,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20912-ac1-gateway-reads-deploy-probe"
+    description: "AC1 deploy probe: the gateway model module GitHub serves at the checked-out commit declares the job_log_tail operation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'JOB_LOG_TAIL = \"job_log_tail\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn20912-ac1-gateway-reads"
     description: "AC1: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text and releases answer on a recorded fake transport, with paging inside the node and typed size refusals."
     source: "manual"
