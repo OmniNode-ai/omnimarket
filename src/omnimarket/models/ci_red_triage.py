@@ -129,11 +129,15 @@ class ModelCiRedFacts(BaseModel):
     same per peer PR number at the peer's head; a check or peer absent is
     unread and ``""`` is a check read with no annotation. With
     ``annotations_read`` false the classifier clusters by check name only.
+    ``check_run_ids`` is the Actions workflow run of each check's newest copy
+    at the event head, read from its details URL; a check absent from it is
+    not an Actions check or was unread, and a runner rerun never names it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     event: ModelCiRunFailedEvent
     check_conclusions: dict[str, str] = Field(default_factory=dict)
+    check_run_ids: dict[str, int] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
     peer_annotations: dict[int, dict[str, str]] = Field(default_factory=dict)
     annotations_read: bool = False
@@ -142,6 +146,11 @@ class ModelCiRedFacts(BaseModel):
 
 
 class ModelCiRedClassification(BaseModel):
+    """``landing_red_class`` is the landing controller's red class of the same
+    head (the triage node's ``classify_red``), set for the runner class:
+    ``runner_saturation`` and ``cancelled_producer`` earn the bus path's rerun,
+    ``reviewer_pool`` stays with the controller's reviewer-slot rule."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
     red_class: EnumCiRedClass
     check: str
@@ -149,6 +158,7 @@ class ModelCiRedClassification(BaseModel):
     owner_key: str
     cause_key: str | None = None
     reason: str
+    landing_red_class: str | None = None
 
 
 class ModelCiRedTriageDecided(BaseModel):
