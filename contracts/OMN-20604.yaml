@@ -92,3 +92,9 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_projection_lab_job.py -k 'trap or routes_only_the_writer' -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20604-projection-deploy-probe"
+    description: "Deploy probe. The deployed runtime imports node_projection_lab_job's writer and it declares in-process dispatch, so the runtime dispatches it once per lab-job-transitioned event. It fails on a runtime that does not carry the node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer import LabJobProjectionWriter as W; assert W.onex_runtime_inprocess_dispatch is True'"
