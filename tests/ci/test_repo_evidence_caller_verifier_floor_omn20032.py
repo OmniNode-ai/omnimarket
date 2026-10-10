@@ -47,7 +47,14 @@ def test_caller_pins_the_reusable_that_carries_the_verifier_floor() -> None:
 
 
 def test_caller_verifier_version_is_at_or_above_the_floor() -> None:
-    with_inputs = _job()["with"]
+    job = _job()
+    # The version input already met the floor before this re-pin. It is only
+    # enforced when the caller invokes the reusable that carries the gate.
+    assert job["uses"] == (
+        "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
+        f"@{_FLOOR_REUSABLE_SHA}"
+    ), "the verifier version must be passed to the floor-enforcing reusable"
+    with_inputs = job["with"]
     assert isinstance(with_inputs, dict)
     assert _version(with_inputs["verifier-version"]) >= _VERIFIER_FLOOR, (
         "verifier-version must be at or above the reusable's VERIFIER_FLOOR 0.4.303"

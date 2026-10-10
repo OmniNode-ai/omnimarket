@@ -16,13 +16,13 @@ requirements:
           AC3: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at 4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa (omnibase_core#1932) -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k carries_the_verifier_floor fails at the merge base
       - id: "AC4"
         statement: |-
-          AC4: the caller's verifier-version is at or above the reusable's VERIFIER_FLOOR 0.4.303, the comparison refuses 0.4.280 and 0.4.302 and admits 0.4.303 and 0.4.305 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k "at_or_above_the_floor or floor_comparison" fails at the merge base
+          AC4: the caller passes verifier-version at or above VERIFIER_FLOOR 0.4.303 to the floor-enforcing reusable, the comparison refuses 0.4.280 and 0.4.302 and admits 0.4.303 and 0.4.305 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k "at_or_above_the_floor or floor_comparison" fails at the merge base because the old reusable does not enforce the floor
 evidence_requirements:
   - kind: "tests"
     description: "The caller pins the floor-carrying reusable."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k carries_the_verifier_floor"
   - kind: "tests"
-    description: "The caller's verifier-version is at or above the floor, with a refusing and an admitting comparison case."
+    description: "The caller passes a version at or above the floor to the floor-enforcing reusable, with a refusing and an admitting comparison case."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k \"at_or_above_the_floor or floor_comparison\""
 emergency_bypass:
   enabled: false
@@ -38,7 +38,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20032-caller-verifier-at-floor"
-    description: "The caller's verifier-version is at or above the floor and the comparison has a refusing and an admitting case."
+    description: "The caller passes a version at or above the floor to the floor-enforcing reusable and the comparison has a refusing and an admitting case."
     source: "manual"
     checks:
       - check_type: "test_passes"
