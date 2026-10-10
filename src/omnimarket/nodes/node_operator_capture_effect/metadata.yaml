@@ -1,0 +1,25 @@
+name: node_operator_capture_effect
+version: "0.1.0"
+description: "Operator capture effects: operator prompts from the bus, the delegated classification, the ledger rows, and the open-ask digest and push"
+pack: operator_capture
+node_role: effect
+display_name: "Operator Capture"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_operator_capture_effect: "omnimarket.nodes.node_operator_capture_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_write
+dependencies:
+  - "click>=8.1.0"
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "operator-capture", "work-ledger", "bus"]

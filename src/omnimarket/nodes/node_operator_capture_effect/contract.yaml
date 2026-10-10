@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Operator Capture Effect (OMN-20905, OMN-20906)
+#
+# RULING 2026-10-10T22:40:43Z amends the say-it-once ruling's mechanism: the
+# operator's decisions, asks, ideas and preferences are extracted
+# asynchronously from the bus, never by a capture hook.
+#
+# WHO HOSTS THIS NODE. The work-ledger serve process on the ledger host, when
+# started with --operator-capture (ONEX_WORK_LEDGER_OPERATOR_CAPTURE): the
+# ledger is a file there, that process already holds the bus and the ledger's
+# own append runner, and no second daemon is installed. Shared runtimes must
+# NEVER attach it, so the contract declares runtime_dispatch and neither an
+# event_bus block nor handler_routing (runtime auto-wiring attaches only
+# contracts that declare both). One consumer group for every host, so one host
+# takes each prompt and no row is doubled; a new group starts at offset latest,
+# so starting it never replays history.
+#
+# WHAT IT READS. Only records whose content_kind is operator_prompt: the
+# capture producer gives that kind to a prompt whose transcript origin is
+# human. A lane brief, a scheduled prompt or a task notification never has it,
+# so a lane yields no row. Every decision (classify, rows, drift, open asks) is
+# node_operator_capture_compute's, called in process.
+#
+# The bus lane, the ledger and its append command are deployment facts given on
+# the work-ledger serve command line; nothing here names a machine.
+name: "node_operator_capture_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_version: "0.2.0"
+description: "Record each operator prompt from the bus as ledger rows: decisions, asks, ideas, preferences."
+input_model:
+  name: "ModelOperatorPromptRecord"
+  module: "omnimarket.models.operator_capture"
+  description: "One content-capture record whose content_kind is operator_prompt."
+output_model:
+  name: "ModelOperatorCaptureReceipt"
+  module: "omnimarket.models.operator_capture"
+  description: "Host, session, prompt id, whether it was recorded, pending or a duplicate, and the inbox run."
+handler:
+  module: "omnimarket.nodes.node_operator_capture_effect.handlers.handler_operator_capture_effect"
+  class: "HandlerOperatorCaptureEffect"
+  input_model: "omnimarket.models.operator_capture.ModelOperatorPromptRecord"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+runtime_dispatch:
+  subscribe_topic: "onex.cmd.omniintelligence.content-captured.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.operator-capture-recorded.v1"
+consumed_events:
+  - event_type: ModelOperatorPromptRecord
+    topic: onex.cmd.omniintelligence.content-captured.v1
+    description: "Full-content capture records; only the operator_prompt kind is read."
+# Explicit external producer (contract topic graph closure): the omniclaude
+# content-capture hooks journal the records and the emit daemon's fan-out
+# publishes them through the redact_capture transform.
+externally_produced_topics:
+  - topic: onex.cmd.omniintelligence.content-captured.v1
+    producer: "omniclaude full-content capture hooks, fanned out by node_emit_daemon registries/topics.yaml (content.captured) through the redact_capture transform"
+published_events:
+  - event_type: ModelOperatorCaptureReceipt
+    topic: onex.evt.omnimarket.operator-capture-recorded.v1
+    description: "What the capture did with one operator prompt."
+env_dependencies:
+  ONEX_WORK_LEDGER_OPERATOR_CAPTURE:
+    required: false
+    description: "Set true on the ledger host's work-ledger serve process to run this capture there (same as --operator-capture). Unset: no capture."
+  ONEX_LEDGER_PATH:
+    required: false
+    description: "The ledger for the one-shot process and digest commands. The bus host uses the serve process's --ledger."
+  ONEX_OPERATOR_CAPTURE_LEDGER_BIN:
+    required: false
+    description: "The ledger's append command for the one-shot process command (run as '<command> --append <row>'). The bus host uses the serve process's own append runner."
+  ONEX_OPERATOR_CAPTURE_ONEX_BIN:
+    required: false
+    description: "The onex CLI used for delegation. Unset: onex on PATH; none: the deterministic fallback classifies."
+  ONEX_OPERATOR_CAPTURE_DIR:
+    required: false
+    description: "The local capture store. Unset: ~/.local/state/omni/operator-capture."
+  ONEX_ALERT_CHANNEL_LIB:
+    required: false
+    description: "The shared alert channel library for the overdue-ask push. Unset: no push."
+dod_evidence:
+  PYTEST:
+    description: "operator prompts from the bus become ledger rows; lane briefs and other records yield none; retry without duplicates; digest and push"
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_effect -q"
+    pass_criteria: "every effect test passes"
+metadata:
+  transport_type: kafka
+  description: "Hosted by the work-ledger serve process on the ledger host (--operator-capture), never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-10-10"
+  tags:
+    - "effect"
+    - "operator-capture"
+    - "work-ledger"
+  related_tickets: ["OMN-20905", "OMN-20906"]
