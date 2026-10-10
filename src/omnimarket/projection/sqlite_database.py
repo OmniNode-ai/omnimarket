@@ -423,6 +423,13 @@ _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
 )
+# OMN-20008: the counterpart of node_projection_savings migration 090's savings
+# view, serving the local exposure with each run's stored call provenance.
+_DELEGATION_SAVINGS_VIEW_STEP = "omn20008_delegation_savings_view"
+_DELEGATION_SAVINGS_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_savings",
+    "sqlite/delegation_savings_view.sql",
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -631,6 +638,14 @@ class SqliteDatabaseAdapter:
                     "added the metering-summary compression and cache columns",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SAVINGS_VIEW_STEP,
+                    cls._create_delegation_savings_view,
+                    "created the delegation savings view",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -727,6 +742,18 @@ class SqliteDatabaseAdapter:
             ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
             conn.execute(f"DROP VIEW IF EXISTS {view}")
             conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_savings_view(conn: sqlite3.Connection) -> None:
+        """OMN-20008: give the store the savings relation the exposure reads.
+
+        Dropped first so a store that somehow holds an older definition takes
+        this one; a later revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SAVINGS_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
+        conn.execute(ddl)
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
