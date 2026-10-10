@@ -6,9 +6,7 @@ summary: "A customer who brings their own OpenRouter key names the model it runs
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "ModelDelegateSkillRequest.model"
-  - "ModelInferenceCredentialCreateRequest.model"
-  - "ModelByokProviderBackend.customer_chooses_model"
+  - "public_api"
 requirements:
   - id: "req-customer-chooses-openrouter-model"
     statement: |-
