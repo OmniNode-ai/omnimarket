@@ -85,3 +85,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20422-ac1-second-voter-url-from-variable"
+    description: "The hostile-review job env sets LLM_LOCAL_STUDIO_PLANNER_URL from the repository variable, which this pull request introduces; the test fails on the merge base, where the value is a literal :8131 address."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q -k test_second_voter_url_is_the_repository_variable"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20422-ac2-roster-url-from-variable"
+    description: "The renamed second voter resolves its URL from the LLM_LOCAL_STUDIO_PLANNER_URL repository variable at the workflow level, which this pull request introduces; the test fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q -k test_second_voter_url_is_the_registry_env_var_from_a_variable"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
