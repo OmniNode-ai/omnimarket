@@ -20,6 +20,14 @@ from omnimarket.events.topics import (
     CI_RUN_FAILED_TOPIC_V1,
     PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1,
 )
+from omnimarket.handlers.cause_signature import (
+    ANNOTATION_CHUNK,
+    UNREAD,
+    annotation_query,
+    cause_key,
+    first_failure_annotations,
+    normalize_signature,
+)
 from omnimarket.models.ci_red_triage import (
     EnumCiRedAction,
     EnumCiRedClass,
@@ -27,6 +35,7 @@ from omnimarket.models.ci_red_triage import (
     ModelCiRedFacts,
     ModelCiRedTriageDecided,
     ModelCiRunFailedEvent,
+    ci_red_cause_key,
     ci_red_decision_correlation_id,
     ci_red_owner_correlation_id,
     ci_red_owner_run_id,
@@ -52,12 +61,31 @@ OWNER_ACTIONS = {
 }
 
 
+def _member_cause_keys(
+    slug: str, facts: ModelCiRedFacts, checks: Iterable[str]
+) -> tuple[str, ...]:
+    """Annotation-level cause keys followed by check-level keys, without duplicates."""
+    checks = tuple(checks)
+    keys: list[str] = []
+    if facts.annotations_read:
+        for check in checks:
+            signature = normalize_signature(check, facts.annotations.get(check))
+            if signature != UNREAD:
+                keys.append(cause_key(slug, signature))
+    keys.extend(ci_red_cause_key(slug, check) for check in checks)
+    return tuple(dict.fromkeys(keys))
+
+
 class ProtocolCiRedFactsReader(Protocol):
     def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts: ...
 
 
 class GhCiRedFactsReader:
-    """Read newest check runs via GET only; a failed read leaves facts unread."""
+    """Read only: newest check runs via REST GET, failure annotations via one GraphQL query per chunk.
+
+    A failed check read leaves conclusions and base unread; a failed annotation
+    read leaves annotations unread (check-level clustering).
+    """
 
     @staticmethod
     def _checks(slug: str, ref: str) -> dict[str, str]:
@@ -87,25 +115,67 @@ class GhCiRedFactsReader:
                 newest[name] = (key, conclusion)
         return {name: conclusion for name, (_, conclusion) in newest.items()}
 
+    @staticmethod
+    def _annotations(
+        event: ModelCiRunFailedEvent,
+    ) -> tuple[dict[str, str] | None, dict[int, dict[str, str]]]:
+        """The first failure annotation per failing check of the PR and its armed peers, each at its own head."""
+        slug = ci_red_repo_slug(event.repo)
+        heads = {event.pr_number: event.head_sha} | {
+            peer.pr_number: peer.head_sha for peer in event.peers if peer.armed
+        }
+        numbers = sorted(heads)
+        read: dict[int, dict[str, str]] = {}
+        for start in range(0, len(numbers), ANNOTATION_CHUNK):
+            chunk = numbers[start : start + ANNOTATION_CHUNK]
+            query = annotation_query([(slug, number) for number in chunk])
+            result = subprocess.run(
+                ["gh", "api", "graphql", "-f", f"query={query}"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=20,
+            )
+            data = json.loads(result.stdout).get("data") or {}
+            for i, number in enumerate(chunk):
+                node = (data.get(f"a{i}") or {}).get("pullRequest")
+                annotations = first_failure_annotations(node, heads[number])
+                if annotations is not None:
+                    read[number] = annotations
+        own = read.pop(event.pr_number, None)
+        return own, read
+
     def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        checks: dict[str, object] = {}
         try:
             slug = ci_red_repo_slug(event.repo)
             head = self._checks(slug, event.head_sha)
             base = self._checks(slug, event.base)
-            return ModelCiRedFacts(
-                event=event,
-                check_conclusions=head,
-                base_red_checks=tuple(
+            checks = {
+                "check_conclusions": head,
+                "base_red_checks": tuple(
                     sorted(
                         name
                         for name, conclusion in base.items()
                         if conclusion in {"failure", "timed_out"}
                     )
                 ),
-                base_read=True,
-            )
+                "base_read": True,
+            }
         except Exception:
-            return ModelCiRedFacts(event=event)
+            checks = {}
+        annotations: dict[str, object] = {}
+        try:
+            own, peers = self._annotations(event)
+            if own is not None:
+                annotations = {
+                    "annotations": own,
+                    "peer_annotations": peers,
+                    "annotations_read": True,
+                }
+        except Exception:
+            annotations = {}
+        return ModelCiRedFacts.model_validate({"event": event, **checks, **annotations})
 
 
 class HandlerCiRedTriage:
@@ -185,13 +255,13 @@ class HandlerCiRedTriage:
         return None
 
     async def _absorbing_cause(
-        self, slug: str, pr_number: int, checks: Iterable[str]
+        self, slug: str, pr_number: int, cause_keys: tuple[str, ...]
     ) -> str | None:
         cached = self._absorbed.get((slug, pr_number))
         if cached is not None:
             return cached
         return await self._read_claim(
-            self._claims.absorbing_cause, slug, pr_number, tuple(checks)
+            self._claims.absorbing_cause, pr_number, cause_keys
         )
 
     async def handle(
@@ -256,11 +326,13 @@ class HandlerCiRedTriage:
                 if classification.red_class == EnumCiRedClass.PR_OWN:
                     # A member absorbed by a claimed cause is the cause's, whatever
                     # its peers said: the detector's index is empty after a restart.
-                    cause_key = await self._absorbing_cause(
-                        slug, event.pr_number, event.failing_checks
+                    absorbing = await self._absorbing_cause(
+                        slug,
+                        event.pr_number,
+                        _member_cause_keys(slug, facts, event.failing_checks),
                     )
-                    if cause_key is not None:
-                        owner_key = cause_key
+                    if absorbing is not None:
+                        owner_key = absorbing
                 owner_run = await self._owner_run(owner_key)
             except CiRedClaimsUnreadError:
                 unread.append("owner claim")
@@ -310,6 +382,8 @@ class HandlerCiRedTriage:
             unread.insert(0, "head conclusions: " + ", ".join(missing))
         if not facts.base_read:
             unread.insert(1 if missing else 0, "base checks")
+        if not facts.annotations_read:
+            unread.insert(bool(missing) + (not facts.base_read), "annotations")
         absorbed_evidence = f" absorbed={','.join(absorbed)}" if absorbed else ""
         evidence = (
             f"class={classification.red_class} check={classification.check} action={action} "

@@ -30,9 +30,12 @@
 #     holds no GitHub credential, so it needs nothing the effects runtime has.
 #   * runtime_lanes is compose-dev: lab first (plan 5.5). A runtime that names
 #     another lane, or none, does not attach it.
-#   * Shadow mode by default: PrLandingOrchestratorConfig.github_mode is
-#     dry_run, so every GitHub mutation request and every companion command
-#     carries dry_run, and only the conditional reads are sent live.
+#   * Mode from this contract (OMN-20866): the handler builds its config from
+#     the landing_config block below. The default mode is dry_run, so every
+#     GitHub mutation and companion command of an unnamed repository carries
+#     dry_run and only the conditional reads are sent live. A repository named
+#     enforce in github_mode_by_repository is acted on, except for the
+#     operations in dry_run_operations, which stay dry_run everywhere.
 #   * completion_bound (the runtime-enforced block) is not declared: its only
 #     policy terminalises the row as failed, while plan 5.1 hands an expired PR
 #     to an agent (NEEDS_AGENT, reason stalled). The per-state bounds are the
@@ -646,6 +649,40 @@ state_machine:
       from_state: NEEDS_AGENT
       to_state: NEEDS_AGENT
       trigger: completion_bound_expired
+# OMN-20866: the orchestrator's operator config, read by the handler at start
+# (orchestration/contract_config.py). The canary is omnimarket:
+#   * enforce for reads and the arm. The landing controller and auto-merge.yml
+#     already arm omnimarket PRs with auto-merge; the effect completes an arm
+#     that is already in place without sending the mutation again, so a second
+#     arm path changes nothing on GitHub.
+#   * companion-exempt: omnimarket's change-control cut-over has landed (its dev
+#     ruleset and classic protection require no change-control context), so its
+#     PRs go from evaluation straight to the head-check read.
+#   * rerun_runs, update_branch and disarm stay dry_run in every repository
+#     until the landing controller stops taking those actions for the same
+#     repositories (plan slice S8): one owner per class of PR action.
+#   * review threads: omnimarket's dev branch requires no conversation
+#     resolution and no review, so an unresolved thread cannot block the merge.
+#   * observed prompts: omnimarket publishes no autobind prompt since its
+#     cut-over, so the PR watcher's observations prompt its reads instead.
+landing_config:
+  github_mode: dry_run
+  github_mode_by_repository:
+    OmniNode-ai/omnimarket: enforce
+  dry_run_operations:
+    - rerun_runs
+    - update_branch
+    - disarm
+  companion_exempt_repositories:
+    - OmniNode-ai/omnimarket
+  queue_repositories: []
+  review_threads_not_required_repositories:
+    - OmniNode-ai/omnimarket
+  observed_prompt_repositories:
+    - OmniNode-ai/omnimarket
+  arm_policy:
+    action_mode: enforce
+    kill_switch: false
 event_bus:
   version:
     major: 1
@@ -661,6 +698,9 @@ event_bus:
     # The GitHub landing effect's answers (T4, T9).
     - onex.evt.omnimarket.pr-landing-github-completed.v1
     - onex.evt.omnimarket.pr-landing-github-failed.v1
+    # I3 (OMN-20866): the PR watcher's observations, a prompt for the
+    # repositories landing_config.observed_prompt_repositories names.
+    - onex.evt.omnimarket.pr-state-observed.v1
   publish_topics:
     # Companion commands (op derive, regenerate, verify) to the producer.
     - onex.cmd.omnimarket.occ-autobind.v1
@@ -741,6 +781,16 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
       topic: onex.evt.omnimarket.pr-landing-github-failed.v1
       description: "The effect in flight failed with a typed reason; frees the PR, and the next tick re-reads."
+    - operation: "pr_landing.orchestrate.observed"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingObservedPrompt"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-state-observed.v1
+      description: "A watcher observation of a named repository issues a conditional read_pr_state and drains the row; any other repository is dropped."
 metadata:
   description: "Deterministic per-PR landing workflow: change-control companion, re-runs, update-branch and arming as one FSM."
   author: "OmniNode Team"
@@ -755,3 +805,4 @@ metadata:
   related_tickets:
     - "OMN-19822"
     - "OMN-19824"
+    - "OMN-20866"

@@ -17,7 +17,11 @@ Rule
 For every ``src/omnimarket/nodes/*/contract.yaml``: each declared publish topic
 that is NOT the contract's ``terminal_event`` requires evidence of a publish or
 emit call somewhere in that node package's Python. ``terminal_event`` is exempt
-because the runtime publishes it on the handler's behalf.
+because the runtime publishes it on the handler's behalf. So is a declared
+failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
+Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
+publishes a result carrying one on that topic (OMN-20867). Without that field no
+result can reach the failure terminal, and it stays an offender.
 
 The gate is a burn-down ratchet against
 ``scripts/ci/contract_publish_parity_baseline.py``: the frozen set may only
@@ -45,6 +49,11 @@ from pydantic import BaseModel, ConfigDict, Field
 _PUBLISH_EVIDENCE = re.compile(
     r"\bpublish\w*\s*\(|\bevent_bus\b|ModelEventEnvelope|\.emit\s*\(|\bemit_event\b"
 )
+
+# The field the runtime's failure-terminal guard reads (omnibase_infra
+# contract_terminal_events.resolve_terminal_verdict): a returned model carrying a
+# non-None cause is published on the contract's declared failure terminal.
+_FAILURE_CAUSE_EVIDENCE = re.compile(r"\bterminal_failure_cause\b")
 
 
 class ModelPublishParityFinding(BaseModel):
@@ -76,13 +85,13 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         declared = event_bus.get("publish_topics") or []
         if not isinstance(declared, list):
             continue
-        terminal_event = raw.get("terminal_event")
-        candidates = sorted(
-            {str(topic) for topic in declared if str(topic) != str(terminal_event)}
-        )
+        node_dir = contract_path.parent
+        exempt = {str(raw.get("terminal_event"))}
+        if _returns_failure_cause(node_dir):
+            exempt |= _failure_terminals(raw)
+        candidates = sorted({str(topic) for topic in declared} - exempt)
         if not candidates:
             continue
-        node_dir = contract_path.parent
         if _has_publish_evidence(node_dir):
             continue
         findings.append(
@@ -92,6 +101,24 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             )
         )
     return findings
+
+
+def _failure_terminals(raw: dict[str, object]) -> set[str]:
+    runtime_dispatch = raw.get("runtime_dispatch")
+    if not isinstance(runtime_dispatch, dict):
+        return set()
+    terminal_events = runtime_dispatch.get("terminal_events")
+    if not isinstance(terminal_events, dict):
+        return set()
+    failure = terminal_events.get("failure")
+    return {failure} if isinstance(failure, str) and failure else set()
+
+
+def _returns_failure_cause(node_dir: Path) -> bool:
+    return any(
+        _FAILURE_CAUSE_EVIDENCE.search(path.read_text(encoding="utf-8"))
+        for path in sorted(node_dir.rglob("*.py"))
+    )
 
 
 def _has_publish_evidence(node_dir: Path) -> bool:

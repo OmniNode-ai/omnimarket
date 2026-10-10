@@ -45,7 +45,7 @@ def ci_red_owner_run_id(owner_key: str) -> str:
 
 
 def ci_red_cause_key(slug: str, check: str) -> str:
-    """Check-level cause key; annotation-level keys are plan slice S4."""
+    """Check-level cause key, used for a red whose annotations are unread."""
     return f"cause:{slug}:{hashlib.sha256(check.encode()).hexdigest()[:12]}"
 
 
@@ -122,11 +122,21 @@ class ModelCiRunFailedEvent(BaseModel):
 
 
 class ModelCiRedFacts(BaseModel):
-    """Facts shared by the reader and pure classifier; absent reads stay explicit."""
+    """Facts shared by the reader and pure classifier; absent reads stay explicit.
+
+    ``annotations`` is the first failure annotation per failing check at the
+    event head (``first_failure_annotations``), and ``peer_annotations`` the
+    same per peer PR number at the peer's head; a check or peer absent is
+    unread and ``""`` is a check read with no annotation. With
+    ``annotations_read`` false the classifier clusters by check name only.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     event: ModelCiRunFailedEvent
     check_conclusions: dict[str, str] = Field(default_factory=dict)
+    annotations: dict[str, str] = Field(default_factory=dict)
+    peer_annotations: dict[int, dict[str, str]] = Field(default_factory=dict)
+    annotations_read: bool = False
     base_red_checks: tuple[str, ...] = ()
     base_read: bool = False
 

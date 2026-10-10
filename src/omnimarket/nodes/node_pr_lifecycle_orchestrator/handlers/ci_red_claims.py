@@ -19,7 +19,6 @@ from collections.abc import Iterable
 from typing import Protocol
 
 from omnimarket.models.ci_red_triage import (
-    ci_red_cause_key,
     ci_red_decision_correlation_id,
     ci_red_owner_correlation_id,
 )
@@ -35,7 +34,7 @@ class ProtocolCiRedClaims(Protocol):
     def decided(self, decision_key: str) -> bool: ...
     def owned(self, owner_key: str) -> bool: ...
     def absorbing_cause(
-        self, slug: str, pr_number: int, checks: Iterable[str]
+        self, pr_number: int, cause_keys: Iterable[str]
     ) -> str | None: ...
 
 
@@ -62,12 +61,9 @@ class ProjectionCiRedClaims:
             self._rows({"sweep_id": str(ci_red_owner_correlation_id(owner_key))})
         )
 
-    def absorbing_cause(
-        self, slug: str, pr_number: int, checks: Iterable[str]
-    ) -> str | None:
-        """The claimed cause, among the checks' cause keys, that covers this PR."""
-        for check in checks:
-            cause_key = ci_red_cause_key(slug, check)
+    def absorbing_cause(self, pr_number: int, cause_keys: Iterable[str]) -> str | None:
+        """The claimed cause that covers this PR, trying the given cause keys in order."""
+        for cause_key in cause_keys:
             sweep_id = str(ci_red_owner_correlation_id(cause_key))
             if self._rows({"sweep_id": sweep_id, "pr_number": pr_number}):
                 return cause_key
@@ -86,9 +82,7 @@ class UnboundCiRedClaims:
     def owned(self, owner_key: str) -> bool:
         raise CiRedClaimsUnreadError(self._reason)
 
-    def absorbing_cause(
-        self, slug: str, pr_number: int, checks: Iterable[str]
-    ) -> str | None:
+    def absorbing_cause(self, pr_number: int, cause_keys: Iterable[str]) -> str | None:
         raise CiRedClaimsUnreadError(self._reason)
 
 

@@ -165,6 +165,21 @@ def head_check_runs_request(
     )
 
 
+def branch_request(repository: str, branch: str) -> ModelGithubHttpRequest:
+    """GET one branch: its classic protection's required status contexts."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/branches/{branch}"
+    )
+
+
+def branch_rules_request(repository: str, branch: str) -> ModelGithubHttpRequest:
+    """GET the rulesets' rules in force on one branch (required status checks)."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/rules/branches/{branch}?per_page={LIST_PAGE_SIZE}",
+    )
+
+
 # --- REST: git data (node_ci_rerun_effect's empty-commit re-trigger) ----------
 
 
@@ -250,6 +265,8 @@ __all__: list[str] = [
     "LIST_PAGE_SIZE",
     "GithubLandingRequestError",
     "MergeMethod",
+    "branch_request",
+    "branch_rules_request",
     "create_commit_request",
     "dequeue_request",
     "disable_auto_merge_request",

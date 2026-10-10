@@ -3,13 +3,18 @@
 
 name: ONEX Schema Compatibility
 
-# Verifies omnimarket compatibility with the current ONEX Change Control schema.
-# Adapted from the omniclaude standard template.
+# Verifies that omnimarket's ticket contracts are compatible with the schema
+# owner. The ticket-contract model is omnibase_core's ModelTicketContract
+# (OMN-20885: the change-control repository re-exports it and is no longer read).
 #
 # This gate:
-#   1. Checks out onex_change_control (the upstream schema authority)
-#   2. Validates any YAML schema artifacts in this repo against the current schema
-#   3. Runs is_compatible() from omnibase_spi to verify major version compatibility
+#   1. Installs omnimarket at its locked omnibase_core and omnibase_spi versions
+#   2. Reads the schema_version every contracts/OMN-*.yaml declares
+#   3. Runs is_compatible() from omnibase_spi against the schema_version of the
+#      installed ModelTicketContract; a major mismatch fails
+#
+# A contracts/ directory with no OMN-*.yaml fails. A repository with no
+# contracts/ directory reads no ticket contract, so there is nothing to check.
 
 on:
   push:
@@ -46,25 +51,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
-      - name: Checkout onex_change_control
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
-          path: onex_change_control
-
-      - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
-
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
-
-      - name: Clone omnibase_spi
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-spi"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_spi.git ../omnibase_spi
-
-      - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
-
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
@@ -84,86 +70,48 @@ jobs:
       - name: Install omnimarket dependencies
         run: uv sync --locked
 
-      - name: Install omnibase_spi
-        run: uv pip install ../omnibase_spi
-
-      - name: Install onex_change_control schema validator
+      - name: Check ticket-contract schema compatibility
         run: |
-          uv pip install ./onex_change_control
+          uv run python3 - <<'PY'
+          import sys
+          from pathlib import Path
 
-      - name: Find schema artifact files
-        id: find-artifacts
-        run: |
-          set -e
-          FILES=""
-          for dir in contracts schemas artifacts drift; do
-            if [ -d "$dir" ]; then
-              FOUND=$(find "$dir" \
-                \( -name '*contract*.yaml' -o -name '*contract*.yml' \
-                   -o -name '*day_close*.yaml' -o -name '*day_close*.yml' \) \
-                2>/dev/null | sort || true)
-              if [ -n "$FOUND" ]; then
-                FILES="${FILES}${FILES:+$'\n'}${FOUND}"
-              fi
-            fi
-          done
-
-          if [ -n "$FILES" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            {
-              echo "files<<EOF"
-              echo "$FILES"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "Schema artifacts found:"
-            echo "$FILES"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "No schema artifacts found -- skipping artifact validation"
-          fi
-
-      - name: Validate schema artifacts
-        if: steps.find-artifacts.outputs.found == 'true'
-        run: |
-          while IFS= read -r file; do
-            [ -n "$file" ] || continue
-            echo "Validating: $file"
-            uv run validate-yaml "$file"
-          done <<< "${{ steps.find-artifacts.outputs.files }}"
-
-      - name: Check schema version compatibility
-        run: |
-          OCC_VERSION=$(uv run python3 -c "
-          import tomllib
-          with open('onex_change_control/pyproject.toml', 'rb') as f:
-              d = tomllib.load(f)
-          if 'project' in d:
-              print(d['project']['version'])
-          else:
-              print(d['tool']['poetry']['version'])
-          ")
-          echo "onex_change_control upstream version: $OCC_VERSION"
-
-          OCC_VERSION="$OCC_VERSION" uv run python3 -c "
-          import os, sys
+          import yaml
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
           from omnibase_spi.contracts.pipeline.contract_schema_compat import is_compatible
 
-          wire_version = os.environ['OCC_VERSION']
-          reader_version = '0.1.0'
-
-          print(f'Compatibility check: upstream={wire_version}, reader={reader_version}')
-
-          if not is_compatible(wire_version=wire_version, reader_version=reader_version):
-              print('ERROR: Schema compatibility broken!')
-              print(f'  onex_change_control upstream version: {wire_version}')
-              print(f'  omnimarket reader version:            {reader_version}')
-              print()
-              print('  Major version mismatch. onex_change_control released a breaking')
-              print('  schema change. To resolve:')
-              print('  1. Review breaking changes in onex_change_control CHANGELOG')
-              print('  2. Update schema artifacts in omnimarket to comply')
-              print('  3. Update reader_version in .github/workflows/onex-schema-compat.yml')
+          reader_version = str(ModelTicketContract.model_fields["schema_version"].default)
+          contracts_dir = Path("contracts")
+          if not contracts_dir.is_dir():
+              print("No contracts/ directory: this repository reads no ticket contract.")
+              sys.exit(0)
+          paths = sorted(contracts_dir.glob("OMN-*.yaml"))
+          if not paths:
+              print("::error::contracts/ holds no OMN-*.yaml ticket contract")
               sys.exit(1)
 
-          print(f'OK: Schema compatible (upstream={wire_version}, reader={reader_version})')
-          "
+          print(f"omnibase_core ModelTicketContract schema_version (reader): {reader_version}")
+          broken = []
+          for path in paths:
+              data = yaml.safe_load(path.read_text(encoding="utf-8"))
+              if not isinstance(data, dict):
+                  broken.append((path, "not a mapping"))
+                  continue
+              wire_version = str(data.get("schema_version", reader_version))
+              try:
+                  compatible = is_compatible(wire_version=wire_version, reader_version=reader_version)
+              except ValueError as exc:
+                  broken.append((path, str(exc)))
+                  continue
+              if not compatible:
+                  broken.append((path, f"schema_version {wire_version} vs reader {reader_version}"))
+
+          for path, reason in broken:
+              print(f"::error file={path.as_posix()}::{path.as_posix()}: {reason}")
+          if broken:
+              print(f"ERROR: {len(broken)} of {len(paths)} ticket contract(s) are incompatible with omnibase_core's ModelTicketContract.")
+              print("  A major mismatch means omnibase_core released a breaking ticket-contract")
+              print("  schema change, or a contract declares a major this core cannot read.")
+              sys.exit(1)
+          print(f"OK: {len(paths)} ticket contract(s) compatible with omnibase_core schema_version {reader_version}")
+          PY

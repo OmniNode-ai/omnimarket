@@ -3393,6 +3393,7 @@ class HandlerDelegationWorkflow:
                 ]
 
             # No escalation possible: terminal FAILED.
+            self._settle_final_rung_as_terminate(workflow)
             # OMN-13408/OMN-13365: _record_inference_response reconciles the
             # served tokens onto workflow.inference_* (deriving total from
             # prompt + completion so a reasoning model's bundled total cannot
@@ -3958,6 +3959,7 @@ class HandlerDelegationWorkflow:
             ]
 
         # Cannot escalate: terminal FAILED with reason.
+        self._settle_final_rung_as_terminate(workflow)
         terminal_inputs = self._gate_terminal_inputs(
             workflow,
             result,
@@ -4620,6 +4622,27 @@ class HandlerDelegationWorkflow:
             workflow.compliance_attempts or 1,
             inference_sequence,
         )
+
+    @staticmethod
+    def _settle_final_rung_as_terminate(workflow: DelegationWorkflowState) -> None:
+        """Record the rung the ladder ended on as TERMINATE, not CLIMB (OMN-18978).
+
+        A rung is recorded when it is judged, before the escalation decision is
+        made. Called on the branches that go on to emit a terminal, it turns the
+        last rung's ``climb`` into ``terminate``, because no rung followed it.
+        The reason is left as recorded; only the decision changes.
+        """
+        history = workflow.escalation_history
+        if (
+            history
+            and history[-1].acceptance_decision
+            is EnumDelegationAcceptanceDecision.CLIMB
+        ):
+            history[-1] = history[-1].model_copy(
+                update={
+                    "acceptance_decision": EnumDelegationAcceptanceDecision.TERMINATE
+                }
+            )
 
     def _record_escalation_attempt(
         self,

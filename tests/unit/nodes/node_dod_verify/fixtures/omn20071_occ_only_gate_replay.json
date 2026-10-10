@@ -1,0 +1,1581 @@
+{
+  "base_commit": "3fe55c842",
+  "note": "Decisions recorded by running these inputs through DurableEvidenceGate.evaluate_default at base_commit, before the gate read the product repository. The replay passes the same inputs plus each merged PR to the changed gate, whose repository readers find no contract.",
+  "cases": [
+    {
+      "name": "occ_pass_merge_commit_identity",
+      "ticket_id": "OMN-90001",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90001",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90001",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90001",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90001",
+        "status": "pass",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90001/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_receipt_untracked",
+      "ticket_id": "OMN-90002",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90002",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": false,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90002",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90002",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90002",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": false,
+            "message": "No receipt is tracked under drift/dod_receipts/OMN-90002/ on origin/dev. Commit and push the command.yaml receipt to onex_change_control before re-running the gate."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": false,
+            "message": "Ticket carries done-class label(s) ['source-done'] but no durable receipt is tracked on origin/dev. A done-class label must be backed by a tracked receipt (RECEIPT_TRACKED) \u2014 the label alone is not evidence (OMN-13337)."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_pr_closed",
+      "ticket_id": "OMN-90003",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90003",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90003",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90003",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "CLOSED",
+          "merge_commit_oid": null
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [],
+      "decision": {
+        "ticket_id": "OMN-90003",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90003/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": false,
+            "message": "https://github.com/OmniNode-ai/omnibase_core/pull/949 state=CLOSED, expected MERGED. Update the durable receipt to cite the real merged PR before re-running the gate."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "No merged evidence PR lands in a publishing repo, so the released-is-Done check does not apply."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_contract_absent_on_ref",
+      "ticket_id": "OMN-90004",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90004",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90004",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": null
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90004",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90004/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": false,
+            "message": "Contract contracts/OMN-90004.yaml is not present on origin/dev. Open an OCC PR with the contract and merge it before transitioning Linear to Done."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_contract_stale_on_ref",
+      "ticket_id": "OMN-90005",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90005",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90005",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90005",
+          "dod_evidence": [
+            {
+              "id": "dod-other",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90005",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90005/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": false,
+            "message": "Contract on origin/dev is stale \u2014 missing local check(s) [('dod-001', 'command')] or receipt-bound check(s) [('dod-001', 'command')]. Open an OCC PR to update the contract and merge it before transitioning Linear to Done."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_pass_head_sha_in_pr_commits",
+      "ticket_id": "OMN-90006",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90006",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90006",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "1111111111111111111111111111111111111111",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"1111111111111111111111111111111111111111\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90006",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "2222222222222222222222222222222222222222"
+        }
+      ],
+      "pr_commits": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "oids": [
+            "1111111111111111111111111111111111111111"
+          ]
+        }
+      ],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "2222222222222222222222222222222222222222",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90006",
+        "status": "pass",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90006/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge 2222222222222222222222222222222222222222 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_cited_sha_not_in_pr",
+      "ticket_id": "OMN-90007",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90007",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90007",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "1111111111111111111111111111111111111111",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"1111111111111111111111111111111111111111\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90007",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "2222222222222222222222222222222222222222"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "2222222222222222222222222222222222222222",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90007",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90007/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": false,
+            "message": "https://github.com/OmniNode-ai/omnibase_core/pull/949 is MERGED (mergeCommit.oid='2222222222222222222222222222222222222222') but receipt commit_sha='1111111111111111111111111111111111111111' is neither that merge commit nor a member of the PR's 0 commit(s). The receipt cites a commit that was not part of this PR \u2014 or the PR-commits API could not be resolved (fail-closed). Update the receipt to cite the squash mergeCommit.oid (or the reviewed head SHA that was actually merged) before re-running the gate."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge 2222222222222222222222222222222222222222 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_no_done_class_label",
+      "ticket_id": "OMN-90008",
+      "labels": [],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90008",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90008",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90008",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90008",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90008/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": false,
+            "message": "Ticket carries no approved done-class label. Add exactly one of ['demo-visible', 'prod-proven', 'projection-backed', 'replay-proven', 'runtime-observed', 'source-done'] that reflects how the work was proven Done (backed by RECEIPT_TRACKED / CONTRACT_CITES_MERGE_COMMIT / CONTRACT_ON_OCC_MAIN) before transitioning Linear to Done. A plain Done with no done-class label is rejected (OMN-13337)."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_defect_without_prevention",
+      "ticket_id": "OMN-90009",
+      "labels": [
+        "source-done",
+        "bug"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90009",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90009",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90009",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90009",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90009/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": false,
+            "message": "Defect ticket (label(s) ['bug']) cannot close: the contract links no prevention gate and carries no non-recurrence note. Add a top-level 'prevention_gate' (CI workflow / pre-commit hook path or PR URL) OR a 'non_recurrence_note' explaining why no automated gate is feasible before transitioning Linear to Done (OMN-13339, Rule 5)."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_defect_with_prevention_gate",
+      "ticket_id": "OMN-90010",
+      "labels": [
+        "source-done",
+        "bug"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90010",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ],
+        "prevention_gate": ".github/workflows/ci.yml"
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90010",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 949 --repo OmniNode-ai/omnibase_core --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":949,\"url\":\"https://github.com/OmniNode-ai/omnibase_core/pull/949\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 949
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90010",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ],
+          "prevention_gate": ".github/workflows/ci.yml"
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "number": 949,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnibase_core",
+          "pr_number": 949,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90010",
+        "status": "pass",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90010/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnibase_core: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v9.9.9, and the index serves omnibase-core 9.9.9 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Defect ticket (label(s) ['bug']) satisfies repair-to-ratchet via prevention_gate='.github/workflows/ci.yml'."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_publishing_repo_merged_unreleased",
+      "ticket_id": "OMN-90011",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90011",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90011",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 3300 --repo OmniNode-ai/omnimarket --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":3300,\"url\":\"https://github.com/OmniNode-ai/omnimarket/pull/3300\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 3300
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90011",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "number": 3300,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "tags": []
+        }
+      ],
+      "index_files": [],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "pr_number": 3300,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90011",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90011/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": false,
+            "message": "MERGED_UNRELEASED: 1 of 1 cited merge(s) are not proven released \u2014 OmniNode-ai/omnimarket: merge abcdef1234567890abcdef1234567890abcdef12 is contained in NO vX.Y.Z release tag. The change landed and shipped nowhere \u2014 cut a release carrying it before closing."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_receipt_bound_pass",
+      "ticket_id": "OMN-90012",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90012",
+        "dod_evidence": [
+          {
+            "id": "dod-audit",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "psql -c 'SELECT 1'"
+              }
+            ]
+          }
+        ],
+        "proof_class": "receipt-bound"
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90012",
+            "evidence_item_id": "dod-audit",
+            "check_type": "command",
+            "check_value": "psql -c 'SELECT 1'",
+            "status": "PASS",
+            "run_timestamp": "2026-08-05T12:00:00Z",
+            "commit_sha": "0000000",
+            "runner": "impl-agent",
+            "verifier": "verify-agent",
+            "probe_command": "psql -c 'SELECT 1'",
+            "probe_stdout": " ?column? \n----------\n        1\n"
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90012",
+          "dod_evidence": [
+            {
+              "id": "dod-audit",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "psql -c 'SELECT 1'"
+                }
+              ]
+            }
+          ],
+          "proof_class": "receipt-bound"
+        }
+      },
+      "pr_view": [],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [],
+      "decision": {
+        "ticket_id": "OMN-90012",
+        "status": "pass",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90012/ are tracked on origin/dev."
+          },
+          {
+            "check": "receipt_bound",
+            "passed": true,
+            "message": "All 1 receipt-bound evidence receipt(s) verified: independent verifier, non-empty observed evidence (OMN-15817 shape 5)."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "No merged evidence PR lands in a publishing repo, so the released-is-Done check does not apply."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_no_receipts_at_all",
+      "ticket_id": "OMN-90013",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90013",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": false,
+        "receipts": [],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90013",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [],
+      "pr_commits": [],
+      "release_tags": [],
+      "index_files": [],
+      "merged_prs": [],
+      "decision": {
+        "ticket_id": "OMN-90013",
+        "status": "fail",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": false,
+            "message": "No receipt is tracked under drift/dod_receipts/OMN-90013/ on origin/dev. Commit and push the command.yaml receipt to onex_change_control before re-running the gate."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": false,
+            "message": "No PASS receipt under drift/dod_receipts/OMN-90013/ binds pr_number, commit_sha, and a GitHub repo. Durable evidence must cite an actual merged PR via receipt fields before Linear can move to Done."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "No merged evidence PR lands in a publishing repo, so the released-is-Done check does not apply."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": false,
+            "message": "Ticket carries done-class label(s) ['source-done'] but no durable receipt is tracked on origin/dev. A done-class label must be backed by a tracked receipt (RECEIPT_TRACKED) \u2014 the label alone is not evidence (OMN-13337)."
+          }
+        ]
+      }
+    },
+    {
+      "name": "occ_pass_publishing_repo_released",
+      "ticket_id": "OMN-90014",
+      "labels": [
+        "source-done"
+      ],
+      "contract": {
+        "schema_version": "1.0.0",
+        "ticket_id": "OMN-90014",
+        "dod_evidence": [
+          {
+            "id": "dod-001",
+            "description": "Code change shipped",
+            "checks": [
+              {
+                "check_type": "command",
+                "check_value": "true"
+              }
+            ]
+          }
+        ]
+      },
+      "occ": {
+        "tracked": true,
+        "receipts": [
+          {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-90014",
+            "evidence_item_id": "dod-001",
+            "check_type": "command",
+            "check_value": "true",
+            "status": "PASS",
+            "run_timestamp": "2026-06-19T00:00:00Z",
+            "commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+            "runner": "worker",
+            "verifier": "reviewer",
+            "probe_command": "gh pr view 3301 --repo OmniNode-ai/omnimarket --json number,url,state,mergeCommit",
+            "probe_stdout": "{\"number\":3301,\"url\":\"https://github.com/OmniNode-ai/omnimarket/pull/3301\",\"state\":\"MERGED\",\"mergeCommit\":{\"oid\":\"abcdef1234567890abcdef1234567890abcdef12\"}}",
+            "pr_number": 3301
+          }
+        ],
+        "contract_on_ref": {
+          "schema_version": "1.0.0",
+          "ticket_id": "OMN-90014",
+          "dod_evidence": [
+            {
+              "id": "dod-001",
+              "description": "Code change shipped",
+              "checks": [
+                {
+                  "check_type": "command",
+                  "check_value": "true"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pr_view": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "number": 3301,
+          "state": "MERGED",
+          "merge_commit_oid": "abcdef1234567890abcdef1234567890abcdef12"
+        }
+      ],
+      "pr_commits": [],
+      "release_tags": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "tags": [
+            "v0.4.300"
+          ]
+        }
+      ],
+      "index_files": [
+        {
+          "distribution": "omnimarket",
+          "version": "0.4.300",
+          "files": [
+            "bdist_wheel",
+            "sdist"
+          ]
+        }
+      ],
+      "merged_prs": [
+        {
+          "repo": "OmniNode-ai/omnimarket",
+          "pr_number": 3301,
+          "head_sha": "1111111111111111111111111111111111111111",
+          "merge_commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
+          "merged_at": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "decision": {
+        "ticket_id": "OMN-90014",
+        "status": "pass",
+        "checks": [
+          {
+            "check": "receipt_tracked",
+            "passed": true,
+            "message": "Receipt(s) under drift/dod_receipts/OMN-90014/ are tracked on origin/dev."
+          },
+          {
+            "check": "contract_cites_merge_commit",
+            "passed": true,
+            "message": "All 1 receipt-bound PR(s) are MERGED with matching merge SHAs."
+          },
+          {
+            "check": "released_on_publishing_repo",
+            "passed": true,
+            "message": "All 1 publishing-repo merge(s) are contained in a release tag whose version the index serves: OmniNode-ai/omnimarket: merge abcdef1234567890abcdef1234567890abcdef12 is contained in v0.4.300, and the index serves omnimarket 0.4.300 with ['bdist_wheel', 'sdist']."
+          },
+          {
+            "check": "contract_on_occ_main",
+            "passed": true,
+            "message": "Contract on origin/dev contains the receipt-bound evidence checks."
+          },
+          {
+            "check": "defect_prevention_gate",
+            "passed": true,
+            "message": "Not a defect-class ticket \u2014 repair-to-ratchet rule does not apply."
+          },
+          {
+            "check": "done_class_label",
+            "passed": true,
+            "message": "Done-class label(s) ['source-done'] present and backed by a tracked durable receipt."
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -168,6 +168,26 @@ def test_caller_stops_comparing_with_occ_after_the_s6_cutover() -> None:
     )
 
 
+# OMN-20070 (AC3): omnimarket#3511 (e565ba5ba) makes the verifier refuse a
+# contract that leaves one acceptance criterion unbound, first released in
+# 0.4.303. A caller pinned before that release admits such a contract, so the
+# required repo-evidence / dod-verify check would pass a half-bound contract.
+# 0.4.305 is the release omnibase_infra and omnibase_core run: it ships that
+# refusal, the occ-difference classifier and the release-cut classifiers.
+_UNBOUND_REFUSAL_FLOOR = (0, 4, 305)
+
+
+def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
+    job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]
+    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
+    assert version >= _UNBOUND_REFUSAL_FLOOR, (
+        "verifier-version must ship the unbound-criteria refusal "
+        f"(omnimarket#3511, >= {'.'.join(map(str, _UNBOUND_REFUSAL_FLOOR))})"
+    )
+
+
 # OMN-20543 (AC3): the pinned reusable is the one whose dod-verify job gives a
 # database test its database. A pin before omnibase_core#1886 runs that test
 # with none, so a contract can only scope it local_done_gate, which the hosted
