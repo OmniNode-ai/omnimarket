@@ -14,6 +14,7 @@ port, model flag or endpoint variable creeping back into a workflow file.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,6 @@ pytestmark = [pytest.mark.unit]
 
 _WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 WORKFLOW = _WORKFLOWS / "hostile-reviewer.yml"
-OVERLAY_SUFFIX = "docker/lane-overlays/hostile-review-voters.yaml"
 OVERLAY_ARG = '--voters-overlay "$REVIEW_VOTERS_OVERLAY"'
 
 # What a voter endpoint looks like when someone writes one into a workflow:
@@ -117,22 +117,8 @@ def test_preflight_resolves_targets_from_the_overlay() -> None:
     assert '"$REVIEW_VOTERS_OVERLAY"' in run
 
 
-def test_overlay_path_is_the_canonical_overlay() -> None:
-    parsed = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    env = parsed["jobs"]["hostile-review"]["env"]
-    assert str(env["REVIEW_VOTERS_OVERLAY"]).endswith(OVERLAY_SUFFIX)
-
-
 def test_retry_budget_reads_the_overlay() -> None:
     assert OVERLAY_ARG in str(_step("Validate retry-budget invariant")["run"])
-
-
-def test_overlay_is_read_live_from_omnibase_infra_dev() -> None:
-    """Unpinned on purpose: a pin would bring back the per-PR branch update."""
-    run = str(_step("Fetch review voters overlay")["run"])
-    assert "github.com/OmniNode-ai/omnibase_infra.git" in run
-    assert "--branch dev" in run
-    assert "sparse-checkout set docker/lane-overlays" in run
 
 
 def test_omniintelligence_is_pinned_to_a_full_sha() -> None:
@@ -159,3 +145,66 @@ def test_preflight_runs_in_the_installed_environment() -> None:
     assert "if" not in install_step
     # A failed install fails the job; no step can read a verdict without it.
     assert "continue-on-error" not in install_step
+
+
+# OMN-20923 (operator RULING 2026-10-10T21:57:38Z): the roster is a deployment
+# fact. No shipped repository carries it; the workflow fetches it from the
+# private CI overlay the org variable OMNI_CI_OVERLAY_REPO names, and with the
+# variable unset the neutral default is "no review voters configured".
+OVERLAY_ENV = (
+    "${{ github.workspace }}/../ci-overlay/config/onex/overlays/"
+    "node_review_voters_overlay_compute/overlay.yaml"
+)
+
+
+def test_overlay_path_is_the_ci_overlay_outside_the_workspace() -> None:
+    parsed = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    env = parsed["jobs"]["hostile-review"]["env"]
+    assert env["REVIEW_VOTERS_OVERLAY"] == OVERLAY_ENV
+    assert "../ci-overlay" in str(_step("Clean stale dependency clones")["run"])
+
+
+def test_the_ci_overlay_repository_comes_from_an_org_variable() -> None:
+    step = _step("Resolve the CI overlay")
+    assert step["env"]["CI_OVERLAY_REPO"] == "${{ vars.OMNI_CI_OVERLAY_REPO }}"
+    fetch = _step("Fetch the CI overlay")
+    assert fetch["with"]["repository"] == (
+        "${{ github.repository_owner }}/${{ steps.ci-overlay.outputs.name }}"
+    )
+    assert fetch["with"]["persist-credentials"] is False
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "lane-overlays" not in text
+    assert "github.com/OmniNode-ai/omnibase_infra.git" not in text
+
+
+def _run_resolve(repo_var: str, tmp_path: Path) -> tuple[int, str, str]:
+    output = tmp_path / "github_output"
+    output.write_text("", encoding="utf-8")
+    proc = subprocess.run(
+        ["bash", "-c", str(_step("Resolve the CI overlay")["run"])],
+        env={
+            "CI_OVERLAY_REPO": repo_var,
+            "GITHUB_OUTPUT": str(output),
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode, output.read_text(encoding="utf-8"), proc.stdout
+
+
+def test_a_fork_with_no_ci_overlay_gets_the_neutral_default(tmp_path: Path) -> None:
+    """Unset variable: the gate fails closed, naming "no review voters configured"."""
+    rc, out, stdout = _run_resolve("", tmp_path)
+    assert rc == 1
+    assert "no review voters configured" in stdout
+    assert "name=" not in out
+
+
+def test_our_ci_resolves_the_named_overlay_repository(tmp_path: Path) -> None:
+    rc, out, _ = _run_resolve("deploy-config", tmp_path)
+    assert rc == 0
+    assert "name=deploy-config" in out
+    rc, _, _ = _run_resolve("owner/repo", tmp_path)
+    assert rc == 1

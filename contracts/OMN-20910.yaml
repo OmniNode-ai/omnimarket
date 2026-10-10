@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20910"
 title: "Review-voter models are declared in a contract overlay, not repo variables or workflow files"
-summary: "omnimarket's Hostile Reviewer workflow reads every voter from the review voters overlay (omnibase_infra docker/lane-overlays/hostile-review-voters.yaml, fetched from omnibase_infra dev at run time) through omniintelligence's cli_review --voters-overlay, its retry-budget check and its preflight. The workflow names no voter endpoint, port, model flag or endpoint variable, and a ratchet with a known-bad positive control keeps it that way. The quorum rule and the fail-closed gate are unchanged."
+summary: "omnimarket's Hostile Reviewer workflow reads every voter from the review voters overlay (since OMN-20923 a private CI overlay fetched at run time from the repository the org variable OMNI_CI_OVERLAY_REPO names, never a file of a shipped repository) through omniintelligence's cli_review --voters-overlay, its retry-budget check and its preflight. The workflow names no voter endpoint, port, model flag or endpoint variable, and a ratchet with a known-bad positive control keeps it that way. The quorum rule and the fail-closed gate are unchanged."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,7 +11,7 @@ requirements:
     statement: "The hostile-review job resolves its voters only from the review voters overlay, at the preflight, retry-budget and review sites."
     acceptance:
       - id: "AC1"
-        statement: "AC1: the preflight, retry-budget and review steps read the overlay and the overlay path is the canonical one -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or canonical_overlay'"
+        statement: "AC1: the preflight, retry-budget and review steps read the overlay and the overlay path is the CI overlay outside the workspace -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or outside_the_workspace'"
   - id: "req-no-voter-endpoint-in-workflows"
     statement: "No workflow file names a review voter endpoint, port, model flag or endpoint variable."
     acceptance:
@@ -31,7 +31,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or canonical_overlay'"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or outside_the_workspace'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20910-ac3-no-voter-endpoint"
