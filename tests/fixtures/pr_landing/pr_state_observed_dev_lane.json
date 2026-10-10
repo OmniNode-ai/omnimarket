@@ -139,6 +139,44 @@
         "emitted_at": "2026-10-10T07:16:37.943356+00:00",
         "schema_version": "1.0.0"
       }
+    },
+    {
+      "offset": 161819,
+      "timestamp_ms": 1791645391659,
+      "value": {
+        "actor": "claude",
+        "armed": false,
+        "author": "pr-author",
+        "author_is_bot": false,
+        "base": "dev",
+        "ci_read_at": "2026-10-10T15:05:09Z",
+        "ci_verdict": "GREEN",
+        "digest": "3c09e58510e173f8834c611bfdc8f61a5890890370d7e0982816d843570b8214",
+        "draft": false,
+        "head_ref": "lane/branch-4801",
+        "head_sha": "24be98a29748a2bffbe7605afd45a2253bdf09d6",
+        "labels": [],
+        "lane": "",
+        "lane_source": "unresolved",
+        "lane_ticket": "",
+        "merged_at": "",
+        "observed_at": "2026-10-10T15:15:17Z",
+        "pending_contexts": [],
+        "pr_number": 2637,
+        "queued": false,
+        "red_contexts": [],
+        "repo": "omniclaude",
+        "state": "open",
+        "title": "feat: a neutral title",
+        "turn_id": null,
+        "watcher_class": "green-unarmed",
+        "workspace_path": "",
+        "hook_fired_at": "2026-10-10T15:16:26.516534+00:00",
+        "correlation_id": "3c09e58510e173f8834c611bfdc8f61a5890890370d7e0982816d843570b8214",
+        "causation_id": null,
+        "emitted_at": "2026-10-10T15:16:29.230869+00:00",
+        "schema_version": "1.0.0"
+      }
     }
   ]
 }
