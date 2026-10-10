@@ -12,11 +12,16 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: the node declares only the OMN-20606 lineage columns and a terminal carrying attempt_kind stores no lineage -- falsifier: uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q in omnimarket"
-  - id: "req-harness-backend-key-tolerance"
-    statement: "Consumer first for the harness backend keys: ModelDelegationBackendConfig decodes a backend carrying kind, harness, surface or tenant_scope by dropping exactly those keys, and still refuses every other unknown key, so the release that later declares them as fields is not refused by this release at the decode boundary."
+  - id: "req-harness-backend-consumer"
+    statement: "The delegation backend model reads kind, harness, surface and tenant_scope, and admits a kind: harness backend only when it is internal surface, house tenant, with no endpoint and no secret_ref; the escalation-chain models and resolve_class_escalation_chain resolve a declared chain and give a harness rung a refusal for a pinned-only backend, a non-house tenant or a non-internal surface. No shipped config declares a harness backend, a harness tier or a chain in this change, so a released consumer decodes every shipped payload before any producer emits the new keys."
     acceptance:
-      - id: "AC2"
-        statement: "AC2: a backend carrying the four forthcoming keys decodes equal to one without them, and any other unknown key is refused -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: forged harness declarations parse or are refused as stated, and forged chains resolve with the stated refusals -- falsifier: uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q in omnimarket"
+  - id: "req-harness-routing-overlay"
+    statement: "House routing (harness backends, harness tiers, per-class escalation chains) is read only from the overlay named by DELEGATION_ROUTING_OVERLAY_PATH; the packaged bifrost_delegation.yaml, routing_tiers.yaml and task_class_contracts.v1.yaml declare no harness backend, no harness tier and no chain; an unbound selector resolves an empty overlay and no chain for any class, and a bound selector naming a missing or invalid file fails with ProtocolConfigurationError."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the packaged configs ship no harness backend, tier or chain, an unbound selector resolves no chain, and a synthetic overlay resolves its chains with the stated refusals -- falsifier: uv run pytest tests/unit/delegation/test_harness_escalation_chain_omn20287.py tests/unit/delegation/test_omn20287_harness_backend_contract.py -q in omnimarket"
   - id: "req-deployment-fact-gate"
     statement: "The deployment-fact fields of the packaged routing configs (backends, endpoints, model names, secret refs, providers, routing tiers and per-class orders in bifrost_delegation.yaml, routing_tiers.yaml and task_class_contracts.v1.yaml) carry the deployment_fact marker on their typed models, and node_deployment_fact_gate_effect, wired as the deployment-fact-gate pre-commit hook and the Deployment Fact Gate CI job, refuses a non-neutral value in a marked field and an undeclared key that the base revision did not carry, the base revision being the shrink-only baseline."
     acceptance:
@@ -49,14 +54,22 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_delegation_lineage_projection.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn20287-ac2-harness-backend-key-tolerance"
-    description: "AC2 hosted probe. The tolerance tests pass at the head and fail at the merge base, where the backend model refuses the four keys."
+  - id: "dod-omn20287-ac3-harness-backend-consumer"
+    description: "AC3 hosted probe. The consumer model and resolver tests pass at the head and fail at the merge base, where the fields and the resolver do not exist."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_key_tolerance.py -q"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20287_harness_backend_model.py tests/unit/delegation/test_harness_escalation_chain_resolver_omn20287.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
+    binds_ac: ["AC3"]
+  - id: "dod-omn20287-ac4-harness-rungs-escalation-chain"
+    description: "AC4 hosted probe. The parity and overlay tests pass at the head and fail at the merge base, where the overlay loader does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_escalation_chain_omn20287.py tests/unit/delegation/test_omn20287_harness_backend_contract.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
   - id: "dod-omn20287-ac5-deployment-fact-gate"
     description: "AC5 hosted probe. The gate tests pass at the head and fail at the merge base, where the node and the markers do not exist."
     source: "manual"

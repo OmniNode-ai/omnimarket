@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field, model_validator
 
-from omnimarket.events.pr_state import ModelPrStateEmitRequest
+from omnimarket.events.pr_state import PR_STATE_V2_FIELDS, ModelPrStateEmitRequest
 from omnimarket.models.pr_handoff.model_pr_handoff_requested import handoff_key_for
 
 
@@ -27,6 +27,9 @@ class ModelPrHandoffObservationIngress(ModelPrStateEmitRequest):
     @model_validator(mode="before")
     @classmethod
     def _derive_handoff_key(cls, data: object) -> object:
+        if isinstance(data, dict):
+            # Schema version 2 per-check facts are not this orchestrator's input.
+            data = {k: v for k, v in data.items() if k not in PR_STATE_V2_FIELDS}
         if isinstance(data, dict) and "repo" in data and "pr_number" in data:
             derived = handoff_key_for(str(data["repo"]), int(data["pr_number"]))
             supplied = data.get("handoff_key")
