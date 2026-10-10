@@ -82,7 +82,7 @@ def test_parity_fixture_exercises_every_lab_headroom_finding_class() -> None:
         "NOTE lab-headroom:h201 | limited mark unreadable",
         "NOTE lab-headroom:h201 | claude auth expired since",
         "NOTE lab-headroom:h201 | auth-expired mark unreadable",
-        "NOTE lab-headroom:h201 | no recent placement reading",
+        "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min",
         "NOTE lab-headroom:h201 | unhealthy:",
         "NOTE lab-headroom:h201 | admission refused:",
         "NOTE lab-headroom:h201 | unreadable placement reading",
@@ -141,9 +141,10 @@ def test_a_running_receipt_with_a_non_integer_pid_is_dropped_whole() -> None:
     result = run(
         lab_headroom={"hosts": [HOST], "receipts": [_receipt(pid_valid=False)]}
     )
-    assert lab_lines(result) == [
-        "NOTE lab-headroom:h201 | no recent placement reading; no dispatch"
-    ]
+    [line] = lab_lines(result)
+    assert line.startswith(
+        "UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest none): its capacity is unread"
+    )
 
 
 def test_the_host_table_cap_bounds_the_reading() -> None:
@@ -213,9 +214,13 @@ def test_a_stale_or_future_reading_is_no_reading() -> None:
         result = run(
             lab_headroom={"hosts": [HOST], "receipts": [_receipt(started_at=started)]}
         )
-        assert lab_lines(result) == [
-            "NOTE lab-headroom:h201 | no recent placement reading; no dispatch"
-        ]
+        # an unread host is UNKNOWN, never a quiet NOTE (OMN-20840)
+        [line] = lab_lines(result)
+        assert line.startswith(
+            f"UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest {started})"
+        )
+        assert "onex_lab_run.py --hosts" in line
+        assert result.exit_code == 1
 
 
 def test_the_newest_reading_wins() -> None:
@@ -343,7 +348,8 @@ def test_a_healthy_lab_adds_its_checked_entry_to_the_ok_line() -> None:
             },
         },
         floors_per_repo={"r/a": 1},
-        lab_headroom={"hosts": [{"name": "h201", "parses": {}}]},
+        # the launching host is never a lab finding; an unread lab host would be UNKNOWN (OMN-20840)
+        lab_headroom={"hosts": [{"name": "local", "local": True, "parses": {}}]},
     )
     assert result.status_line == (
         "THROUGHPUT OK checked=controller,merges,floors,lab-headroom"
