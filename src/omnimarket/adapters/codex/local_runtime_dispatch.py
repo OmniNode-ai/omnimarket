@@ -42,6 +42,7 @@ from omnimarket.adapters.codex.runtime_client import (
     _first_topic,
     _has_valid_contract_shapes,
     _node_contract_binding,
+    _select_operation_contract,
     default_response_topic,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models import (
@@ -536,6 +537,7 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
         raise ValueError(f"Node contract must be a mapping: {contract_path}")
     if not _has_valid_contract_shapes(contract):
         raise ValueError(f"Malformed node contract dispatch shape: {contract_path}")
+    contract = _select_operation_contract(contract, command_name)
 
     event_bus_raw = contract.get("event_bus", {})
     runtime_dispatch_raw = contract.get("runtime_dispatch", {})
