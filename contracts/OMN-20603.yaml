@@ -1,0 +1,74 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-20603
+title: Lane liveness is gathered on a schedule and a dropped lane is alerted
+summary: Adds node_lane_liveness_gather_effect (tick to compute command) and node_lane_liveness_drop_alert_effect (evaluation to slack-publish command), promotes the liveness models to omnimarket.models, and removes the hand-run reader script. AC1 to AC4 are bound to hosted tests. AC5 is a dev-202 bus readback and is not bound.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-lane-liveness-gathered-and-alerted
+  statement: 'Lane liveness is gathered on a schedule and a dropped lane is alerted. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC5 is not bound here: it reads the dev-202 redpanda, which this repository''s hosted check cannot reach.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a runtime tick makes the gather effect node return exactly one ModelLaneLivenessRequest for the window and a second tick inside the interval returns none -- falsifier: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -k gather -q in omnimarket'
+  - id: AC2
+    statement: 'AC2: the compute command topic has the gather node as its graph producer, the evaluation topic has the drop-alert node as its graph consumer, and the compute contract topics and input_model are unchanged -- falsifier: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -q in omnimarket'
+  - id: AC3
+    statement: 'AC3: booted under wire_from_manifest, a tick with a lane silent past the threshold while the relay carries traffic yields one slack-publish command naming the lane, and a tick with a silent relay yields none -- falsifier: uv run pytest tests/test_lane_liveness_runtime_boot.py -q in omnimarket'
+  - id: AC4
+    statement: 'AC4: scripts/lane_liveness_reader.py no longer exists and no gather code remains outside the gather node -- falsifier: uv run pytest tests/unit/nodes/test_node_lane_liveness_compute.py -q passes'
+evidence_requirements:
+- kind: tests
+  description: 'AC1 hosted probe: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -k gather -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  command: env -u PYTHONPATH uv run pytest tests/test_golden_chain_lane_liveness_wire.py -k gather -q
+- kind: tests
+  description: 'AC2 hosted probe: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  command: env -u PYTHONPATH uv run pytest tests/test_golden_chain_lane_liveness_wire.py -q
+- kind: tests
+  description: 'AC3 hosted probe: uv run pytest tests/test_lane_liveness_runtime_boot.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  command: env -u PYTHONPATH uv run pytest tests/test_lane_liveness_runtime_boot.py -q
+- kind: tests
+  description: 'AC4 hosted probe: uv run pytest tests/unit/nodes/test_node_lane_liveness_compute.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  command: env -u PYTHONPATH uv run pytest tests/unit/nodes/test_node_lane_liveness_compute.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20603-ac1-tick-gathers-one-request
+  description: 'AC1 hosted probe: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -k gather -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -k gather -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn20603-ac2-graph-closed
+  description: 'AC2 hosted probe: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_lane_liveness_wire.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn20603-ac3-boot-alerts-a-drop
+  description: 'AC3 hosted probe: uv run pytest tests/test_lane_liveness_runtime_boot.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_lane_liveness_runtime_boot.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn20603-ac4-script-converted
+  description: 'AC4 hosted probe: uv run pytest tests/unit/nodes/test_node_lane_liveness_compute.py -q passes at the head and fails at the merge base, where the gather and drop-alert nodes do not exist.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_node_lane_liveness_compute.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4

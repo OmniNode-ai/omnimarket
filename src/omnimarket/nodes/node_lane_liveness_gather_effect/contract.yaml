@@ -1,0 +1,77 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_liveness_gather_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The scheduled producer of node_lane_liveness_compute's command. On a
+  runtime-tick interval it performs the two reads the compute node leaves to its
+  caller -- public.hook_events (lane activity and relay liveness) and the
+  work-ledger projection's CLAIM and TERMINAL rows -- assembles a
+  ModelLaneLivenessRequest, and returns it; the runtime publishes it to the
+  compute node's command topic. Every statement is a SELECT. A failed read
+  raises: an empty request built from a failed read would read as a quiet fleet.
+  Replaces the hand-run reader script's gather.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lane_liveness.scheduled_gather
+      handler:
+        name: HandlerLaneLivenessGather
+        module: omnimarket.nodes.node_lane_liveness_gather_effect.handlers.handler_lane_liveness_gather
+      handler_module: omnimarket.nodes.node_lane_liveness_gather_effect.handlers.handler_lane_liveness_gather
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_lane_liveness_gather_effect.handlers.handler_lane_liveness_gather
+  class: HandlerLaneLivenessGather
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "lane_liveness.scheduled_gather"
+
+output_model:
+  name: ModelLaneLivenessRequest
+  module: omnimarket.models.liveness.model_lane_liveness
+  description: The gathered window, or no output on a tick inside the interval.
+
+config:
+  lane_liveness_gather:
+    run_interval_seconds: 300
+    window_minutes: 60
+    silence_threshold_seconds: 900
+    relay_silence_threshold_seconds: 300
+    # public.hook_events lives in the omnidash_analytics database.
+    hook_events_dsn_env: OMNIDASH_ANALYTICS_DB_URL
+    # CLAIM and TERMINAL rows come from the work-ledger projection.
+    ledger_dsn_env: OMNINODE_INTERNAL_DB_URL
+    ledger_id: rolling-work-ledger
+
+# The command the runtime publishes on the handler's behalf; the compute node's
+# command topic.
+terminal_event: onex.cmd.omnimarket.lane-liveness-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.lane-liveness-requested.v1
+
+metadata:
+  transport_type: database
+  description: "Scheduled gather of the hook ledger and work ledger for lane liveness"
+  author: "OmniNode Platform Team"
+  tags: ["effect", "hook-ledger", "lane-liveness", "schedule"]

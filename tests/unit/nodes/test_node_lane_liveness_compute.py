@@ -390,53 +390,28 @@ def test_a_clock_skewed_future_event_does_not_become_negative_silence() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _reader():
-    import importlib.util
-    from pathlib import Path
+def _gather():
+    from omnimarket.nodes.node_lane_liveness_gather_effect.handlers import (
+        handler_lane_liveness_gather as module,
+    )
 
-    path = Path(__file__).resolve().parents[3] / "scripts" / "lane_liveness_reader.py"
-    spec = importlib.util.spec_from_file_location("lane_liveness_reader", path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
     return module
 
 
-LEDGER = """\
-2026-09-17T14:25:00Z | CLAIM | lane=hook-cloud-relay-chain-build-1425 | scope=x
-2026-09-17T14:40:00Z | CLAIM | lane=release-trains-build-1440 | scope=y
-2026-09-17T15:00:00Z | PROGRESS | lane=release-trains-build-1440 | note=z
-2026-09-17T16:13:00Z | TERMINAL | lane=hook-cloud-relay-chain-build-1552 | done
-2026-09-17T18:00:00Z | CLAIM | lane=a-lane-from-the-future-1800 | scope=later
-not a ledger row at all
-"""
-
-
-def test_the_ledger_parser_reads_claims_and_terminals_and_ignores_the_rest() -> None:
-    claims, terminals = _reader().parse_ledger(
-        LEDGER, datetime(2026, 9, 17, 17, 0, tzinfo=UTC)
+def _build(module, *, lane_rows, relay_last, relay_count, attributed, claims):
+    return module.build_request(
+        window_start=datetime(2026, 9, 17, 15, 12, tzinfo=UTC),
+        window_end=datetime(2026, 9, 17, 17, 0, tzinfo=UTC),
+        read=module.ModelLaneWindowRead(
+            lane_rows=tuple(lane_rows),
+            relay_last_event_at=relay_last,
+            relay_event_count=relay_count,
+            attributed_event_count=attributed,
+            claims=claims,
+            terminals={},
+        ),
+        config=module.gather_config(),
     )
-
-    assert set(claims) == {
-        "hook-cloud-relay-chain-build-1425",
-        "release-trains-build-1440",
-    }
-    assert set(terminals) == {"hook-cloud-relay-chain-build-1552"}
-    # A PROGRESS row is neither a claim nor a terminal.
-    assert claims["release-trains-build-1440"] == datetime(
-        2026, 9, 17, 14, 40, tzinfo=UTC
-    )
-
-
-def test_rows_after_the_window_end_cannot_contaminate_a_historical_window() -> None:
-    """A reader that changes its mind about the past is not a record.
-
-    Without this the same historical window yields different answers every time
-    the ledger grows.
-    """
-    claims, _ = _reader().parse_ledger(LEDGER, datetime(2026, 9, 17, 17, 0, tzinfo=UTC))
-    assert "a-lane-from-the-future-1800" not in claims
 
 
 def test_the_observation_set_is_the_union_of_both_surfaces() -> None:
@@ -446,10 +421,8 @@ def test_the_observation_set_is_the_union_of_both_surfaces() -> None:
     subject: a lane that died produces no events, so it would never be asked
     about.
     """
-    reader = _reader()
-    request = reader.build_request(
-        window_start=datetime(2026, 9, 17, 16, 0, tzinfo=UTC),
-        window_end=datetime(2026, 9, 17, 17, 0, tzinfo=UTC),
+    request = _build(
+        _gather(),
         lane_rows=[
             {
                 "lane": "on-the-wire-only-1600",
@@ -457,13 +430,10 @@ def test_the_observation_set_is_the_union_of_both_surfaces() -> None:
                 "event_count": 9,
             }
         ],
-        relay_last_event_at=datetime(2026, 9, 17, 16, 59, tzinfo=UTC),
-        relay_event_count=9,
-        attributed_event_count=9,
+        relay_last=datetime(2026, 9, 17, 16, 59, tzinfo=UTC),
+        relay_count=9,
+        attributed=9,
         claims={"in-the-ledger-only-1600": datetime(2026, 9, 17, 16, 1, tzinfo=UTC)},
-        terminals={},
-        silence_threshold_seconds=900,
-        relay_silence_threshold_seconds=300,
     )
 
     lanes = {o.lane for o in request.observations}
@@ -473,18 +443,13 @@ def test_the_observation_set_is_the_union_of_both_surfaces() -> None:
 
 def test_zero_attributed_events_turns_attribution_off() -> None:
     """The flag is derived from the data, never asserted by the caller."""
-    reader = _reader()
-    request = reader.build_request(
-        window_start=datetime(2026, 9, 17, 15, 12, tzinfo=UTC),
-        window_end=datetime(2026, 9, 17, 15, 20, tzinfo=UTC),
+    request = _build(
+        _gather(),
         lane_rows=[],
-        relay_last_event_at=datetime(2026, 9, 17, 15, 19, tzinfo=UTC),
-        relay_event_count=38,
-        attributed_event_count=0,
+        relay_last=datetime(2026, 9, 17, 15, 19, tzinfo=UTC),
+        relay_count=38,
+        attributed=0,
         claims={"pre-emitter-lane-1425": datetime(2026, 9, 17, 14, 25, tzinfo=UTC)},
-        terminals={},
-        silence_threshold_seconds=900,
-        relay_silence_threshold_seconds=300,
     )
     assert request.lane_attribution_available is False
 
@@ -498,10 +463,9 @@ def test_the_reader_never_groups_or_filters_on_a_session_key() -> None:
     """
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[3] / "scripts" / "lane_liveness_reader.py"
-    ).read_text()
-    statements = source[source.index("async def gather") :]
+    source = Path(_gather().__file__).read_text()
+    statements = source[source.index("class PostgresLaneWindowReader") :]
+    statements = statements[: statements.index("def build_request")]
     for forbidden in ("session_id", "correlation_id", "run_id", "entity_id"):
         assert forbidden not in statements, f"{forbidden} is used as a query key"
     assert "payload->>'lane'" in statements
@@ -583,7 +547,7 @@ def test_the_contract_declares_its_terminal_event_and_activity_classes() -> None
 
 def test_the_reader_resolves_activity_classes_from_the_contract() -> None:
     """Not from a second copy in Python, which is a second thing to forget."""
-    assert _reader().activity_event_types() == (
+    assert _gather().activity_event_types() == (
         "onex.evt.omniclaude.tool-executed.v1",
         "onex.evt.omniclaude.prompt-submitted.v1",
     )
@@ -611,4 +575,4 @@ def test_an_empty_activity_class_list_is_refused_rather_than_queried(
     emptied.write_text(yaml.safe_dump(contract), encoding="utf-8")
 
     with pytest.raises(ValueError, match="false zero"):
-        _reader().activity_event_types(emptied)
+        _gather().activity_event_types(emptied)

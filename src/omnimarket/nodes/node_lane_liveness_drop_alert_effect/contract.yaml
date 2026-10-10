@@ -1,0 +1,73 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_liveness_drop_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The consumer of node_lane_liveness_compute's evaluation. When a report holds
+  one or more DROPPED lanes it returns one Slack command naming them, which the
+  runtime publishes to node_slack_publish_effect's command topic; a report with
+  no dropped lane returns nothing. UNOBSERVABLE and UNKNOWN_RELAY_SILENT are not
+  drops and never alert. The idempotency key buckets on the dropped lane set and
+  renotify_after_seconds, so a standing drop re-posts at most once per bucket
+  through the publish node's ledger.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lane_liveness.drop_alert
+      handler:
+        name: HandlerLaneLivenessDropAlert
+        module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
+      handler_module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
+      event_model: omnimarket.models.liveness.model_lane_liveness.ModelLaneLivenessReport
+
+handler:
+  module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
+  class: HandlerLaneLivenessDropAlert
+  input_model: omnimarket.models.liveness.model_lane_liveness.ModelLaneLivenessReport
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [effects]
+
+input_subscriptions:
+  - topic: "onex.evt.omnimarket.lane-liveness-evaluated.v1"
+    operation: "lane_liveness.drop_alert"
+
+output_model:
+  name: ModelLaneDropSlackCommand
+  module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.models
+  description: One slack-publish command naming the dropped lanes, or no output.
+
+config:
+  lane_liveness_drop_alert:
+    renotify_after_seconds: 21600
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack channel id the drop alert is posted to, resolved at the effect
+      boundary through the canonical secret-store resolver.
+    required: true
+
+# The command the runtime publishes on the handler's behalf.
+terminal_event: onex.cmd.omnimarket.slack-publish.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.lane-liveness-evaluated.v1
+  publish_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+
+metadata:
+  transport_type: kafka
+  description: "Slack alert for dropped lanes in a lane-liveness evaluation"
+  author: "OmniNode Platform Team"
+  tags: ["effect", "alerting", "lane-liveness"]
