@@ -1,0 +1,75 @@
+---
+name: node_delegation_dod_verify_request_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Definition-B producer of the dod_verify start command for a delegated run.
+  One completed delegation terminal that names a ticket in, one start command
+  out that names that ticket and the delegation run, so the verdict row joins to
+  the delegation_events row it judged. A terminal with no valid ticket yields no
+  command. No I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_dod_verify_request
+      handler:
+        name: HandlerDelegationDodVerifyRequest
+        module: omnimarket.nodes.node_delegation_dod_verify_request_compute.handlers.handler_delegation_dod_verify_request
+
+handler:
+  module: omnimarket.nodes.node_delegation_dod_verify_request_compute.handlers.handler_delegation_dod_verify_request
+  class: HandlerDelegationDodVerifyRequest
+  input_model: omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection.ModelDelegateSkillTerminalProjection
+  output_model: omnimarket.nodes.node_delegation_dod_verify_request_compute.models.model_delegation_dod_verify_request.ModelDelegationDodVerifyRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  correlation_id:
+    type: str
+    required: true
+    description: The delegation's correlation id; becomes delegation_correlation_id.
+  status:
+    type: str
+    required: true
+    description: The delegation's terminal status; only completed is verified.
+  ticket_id:
+    type: str
+    required: false
+    description: The ticket the delegation worked; no ticket, no command.
+
+outputs:
+  ticket_id:
+    type: str
+  correlation_id:
+    type: str
+  delegation_correlation_id:
+    type: str
+  execution_audience:
+    type: str
+
+terminal_event: onex.cmd.omnimarket.dod-verify-start.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.dod-verify-start.v1
+
+published_events:
+  - event_type: DelegationDodVerifyRequest
+    topic: onex.cmd.omnimarket.dod-verify-start.v1
+    description: One dod_verify start command for one completed, ticketed delegation.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.delegate-skill-completed.v1
