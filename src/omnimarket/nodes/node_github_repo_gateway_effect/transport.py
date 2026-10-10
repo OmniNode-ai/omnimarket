@@ -10,7 +10,12 @@ subprocess ``gh`` shell-out:
   verbatim to :class:`GitHubHttpTransport`;
 * PR-scoped reads use the module-level :func:`omnimarket.github_api.graphql`
   helper with a single-PR query, normalized to the same stable shapes
-  ``GitHubHttpTransport`` produces.
+  ``GitHubHttpTransport`` produces;
+* the Actions, PR-text and release reads (OMN-20912) send typed
+  :class:`ModelGithubHttpRequest` objects through the shared landing transport
+  (``omnimarket.github_landing``), the send path the landing effect uses, so a
+  response arrives with its headers (``Link`` paging) and a log or archive body
+  is read under a byte cap.
 
 The token is passed in already-resolved; this module never reads any process
 environment variable.
@@ -18,13 +23,24 @@ environment variable.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
+
+from pydantic import SecretStr
 
 from omnimarket.github_api import (
     GitHubApiError,
     GitHubHttpTransport,
     graphql,
     split_repo,
+)
+from omnimarket.github_landing.github_landing_transport import (
+    GithubLandingTransportError,
+    UrllibGithubLandingTransport,
+)
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubBytesResponse,
+    ModelGithubHttpRequest,
+    ModelGithubHttpResponse,
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
@@ -110,6 +126,20 @@ class GitHubReadTransportProtocol(Protocol):
         """
         ...
 
+    def send_sync(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
+        """Send one typed request; any HTTP status comes back whole."""
+        ...
+
+    def send_bytes_sync(
+        self,
+        request: ModelGithubHttpRequest,
+        *,
+        limit: int,
+        keep: Literal["head", "tail"],
+    ) -> ModelGithubBytesResponse:
+        """Send one GET whose body is bytes, read under ``limit``."""
+        ...
+
 
 def _normalize_rollup_contexts(
     rollup_nodes: list[dict[str, Any]],
@@ -157,6 +187,25 @@ class RealGitHubReadTransport(GitHubReadTransportProtocol):
             )
         self._token = token
         self._client = GitHubHttpTransport(token)
+        self._sender = UrllibGithubLandingTransport(SecretStr(token))
+
+    def send_sync(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
+        try:
+            return self._sender.send_sync(request)
+        except GithubLandingTransportError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
+
+    def send_bytes_sync(
+        self,
+        request: ModelGithubHttpRequest,
+        *,
+        limit: int,
+        keep: Literal["head", "tail"],
+    ) -> ModelGithubBytesResponse:
+        try:
+            return self._sender.send_bytes_sync(request, limit=limit, keep=keep)
+        except GithubLandingTransportError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
 
     def fetch_open_prs(self, repo: str) -> list[dict[str, Any]]:
         try:

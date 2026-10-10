@@ -57,6 +57,23 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="PR number (required for PR-scoped operations).",
     )
+    parser.add_argument("--run-id", type=int, default=None, help="Workflow run id.")
+    parser.add_argument("--job-id", type=int, default=None, help="Job id.")
+    parser.add_argument(
+        "--artifact-id", type=int, default=None, help="Artifact to fetch (bounded)."
+    )
+    parser.add_argument("--branch", default=None, help="workflow_runs: branch.")
+    parser.add_argument("--head-sha", default=None, help="workflow_runs: head sha.")
+    parser.add_argument("--workflow", default=None, help="workflow_runs: workflow.")
+    parser.add_argument("--event", default=None, help="workflow_runs: event.")
+    parser.add_argument("--status", default=None, help="workflow_runs: status.")
+    parser.add_argument("--limit", type=int, default=None, help="List read limit.")
+    parser.add_argument(
+        "--tail-bytes", type=int, default=None, help="job_log_tail: bytes kept."
+    )
+    parser.add_argument(
+        "--max-bytes", type=int, default=None, help="artifacts: archive size cap."
+    )
     parser.add_argument(
         "--pretty",
         action="store_true",
@@ -64,10 +81,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    request = ModelGithubGatewayRequest(
-        operation=EnumGithubGatewayOperation(args.operation),
-        repo=args.repo,
-        pr_number=args.pr,
+    optional = {
+        "run_id": args.run_id,
+        "job_id": args.job_id,
+        "artifact_id": args.artifact_id,
+        "branch": args.branch,
+        "head_sha": args.head_sha,
+        "workflow": args.workflow,
+        "event": args.event,
+        "status": args.status,
+        "limit": args.limit,
+        "tail_bytes": args.tail_bytes,
+        "max_bytes": args.max_bytes,
+    }
+    request = ModelGithubGatewayRequest.model_validate(
+        {
+            "operation": EnumGithubGatewayOperation(args.operation),
+            "repo": args.repo,
+            "pr_number": args.pr,
+            **{k: v for k, v in optional.items() if v is not None},
+        }
     )
 
     token = resolve_github_token()
