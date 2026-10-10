@@ -4254,7 +4254,9 @@ class HandlerDelegationWorkflow:
         assert workflow.request is not None
         return [
             # OMN-19215: a quality retry after transport failover must retain
-            # the unavailable same-model rung's routing exclusion.
+            # the unavailable same-model rung's routing exclusion. The set holds
+            # only backends whose call failed in transport on this workflow, so
+            # it is empty when none did; the escalation intents carry the same set.
             ModelRoutingIntent(
                 payload=workflow.request,
                 min_tier_name=tier,

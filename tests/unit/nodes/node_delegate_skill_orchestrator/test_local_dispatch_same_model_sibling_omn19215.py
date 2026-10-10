@@ -370,11 +370,14 @@ def test_bus_quality_rejection_never_switches_same_model_hosts(
         emitted_at=datetime.now(UTC),
     )
 
+    exclusions: list[tuple[str, ...]] = []
+
     def route(events: list[Any]) -> ModelRoutingDecision:
         intents = [event for event in events if isinstance(event, ModelRoutingIntent)]
         assert len(intents) == 1, [
             getattr(event, "failure_reason", None) for event in events
         ]
+        exclusions.append(tuple(intents[0].excluded_backend_refs))
         decision = router.handle(intents[0])
         asyncio.run(workflow.handle(decision))
         return decision
@@ -400,6 +403,7 @@ def test_bus_quality_rejection_never_switches_same_model_hosts(
         assert decision.selected_model == "shared-model"
 
     answered_backend = decision.selected_backend_ref
+    quality_intents_from = len(exclusions)
     for attempt in range(retry_budget + 1):
         asyncio.run(
             workflow.handle(
@@ -431,3 +435,8 @@ def test_bus_quality_rejection_never_switches_same_model_hosts(
             assert decision.selected_backend_ref == "cloud-ceiling"
             assert decision.selected_model == "ceiling-model"
             assert decision.tier_name == "claude"
+    # Every intent after a quality rejection excludes exactly the backends whose
+    # call failed in transport: none when the primary answered, the primary
+    # alone after the fallback to the mirror.
+    expected = ("cloud-primary",) if primary_down else ()
+    assert exclusions[quality_intents_from:] == [expected] * (retry_budget + 1)
