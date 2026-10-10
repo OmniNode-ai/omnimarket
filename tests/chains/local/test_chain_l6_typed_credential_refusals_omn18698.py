@@ -80,6 +80,7 @@ from tests.chains.local.harness import (
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
+    shipped_byok_model_name,
     use_local_store,
 )
 
@@ -256,7 +257,11 @@ async def test_golden_chain_a_resolvable_key_completes_with_no_refusal(
             next_rung_url=next_rung_provider.completions_url,
         )
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(
@@ -295,7 +300,11 @@ async def test_error_chain_a_rejected_key_is_typed_and_does_not_climb(
             next_rung_url=next_rung_provider.completions_url,
         )
         customer_ref = register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(
@@ -343,7 +352,11 @@ async def test_error_chain_an_absent_value_is_typed_and_does_not_climb(
             next_rung_url=next_rung_provider.completions_url,
         )
         customer_ref = register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
         _empty_the_stored_value(db_path, customer_ref)
 
@@ -392,7 +405,11 @@ async def test_error_chain_a_provider_outage_is_not_a_credential_refusal(
             next_rung_url=next_rung_provider.completions_url,
         )
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(

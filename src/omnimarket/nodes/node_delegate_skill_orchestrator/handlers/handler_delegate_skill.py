@@ -177,6 +177,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]: ...
 
 
