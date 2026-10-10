@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20862"
+title: "Dispatch-venv drift is a typed VENV_DRIFT placement result, never a run of no-host refusals (AC-M4)"
+summary: "node_remote_lane_compute takes the launching host's and each host's dispatch-venv lock hash. A lane that finds no host only because the hashes differ is answered VENV_DRIFT on the decided event, naming both hashes with one reconcile intent for the drifted hosts; equal hashes admit as before; a hash that was not supplied on a drift-judged request is VENV_UNKNOWN, never a pass. The runner's fact builder sending the hashes is the follow-up named in the pull request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-drift-is-a-typed-placement-result"
+    statement: "Dispatch-venv drift is a typed placement result with one reconcile intent, and equal hashes admit."
+    acceptance:
+      - id: "AC-M4"
+        statement: |-
+          AC-M4: given a launching host whose dispatch venv lock hash differs from the lab host's declared hash, the placement admission returns a typed VENV_DRIFT result naming both hashes and runs the reconcile (or emits a reconcile command) once, rather than rejecting each lane as no-host; given equal hashes it admits. A lane that finds no host because of drift fails the test unless a VENV_DRIFT event was emitted -- falsifier: test_venv_drift_placement.py failing when a fixture whose every host is refused for drift returns anything but VENV_DRIFT with both hashes and exactly one reconcile intent, or when equal hashes do not admit
+evidence_requirements:
+  - kind: "tests"
+    description: "AC-M4: drift returns VENV_DRIFT with both hashes and one reconcile intent, equal hashes admit, and the decision completes over the node's contract."
+    command: "uv run pytest tests/nodes/node_remote_lane_compute/test_venv_drift_placement.py tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20862-acm4-venv-drift"
+    description: "AC-M4: a host whose dispatch-venv lock hash differs from the launching host's yields VENV_DRIFT naming both hashes with one reconcile intent, equal hashes admit, and a missing hash is VENV_UNKNOWN."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_venv_drift_placement.py tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC-M4"]
