@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -203,3 +204,11 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
 
 
 __all__ = ["UsageByModelDayProjectionWriter"]
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
+    runner = UsageByModelDayProjectionWriter()
+    asyncio.run(runner.run())
