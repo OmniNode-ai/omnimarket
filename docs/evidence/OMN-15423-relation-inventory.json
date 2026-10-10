@@ -6486,6 +6486,7 @@
       "producer": "node_pr_lifecycle_state_reducer",
       "readers": [
         "node_database_sweep",
+        "node_pr_lifecycle_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -7882,6 +7883,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
       "readers": [
+        "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
       ],
       "target_schema": "public",
@@ -8381,6 +8383,7 @@
       "accessor_nodes": [
         "node_branch_claim_check_effect",
         "node_projection_work_ledger",
+        "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8395,6 +8398,7 @@
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
+        "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml"
       ],
       "current_schema": [
@@ -8435,6 +8439,7 @@
       "readers": [
         "node_branch_claim_check_effect",
         "node_work_ledger_emit_effect",
+        "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect"
       ],
       "target_schema": "omninode_internal",

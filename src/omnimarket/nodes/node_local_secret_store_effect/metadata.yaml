@@ -1,0 +1,23 @@
+name: node_local_secret_store_effect
+version: "1.0.0"
+description: "Stores a local secret and returns credential events carrying its fingerprint prefix and set time, never the value"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_local_secret_store_effect: "omnimarket.nodes.node_local_secret_store_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["credentials", "byok", "secret", "effect", "dashboard"]
+pack: "delegation"
+display_name: "Local Secret Store Effect"
+node_role: "effect"

@@ -16,6 +16,8 @@ import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from functools import partial
 from importlib import resources
 from pathlib import Path
 from typing import Protocol
@@ -34,20 +36,30 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+    ModelWorkLedgerTerminalRefused,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers import terminal_refused
 from omnimarket.nodes.node_work_ledger_bus_mirror import (
     HandlerWorkLedgerBusMirror,
     ModelWorkLedgerBusMirrorRequest,
 )
+from omnimarket.nodes.node_work_ledger_delegation_mirror import (
+    HandlerWorkLedgerDelegationMirror,
+)
+from omnimarket.projection.envelope import unwrap_envelope
 
 logger = logging.getLogger(__name__)
 WORK_LEDGER_APPEND_NODE = "node_work_ledger_append_effect"
 GROUP_SERVICE = "omnimarket"
 WORK_LEDGER_MIRROR_NODE = "node_work_ledger_bus_mirror"
+WORK_LEDGER_DELEGATION_NODE = "node_work_ledger_delegation_mirror"
 
 
 def load_work_ledger_mirror_topics() -> tuple[str, ...]:
@@ -57,6 +69,16 @@ def load_work_ledger_mirror_topics() -> tuple[str, ...]:
         .read_text()
     )
     return tuple(contract["subscriptions"]["topics"])
+
+
+def load_work_ledger_delegation_topics() -> tuple[str, ...]:
+    """Completed topic first, failed second, as the contract declares them."""
+    contract = yaml.safe_load(
+        resources.files(f"omnimarket.nodes.{WORK_LEDGER_DELEGATION_NODE}")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    return tuple(contract["runtime_dispatch"]["subscribe_topics"])
 
 
 def load_work_ledger_signing_key(path: Path) -> Ed25519PrivateKey:
@@ -73,6 +95,7 @@ class ModelWorkLedgerAppendTopics(BaseModel):
     command: str
     success: str
     failure: str
+    terminal_refused: str
 
 
 class ModelWorkLedgerAppendCommandFailure(BaseModel):
@@ -99,11 +122,16 @@ def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
         .joinpath("contract.yaml")
         .read_text()
     )
-    dispatch = yaml.safe_load(text)["runtime_dispatch"]
+    contract = yaml.safe_load(text)
+    dispatch = contract["runtime_dispatch"]
+    published = {
+        entry["event_type"]: entry["topic"] for entry in contract["published_events"]
+    }
     return ModelWorkLedgerAppendTopics(
         command=dispatch["command_topic"],
         success=dispatch["terminal_events"]["success"],
         failure=dispatch["terminal_events"]["failure"],
+        terminal_refused=published[ModelWorkLedgerTerminalRefused.__name__],
     )
 
 
@@ -127,8 +155,10 @@ class WorkLedgerAppendHost:
         self._mirror_signing_key = mirror_signing_key
         self._topics = topics or load_work_ledger_append_topics()
         self._mirror = HandlerWorkLedgerBusMirror()
+        self._delegation_topics = load_work_ledger_delegation_topics()
+        self._delegation_mirror = HandlerWorkLedgerDelegationMirror()
         self._queue: asyncio.Queue[
-            tuple[ProtocolBusMessage, bool, asyncio.Future[None]]
+            tuple[ProtocolBusMessage, bool, str | None, asyncio.Future[None]]
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
@@ -137,6 +167,10 @@ class WorkLedgerAppendHost:
     @property
     def topics(self) -> ModelWorkLedgerAppendTopics:
         return self._topics
+
+    @property
+    def delegation_topics(self) -> tuple[str, ...]:
+        return self._delegation_topics
 
     async def start(self) -> None:
         if self._task is not None:
@@ -153,7 +187,7 @@ class WorkLedgerAppendHost:
         )
         if self._mirror_signing_key is None:
             logger.warning(
-                "work-ledger host: no signing identity, lab terminals not mirrored"
+                "work-ledger host: no signing identity, terminals not mirrored"
             )
             return
         group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
@@ -164,6 +198,19 @@ class WorkLedgerAppendHost:
                     topic,
                     self._enqueue_mirror,
                     group,
+                    "earliest",
+                )
+            )
+        delegation_group = derive_service_group_id(
+            WORK_LEDGER_DELEGATION_NODE, service=GROUP_SERVICE
+        )
+        for topic in self._delegation_topics:
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._bus,
+                    topic,
+                    partial(self._enqueue_delegation, delegation_topic=topic),
+                    delegation_group,
                     "earliest",
                 )
             )
@@ -192,16 +239,29 @@ class WorkLedgerAppendHost:
     async def _enqueue_mirror(self, message: ProtocolBusMessage) -> None:
         await self._submit(message, mirror=True)
 
-    async def _submit(self, message: ProtocolBusMessage, *, mirror: bool) -> None:
+    async def _enqueue_delegation(
+        self, message: ProtocolBusMessage, *, delegation_topic: str
+    ) -> None:
+        await self._submit(message, mirror=True, delegation_topic=delegation_topic)
+
+    async def _submit(
+        self,
+        message: ProtocolBusMessage,
+        *,
+        mirror: bool,
+        delegation_topic: str | None = None,
+    ) -> None:
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        self._queue.put_nowait((message, mirror, done))
+        self._queue.put_nowait((message, mirror, delegation_topic, done))
         await done
 
     async def _worker(self) -> None:
         while True:
-            message, mirror, done = await self._queue.get()
+            message, mirror, delegation_topic, done = await self._queue.get()
             try:
-                await self._process(message, mirror=mirror)
+                await self._process(
+                    message, mirror=mirror, delegation_topic=delegation_topic
+                )
             except Exception as exc:  # fallback-ok: callback fails for redelivery; worker serves the next request
                 logger.exception("work-ledger host: command processing failed")
                 if not done.done():
@@ -210,7 +270,7 @@ class WorkLedgerAppendHost:
                     # Use its existing persistence barrier for mirror failures.
                     done.set_exception(
                         ProjectionNotMaterializedError(
-                            f"lab work ledger row not materialized: {exc}",
+                            f"mirrored ledger row not materialized: {exc}",
                             projection_type=WORK_LEDGER_MIRROR_NODE,
                         )
                         if mirror
@@ -224,8 +284,15 @@ class WorkLedgerAppendHost:
                 self._queue.task_done()
 
     async def _process(
-        self, message: ProtocolBusMessage, *, mirror: bool = False
+        self,
+        message: ProtocolBusMessage,
+        *,
+        mirror: bool = False,
+        delegation_topic: str | None = None,
     ) -> None:
+        if delegation_topic is not None:
+            await self._process_delegation(message, delegation_topic)
+            return
         try:
             raw = json.loads(message.value)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -273,6 +340,49 @@ class WorkLedgerAppendHost:
                 command_id, "", f"not a ledger append request: {exc}"
             )
             return
+        await self._append_and_publish(request, command_id, mirror=mirror)
+
+    async def _process_delegation(
+        self, message: ProtocolBusMessage, topic: str
+    ) -> None:
+        payload = unwrap_envelope(message.value)
+        raw = payload.get("_envelope", {}) if payload is not None else {}
+        if not isinstance(raw, dict):
+            raw = {}
+        command_id = _uuid_or_none(raw.get("envelope_id"))
+        try:
+            if payload is None:
+                raise ValueError("delegation terminal is not an object")
+            if (
+                not any(
+                    payload.get(key) is not None
+                    for key in ("emitted_at", "emittedAt", "timestamp")
+                )
+                and raw.get("envelope_timestamp") is None
+            ):
+                raise ValueError("delegation terminal has no event timestamp")
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            if (terminal.status == "completed") != (
+                topic == self._delegation_topics[0]
+            ):
+                raise ValueError("delegation terminal status disagrees with topic")
+            request = self._delegation_mirror.handle(terminal)
+        except (ValueError, ValidationError) as exc:
+            await self._publish_failure(
+                command_id, "", f"invalid delegation terminal: {exc}"
+            )
+            return
+        if self._mirror_principal is not None and self._mirror_signing_key is not None:
+            request = request.signed(self._mirror_principal, self._mirror_signing_key)
+        await self._append_and_publish(request, command_id, mirror=True)
+
+    async def _append_and_publish(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        command_id: uuid.UUID | None,
+        *,
+        mirror: bool,
+    ) -> None:
         try:
             receipt = await asyncio.to_thread(self._handler.handle, request)
         except (
@@ -288,7 +398,7 @@ class WorkLedgerAppendHost:
         # write-path errors withhold the offset and must not publish a receipt.
         if mirror and receipt.status == EnumWorkLedgerAppendStatus.ERROR:
             raise RuntimeError(
-                f"lab receipt append {receipt.status}: {receipt.message}"
+                f"mirrored receipt append {receipt.status}: {receipt.message}"
             )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=receipt.model_dump(mode="json"),
@@ -301,6 +411,9 @@ class WorkLedgerAppendHost:
             str(request.request_id).encode("utf-8"),
             _bytes(envelope),
         )
+        refused = terminal_refused(request, receipt, datetime.now(UTC))
+        if refused is not None:
+            await self._publish_terminal_refused(refused, command_id)
         if mirror and receipt.status == EnumWorkLedgerAppendStatus.REFUSED:
             logger.warning(
                 "work-ledger host %s request %s refused: %s",
@@ -316,6 +429,32 @@ class WorkLedgerAppendHost:
             receipt.status,
             receipt.exit_code,
             receipt.ledger_lines,
+        )
+
+    async def _publish_terminal_refused(
+        self, refused: ModelWorkLedgerTerminalRefused, command_id: uuid.UUID | None
+    ) -> None:
+        """A refused TERMINAL leaves its CLAIM open: say so on the bus and in the log."""
+        envelope = ModelEventEnvelope[dict[str, object]](
+            payload=refused.model_dump(mode="json"),
+            correlation_id=refused.request_id,
+            parent_envelope_id=command_id,
+            event_type=event_type_for(self._topics.terminal_refused),
+        )
+        await self._bus.publish(
+            self._topics.terminal_refused,
+            str(refused.request_id).encode("utf-8"),
+            _bytes(envelope),
+        )
+        logger.error(
+            "work-ledger host %s TERMINAL_REFUSED request %s lanes=%s tickets=%s "
+            "prs=%s: %s; the CLAIMs these rows close stay open until their lease TTL",
+            refused.ledger_host,
+            refused.request_id,
+            ",".join(refused.terminal_lanes) or "-",
+            ",".join(refused.tickets) or "-",
+            ",".join(refused.prs) or "-",
+            refused.reason,
         )
 
     async def _publish_failure(

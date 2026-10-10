@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeGlmUsageRecordCompute
+#
+# One harness run on the GLM Coding Plan as a pure definition-B compute:
+#
+#   handle(ModelGlmUsageRecordRequest) -> ModelGlmUsageRecordResult
+#
+# From a run's receipt facts (tokens, model, class, outcome, the retry notes of its transcript) and the
+# deployment's allowance policy it returns the usage event (credits spent, peak or off-peak, rated or not)
+# and, when the run met a cap refusal, a refusal (scope, status, count, how the run ended), in one terminal
+# event. The liveness projection shows both. The credit rates and the cap codes come from the private overlay in the
+# request; none is packaged. No clock, no I/O, no model.
+name: "node_glm_usage_record_compute"
+contract_name: "node_glm_usage_record_compute"
+node_name: "node_glm_usage_record_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B record of one harness run on the GLM Coding Plan: a usage
+  event with the credits it spent and, when the provider refused a call for
+  capacity during the run, a refusal, in the same event, with its scope and
+  what became of the run.
+input_model:
+  name: "ModelGlmUsageRecordRequest"
+  module: "omnimarket.nodes.node_glm_usage_record_compute.models.model_glm_usage_record"
+  description: "The policy from the overlay and one run's receipt facts."
+output_model:
+  name: "ModelGlmUsageRecordResult"
+  module: "omnimarket.nodes.node_glm_usage_record_compute.models.model_glm_usage_record"
+  description: "The usage, and the refusal when the run met a cap refusal."
+handler:
+  module: "omnimarket.nodes.node_glm_usage_record_compute.handlers.handler_glm_usage_record"
+  class: "HandlerGlmUsageRecord"
+  input_model: "omnimarket.nodes.node_glm_usage_record_compute.models.model_glm_usage_record.ModelGlmUsageRecordRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_glm_usage_record_compute.handlers.handler_glm_usage_record:HandlerGlmUsageRecord"
+  handlers:
+    - operation: "glm_usage_record"
+      handler:
+        name: "HandlerGlmUsageRecord"
+        module: "omnimarket.nodes.node_glm_usage_record_compute.handlers.handler_glm_usage_record"
+# The harness delegate publishes the command after each run; the terminal event carries the usage and,
+# when the run met a cap refusal, the refusal, which is what the liveness projection shows.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.glm-usage-record-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.glm-usage-recorded.v1"
+    failure: "onex.evt.omnimarket.glm-usage-record-failed.v1"
+# The liveness projection of the monitoring plan reads this; no node contract in this repository
+# subscribes to it yet, so it leaves the ONEX node graph here.
+externally_consumed_topics:
+  - "onex.evt.omnimarket.glm-usage-recorded.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Usage and cap-refusal of one GLM Coding Plan harness run."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - delegation
+    - glm
+    - usage
+    - pure

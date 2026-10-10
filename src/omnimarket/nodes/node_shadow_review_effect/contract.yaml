@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Shadow Review Effect (OMN-20422)
+#
+# One tick of the pre-registered shadow reviewer experiment. For each PR the
+# pre-registration puts in the sample (first observed at its head, created at or
+# after the window start), it reads the diff from the canonical clone, drops a PR
+# whose added lines carry a secret pattern before any call, runs arm A1 (Codex,
+# through the omniintelligence Codex reviewer adapter) on every in-scope PR and
+# arm A2 (GLM 5.3, through the claude-glm harness, same prompt) on public PRs,
+# and writes one record per PR to the experiment store on the lab host.
+# Shadow only: it never posts a comment, creates a check or blocks a PR.
+# It runs on a lab host, never in a CI runner: Codex stays out of CI.
+name: "node_shadow_review_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Effect: one shadow-review tick; reviews each newly observed in-scope PR with the pre-registered arms and writes results to the experiment store, never posting or blocking."
+input_model:
+  name: "ModelShadowReviewRequest"
+  module: "omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review"
+  description: "Watcher-observed PR candidates, the pre-registered scope policy and the store root."
+output_model:
+  name: "ModelShadowReviewResult"
+  module: "omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review"
+  description: "Per-candidate selection rows, the records written, the drops and the public sample count."
+handler:
+  module: "omnimarket.nodes.node_shadow_review_effect.handlers.handler_shadow_review"
+  class: "HandlerShadowReview"
+  input_model: "omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review.ModelShadowReviewRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_shadow_review_effect.handlers.handler_shadow_review:HandlerShadowReview"
+  handlers:
+    - operation: "shadow_review_tick"
+      input_model: "omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review.ModelShadowReviewRequest"
+      output_model: "omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review.ModelShadowReviewResult"
+      handler:
+        name: "HandlerShadowReview"
+        module: "omnimarket.nodes.node_shadow_review_effect.handlers.handler_shadow_review"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.shadow-review-tick-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.shadow-review-tick-completed.v1"
+    failure: "onex.evt.omnimarket.shadow-review-tick-failed.v1"
+terminal_event: "onex.evt.omnimarket.shadow-review-tick-completed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.shadow-review-tick-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.shadow-review-tick-completed.v1"
+published_events:
+  - event_type: "ModelShadowReviewResult"
+    topic: "onex.evt.omnimarket.shadow-review-tick-completed.v1"
+# The arms are host tools, so a tick runs in process on a lab host that has
+# them; the lab timer (omnibase_infra deploy/shadow-review) triggers it.
+host_requirements:
+  tools: [codex, claude, uv, git]
+  never_in: [ci-runner, runtime-container]
+reviewer_arms:
+  A1:
+    engine: "codex exec (omniintelligence review_pairing adapter_codex_reviewer)"
+    strata: [public, private]
+    timeout_s: 600
+  A2:
+    engine: "claude-glm harness, glm-5.3, task class code_review"
+    strata: [public]
+    call_budget_s: 600
+side_effects:
+  reads:
+    - filesystem
+    - git
+  writes:
+    - filesystem
+  posts_to_github: false
+  duplicate_key_fields:
+    - repo
+    - number
+  duplicate_handling: skip
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Registry root holding the canonical clones, the refresh tool and omniintelligence."
+  SHADOW_REVIEW_HARNESS_SCRIPT:
+    required: true
+    description: "Path of harness_delegate.py on this host, for arm A2."
+  SHADOW_REVIEW_WINDOW_START:
+    required: false
+    description: "Sample window start (T1); with none set the tick reviews nothing."
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  # A record per PR makes a replayed tick skip PRs already reviewed.
+  idempotent: true
+  timeout_ms: 3600000
+metadata:
+  transport_type: "kafka"
+  description: "Shadow PR reviewer experiment tick (Codex and GLM 5.3 beside the Hostile Reviewer gate)"
+  author: "OmniNode Team"
+  created: "2026-10-09"
+  tags:
+    - "effect"
+    - "review"
+    - "experiment"
+    - "OMN-20422"
+  related_tickets:
+    - "OMN-20422"

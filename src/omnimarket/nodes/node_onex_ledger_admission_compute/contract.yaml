@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_onex_ledger_admission_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the onex-ledger wrapper (OMN-20686). Turns the
+  facts a caller read (the argv, ONEX_LEDGER_BUDGET_S, OMNIBASE_INTERNAL_PATH and OMNI_HOME, the
+  resolved clone candidates with their pyproject project names, and the append-rows file) into what
+  the wrapper does: a bad budget is a usage error (64), a TERMINAL row without its delegation cells
+  is refused (65) with nothing written, no valid omnibase_internal clone is an error (2), and
+  otherwise onex-ledger runs in the selected clone, with the text the wrapper prints when the budget
+  runs out (124). Reads no files, runs no process, has no clock, mutates nothing. Behaviour-preserving
+  port of the decisions of the retired plugins/omni/scripts/onex_ledger.py; running onex-ledger and
+  loading the grammar module are not ported by this node.
+input_model:
+  name: ModelOnexLedgerAdmissionRequest
+  module: omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission
+output_model:
+  name: ModelOnexLedgerAdmissionResult
+  module: omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission
+handler:
+  module: omnimarket.nodes.node_onex_ledger_admission_compute.handlers.handler_onex_ledger_admission
+  class: HandlerOnexLedgerAdmission
+  input_model: omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission.ModelOnexLedgerAdmissionRequest
+  output_model: omnimarket.nodes.node_onex_ledger_admission_compute.models.model_onex_ledger_admission.ModelOnexLedgerAdmissionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_onex_ledger_admission_compute.handlers.handler_onex_ledger_admission:HandlerOnexLedgerAdmission
+  handlers:
+    - operation: decide_onex_ledger_admission
+      handler:
+        name: HandlerOnexLedgerAdmission
+        module: omnimarket.nodes.node_onex_ledger_admission_compute.handlers.handler_onex_ledger_admission
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  argv: {type: list, required: true, description: The onex-ledger argv the wrapper was given.}
+  budget_raw: {type: str, required: false, description: ONEX_LEDGER_BUDGET_S as set.}
+  path_override: {type: str, required: false, description: OMNIBASE_INTERNAL_PATH as set, stripped.}
+  omni_home: {type: str, required: false, description: OMNI_HOME as set, stripped.}
+  override_resolved: {type: str, required: false, description: The expanded, resolved override path.}
+  default_resolved: {type: str, required: false, description: The resolved parent of OMNI_HOME joined with omnibase_internal.}
+  project_names: {type: object, required: false, description: Candidate path text to its pyproject project name, or null.}
+  append_rows_text: {type: str, required: false, description: The append-rows file's contents when it was readable.}
+outputs:
+  action: {type: str, enum: [run, refuse, usage-error, no-project]}
+  exit_code: {type: int}
+  stdout_lines: {type: list}
+  stderr_lines: {type: list}
+  project: {type: str}
+  budget_s: {type: float}
+  timeout_stdout: {type: str}
+  timeout_stderr: {type: str}
+terminal_event: onex.evt.omnimarket.onex-ledger-admission-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.onex-ledger-admission-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.onex-ledger-admission-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.onex-ledger-admission-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.onex-ledger-admission-completed.v1
+metadata:
+  transport_type: inmemory
+  description: onex-ledger wrapper admission decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20686]

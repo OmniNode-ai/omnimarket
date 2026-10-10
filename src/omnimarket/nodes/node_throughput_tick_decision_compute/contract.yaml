@@ -14,7 +14,10 @@ description: >-
   floor, and escalated PRs with the cause lease or park that covers them. Reads no files,
   runs no process, has no clock (the caller supplies now), mutates nothing. Behaviour-preserving
   port of the controller, merges, floors and escalation findings of the retired
-  throughput_tick.py; the lab-headroom finding is not ported by this node yet.
+  throughput_tick.py, and the lab-headroom finding from the pool, marks and receipts a caller read.
+  OMN-20840: a park lasting past park_max_hours over a repository with zero merges is MISSING, an
+  unread lab host is UNKNOWN, a runner receipt that ended without running is MISSING until its brief
+  runs, and an open count rising more than open_rise_pct across three tick runs is MISSING.
 input_model:
   name: ModelThroughputTickRequest
   module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
@@ -29,11 +32,25 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision:HandlerThroughputTickDecision
+  # OMN-20867: each entry is scoped to its own topic, so no entry spans the command and
+  # intent categories (OMN-18013).
   handlers:
     - operation: decide_throughput_tick
+      topic: onex.cmd.omnimarket.throughput-tick-decision-requested.v1
       handler:
         name: HandlerThroughputTickDecision
         module: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision
+    # OMN-20867: the schedule's entry. The tick that opens a config.throughput_tick_decision.schedule window
+    # returns that window's fire (ModelScheduledFire) on the terminal topic; every other tick
+    # returns nothing. Stateless, so the compute stays pure.
+    - operation: throughput_tick.scheduled_fire
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerThroughputTickScheduledFire
+        module: omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_scheduled_fire
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
 descriptor:
   node_archetype: compute
   purity: pure
@@ -52,6 +69,7 @@ inputs:
   ticks: {type: list, required: false, description: Newest complete controller tick lines, newest first, at most two.}
   ticks_error: {type: str, required: false}
   heartbeat_text: {type: str, required: false}
+  heartbeat_write_error: {type: str, required: false, description: "`<path>: <error>` when the tick heartbeat file could not be written."}
   state_json: {type: object, required: false}
   watcher_path: {type: str, required: false}
   watcher_state: {type: object, required: false}
@@ -61,6 +79,13 @@ inputs:
   policy_load_error: {type: str, required: false}
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
+  lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
+  pr_land: {type: object, required: false, description: "Open PRs with their landing facts and hold source (OMN-20864); the lab-headroom FIX then names pr-land lanes for idle slots on parked, escalated or unowned-red PRs."}
+  park_max_hours: {type: float, required: false, description: "A park over a floor-stalled repository with zero merges covers it only while it ends within this many hours (default 2)."}
+  dispatch_window_hours: {type: float, required: false, description: "Runner receipts started this many hours back that ended without running are findings; omitted skips the dispatches finding."}
+  open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}
+  open_rise_pct: {type: float, required: false}
+  open_history_max_age_hours: {type: float, required: false}
 outputs:
   lines: {type: list}
   status_line: {type: str}
@@ -68,12 +93,25 @@ outputs:
   unknown: {type: list}
   checked: {type: list}
   exit_code: {type: int}
+  open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
+config:
+  throughput_tick_decision:
+    # OMN-20867: the tick's cadence, the launchd agent's (every 600 s).
+    schedule:
+      workflow: throughput-tick
+      interval_seconds: 600
+      offset_seconds: 0
 terminal_event: onex.evt.omnimarket.throughput-tick-decision-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.throughput-tick-decision-requested.v1
+# OMN-20867: the runtime tick is the only schedule the runtime dispatches.
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: throughput_tick.scheduled_fire
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.throughput-tick-decision-requested.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.throughput-tick-decision-completed.v1
 externally_consumed_topics:
@@ -83,4 +121,4 @@ metadata:
   description: Merge-throughput tick decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-20686]
+  related_tickets: [OMN-20686, OMN-20840]

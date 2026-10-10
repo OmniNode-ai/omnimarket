@@ -1,0 +1,4013 @@
+[
+  {
+    "name": "all-green",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "under-floor-waiting",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 1,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 1,
+          "rate": 0.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 1 product PRs in 2h (0.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "floor:omnibase_core": "omnibase_core merged 1 product PRs in 2h (0.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+      },
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : floor:omnibase_core",
+        "omnibase_core merged 1 product PRs in 2h (0.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=floor:omnibase_core | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=- | omnibase_core merged 1 product PRs in 2h (0.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "under-floor-idle",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {}
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 0,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 0,
+          "rate": 0.0,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "idle: omnibase_core under floor, nothing waiting; omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 0 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 0
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "idle: omnibase_core under floor, nothing waiting; omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 0 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "waiting-unknown-breach",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": null,
+      "watcher_unavailable": "invalid watcher JSON",
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 0,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 0,
+          "rate": 0.0,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {
+        "floor:omnibase_core": "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+      },
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: invalid watcher JSON"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : floor:omnibase_core",
+        "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: invalid watcher JSON"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=floor:omnibase_core | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=- | omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "floors-unknown",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": null,
+      "floors_unknown": "floor table absent",
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {},
+      "waiting": {},
+      "breaches": {},
+      "unknowns": {
+        "floors": "floor table absent"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN floors",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN floors: floor table absent"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "zero-and-negative-floor-excluded",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0,
+        "omnimarket": 0,
+        "omniclaude": -1
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "watcher-stale",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:00:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {},
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: watcher state is stale"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN waiting",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: watcher state is stale"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "watcher-missing-key",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z"
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {},
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: 'prs'"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN waiting",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: 'prs'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "watcher-missing-file",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": null,
+      "watcher_unavailable": "[Errno 2] No such file or directory: 'watcher.json'",
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {},
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: [Errno 2] No such file or directory: 'watcher.json'"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN waiting",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: [Errno 2] No such file or directory: 'watcher.json'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "watcher-invalid-stamp",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "bad",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {},
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: time data 'bad' does not match format '%Y-%m-%dT%H:%MZ'"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN waiting",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: time data 'bad' does not match format '%Y-%m-%dT%H:%MZ'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "watcher-invalid-pr",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": null
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": null,
+      "breaches": {},
+      "unknowns": {
+        "waiting": "waiting UNKNOWN: 'NoneType' object is not subscriptable"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN waiting",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with UNKNOWN waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN waiting: waiting UNKNOWN: 'NoneType' object is not subscriptable"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "clone-sync-stale",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:00:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": null,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "clone-sync": "clone-sync absent or stale: 2026-10-09 11:00:00+00:00"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN clone-sync",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN clone-sync: clone-sync absent or stale: 2026-10-09 11:00:00+00:00"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "clone-sync-absent",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": null,
+        "note": "no clone-sync run recorded",
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": null,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "clone-sync": "clone-sync absent or stale: no clone-sync run recorded"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN clone-sync",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN clone-sync: clone-sync absent or stale: no clone-sync run recorded"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "clone-sync-read-error",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": null,
+      "clone_sync_unavailable": "synthetic read refused",
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": null,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "clone-sync": "cannot read clone-sync: synthetic read refused"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN clone-sync",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN clone-sync: cannot read clone-sync: synthetic read refused"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "repo-no-clone",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {}
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": null,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "clone:omnibase_core": "no clone for omnibase_core in clone-sync log"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN clone:omnibase_core",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN clone:omnibase_core: no clone for omnibase_core in clone-sync log"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "scan-error",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {},
+      "scan_errors": {
+        "omnibase_core": "synthetic scan | refused\nretry"
+      },
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": null,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "floor:omnibase_core": "cannot count omnibase_core: synthetic scan | refused\nretry"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN floor:omnibase_core",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN floor:omnibase_core: cannot count omnibase_core: synthetic scan / refused retry"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "positive-control-failed",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 0,
+          "count": 0,
+          "docs": 0,
+          "last": null
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": null,
+          "rate": null,
+          "docs_only": null,
+          "landed_seen": 0,
+          "last_product_merge": null,
+          "detail": "omnibase_core: count UNKNOWN"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "floor:omnibase_core": "omnibase_core: positive control failed, zero landed PRs in 7 days"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN floor:omnibase_core",
+        "omnibase_core: count UNKNOWN",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN floor:omnibase_core: omnibase_core: positive control failed, zero landed PRs in 7 days"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "last-product-none",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 0,
+          "docs": 4,
+          "last": null
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 0,
+          "rate": 0.0,
+          "docs_only": 4,
+          "landed_seen": 4,
+          "last_product_merge": null,
+          "detail": "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 1 waiting; last product merge none in 7 days"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "floor:omnibase_core": "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 1 waiting; last product merge none in 7 days"
+      },
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : floor:omnibase_core",
+        "omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 1 waiting; last product merge none in 7 days",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=floor:omnibase_core | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=- | omnibase_core merged 0 product PRs in 2h (0/h, floor 1/h) with 1 waiting; last product merge none in 7 days",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-zero-workers",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "controller": "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          0,
+          0,
+          0
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=controller | controller=workers/tick=0,0,0 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=- | landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)",
+      "controller_cell": "workers/tick=0,0,0 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-silent",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:00:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:00:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:00:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "controller": "controller silent for 60 min; landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:00Z, 60 min ago)"
+      },
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:00:00Z",
+        "last_age_minutes": 60.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "controller silent for 60 min; landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:00Z, 60 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller silent for 60 min; landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:00Z, 60 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=controller | controller=workers/tick=1,1,1 newest=2026-10-09T11:00:00Z age=60m status=ok refusal=- | controller silent for 60 min; landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:00Z, 60 min ago)",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:00:00Z age=60m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-fewer-rows",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "only 1 of 3 controller ticks available"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          0
+        ],
+        "ticks": [
+          3
+        ],
+        "statuses": [
+          "ok"
+        ],
+        "degraded": [
+          null
+        ],
+        "detail": "landing controller dispatched 0 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 0 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:59Z, 1 min ago)",
+        "UNKNOWN controller: only 1 of 3 controller ticks available"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=0 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=0 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-fewer-and-silent",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:00:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "controller": "controller silent for 60 min; landing controller dispatched 1 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:00Z, 60 min ago)"
+      },
+      "unknowns": {
+        "controller": "only 1 of 3 controller ticks available"
+      },
+      "controller": {
+        "last_ts": "2026-10-09T11:00:00Z",
+        "last_age_minutes": 60.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1
+        ],
+        "ticks": [
+          3
+        ],
+        "statuses": [
+          "ok"
+        ],
+        "degraded": [
+          null
+        ],
+        "detail": "controller silent for 60 min; landing controller dispatched 1 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:00Z, 60 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller silent for 60 min; landing controller dispatched 1 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:00Z, 60 min ago)",
+        "UNKNOWN controller: only 1 of 3 controller ticks available"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=controller | controller=workers/tick=1 newest=2026-10-09T11:00:00Z age=60m status=ok refusal=- | controller silent for 60 min; landing controller dispatched 1 workers over its last 1 ticks (ticks 3 ; statuses ok; newest tick 11:00Z, 60 min ago)",
+      "controller_cell": "workers/tick=1 newest=2026-10-09T11:00:00Z age=60m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-bad-json",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "bad JSON",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: Expecting value: line 1 column 1 (char 0)"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: Expecting value: line 1 column 1 (char 0)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-invalid-worker-count",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": -1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": -1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: invalid worker count"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [
+          1
+        ],
+        "ticks": [
+          1
+        ],
+        "statuses": [
+          "ok"
+        ],
+        "degraded": [
+          null
+        ],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: invalid worker count"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1 newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=1 newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-float-workers",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0.5}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0.5}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 0.5}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: invalid worker count"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: invalid worker count"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-worker-type-error",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": \"many\"}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": \"many\"}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": \"many\"}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: unsupported operand type(s) for +: 'int' and 'str'"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: unsupported operand type(s) for +: 'int' and 'str'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-empty",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: no controller ticks"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: no controller ticks"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-unavailable",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": null,
+      "controller_unavailable": "synthetic tick read refused",
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: synthetic tick read refused"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: synthetic tick read refused"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-missing-status-partial",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T12:00:00Z\", \"tick\": 4, \"performed\": {\"lab_spawn:spawned\": 2}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: 'status'"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          2
+        ],
+        "ticks": [
+          1,
+          4
+        ],
+        "statuses": [
+          "ok"
+        ],
+        "degraded": [
+          null
+        ],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: 'status'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,2 newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=1,2 newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "controller-invalid-stamp",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"invalid\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"invalid\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"invalid\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {
+        "controller": "cannot read controller ticks: time data 'invalid' does not match format '%Y-%m-%dT%H:%MZ'"
+      },
+      "controller": {
+        "last_ts": null,
+        "last_age_minutes": null,
+        "last_status": null,
+        "last_refusal": null,
+        "workers_per_tick": [],
+        "ticks": [],
+        "statuses": [],
+        "degraded": [],
+        "detail": "controller UNKNOWN"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM UNKNOWN controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "controller UNKNOWN",
+        "UNKNOWN controller: cannot read controller ticks: time data 'invalid' does not match format '%Y-%m-%dT%H:%MZ'"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=? newest=? age=?m status=? refusal=-",
+      "controller_cell": "workers/tick=? newest=? age=?m status=? refusal=-"
+    }
+  },
+  {
+    "name": "docs-only-counts",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 10,
+          "count": 3,
+          "docs": 7,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 7,
+          "landed_seen": 10,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "scan-notes",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [
+        "/clones/omnibase_core: synthetic reflog gap"
+      ],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [
+        "/clones/omnibase_core: synthetic reflog gap"
+      ],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "minute-stamps-and-boundaries",
+    "request": {
+      "now": "2026-10-09T12:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:45Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:45Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 2,
+          "docs": 1,
+          "last": "2026-10-09T11:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:30Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:30Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:30Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 2,
+          "rate": 1.0,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:00:00Z",
+          "detail": "omnibase_core merged 2 product PRs in 2h (1/h, floor 1/h) with 1 waiting; last product merge 1.0h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:30Z",
+        "last_age_minutes": 30.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:30Z, 30 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 2 product PRs in 2h (1/h, floor 1/h) with 1 waiting; last product merge 1.0h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:30Z, 30 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:30Z age=30m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:30Z age=30m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "waiting-filters",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "0": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          },
+          "1": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "CLOSED",
+              "draft": false
+            },
+            "cls": "ready"
+          },
+          "2": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": true
+            },
+            "cls": "ready"
+          },
+          "3": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "held-excluded"
+          },
+          "4": {
+            "facts": {
+              "repo": "OmniNode-ai/omnimarket",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "multi-repo-sorted",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0,
+        "omnimarket": 0.5,
+        "omnibase_infra": 1
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ],
+          "omnimarket": [
+            "/clones/omnimarket"
+          ],
+          "omnibase_infra": [
+            "/clones/omnibase_infra"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        },
+        "omnimarket": {
+          "landed": 1,
+          "count": 1,
+          "docs": 0,
+          "last": "2026-10-09T12:00:00Z"
+        },
+        "omnibase_infra": {
+          "landed": 1,
+          "count": 0,
+          "docs": 1,
+          "last": null
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        },
+        "omnibase_infra": {
+          "floor": 1,
+          "count": 0,
+          "rate": 0.0,
+          "docs_only": 1,
+          "landed_seen": 1,
+          "last_product_merge": null,
+          "detail": "idle: omnibase_infra under floor, nothing waiting; omnibase_infra merged 0 product PRs in 2h (0/h, floor 1/h) with 0 waiting; last product merge none in 7 days"
+        },
+        "omnimarket": {
+          "floor": 0.5,
+          "count": 1,
+          "rate": 0.5,
+          "docs_only": 0,
+          "landed_seen": 1,
+          "last_product_merge": "2026-10-09T12:00:00Z",
+          "detail": "omnimarket merged 1 product PRs in 2h (0.5/h, floor 0.5/h) with 0 waiting; last product merge 0.0h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1,
+        "omnimarket": 0,
+        "omnibase_infra": 0
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          1,
+          1,
+          1
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "idle: omnibase_infra under floor, nothing waiting; omnibase_infra merged 0 product PRs in 2h (0/h, floor 1/h) with 0 waiting; last product merge none in 7 days",
+        "omnimarket merged 1 product PRs in 2h (0.5/h, floor 0.5/h) with 0 waiting; last product merge 0.0h ago",
+        "landing controller dispatched 3 workers over its last 3 ticks (ticks 1,2,3 ; statuses ok,ok,ok; newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-",
+      "controller_cell": "workers/tick=1,1,1 newest=2026-10-09T11:59:00Z age=1m status=ok refusal=-"
+    }
+  },
+  {
+    "name": "controller-refusal-clean-cell",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 1, \"status\": \"refused\", \"refusal\": \"capacity | limited\\nretry\", \"degraded\": {\"capacity\": true}, \"performed\": {\"dispatch_worker:spawned\": 0, \"lab_spawn:spawned\": 0}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 2, \"status\": \"refused\", \"refusal\": \"capacity | limited\\nretry\", \"degraded\": {\"capacity\": true}, \"performed\": {\"dispatch_worker:spawned\": 0, \"lab_spawn:spawned\": 0}}",
+        "{\"ts\": \"2026-10-09T11:59:00Z\", \"tick\": 3, \"status\": \"refused\", \"refusal\": \"capacity | limited\\nretry\", \"degraded\": {\"capacity\": true}, \"performed\": {\"dispatch_worker:spawned\": 0, \"lab_spawn:spawned\": 0}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {
+        "controller": "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses refused(capacity | limited\nretry),refused(capacity | limited\nretry),refused(capacity | limited\nretry); newest tick 11:59Z, 1 min ago)"
+      },
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T11:59:00Z",
+        "last_age_minutes": 1.0,
+        "last_status": "refused",
+        "last_refusal": "capacity | limited\nretry",
+        "workers_per_tick": [
+          0,
+          0,
+          0
+        ],
+        "ticks": [
+          1,
+          2,
+          3
+        ],
+        "statuses": [
+          "refused(capacity | limited\nretry)",
+          "refused(capacity | limited\nretry)",
+          "refused(capacity | limited\nretry)"
+        ],
+        "degraded": [
+          {
+            "capacity": true
+          },
+          {
+            "capacity": true
+          },
+          {
+            "capacity": true
+          }
+        ],
+        "detail": "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses refused(capacity | limited\nretry),refused(capacity | limited\nretry),refused(capacity | limited\nretry); newest tick 11:59Z, 1 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM BREACH n=1 : controller",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses refused(capacity | limited",
+        "retry),refused(capacity | limited",
+        "retry),refused(capacity | limited",
+        "retry); newest tick 11:59Z, 1 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached=controller | controller=workers/tick=0,0,0 newest=2026-10-09T11:59:00Z age=1m status=refused refusal=capacity / limited retry | landing controller dispatched 0 workers over its last 3 ticks (ticks 1,2,3 ; statuses refused(capacity / limited retry),refused(capacity / limited retry),refused(capacity / limited retry); newest tick 11:59Z, 1 min ago)",
+      "controller_cell": "workers/tick=0,0,0 newest=2026-10-09T11:59:00Z age=1m status=refused refusal=capacity / limited retry"
+    }
+  },
+  {
+    "name": "controller-both-worker-kinds",
+    "request": {
+      "now": "2026-10-09T12:00:00Z",
+      "window_hours": 2,
+      "max_input_age_minutes": 15,
+      "controller_ticks": 3,
+      "controller_silent_after_minutes": 30,
+      "floors": {
+        "omnibase_core": 1.0
+      },
+      "floors_unknown": null,
+      "watcher": {
+        "last_tick": "2026-10-09T11:59:00Z",
+        "prs": {
+          "42": {
+            "facts": {
+              "repo": "OmniNode-ai/omnibase_core",
+              "state": "OPEN",
+              "draft": false
+            },
+            "cls": "ready"
+          }
+        }
+      },
+      "watcher_unavailable": null,
+      "clone_sync": {
+        "last_run": "2026-10-09T11:59:00Z",
+        "note": null,
+        "clones": {
+          "omnibase_core": [
+            "/clones/omnibase_core"
+          ]
+        }
+      },
+      "clone_sync_unavailable": null,
+      "scans": {
+        "omnibase_core": {
+          "landed": 4,
+          "count": 3,
+          "docs": 1,
+          "last": "2026-10-09T11:30:00Z"
+        }
+      },
+      "scan_errors": {},
+      "scan_notes": [],
+      "controller_lines": [
+        "{\"ts\": \"2026-10-09T12:00:00Z\", \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1, \"lab_spawn:spawned\": 2}}",
+        "{\"ts\": \"2026-10-09T12:00:00Z\", \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1, \"lab_spawn:spawned\": 2}}",
+        "{\"ts\": \"2026-10-09T12:00:00Z\", \"status\": \"ok\", \"performed\": {\"dispatch_worker:spawned\": 1, \"lab_spawn:spawned\": 2}}"
+      ],
+      "controller_unavailable": null,
+      "row_lane": "product-floor-alarm",
+      "row_ticket": "OMN-19815"
+    },
+    "expected": {
+      "per_repo": {
+        "omnibase_core": {
+          "floor": 1.0,
+          "count": 3,
+          "rate": 1.5,
+          "docs_only": 1,
+          "landed_seen": 4,
+          "last_product_merge": "2026-10-09T11:30:00Z",
+          "detail": "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago"
+        }
+      },
+      "waiting": {
+        "omnibase_core": 1
+      },
+      "breaches": {},
+      "unknowns": {},
+      "controller": {
+        "last_ts": "2026-10-09T12:00:00Z",
+        "last_age_minutes": 0.0,
+        "last_status": "ok",
+        "last_refusal": null,
+        "workers_per_tick": [
+          3,
+          3,
+          3
+        ],
+        "ticks": [
+          "-",
+          "-",
+          "-"
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "degraded": [
+          null,
+          null,
+          null
+        ],
+        "detail": "landing controller dispatched 9 workers over its last 3 ticks (ticks -,-,- ; statuses ok,ok,ok; newest tick 12:00Z, 0 min ago)"
+      },
+      "notes": [],
+      "ts": "2026-10-09T12:00:00Z",
+      "summary_lines": [
+        "FLOOR-ALARM OK ts=2026-10-09T12:00:00Z",
+        "omnibase_core merged 3 product PRs in 2h (1.5/h, floor 1/h) with 1 waiting; last product merge 0.5h ago",
+        "landing controller dispatched 9 workers over its last 3 ticks (ticks -,-,- ; statuses ok,ok,ok; newest tick 12:00Z, 0 min ago)"
+      ],
+      "status_row": "2026-10-09T12:00:00Z | STATUS | lane=product-floor-alarm | ticket=OMN-19815 | guard=product-floor | breached= | controller=workers/tick=3,3,3 newest=2026-10-09T12:00:00Z age=0m status=ok refusal=-",
+      "controller_cell": "workers/tick=3,3,3 newest=2026-10-09T12:00:00Z age=0m status=ok refusal=-"
+    }
+  }
+]

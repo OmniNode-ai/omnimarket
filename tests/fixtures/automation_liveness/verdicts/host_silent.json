@@ -1,0 +1,12 @@
+{
+  "process_id": "host-a/observer",
+  "host": "host-a",
+  "verdict": "host_silent",
+  "state": "stale",
+  "reason": "observer_heartbeat_missed",
+  "previous_verdict": "healthy",
+  "verdict_since": "2026-10-09T02:10:00Z",
+  "evaluated_at": "2026-10-09T02:31:00Z",
+  "contract_digest": "e75884c5dd000dfa9ffebc48814c526ef87ebb7411ad16a26f85726d881cb179",
+  "detail": "example host_silent verdict"
+}

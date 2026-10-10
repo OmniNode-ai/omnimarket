@@ -49,6 +49,8 @@ def _make_request(**overrides: object) -> ModelInferenceCredentialCreateRequest:
         "name": "my-openrouter-key",
         "provider": "openrouter",
         "key_value": _SECRET_VALUE,
+        # OMN-20844: the customer chooses the OpenRouter model their key runs.
+        "model": "openai/gpt-5-nano",
     }
     fields.update(overrides)
     return ModelInferenceCredentialCreateRequest(**fields)
@@ -133,7 +135,17 @@ def test_credential_registered_event_never_carries_a_secret_field() -> None:
     """Structural guard: the event model's field set can never include a
     value/key_value field, and extra="forbid" means any accidental attempt
     to construct it with one raises immediately."""
-    allowed_fields = {"tenant_id", "provider", "name", "api_key_ref", "metadata"}
+    # OMN-19985 adds fingerprint (8 hex characters of sha256 of the value, which
+    # cannot recover it) and set_at (a time). Neither is the value.
+    allowed_fields = {
+        "tenant_id",
+        "provider",
+        "name",
+        "api_key_ref",
+        "metadata",
+        "fingerprint",
+        "set_at",
+    }
     assert set(ModelCredentialRegisteredEvent.model_fields) == allowed_fields
 
     with pytest.raises(ValidationError):

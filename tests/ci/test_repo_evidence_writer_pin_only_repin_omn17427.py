@@ -24,8 +24,9 @@ CALLER_PATH = (
 
 def test_caller_pins_the_reusable_that_derives_writer_pin_only_in_job() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
+    # The pin moved to a descendant that keeps this step: omnibase_core#1914 (OMN-20074), then omnibase_core#1932 (OMN-20032).
     assert caller["jobs"]["repo-evidence"]["uses"].endswith(
-        "@81b34fe91f995e75acd65694e81ecf2c385456a4"
+        "@4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
     )
 
 

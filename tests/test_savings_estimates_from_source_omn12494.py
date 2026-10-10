@@ -67,9 +67,15 @@ class TestSavingsSourceBuilder:
             src, baseline_model="claude-opus-4-6"
         )
         assert proj is not None
+        # The counterfactual is priced from the pricing manifest (OMN-20833), so
+        # the cloud cost is read from it rather than pinned to an Opus rate.
+        cf = build_premium_counterfactual(
+            prompt_tokens=1000, completion_tokens=500, premium_model="claude-opus-4-6"
+        )
+        assert cf is not None
         assert proj.local_cost_usd == Decimal("0.003")
-        assert proj.cloud_cost_usd == Decimal("0.0525")
-        assert proj.savings_usd == Decimal("0.0495")
+        assert proj.cloud_cost_usd == cf.counterfactual_cost_usd
+        assert proj.savings_usd == cf.counterfactual_cost_usd - Decimal("0.003")
         assert proj.model_cloud_baseline == "claude-opus-4-6"
 
     def test_no_counterfactual_yields_no_row(self) -> None:

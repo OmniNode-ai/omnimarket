@@ -1,31 +1,29 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models of the remote-lane decision node (OMN-20669)."""
+"""Models of the remote-lane placement decision node (OMN-20669)."""
 
 from .model_remote_lane_placement import (
     CODEX_ENGINE,
+    RECONCILE_SCRIPT,
+    EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
+    ModelRemoteLaneHostVenv,
     ModelRemoteLaneHostVerdict,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
-)
-from .model_remote_lane_result import (
-    FAILED_OUTCOME,
-    LANE_OUTCOMES,
-    REJECTED_OUTCOME,
-    ModelRemoteLaneResult,
-    ModelRemoteLaneResultRequest,
+    ModelRemoteLaneReconcileIntent,
+    ModelRemoteLaneVenvDrift,
 )
 
 __all__ = [
     "CODEX_ENGINE",
-    "FAILED_OUTCOME",
-    "LANE_OUTCOMES",
-    "REJECTED_OUTCOME",
+    "RECONCILE_SCRIPT",
+    "EnumRemoteLaneOutcome",
     "ModelRemoteLaneHostReading",
+    "ModelRemoteLaneHostVenv",
     "ModelRemoteLaneHostVerdict",
     "ModelRemoteLanePlacementRequest",
     "ModelRemoteLanePlacementResult",
-    "ModelRemoteLaneResult",
-    "ModelRemoteLaneResultRequest",
+    "ModelRemoteLaneReconcileIntent",
+    "ModelRemoteLaneVenvDrift",
 ]

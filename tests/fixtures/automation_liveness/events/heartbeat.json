@@ -1,0 +1,14 @@
+{
+  "process_id": "host-c/watchdog-primary",
+  "host": "host-c",
+  "pid": 4242,
+  "process_started_at": "2026-10-09T00:00:00Z",
+  "progress_counter": 131,
+  "last_progress_at": "2026-10-09T02:31:00Z",
+  "demand_count": 0,
+  "emitted_at": "2026-10-09T02:31:00Z",
+  "selftest": "pass",
+  "consumed_offset": 1872,
+  "outbox_backlog": 0,
+  "last_ledger_write_at": null
+}

@@ -5,10 +5,25 @@
 The retired throughput_tick.py and the loops_check.py checks it called mixed these
 decisions with launchctl, ps and file reads. Here the caller reads those and passes the
 facts; the handler returns the finding lines and the status line, byte-identical to the
-retired script for the controller, merges, floors and escalation findings.
+retired script for the controller, merges, floors, escalation and lab-headroom findings.
 
-Not yet ported (next shard): the lab-headroom finding, which needs the remote-lane
-placement readings.
+The lab-headroom finding runs only when the caller supplies `lab_headroom` facts: the
+pool hosts with their limited and auth-expired marks, the runner's receipts, the live
+placement markers, and, per host, whether the placement module parsed each reading
+and the admission refusal it names (that parse stays in the placement module until its
+own shard).
+
+OMN-20840 (2026-10-09, 10 merges an hour with 182 open and every problem a NOTE): a park that holds
+a repository with zero merges past `park_max_hours` is MISSING with the manual-unblock fix; a lab
+host with no recent reading is UNKNOWN, never a quiet NOTE; a runner receipt that ended without
+running (no-host, host-limited, a guard limit, failed) is MISSING until a later receipt of its
+brief runs; and an open count rising across the last three tick runs is MISSING.
+
+OMN-20864 (operator ruling 2026-10-10T04:08:23Z): idle lab capacity is never left idle while PRs are
+open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dispatch through the
+lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule lab-fill selection runs
+(omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
+hold source is UNKNOWN and names no lane.
 """
 
 from __future__ import annotations
@@ -20,7 +35,12 @@ from typing import Any
 
 from omnibase_core.types import JsonType
 
+from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
+    ModelLabHeadroomFacts,
+    ModelLabMark,
+    ModelLabReceipt,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
 )
@@ -47,6 +67,39 @@ FLOOR_FIX = (
     "dev head; /omni:merge-drain's merge-pulse names them) and dispatch ONE targeted fix lane for that "
     "cause (not a drain); pr_claim_registry_cli.py list first for a peer already on it"
 )
+# RULING 2026-10-09T04:10:56Z lane=orchestrator-9f8a: while the controller cannot re-dispatch a stuck cause
+# itself, the orchestrator sends a Codex or Opus fix lane for it. A park lasting hours over a repository that
+# has stopped landing is that case (OMN-20840: three repositories read as parked notes for 8 to 12 hours).
+PARK_FIX = (
+    "nothing lands in {repo} until the park ends at {until}: under RULING 2026-10-09T04:10:56Z "
+    "lane=orchestrator-9f8a the orchestrator dispatches ONE Codex or Opus fix lane for cause {key} now "
+    "(read the cause through /omni:landing-controller status first, and pr_claim_registry_cli.py list for a "
+    "peer already on it); gates still decide, no bypass; the tick dispatches nothing"
+)
+UNREAD_HOST_FIX = (
+    "read {host}'s live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; "
+    "it runs nothing); a free slot "
+    "there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host "
+    "that cannot be read is a lab fault to name to the operator, never free and never full"
+)
+NEVER_RAN = (
+    "no-host",
+    "host-limited",
+    "guard-memory-max",
+    "guard-runtime-max",
+    "failed",
+)
+RAN = ("running", "done")
+DISPATCH_FIX = (
+    "the lane never ran: report it as {status}, never as running; re-dispatch its brief ({brief}) through "
+    "the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it is waiting; "
+    "the tick dispatches nothing"
+)
+OPEN_TREND_FIX = (
+    "inflow exceeds landing: read the largest blocker class (/omni:queue-status, /omni:merge-drain's "
+    "merge-pulse) and dispatch ONE fix lane for that class under RULING 2026-10-09T04:10:56Z "
+    "lane=orchestrator-9f8a; the tick dispatches nothing"
+)
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
@@ -61,6 +114,8 @@ class Report:
     missing: list[str] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
+    # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
+    floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     def miss(self, loop: str, why: str, fix: str) -> None:
         self.missing.append(loop)
@@ -221,7 +276,8 @@ def check_controller(
 
 def check_merges(
     rep: Report, request: ModelThroughputTickRequest, now: datetime
-) -> None:
+) -> int | None:
+    """The merges finding; returns the open count when the watcher state is fresh, else None."""
     rep.checked.append("merges")
     path = request.watcher_path
     if path is None:
@@ -230,7 +286,7 @@ def check_merges(
             "OMNI_HOME is not set and no --pr-watcher-state given",
             WATCHER_FIX,
         )
-        return
+        return None
     max_minutes = request.watcher_max_minutes
     minimum = request.min_merges_per_hour
     try:
@@ -252,14 +308,15 @@ def check_merges(
                 control += timedelta(0) <= elapsed <= timedelta(days=7)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         rep.unk("merges", f"cannot read watcher state {path}: {exc}", WATCHER_FIX)
-        return
+        return None
     if age > max_minutes:
         rep.unk(
             "merges",
             f"stale watcher: last tick {ts} is {age:.0f} min old (> {max_minutes})",
             WATCHER_FIX,
         )
-    elif count == 0 and control == 0:
+        return None
+    if count == 0 and control == 0:
         rep.unk(
             "merges",
             "zero merges in 60 min AND in 7 days (positive control failed)",
@@ -277,6 +334,7 @@ def check_merges(
             f"{count} merges in 60 min with {opened} open (< {minimum}/h is a stall)",
             MERGES_FIX,
         )
+    return opened
 
 
 def check_floors(
@@ -368,6 +426,7 @@ def check_floors(
         rate = recent / (FLOOR_WINDOW.total_seconds() / 3600)
         since = (now - max(stamps)).total_seconds() / 3600
         if rate < floor:
+            rep.floor_stats[f"floor:{repo}"] = (recent, waiting[repo])
             rep.miss(
                 f"floor:{repo}",
                 f"{repo} merged {recent} in 2h ({rate:g}/h, floor {floor:g}/h) with "
@@ -547,10 +606,32 @@ def report_escalated(
             )
 
 
+def _long_park(
+    cover: Cover, stats: tuple[int, int] | None, now: datetime, max_hours: float
+) -> float | None:
+    """Hours left on a park that holds a repository with PRs waiting and zero merges in the window,
+    when they exceed `max_hours`; else None (a lease, a short park or a landing repository)."""
+    if cover.lease_id or not cover.parked_until or stats is None:
+        return None
+    recent, waiting = stats
+    try:
+        left = (parse_stamp(cover.parked_until) - now).total_seconds() / 3600
+    except (ValueError, TypeError):
+        return None
+    return left if recent == 0 and waiting > 0 and left > max_hours else None
+
+
 def report_floors(
-    rep: Report, floor_rep: Report, covers: list[Cover], ticks: list[dict[str, Any]]
+    rep: Report,
+    floor_rep: Report,
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime | None = None,
+    park_max_hours: float = 2.0,
 ) -> None:
-    """Merge the floor findings into the tick, replacing their fix-lane advice."""
+    """Merge the floor findings into the tick, replacing their fix-lane advice. A cause lease covers a
+    floor; a park covers it only while it ends within `park_max_hours`, or while the repository still
+    lands (OMN-20840)."""
     rep.checked.extend(floor_rep.checked)
     rep.unknown.extend(floor_rep.unknown)
     cells = fixer_cells(ticks[0] if ticks else {})
@@ -560,11 +641,285 @@ def report_floors(
             rep.lines.append(line)
             continue
         loop = head.removeprefix("MISSING ")
-        cover = next((c for c in covers if c.repo == loop.removeprefix("floor:")), None)
-        if cover is not None:
+        repo = loop.removeprefix("floor:")
+        cover = next((c for c in covers if c.repo == repo), None)
+        left = (
+            _long_park(cover, floor_rep.floor_stats.get(loop), now, park_max_hours)
+            if cover is not None and now is not None
+            else None
+        )
+        if cover is not None and left is not None:
+            rep.miss(
+                loop,
+                f"{rest.rpartition(' | FIX: ')[0]}; {cover.note()}, {left:.1f}h from now "
+                f"(> {park_max_hours:g}h)",
+                PARK_FIX.format(repo=repo, until=cover.parked_until, key=cover.key),
+            )
+        elif cover is not None:
             rep.note(f"{loop} | {rest.rpartition(' | FIX: ')[0]} | {cover.note()}")
         else:
             rep.miss(loop, f"{rest.rpartition(' | FIX: ')[0]}; {cells}", CONTROLLER_FIX)
+
+
+READING_REFUSALS = ("UNREADABLE(", "ADMISSION-REFUSED(", "LANE-REFUSED(")
+READING_WINDOW = timedelta(minutes=15)
+READING_FIELD_RE = re.compile(r"(?:[:,])([a-z_]+)=([^,]+)")
+
+
+def _mark_until(mark: ModelLabMark) -> datetime | None:
+    """The mark's `until` stamp; None for an absent mark; ValueError/TypeError when unreadable."""
+    if mark.state == "absent":
+        return None
+    if mark.state == "unreadable" or mark.until is None:
+        raise ValueError("unreadable mark")
+    return parse_stamp(mark.until)
+
+
+def _receipt_summary(
+    facts: ModelLabHeadroomFacts,
+) -> tuple[dict[str, int], dict[str, tuple[datetime, str]]]:
+    running: dict[str, int] = {}
+    latest: dict[str, tuple[datetime, str]] = {}
+    for receipt in facts.receipts:
+        try:
+            at = parse_stamp(receipt.started_at)
+        except (ValueError, TypeError):
+            continue  # An interrupted receipt is not evidence of free capacity.
+        host = receipt.host
+        if host and not receipt.final and receipt.status in ("preparing", "running"):
+            if not receipt.pid_valid:
+                continue
+            if receipt.pid_alive is None or receipt.pid_alive:
+                running[host] = running.get(host, 0) + 1
+        for reading in receipt.readings:
+            name, _, _ = reading.partition(":")
+            if name not in latest or at > latest[name][0]:
+                latest[name] = (at, reading)
+    return running, latest
+
+
+PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
+HOLD_SOURCE_FIX = (
+    "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
+    "are unread"
+)
+
+
+def check_lab_headroom(
+    rep: Report,
+    facts: ModelLabHeadroomFacts,
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None = None,
+) -> ModelLabFillPrLandPlan | None:
+    """Free lane slots in the runner's recent placement receipts; never probes or places. With PR-land
+    facts, the free slots' FIX names the pr-land fallback's lanes (OMN-20864)."""
+    rep.checked.append("lab-headroom")
+    if facts.module_unavailable:
+        rep.note("lab-headroom: placement module unavailable")
+        return None
+    for name in facts.unavailable_hosts:
+        rep.note(f"lab-headroom:{name} | unavailable in host table; no dispatch")
+    if facts.placement_error is not None:
+        rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
+        return None
+    free_lines: list[
+        tuple[int, int]
+    ] = []  # (index in rep.lines, free slots), host order
+    running, latest = _receipt_summary(facts)
+    placed: dict[str, int] = {}
+    for name in facts.live_marker_hosts:
+        placed[name] = placed.get(name, 0) + 1
+    for host in facts.hosts:
+        if host.local:
+            continue
+        label = f"lab-headroom:{host.name}"
+        try:
+            until = _mark_until(host.limited_mark)
+        except (ValueError, TypeError):
+            rep.note(f"{label} | limited mark unreadable; no dispatch")
+            continue
+        if until is not None and until > now:
+            rep.note(
+                f"{label} | limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}; no dispatch"
+            )
+            continue
+        try:
+            auth_until = _mark_until(host.auth_mark)
+            if host.auth_mark.state == "present" and host.auth_mark.at is None:
+                raise ValueError("auth mark lacks `at`")
+        except (ValueError, TypeError):
+            rep.note(f"{label} | auth-expired mark unreadable; no dispatch")
+            continue
+        if auth_until is not None and auth_until > now:
+            rep.note(
+                f"{label} | claude auth expired since {host.auth_mark.at}; log in again; no dispatch"
+            )
+            continue
+        cached = latest.get(host.name)
+        if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
+            # An unread host is neither free nor full (OMN-20840: h101 and h201 read as quiet notes
+            # while one lab lane ran).
+            newest = cached[0].strftime("%Y-%m-%dT%H:%M:%SZ") if cached else "none"
+            rep.unk(
+                label,
+                f"no placement reading in the last {READING_WINDOW.total_seconds() / 60:.0f} min "
+                f"(newest {newest}): its capacity is unread",
+                UNREAD_HOST_FIX.format(host=host.name),
+            )
+            continue
+        reading = cached[1]
+        if any(reason in reading for reason in READING_REFUSALS):
+            rep.note(f"{label} | unhealthy: {reading}; no dispatch")
+            continue
+        parse = host.parses.get(reading)
+        if parse is None or not parse.parsed:
+            rep.note(f"{label} | unreadable placement reading; no dispatch")
+            continue
+        fields = dict(READING_FIELD_RE.findall(reading))
+        try:
+            cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
+            # The snapshot precedes placement. Markers and live receipts include that new lane;
+            # max avoids charging it twice and also counts landing workers in the same pool.
+            count = max(placed.get(host.name, 0), running.get(host.name, 0))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if parse.admission_refusal is not None:
+            rep.note(
+                f"{label} | admission refused: {parse.admission_refusal}; "
+                f"running lanes {count} of cap {cap}, free slots 0"
+            )
+            continue
+        try:
+            observed = int(fields["placed"])
+            free = max(0, min(cap - count, int(fields["slots"]) + observed - count))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if free:
+            free_lines.append((len(rep.lines), free))
+            rep.miss(
+                label,
+                f"running lanes {count} of cap {cap}, free slots {free}",
+                f"dispatch up to {free} lanes of the session's pillar work to {host.name} "
+                "through the remote-lane runner; never pin to a host without headroom",
+            )
+        else:
+            rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    if pr_land is None:
+        return None
+    plan = plan_pr_land_fallback(
+        pr_land, sum(free for _, free in free_lines), now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    if plan.failure is not None:
+        rep.unk("lab-headroom:pr-land", plan.reason, HOLD_SOURCE_FIX)
+        return plan
+    lanes = [f"{d.pr} ({d.pr_class})" for d in plan.dispatch]
+    for index, free in free_lines:
+        mine, lanes = lanes[:free], lanes[free:]
+        if mine:
+            rep.lines[index] += PR_LAND_FIX.format(prs=", ".join(mine))
+    if free_lines and not plan.dispatch:
+        rep.note(f"lab-headroom:pr-land | {plan.reason}")
+    return plan
+
+
+def _receipt_reason(receipt: ModelLabReceipt) -> str:
+    text = receipt.reason or (
+        "readings: " + " ".join(receipt.readings)
+        if receipt.readings
+        else "no reason recorded"
+    )
+    text = " ".join(text.split())
+    return text if len(text) <= 200 else text[:197] + "..."
+
+
+def check_dispatches(
+    rep: Report, facts: ModelLabHeadroomFacts, now: datetime, window_hours: float
+) -> None:
+    """A dispatched lane whose receipt ended without running, until its brief runs (OMN-20840: six lanes
+    ended no-host within a minute and were reported as running for hours)."""
+    rep.checked.append("dispatches")
+    if facts.module_unavailable or facts.placement_error is not None:
+        why = facts.placement_error or "placement module unavailable"
+        rep.unk(
+            "dispatches",
+            f"the runner's receipts are unread ({why})",
+            "read ~/.local/state/omni/remote-lanes/<lane>/rlane-*.json by hand for status no-host or failed",
+        )
+        return
+    window = timedelta(hours=window_hours)
+    dated: list[tuple[datetime, ModelLabReceipt]] = []
+    for receipt in facts.receipts:
+        try:
+            dated.append((parse_stamp(receipt.started_at), receipt))
+        except (ValueError, TypeError):
+            continue
+    newest: dict[str, tuple[datetime, ModelLabReceipt]] = {}
+    for at, receipt in dated:
+        if receipt.status not in NEVER_RAN or not timedelta(0) <= now - at <= window:
+            continue
+        lane = receipt.lane or receipt.run_id or receipt.path or "?"
+        if lane not in newest or at > newest[lane][0]:
+            newest[lane] = (at, receipt)
+    for lane, (at, receipt) in sorted(newest.items(), key=lambda item: item[1][0]):
+        superseded = any(
+            later > at
+            and other.status in RAN
+            and (
+                (receipt.brief and other.brief == receipt.brief)
+                or (receipt.lane and other.lane == receipt.lane)
+            )
+            for later, other in dated
+        )
+        if superseded:
+            continue
+        rep.miss(
+            f"dispatch:{lane}",
+            f"dispatched {receipt.started_at}, ended {receipt.status} ({_receipt_reason(receipt)}); "
+            f"receipt {receipt.path or receipt.run_id or '?'}; no later receipt of its brief is running or done",
+            DISPATCH_FIX.format(
+                status=receipt.status, brief=receipt.brief or "unrecorded"
+            ),
+        )
+
+
+def check_open_trend(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime, opened: int | None
+) -> None:
+    """The open count across the last three tick runs: up by more than `open_rise_pct` is MISSING."""
+    rep.checked.append("open-trend")
+    if opened is None:
+        return  # the merges finding already names an unread or stale watcher
+    max_age = timedelta(hours=request.open_history_max_age_hours)
+    points: list[tuple[str, int]] = []
+    for point in request.open_history or []:
+        try:
+            if timedelta(0) <= now - parse_stamp(point.at) <= max_age:
+                points.append((point.at, point.open))
+        except (ValueError, TypeError):
+            continue
+    series = [*points[-2:], (request.now, opened)]
+    counts = " -> ".join(str(n) for _, n in series)
+    if len(series) < 3:
+        rep.note(
+            f"open-trend | open {counts}; {len(series)} of 3 tick runs recorded in the last "
+            f"{request.open_history_max_age_hours:g}h"
+        )
+        return
+    first = series[0][1]
+    rise = (opened - first) / first * 100 if first else (100.0 if opened else 0.0)
+    if rise > request.open_rise_pct:
+        rep.miss(
+            "open-trend",
+            f"open count {counts} across the last three tick runs (since {series[0][0]}, "
+            f"+{rise:.1f}%, > {request.open_rise_pct:g}%)",
+            OPEN_TREND_FIX,
+        )
+    else:
+        rep.note(
+            f"open-trend | open {counts} across the last three tick runs ({rise:+.1f}%)"
+        )
 
 
 class HandlerThroughputTickDecision:
@@ -574,14 +929,31 @@ class HandlerThroughputTickDecision:
         now = parse_stamp(request.now)
         ticks: list[dict[str, Any]] = [dict(t) for t in request.ticks]
         rep = Report()
+        if request.heartbeat_write_error is not None:
+            rep.unk(
+                "tick-heartbeat",
+                f"cannot write {request.heartbeat_write_error}",
+                "make the state directory writable (OMNI_SESSION_START_STATE_DIR names another)",
+            )
         escalated: list[tuple[str, str]] = []
         check_controller(rep, request, now, escalated)
-        check_merges(rep, request, now)
+        opened = check_merges(rep, request, now)
         covers = read_covers(request.state_json, ticks, now)
         floor_rep = Report()
         check_floors(floor_rep, request, now)
-        report_floors(rep, floor_rep, covers, ticks)
+        report_floors(rep, floor_rep, covers, ticks, now, request.park_max_hours)
         report_escalated(rep, escalated, covers, ticks)
+        if request.open_history is not None:
+            check_open_trend(rep, request, now, opened)
+        pr_land = None
+        if request.lab_headroom is not None:
+            pr_land = check_lab_headroom(
+                rep, request.lab_headroom, now, request.pr_land
+            )
+            if request.dispatch_window_hours is not None:
+                check_dispatches(
+                    rep, request.lab_headroom, now, request.dispatch_window_hours
+                )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
@@ -589,4 +961,6 @@ class HandlerThroughputTickDecision:
             unknown=rep.unknown,
             checked=rep.checked,
             exit_code=0 if not rep.missing and not rep.unknown else 1,
+            open_count=opened,
+            pr_land=pr_land,
         )

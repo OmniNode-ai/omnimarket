@@ -34,8 +34,9 @@ class TestFixerDispatcherGoldenChain:
         result = handler.handle(_make_request(stall_category="red"))
 
         assert result.action == "dispatch_ci_fix"
-        assert result.target_node == "node_ci_fix_effect"
-        assert "ci-fix" in result.target_topic
+        assert result.target_node == "node_pr_lifecycle_fix_effect"
+        assert result.target_topic == "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"
+        assert result.payload_hint["block_reason"] == "code_failure"
         assert result.confidence >= 0.9
 
     def test_conflicted_routes_to_conflict_hunk(self) -> None:
@@ -43,7 +44,8 @@ class TestFixerDispatcherGoldenChain:
         result = handler.handle(_make_request(stall_category="conflicted"))
 
         assert result.action == "dispatch_conflict_resolve"
-        assert result.target_node == "node_conflict_hunk_effect"
+        assert result.payload_hint["block_reason"] == "conflict"
+        assert result.target_node == "node_pr_lifecycle_fix_effect"
         assert result.confidence >= 0.9
 
     def test_behind_routes_to_rebase(self) -> None:
@@ -53,7 +55,9 @@ class TestFixerDispatcherGoldenChain:
         )
 
         assert result.action == "dispatch_rebase"
-        assert result.target_node == "node_rebase_effect"
+        assert result.target_topic == "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"
+        assert result.payload_hint["block_reason"] == "conflict"
+        assert result.target_node == "node_pr_lifecycle_fix_effect"
         assert result.payload_hint.get("branch_name") == "jonah/omn-9403-foo"
 
     def test_deploy_gate_returns_advisory(self) -> None:
@@ -111,3 +115,4 @@ class TestFixerDispatcherGoldenChain:
         result = handler.handle(_make_request(stall_category="conflicted"))
 
         assert result.action == "dispatch_conflict_resolve"
+        assert result.payload_hint["block_reason"] == "conflict"

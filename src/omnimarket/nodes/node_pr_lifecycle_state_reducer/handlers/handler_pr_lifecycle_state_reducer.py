@@ -27,10 +27,16 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
 from omnimarket.events.topics import CI_RED_TRIAGE_DECIDED_TOPIC_V1
+from omnimarket.models.ci_red_triage import (
+    ModelCiRedTriageDecided,
+    ci_red_owner_correlation_id,
+    ci_red_owner_run_id,
+)
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_bus_observation import (
     PR_LIFECYCLE_FIX_COMPLETED_TOPIC,
     ModelPrLifecycleBusObservation,
@@ -56,6 +62,7 @@ from omnimarket.projection.pr_ledger_projection import (
     EnumPrLedgerFinalState,
     ModelPrLedgerProjectionRow,
     build_ledger_rows,
+    load_owner_claim_lease_ttl,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
@@ -336,6 +343,42 @@ def build_bus_ledger_row(
     )
 
 
+def build_ci_red_claim_rows(
+    decided: ModelCiRedTriageDecided, lease_ttl: timedelta
+) -> tuple[ModelPrLedgerProjectionRow, ...]:
+    """The durable owner claim a red-CI decision makes, one row per member PR.
+
+    A decision that started an owner claims it for every PR it covers: the
+    cause's members (absorbing members that already had a PR-own owner) or the
+    one PR. ``sweep_id`` is the owner's correlation id, so the triage handler
+    reads the claim by owner key, and by owner key and PR for absorption, after
+    a restart. A redelivery UPSERTs onto the same rows.
+
+    The claim is a lease: ``next_check_at`` is ``found_at + lease_ttl`` (the
+    contract's ``owner_claim_lease``), the expiry every owner read honours.
+    """
+    run_id = ci_red_owner_run_id(decided.owner_key)
+    found_at = datetime.fromisoformat(decided.observed_at)
+    return tuple(
+        ModelPrLedgerProjectionRow(
+            sweep_id=str(ci_red_owner_correlation_id(decided.owner_key)),
+            iteration=0,
+            found_at=found_at,
+            repo=decided.repo,
+            pr_number=member,
+            initial_state=decided.initial_state,
+            action_taken=EnumPrLedgerAction.FIX,
+            evidence=(
+                f"claim=owner owner_key={decided.owner_key} run_id={run_id} "
+                f"decision_key={decided.decision_key}"
+            ),
+            final_state=EnumPrLedgerFinalState.FIX_DISPATCHED,
+            next_check_at=found_at + lease_ttl,
+        )
+        for member in decided.claimed_members()
+    )
+
+
 #: Classification values and their target counter field names.
 _CLASSIFICATION_FIELD: dict[str, str] = {
     "pr_scoped": "pr_scoped_count",
@@ -422,6 +465,12 @@ class HandlerPrLifecycleStateReducer:
     are enabled. No side effects are produced — only state and intent computation.
     """
 
+    def __init__(self, *, contract_path: Path | None = None) -> None:
+        # The owner claim lease TTL is read once, at load: a contract without a
+        # valid owner_claim_lease refuses the handler rather than let it write a
+        # claim that never expires.
+        self._owner_claim_ttl = load_owner_claim_lease_ttl(contract_path)
+
     @property
     def handler_type(self) -> HandlerType:
         return "NODE_HANDLER"
@@ -441,7 +490,11 @@ class HandlerPrLifecycleStateReducer:
         :class:`ModelPrLifecycleBusObservation` and UPSERTs the one
         `pr_lifecycle_ledger_entries` row it materializes.
 
-        Returns `{"rows_upserted": 1, ...}` so the runtime's OMN-13360
+        A red-CI decision also UPSERTs its owner claim rows
+        (:func:`build_ci_red_claim_rows`), the durable claim the triage handler
+        reads after a restart.
+
+        Returns `{"rows_upserted": <n>, ...}` so the runtime's OMN-13360
         deterministic-truth gate emits the terminal event only on a proven
         write.
 
@@ -467,18 +520,24 @@ class HandlerPrLifecycleStateReducer:
             {**payload, "source_topic": topic}
         )
         row = build_bus_ledger_row(observation)
-        database: ProtocolProjectionDatabaseSync = input_data[_RUNTIME_DB_KEY]
-        upserted = database.upsert(
-            PR_LEDGER_PROJECTION_TABLE,
-            PR_LEDGER_PROJECTION_CONFLICT_KEY,
-            row.to_row(),
-        )
-        if not upserted:
-            raise PrLifecycleLedgerWriteError(
-                f"UPSERT into {PR_LEDGER_PROJECTION_TABLE} returned False for "
-                f"{observation.repo}#{observation.pr_number} "
-                f"(sweep_id={row.sweep_id}); no row was written."
+        rows: tuple[ModelPrLedgerProjectionRow, ...] = (row,)
+        if topic == CI_RED_TRIAGE_DECIDED_TOPIC_V1:
+            rows += build_ci_red_claim_rows(
+                ModelCiRedTriageDecided.model_validate(payload), self._owner_claim_ttl
             )
+        database: ProtocolProjectionDatabaseSync = input_data[_RUNTIME_DB_KEY]
+        for written in rows:
+            upserted = database.upsert(
+                PR_LEDGER_PROJECTION_TABLE,
+                PR_LEDGER_PROJECTION_CONFLICT_KEY,
+                written.to_row(),
+            )
+            if not upserted:
+                raise PrLifecycleLedgerWriteError(
+                    f"UPSERT into {PR_LEDGER_PROJECTION_TABLE} returned False for "
+                    f"{written.repo}#{written.pr_number} "
+                    f"(sweep_id={written.sweep_id}); no row was written."
+                )
         logger.info(
             "[STATE-REDUCER] projected bus observation topic=%s repo=%s pr=%s "
             "action=%s final_state=%s sweep_id=%s",
@@ -490,7 +549,7 @@ class HandlerPrLifecycleStateReducer:
             row.sweep_id,
         )
         return {
-            "rows_upserted": 1,
+            "rows_upserted": len(rows),
             "table": PR_LEDGER_PROJECTION_TABLE,
             "topic": topic,
             "correlation_id": str(observation.correlation_id),

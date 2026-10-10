@@ -972,10 +972,20 @@ class ModelDelegateSkillResponse(BaseModel):
         # Refused rather than corrected, the same as the count clause above: a
         # producer that does not derive the cause from the record must not be
         # able to publish one that disagrees with it.
+        #
+        # One exception (operator RULING 2026-10-10T00:27:40Z): a run the
+        # handler budget cancelled carries status timeout and names timeout. The
+        # budget stopped its ladder with a rung in flight, so the gate did not
+        # decide it; the earlier gate refusals stay on their own rungs.
         cause = self.terminal_failure_cause
+        budget_cancelled = (
+            self.status == "timeout"
+            and cause is EnumDelegationTerminalFailureCause.TIMEOUT
+        )
         if (
             cause is not None
             and cause is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            and not budget_cancelled
             and _gate_decided(self.attempts)
         ):
             refused = sum(

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20745"
+title: "One copy of the landing controller's red-classification rules, in the lifecycle triage node"
+summary: "The controller's pure red rules (landing_facts: classify_red, cancelled_of, coverage_cascade, gate_own_red, is_cascade_check, apply_reviewer_pool, fired_edge_graded_stale, companion_wait_of, stale_summary_of, stale_step, pending_required_of) become pure definition-B operations of node_pr_lifecycle_triage_compute, with the controller's tests ported beside them. The controller's side (classify through the node, delete the script copies) is the pinned controller PR."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-red-rules-are-node-operations"
+    statement: "The controller's red rules are operations of the lifecycle triage node."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: node_pr_lifecycle_triage_compute declares the landing controller's red rules (classify_red, cancelled_of, coverage_cascade, gate_own_red, is_cascade_check, apply_reviewer_pool, fired_edge_graded_stale, companion_wait_of, stale_summary_of, stale_step, pending_required_of) as pure definition-B operations with no topic of their own -- falsifier: test_landing_rules_contract.py failing when an operation is undeclared, is not handle(request) -> response, is routed or adds a topic, or imports beyond pydantic and the node's own modules
+  - id: "req-verdicts-equal-the-controllers"
+    statement: "The node's verdicts equal the controller's on recorded facts."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: On the controller's recorded facts the node returns the controller's verdicts -- falsifier: test_landing_recorded_heads.py and the ported controller tests failing on any head where the node's red class, cascade test, cancelled copies, stale-summary kind or pending set differs from the controller's
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the ten operations are declared, pure, definition-B and topic-free."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_rules_contract.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: recorded heads and the ported controller tests give the controller's verdicts."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_recorded_heads.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_companion_wait.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_stale_rules.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20745-ac1-operations"
+    description: "AC1: the ten operations are declared once, resolve to handle(request) -> response handlers, are unrouted, add no topic and import only pydantic and the node's own modules."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_rules_contract.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20745-ac2-verdicts"
+    description: "AC2: on 19 recorded heads and the controller's ported cases the node's verdicts equal the controller's."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_recorded_heads.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_companion_wait.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_stale_rules.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

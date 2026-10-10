@@ -1,0 +1,30 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20781"
+title: "omnimarket enforces the five hygiene classes on added lines"
+summary: "The public-repo hygiene gate fails a run on a finding of one of five classes (private-repo-name, internal-kb-prose, lab-config, person-name, private-network) on a line the change adds, and only reports the whole-tree residue. The reusable workflow pin moves to a revision that supports added-line scope, the pre-commit hook is wired at the same revision, and the CI Summary umbrella asserts the context. The hosted failing run on a planted line is recorded in the pull request body."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-hygiene-added-lines-enforcement"
+    statement: ".public-repo-hygiene.yaml declares enforce_scope added-lines and the five enforce_classes with mode report; the workflow pin and the pre-commit hook revision move to the same added-lines-capable revision; and the context public-repo-hygiene / public-repo-hygiene is an expected external context of CI Summary and of the merge-group scoped contexts."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the hygiene enforcement configuration, workflow pin, pre-commit hook and CI Summary expected context are declared consistently -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The enforcement tests pass at the head and fail at the merge base, where the enforcement configuration does not exist."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20781-ac1-hygiene-enforcement"
+    description: "AC1 hosted probe. The enforcement tests pass at the head and fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

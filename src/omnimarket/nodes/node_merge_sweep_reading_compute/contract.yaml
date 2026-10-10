@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_reading_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Evaluate one reading of the fleet for a merge sweep from supplied facts without I/O:
+  product merges against the per-repository floors, the landing controller's stall and
+  its escalations, who owns each PR from the ledger claims, the newest-run class of each
+  red PR, and the chain heads. The facts arrive gathered from the PR watcher's state by
+  node_merge_sweep_effect; nothing is read from GitHub. A fact the state does not hold is
+  named under unread and never read as a zero. A second operation is the claim-time
+  recheck a lane runs before it touches a PR.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: read_merge_sweep_state
+    handler:
+      name: HandlerMergeSweepRead
+      module: omnimarket.nodes.node_merge_sweep_reading_compute.handlers.handler_merge_sweep_read
+    input_model: omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepReadRequest
+    output_model: omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepReadResult
+  - operation: check_merge_sweep_claim
+    handler:
+      name: HandlerMergeSweepClaimCheck
+      module: omnimarket.nodes.node_merge_sweep_reading_compute.handlers.handler_merge_sweep_read
+    input_model: omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepClaimCheckRequest
+    output_model: omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepClaimCheckResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.merge-sweep-read-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.merge-sweep-read-completed.v1
+terminal_event: onex.evt.omnimarket.merge-sweep-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.merge-sweep-read-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.merge-sweep-read-completed.v1
+metadata:
+  ticket: OMN-20676
+  transport_type: kafka
+lifecycle: experimental

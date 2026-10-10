@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind container.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-b/example-container
+  owner_repo: example-owner/example-repo
+  host: host-b
+  trigger:
+    kind: container
+    native_id: example-container
+  expected_interval_seconds: 300
+  alarm_deadline_seconds: 1800
+  max_silence_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: probe
+    locator: example container health probe
+    completion_record: probe answered
+  real_work: probe answered
+  demand: none
+  positive_control:
+    kind: class_drill
+    ref: stop a container
+  state: active

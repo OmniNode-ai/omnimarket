@@ -46,15 +46,32 @@ handler_routing:
         name: ModelCiRunFailedEvent
         module: omnimarket.models.ci_red_triage
 
-# Plan slice: acting stays off until the landing controller stops dispatching
-# for these same classes, so the two controllers cannot launch competing fixes.
+# act: one flag per red class (runner, pr_own, shared_cause, dev_head). A class
+# acts only when the landing controller has stopped dispatching that same class,
+# so the two never launch competing work; an unknown class is refused at load and
+# a class not named does not act. runner acts: its owner reruns the head's failed
+# Actions runs once (node_pr_landing_github_effect rerun_runs) and the controller
+# leaves that class to the bus. Rollback: set the class false.
+# claims: decisions and owners are durable claims, read back (read-only) from the
+# ledger rows node_pr_lifecycle_state_reducer projects from ci-red-triage-decided,
+# so a runtime restart forgets neither. With the DSN unset every start is withheld.
 ci_red_triage:
-  act: false
+  act:
+    runner: true
+    pr_own: false
+    shared_cause: false
+    dev_head: false
+  claims:
+    table: pr_lifecycle_ledger_entries
+    dsn_env: OMNIDASH_ANALYTICS_DB_URL
 
 published_events:
   - event_type: PrLifecycleStartCommand
     topic: onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
     description: "Scoped owner start through the existing sweep path."
+  - event_type: PrLandingGithubRequest
+    topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+    description: "A runner-class owner's one rerun of its head's failed Actions runs."
   - event_type: CiRedTriageDecided
     topic: onex.evt.omnimarket.ci-red-triage-decided.v1
     description: "One deterministic decision per PR head and deciding check."
@@ -347,6 +364,7 @@ event_bus:
     - onex.cmd.omnimarket.repo-health-repair-start.v1
     - onex.evt.omnimarket.ci-red-triage-decided.v1
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
 
 # OMN-12569: durable, reconstructable PR-ledger projection.
 # The ledger is a DERIVED projection (not authoritative truth) materialized

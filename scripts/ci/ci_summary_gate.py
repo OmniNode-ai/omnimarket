@@ -509,6 +509,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Canonical Inference Gate",
     "CI Naming Convention",
     "Dep Provenance Gate",
+    # OMN-20287 (deployment-fact-gate.yml): no new deployment fact (backend,
+    # endpoint, model name, secret ref, provider, tier or per-class order) in
+    # the packaged routing configs. Its own workflow file, so this L4 assertion
+    # is its enforcement surface, as for `Routing Tier Bindability` below.
+    "Deployment Fact Gate",
     "Ecosystem Integration Validation",
     "Enforce validator-requirements.yaml (OMN-13291)",
     "Hostile Review Gate",
@@ -522,7 +527,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # test omnimarket's own OCC companion emitter and its schema compatibility
     # against a pinned onex_change_control checkout. Neither reads a PR's
     # companion, so CI Summary keeps enforcing them until the emitter itself is
-    # retired (plan S7 to S9).
+    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    # reads the ticket-contract schema from omnibase_core, its owner, and checks
+    # out no onex_change_control; it keeps its context name.
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
@@ -587,6 +594,14 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",
     "pr-title / check-title",
+    # OMN-20781 (public-repo-hygiene.yml): five internal-content classes fail
+    # the run on the lines a pull request adds. The caller is a single job with
+    # no `name:` over the reusable's job `public-repo-hygiene`, so the check-run
+    # reads "<caller job id> / <called job name>". It was exempt while the gate
+    # recorded findings and exited 0; it blocks now, and on this repo the CI
+    # Summary umbrella IS the enforcement surface, so a context missing from
+    # this tuple is silently unenforced.
+    "public-repo-hygiene / public-repo-hygiene",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
@@ -1610,6 +1625,12 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("deploy-gate / deploy-gate",),
         ),
         (
+            "deployment-fact-gate.yml",
+            ("pull_request",),
+            (),
+            ("Deployment Fact Gate",),
+        ),
+        (
             "dispatcher-route-coverage.yml",
             ("pull_request", "push", "merge_group"),
             ("main",),
@@ -1732,6 +1753,12 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request", "merge_group"),
             (),
             ("Projection Exposure Drift Gate",),
+        ),
+        (
+            "public-repo-hygiene.yml",
+            ("pull_request",),
+            (),
+            ("public-repo-hygiene / public-repo-hygiene",),
         ),
         (
             "receipt-honesty.yml",

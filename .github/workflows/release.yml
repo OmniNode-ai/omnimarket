@@ -67,6 +67,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      # OMN-17427: a release must not carry a node the infra runtime cannot
+      # wire. Same test as the ci.yml lint-job gate, run on the exact tree being
+      # released, before anything is built, tagged or published.
+      - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        run: uv run --frozen pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
+
       - name: Build wheel + sdist
         run: uv build
 
