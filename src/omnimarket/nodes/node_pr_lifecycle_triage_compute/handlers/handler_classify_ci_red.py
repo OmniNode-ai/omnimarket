@@ -7,6 +7,12 @@ first failure annotation (omnimarket.handlers.cause_signature), and a red whose
 annotation is unread never clusters. When the annotations were not read at all,
 clusters and keys stay check-level. Shared facts and results live in
 omnimarket.models so readers never import private node models.
+
+The runner class is the controller's own red rule, one copy: ``classify_red``
+(handler_classify_landing_red) over the head's newest check conclusions. A
+``runner_saturation`` or ``cancelled_producer`` head is the runner class, and so
+is a ``reviewer_pool`` one, whose rerun stays with the controller's reviewer
+slots (``landing_red_class`` says which).
 """
 
 from omnimarket.handlers.cause_signature import (
@@ -25,6 +31,9 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify
     REVIEWER_POOL_RE,
     SUMMARY_CHECK_RE,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_landing_red import (
+    classify_red,
+)
 
 # The aggregate is evidence only when a concrete red exists, and hostile review alone means reviewer/runner
 # capacity: the same two patterns the landing red rules use (handler_classify_cascade_checks), one copy.
@@ -37,8 +46,8 @@ NEVER_CLUSTER = frozenset(
 # Controller cluster_min_members floor and cluster_absorb_ratio.
 CAUSE_MIN_MEMBERS = 3
 CAUSE_ABSORB_RATIO = 0.8
-# Controller runner_saturation / cancelled_producer conclusions.
-RUNNER_CONCLUSIONS = frozenset({"timed_out", "cancelled"})
+# The controller's red classes that are the bus path's runner class.
+RUNNER_LANDING_CLASSES = frozenset({"runner_saturation", "cancelled_producer"})
 
 
 def _annotation_cause(
@@ -106,11 +115,18 @@ def classify_ci_red(facts: ModelCiRedFacts) -> ModelCiRedClassification:
     reds = reds or event.failing_checks
     members: tuple[int, ...] = (event.pr_number,)
     cause = None
-    if all(HOSTILE_REVIEW_RE.search(check) for check in reds):
+    landing = classify_red(
+        event.failing_checks,
+        [(name, "completed", c) for name, c in facts.check_conclusions.items()],
+        companion_merged=False,
+    )
+    landing_red_class = None
+    if landing == "reviewer_pool":
         red_class = EnumCiRedClass.RUNNER
         check = reds[0]
         owner_key = f"{slug}#{event.pr_number}@{event.head_sha}:rerun"
         reason = "reviewer_pool"
+        landing_red_class = landing
     else:
         reds = tuple(check for check in reds if not HOSTILE_REVIEW_RE.search(check))
         check = reds[0]
@@ -118,12 +134,11 @@ def classify_ci_red(facts: ModelCiRedFacts) -> ModelCiRedClassification:
             red_class = EnumCiRedClass.DEV_HEAD
             owner_key = f"dev:{slug}:{event.base}:{check}"
             reason = "base head carries every red"
-        elif all(
-            facts.check_conclusions.get(red) in RUNNER_CONCLUSIONS for red in reds
-        ):
+        elif landing in RUNNER_LANDING_CLASSES:
             red_class = EnumCiRedClass.RUNNER
             owner_key = f"{slug}#{event.pr_number}@{event.head_sha}:rerun"
-            reason = "runner_saturation / cancelled_producer"
+            reason = landing
+            landing_red_class = landing
         else:
             cause_of = (
                 _annotation_cause(facts, reds) if facts.annotations_read else None
@@ -173,6 +188,7 @@ def classify_ci_red(facts: ModelCiRedFacts) -> ModelCiRedClassification:
         owner_key=owner_key,
         cause_key=cause,
         reason=reason,
+        landing_red_class=landing_red_class,
     )
 
 
