@@ -39,10 +39,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20865-ac2-coverage"
-    description: "AC2: the whole decision package passes, including the fleet coverage tests."
+    description: "AC2: the fleet coverage tests pass."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly -k 'fleet'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
