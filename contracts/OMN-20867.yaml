@@ -19,7 +19,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
-    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute tests/gates/test_contract_publish_parity.py -q"
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py tests/gates/test_contract_publish_parity.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -30,7 +30,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "failure_terminal"'
@@ -49,4 +52,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
