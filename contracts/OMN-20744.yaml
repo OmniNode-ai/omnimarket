@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20744"
+title: "CI-red triage decisions and owner claims survive a runtime restart"
+summary: "HandlerCiRedTriage in node_pr_lifecycle_orchestrator held its decided heads and owners only in process memory. Decisions and owner claims are now durable rows in the existing pr_lifecycle_ledger_entries projection, written by node_pr_lifecycle_state_reducer and read back by exact key, so a restart or redelivery starts nothing twice; ci_red_triage.act stays false."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-survive-restart"
+    statement: "A decided head and a claimed owner are read back from the projection after a restart."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: After a restart a redelivered decided head starts nothing, a new decision joins an owner claimed before the restart, a claimed cause absorbs its members, and an unreadable claim store withholds every start -- falsifier: test_ci_red_triage.py failing in test_restart_then_redelivered_decided_head_starts_nothing, test_restart_new_decision_joins_owner_claimed_before_restart, test_cause_forming_at_member_three_absorbs_members_one_and_two, test_unreadable_claims_withhold_the_start or test_shadow_mode_claims_no_owner_rows
+  - id: "req-reducer-writes-owner-claims"
+    statement: "The reducer projects one owner claim row per member PR of an applied start."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: node_pr_lifecycle_state_reducer writes one owner claim row per member PR when a ci-red-triage decision applied a start -- falsifier: test_ci_red_projection.py failing in test_applied_start_projects_one_owner_claim_row_per_member
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: decisions and owner claims are read back after a restart."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: the reducer projects owner claim rows."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_state_reducer/test_ci_red_projection.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20744-ac1-restart-claims"
+    description: "AC1: restart, redelivery, cause absorption, unreadable-store and shadow-mode tests of HandlerCiRedTriage pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20744-ac2-owner-claim-rows"
+    description: "AC2: the reducer projects one owner claim row per member PR of an applied start."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_state_reducer/test_ci_red_projection.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
