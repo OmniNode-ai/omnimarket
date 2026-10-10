@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -232,7 +233,10 @@ class World:
 
 
 def normalise(text: str | None, world: World) -> str:
-    return (text or "").replace(str(world.root), "<TMP>")
+    """A message without the run's temporary root or its check timings."""
+    return re.sub(
+        r"\(\d+ms\)", "(<ms>)", (text or "").replace(str(world.root), "<TMP>")
+    )
 
 
 def snapshot(
