@@ -94,6 +94,8 @@ def test_pr_land_runtime_readback(hold_state: str) -> None:
                         "host": "h101",
                         "status": "running",
                         "pid_alive": True,
+                        "claim_host": "h101",
+                        "claim_run_id": "rlane-readback-1",
                         "readings": [reading],
                     }
                 ],
