@@ -13,6 +13,9 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: with a deterministic inference stub, the real delegation producer and projection writer store OMN-19514, the real DoD verdict producer and projection writer store verdicts, and joining the migrated tables returns only the matching ticket and delegation correlation ID, excluding verdicts matching just one; linked verdicts store the delegation UUID and unlinked verdicts store NULL -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -p no:cacheprovider
+      - id: "AC2"
+        statement: |-
+          AC2: a completed delegation terminal that names a valid ticket yields a dod-verify start command carrying the ticket and the delegation correlation id, and a failed, timed-out, ticketless or malformed-ticket terminal yields none -- falsifier: uv run pytest tests/nodes/node_delegation_dod_verify_request_compute -q
 evidence_requirements:
   - kind: "tests"
     description: "Real-Postgres tests assert linked UUID storage, unlinked NULL storage, and the exact ticket/correlation pair returned by the join through real producers, projection writers and migrations."
@@ -38,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -k 'linked_verdict or unlinked_verdict'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-delegation-dod-verify-request-ac2"
+    description: "The delegation dod-verify request node tests check the start command for a ticketed completed terminal, the derived verification correlation id, the topic wiring, and the no-command cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_dod_verify_request_compute -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
