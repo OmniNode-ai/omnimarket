@@ -17,7 +17,8 @@ exactly as frozen:
   per (head, base head) and terminals per (PR, episode);
 * the facts the effects need that the reducer does not: the ETags of the two
   conditional reads, the PR's GraphQL node id, the check-run ids the last
-  check read saw, the base branch and when the head checks were last read.
+  check read saw, the base branch and its head, whether GitHub reports armed,
+  and when the head checks were last read.
 
 ``landing`` is None until the first snapshot has been applied: the first
 autobind prompt carries no head, so the row exists only to order the read it
@@ -147,6 +148,21 @@ class ModelPrLandingWorkflowRow(BaseModel):
         description=(
             "GitHub's mergeable_state from the newest PR read, for the arm "
             "gate's merge-state fact (OMN-20866)."
+        ),
+    )
+    base_sha: str | None = Field(
+        default=None,
+        pattern=HEAD_SHA_PATTERN,
+        description=(
+            "The base branch's head from the newest PR read, half of the "
+            "conflict request key (OMN-20750)."
+        ),
+    )
+    github_armed: bool = Field(
+        default=False,
+        description=(
+            "GitHub reported auto-merge armed or the PR in the merge queue on "
+            "the newest PR read, whoever armed it (OMN-20750)."
         ),
     )
     check_runs: tuple[ModelPrLandingCheckRunRef, ...] = Field(default=())

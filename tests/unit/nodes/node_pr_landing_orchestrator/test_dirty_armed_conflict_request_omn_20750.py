@@ -13,7 +13,8 @@ The orchestrator answers a DIRTY, armed PR with exactly one conflict command
 (node_pr_lifecycle_fix_effect's ``conflict`` block reason on its fix-start
 topic) per (PR, head, base head), dry_run like every update-branch, and never
 with an arm or an enqueue. A moved head or base allows a new request; a held PR
-gets none.
+gets none. The request needs the orchestrator's own green verdict for the head;
+a red head gets none.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import 
     HandlerPrArmGate,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
+    EnumPrLandingGithubMode,
     EnumPrLandingGithubOperation,
     ModelGithubPrStateFact,
 )
@@ -49,6 +51,9 @@ from omnimarket.nodes.node_pr_landing_reducer.handlers.handler_pr_landing_reduce
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_head_check_verdict import (
+    EnumHeadCheckVerdict,
 )
 from tests.unit.nodes.node_pr_landing_orchestrator._builders import (
     NODE_ID,
@@ -77,12 +82,14 @@ _ARM_OPERATIONS = {
 }
 
 
-def _handler() -> HandlerPrLandingOrchestrator:
+def _handler(
+    classifier: FixedClassifier | None = None,
+) -> HandlerPrLandingOrchestrator:
     """The runtime's handler: contract config, real reducer and arm gate."""
     return HandlerPrLandingOrchestrator(
         reducer=HandlerPrLandingReducer(),
         arm_gate=HandlerPrArmGate(),
-        classifier=FixedClassifier(),
+        classifier=classifier if classifier is not None else FixedClassifier(),
         store=InMemoryPrLandingRowStore(),
     )
 
@@ -262,8 +269,45 @@ async def test_a_moved_head_allows_a_new_request() -> None:
         10,
         _fact(base_sha=BASE_DIRTY, mergeable_state="dirty", head=HEAD_PUSHED),
     )
+    # A push leaves ARMED: the new head is not known green yet, so no request;
+    # the queued disarm (dry_run, as the contract keeps it) goes out first.
+    assert _conflict_requests(emitted) == []
+    disarm = only_request(emitted)
+    assert disarm.operation is EnumPrLandingGithubOperation.DISARM
+    assert disarm.mode is EnumPrLandingGithubMode.DRY_RUN
+    emitted = await handler.handle(answer(disarm))
+    assert _conflict_requests(emitted) == []
+    head_read = only_request(emitted)
+    assert head_read.operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+    emitted = await handler.handle(answer(head_read))
     assert len(_conflict_requests(emitted)) == 1
     assert _arms(emitted) == []
+
+
+async def test_a_head_first_read_green_while_dirty_gets_one_request() -> None:
+    handler = _handler()
+    dirty = _fact(base_sha=BASE_DIRTY, mergeable_state="dirty")
+    emitted = await _read(handler, 0, dirty)
+    assert _conflict_requests(emitted) == []
+    head_read = only_request(emitted)
+    assert head_read.operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+    emitted = await handler.handle(answer(head_read))
+    assert len(_conflict_requests(emitted)) == 1
+    assert _arms(emitted) == []
+    emitted = await _read(handler, 5, dirty)
+    assert _conflict_requests(emitted) == []
+
+
+async def test_a_red_armed_dirty_head_gets_no_request() -> None:
+    handler = _handler(FixedClassifier(EnumHeadCheckVerdict.PRODUCT_FAILED))
+    emitted = await _read(
+        handler, 0, _fact(base_sha=BASE_DIRTY, mergeable_state="dirty")
+    )
+    assert _conflict_requests(emitted) == []
+    head_read = only_request(emitted)
+    assert head_read.operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+    emitted = await handler.handle(answer(head_read))
+    assert _conflict_requests(emitted) == []
 
 
 async def test_a_held_pr_gone_dirty_gets_no_request() -> None:

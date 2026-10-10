@@ -4,16 +4,16 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20750"
 title: "S8: The landing controller's remaining actions move into the landing nodes and the launchd job is retired"
-summary: "Slice AC-M9 of S8 (update-branch and conflict handling move into the landing nodes): node_pr_landing_orchestrator answers a PR that GitHub's own read reports armed (auto-merge or merge queue) and dirty with exactly one conflict request per (PR, head, base head), node_pr_lifecycle_fix_effect's conflict block reason on its fix-start command topic, and never with an arm or an enqueue. A held, draft or parked PR gets none; a moved head or base allows a new request. The request takes update_branch's mode, which the contract keeps dry_run in every repository while the landing controller still owns conflict work. The REST PR read now carries the base branch head (base_sha) for the key."
+summary: "Slice AC-M9 of S8 (update-branch and conflict handling move into the landing nodes): node_pr_landing_orchestrator answers a green head GitHub's own read reports armed (auto-merge or merge queue) and dirty with exactly one conflict request per (PR, head, base head), node_pr_lifecycle_fix_effect's conflict block reason on its fix-start command topic, and never with an arm or an enqueue. The head needs the orchestrator's own green verdict; a red head gets none. A held, draft or parked PR gets none; a moved head or base allows a new request once the head is green. The request takes update_branch's mode, which the contract keeps dry_run in every repository while the landing controller still owns conflict work. The REST PR read now carries the base branch head (base_sha) for the key."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-ac-m9-dirty-armed-conflict-request"
-    statement: "A green, armed PR that has gone DIRTY against its base gets exactly one conflict request from node_pr_landing_orchestrator per (PR, head, base head), no arm or enqueue, none while held, and a new one after the head or base moves."
+    statement: "A green head GitHub reports armed (auto-merge or merge queue) and DIRTY against its base gets exactly one conflict request from node_pr_landing_orchestrator per (PR, head, base head), no arm or enqueue, none while held or for a red head, and a new one after the head or base moves once the head is green. The green verdict must be the orchestrator's own."
 evidence_requirements:
   - kind: "tests"
-    description: "The omnimarket#3722 replay: green and armed at one dev head, then DIRTY after dev moved; one dry_run conflict request, none repeated for the same (PR, head, base head), one more after the base or head moves, none for a held PR, and no arm or enqueue while DIRTY."
+    description: "The omnimarket#3722 replay: a green head GitHub reports armed and DIRTY after dev moved, or first read already DIRTY then confirmed green by the orchestrator; one dry_run conflict request, none repeated for the same (PR, head, base head), one more after the base or head moves once the head is green, none for a held PR or a red head, and no arm or enqueue while DIRTY."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_dirty_armed_conflict_request_omn_20750.py -q"
 emergency_bypass:
   enabled: false
@@ -21,7 +21,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20750-ac-m9-dirty-armed-conflict-request"
-    description: "AC-M9 slice of S8: the omnimarket#3722 replay through the handler as the runtime builds it (contract config, real reducer and arm gate) emits exactly one dry_run conflict request per (PR, head, base head) for a PR armed and DIRTY, never an arm or enqueue, none for a held PR, and a new one after the head or base moves. The test file is added by this pull request and fails on the merge base, where it does not exist."
+    description: "AC-M9 slice of S8: the omnimarket#3722 replay through the handler as the runtime builds it (contract config, real reducer and arm gate) emits exactly one dry_run conflict request per (PR, head, base head) for a green head GitHub reports armed and DIRTY, including a head first read DIRTY then confirmed green by the orchestrator, never an arm or enqueue, none for a held PR or a red head, and a new one after the head or base moves once the head is green. The test file is added by this pull request and fails on the merge base, where it does not exist."
     source: "manual"
     checks:
       - check_type: "test_passes"
