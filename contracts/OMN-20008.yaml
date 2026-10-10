@@ -71,7 +71,12 @@ dod_evidence:
             curl -fs "$url/projections" > /dev/null && break
             sleep 0.5
           done
-          curl -fsS "$url/projection/onex.snapshot.projection.delegation.savings.v1" > "$HOME/savings.json"
+          code="$(curl -sS -o "$HOME/savings.json" -w '%{http_code}' "$url/projection/onex.snapshot.projection.delegation.savings.v1")"
+          if [ "$code" != 200 ]; then
+            store="$(python -c 'import sqlite3; from omnimarket.projection.sqlite_database import default_evidence_db_path as p; d = p(); print(d, sorted(r[0] for r in sqlite3.connect(str(d)).execute("select name from sqlite_master")))')"
+            echo "savings.v1 answered HTTP $code: $(tr '\n' ' ' < "$HOME/savings.json") dashboard: $(tr '\n' ' ' < "$HOME/dashboard.out") store: $store" >&2
+            exit 1
+          fi
           python -c '
           import json, sys
           body = json.load(open(sys.argv[1]))
