@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Operator Capture Effect (OMN-20905, OMN-20906, OMN-20907)
+#
+# The I/O half of the operator capture, run on the operator's host by thin
+# user-level hook entry points (python -m omnimarket.nodes.node_operator_capture_effect
+# <command>). Every decision is node_operator_capture_compute's, called in process.
+#
+#   ingest         UserPromptSubmit: the prompt into the local inbox (full text stays
+#                  on this host, mode 0600), then a detached worker
+#   process        the worker: classify through onex delegate (deterministic fallback
+#                  when it cannot answer), drift-check decisions against earlier
+#                  rulings, append one ledger row per item through the ledger's own
+#                  append command; a failed append keeps the prompt for the next run
+#   guard          PreToolUse on Workflow/Agent/Task: refuse a main-session dispatch
+#                  whose newest operator message has no capture, capturing it
+#   session-start  SessionStart: the open-ask digest into the start block, and the
+#                  attention push for asks waiting over a day
+#
+# No bus topic: the hook-event digests already on the bus are unchanged, and the
+# full prompt text never leaves the host through this node.
+name: "node_operator_capture_effect"
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Capture operator prompts to the ledger, track open asks, guard dispatch."
+lifecycle: experimental
+input_model:
+  name: "ModelCaptureProcessRequest"
+  module: "omnimarket.models.operator_capture"
+  description: "One worker run over the local inbox."
+output_model:
+  name: "ModelCaptureProcessResult"
+  module: "omnimarket.models.operator_capture"
+  description: "Prompts processed, rows appended, machine injections skipped, prompts pending."
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+env_dependencies:
+  ONEX_LEDGER_PATH:
+    required: true
+    description: "The ledger the capture rows are appended to and the asks are folded from."
+  ONEX_OPERATOR_CAPTURE_LEDGER_BIN:
+    required: true
+    description: "The ledger's append command (run as '<command> --append <row>'). Unset: rows are not appended and prompts stay in the inbox."
+  ONEX_OPERATOR_CAPTURE_ONEX_BIN:
+    required: false
+    description: "The onex CLI used for delegation. Unset: onex on PATH; none: the deterministic fallback classifies."
+  ONEX_OPERATOR_CAPTURE_DIR:
+    required: false
+    description: "The local capture store. Unset: ~/.local/state/omni/operator-capture."
+  ONEX_ALERT_CHANNEL_LIB:
+    required: false
+    description: "The shared alert channel library for the overdue-ask push. Unset: no push."
+# No handler_routing: the hook entry points run the handlers in process
+# (HandlerCaptureProcess, HandlerCaptureGuard, HandlerCaptureDigest under
+# handlers/), and no bus command reaches this node.
+dod_evidence:
+  PYTEST:
+    description: "capture worker rows, retry, machine skip, guard capture-on-refuse, digest and push"
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_effect -q"
+    pass_criteria: "every effect test passes"
+metadata:
+  description: "Operator capture effects"
+  author: "OmniNode Team"
+  created: "2026-10-10"
+  tags:
+    - "effect"
+    - "operator-capture"
+    - "work-ledger"

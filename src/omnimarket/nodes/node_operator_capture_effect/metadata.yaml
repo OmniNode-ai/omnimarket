@@ -1,0 +1,23 @@
+name: node_operator_capture_effect
+version: "0.1.0"
+description: "Operator capture effects: the local capture store, the delegated classification, the ledger rows, the open-ask digest and push, and the dispatch guard"
+pack: operator_capture
+node_role: effect
+display_name: "Operator Capture"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_operator_capture_effect: "omnimarket.nodes.node_operator_capture_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "operator-capture", "work-ledger", "hooks"]

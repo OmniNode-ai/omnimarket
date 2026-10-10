@@ -588,6 +588,9 @@ node_projection_pr_landing = "omnimarket.nodes.node_projection_pr_landing"
 node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
 node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
 node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
+# Operator capture (OMN-20905): run in process by user-level hook entry points; no event_bus.
+node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
+node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 # Lab job supervisor (OMN-20604): the reducer is called in process by the job orchestrator
 # and declares no handler_routing.
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
