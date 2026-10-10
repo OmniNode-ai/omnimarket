@@ -8,9 +8,15 @@ summary: "HandlerDodEvidenceGithubEffect reads each PR fact first from DodEviden
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-dod-verify-reads-local-first"
+    statement: "A dod_verify run reads each PR fact from the PR watcher's state and the canonical clone first, and makes a gh read only for a fact neither holds."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2 (dod_verify part): HandlerDodEvidenceGithubEffect answers a PR fact the local source holds without a gh call, and reads GitHub only for a fact the local source lacks -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py fails at the merge base, where the file is absent"
 evidence_requirements:
   - kind: "tests"
-    description: "The dod_verify local-reads tests pass at the PR head."
+    description: "AC2: the dod_verify local-reads tests pass at the PR head."
     command: 'uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly'
 emergency_bypass:
   enabled: false
@@ -18,9 +24,10 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20838-local-reads-tests"
-    description: "The dod_verify local-reads tests pass at the PR head."
+    description: "AC2: the dod_verify local-reads tests pass at the PR head."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly'
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
