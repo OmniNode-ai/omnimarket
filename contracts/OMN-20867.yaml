@@ -101,7 +101,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py::test_jittered_ticks_open_the_audit_trail_daily_slot_exactly_once -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn20867-tick-window-prune-none-inside-interval"
+  - id: "dod-omn20867-tick-window-prune-in-interval"
     description: "The dead-letter prune and consumer-flow prune tick routes return no output for a tick inside their interval and skip sink resolution, so a tick inside the interval produces no result to dead-letter. These tests change in this pull request and fail against the merge base's source."
     source: "manual"
     checks:
@@ -126,7 +126,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py::test_runtime_tick_boot_one_tick_is_one_record_and_dead_letters_nothing -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
-  - id: "dod-omn20867-tick-window-prune-destination-declared"
+  - id: "dod-omn20867-tick-window-prune-destination"
     description: "Each prune effect contract declares its completed topic as terminal_event, publish topic and published_events entry, so the scheduled run's result has a destination. These tests are new in this pull request and fail against the merge base's source."
     source: "manual"
     checks:
@@ -137,7 +137,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py::test_the_scheduled_run_result_has_a_declared_destination -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
-  - id: "dod-omn20867-tick-window-dev-lane-one-record-per-fire"
+  - id: "dod-omn20867-tick-window-dev-lane-per-fire"
     description: "On the dev lane, once the deploy agent rolls this change, onex.evt.omnimarket.throughput-tick-decision-completed.v1 and onex.evt.omnimarket.lab-fill-plan-decided.v1 each carry exactly one record per fire_id for every scheduler window since TICK_WINDOW_SINCE (default: the last three hours), and at least one fire. Before the roll the 18:30Z fire is on the lane two and three times and the 18:40Z fire is missing, so the check is red; it reads the dev lane broker named by KAFKA_BOOTSTRAP_SERVERS (bus-local), which hosted CI does not have, so only the local Done gate runs it."
     source: "manual"
     execution_scope: "local_done_gate"
