@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20885"
+title: "OCC retirement: rehome the pr-title / check-title decision from the change-control reusable into an omnimarket compute node"
+summary: "The required pr-title / check-title context is produced by the bash step of onex_change_control's pr-title-check-reusable.yml. This contract covers the omnimarket half: node_pr_title_check_compute, a definition-B compute node that makes the same admit or refuse decision with the same output, with parity replayed from real recorded check-title job inputs. The omniclaude caller switch is a separate pull request after an omnimarket release carries the node."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pr-title-check-node"
+    statement: "Host the pr-title / check-title decision as a canonical pure compute node in omnimarket with parity to the pinned change-control step."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_pr_title_check_compute in omnimarket returns the same admit or refuse decision and reason as the change-control bash step on every recorded check-title job input in its parity fixture (at least one admit, one refuse and one bot exemption, each from a real job log) -- falsifier: uv run pytest tests/nodes/node_pr_title_check_compute -q fails on any differing case"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: captured parity with recorded check-title jobs, registered contract, CLI and in-memory golden/error chains pass."
+    command: "uv run pytest tests/nodes/node_pr_title_check_compute/test_golden_chain_pr_title_check_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20885-ac1-pr-title-check-node"
+    description: "AC1: pr-title check parity, contract, CLI and golden/error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_title_check_compute/test_golden_chain_pr_title_check_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

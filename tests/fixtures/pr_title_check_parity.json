@@ -1,0 +1,529 @@
+{
+  "captured_from": {
+    "repository": "OmniNode-ai/onex_change_control",
+    "ref": "babdd13ce68f07df20f989f52ff1c4514d03d896",
+    "path": ".github/workflows/pr-title-check-reusable.yml",
+    "job": "check-title",
+    "step": 0
+  },
+  "note": "Each case ran the pinned check-title bash step under bash -e with PR_TITLE and PR_AUTHOR set. Recorded cases replay the title and author of a real check-title job and their first output line and admit or refuse equal that job's log; human author logins are replaced because the step reads only their [bot] suffix.",
+  "cases": [
+    {
+      "name": "recorded-omniclaude-2649-ticket",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omniclaude",
+        "pull_request": 2649,
+        "job_id": 114189468556,
+        "recorded_first_line": "[PASS] PR title contains ticket reference: OMN-20074",
+        "recorded_admitted": true
+      },
+      "request": {
+        "title": "ci(OMN-20074): re-pin the omniclaude repo-evidence caller to omnibase_core#1914 and verifier 0.4.305",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] PR title contains ticket reference: OMN-20074"
+        ]
+      }
+    },
+    {
+      "name": "recorded-omniclaude-2636-ticket-prefix",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omniclaude",
+        "pull_request": 2636,
+        "job_id": 114000225786,
+        "recorded_first_line": "[PASS] PR title contains ticket reference: OMN-19055",
+        "recorded_admitted": true
+      },
+      "request": {
+        "title": "OMN-19055: Classify three required CI Summary contexts",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] PR title contains ticket reference: OMN-19055"
+        ]
+      }
+    },
+    {
+      "name": "recorded-omniclaude-2646-writer-bot",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omniclaude",
+        "pull_request": 2646,
+        "job_id": 114157134592,
+        "recorded_first_line": "[PASS] Exempt: GitHub App bot (onexbot-occ-writer[bot])",
+        "recorded_admitted": true
+      },
+      "request": {
+        "title": "chore(deps, OMN-13902): refresh omninode sibling locks [bot]",
+        "author": "onexbot-occ-writer[bot]"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: GitHub App bot (onexbot-occ-writer[bot])"
+        ]
+      }
+    },
+    {
+      "name": "recorded-omniclaude-2617-writer-bot",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omniclaude",
+        "pull_request": 2617,
+        "job_id": 113391971926,
+        "recorded_first_line": "[PASS] Exempt: GitHub App bot (onexbot-occ-writer[bot])",
+        "recorded_admitted": true
+      },
+      "request": {
+        "title": "chore(deps): bump omnibase-infra to 0.38.69 (OMN-18595)",
+        "author": "onexbot-occ-writer[bot]"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: GitHub App bot (onexbot-occ-writer[bot])"
+        ]
+      }
+    },
+    {
+      "name": "recorded-omniclaude-2555-dependabot",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omniclaude",
+        "pull_request": 2555,
+        "job_id": 112158217703,
+        "recorded_first_line": "[PASS] Exempt: GitHub App bot (dependabot[bot])",
+        "recorded_admitted": true
+      },
+      "request": {
+        "title": "chore(deps): bump the actions group with 9 updates",
+        "author": "dependabot[bot]"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: GitHub App bot (dependabot[bot])"
+        ]
+      }
+    },
+    {
+      "name": "recorded-omnibase_infra-refuse",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omnibase_infra",
+        "pull_request": null,
+        "job_id": 111017589339,
+        "recorded_first_line": "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+        "recorded_admitted": false
+      },
+      "request": {
+        "title": "fix(deploy-agent): apply the forward migration when the checkout's migration tree moves",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: fix(deploy-agent): apply the forward migration when the checkout's migration tree moves",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "recorded-omnimarket-refuse",
+      "source": {
+        "kind": "recorded_check_title_job",
+        "repository": "OmniNode-ai/omnimarket",
+        "pull_request": null,
+        "job_id": 111691690185,
+        "recorded_first_line": "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+        "recorded_admitted": false
+      },
+      "request": {
+        "title": "feat(wire): consume routing-feedback-updated and publish it from a canonical reducer",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: feat(wire): consume routing-feedback-updated and publish it from a canonical reducer",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-dep-bump-human",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "chore(deps): bump ruff from 0.6 to 0.7",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: dependency bump"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-build-deps-upper",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "Build(Deps): bump uv",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: dependency bump"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-bump-prefix",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "Bump actions/checkout from 4 to 5",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: dependency bump"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-bump-no-space",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "Bumped the version",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: Bumped the version",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-release-colon",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "chore: release omnibase_core 0.47.38",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: release PR"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-release-paren",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "chore(release): open dev for v0.4.310",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: release PR"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-release-bare",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "Release: v1.2.3",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] Exempt: release PR"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-release-not-prefix",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "docs: describe the release: process",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: docs: describe the release: process",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-two-tickets",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fix(OMN-1): and OMN-22 together",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] PR title contains ticket reference: OMN-1",
+          "OMN-22"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-lowercase-ticket",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fix(omn-123): lower case id",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: fix(omn-123): lower case id",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-ticket-no-digits",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fix(OMN-): nothing",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: fix(OMN-): nothing",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-empty-title",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR_TITLE is empty — this workflow must be called from a pull_request event."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-empty-title-bot",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "",
+        "author": "dependabot[bot]"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR_TITLE is empty — this workflow must be called from a pull_request event."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-bot-in-middle",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fix: thing",
+        "author": "bot[bot]x"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: fix: thing",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-bot-suffix-no-bracket",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fix: thing",
+        "author": "somebot"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title: fix: thing",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-leading-space-dep",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": " chore(deps): bump x",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 1,
+        "stdout_lines": [
+          "[FAIL] PR title must contain an OMN-XXXX ticket reference.",
+          "",
+          "Title:  chore(deps): bump x",
+          "",
+          "Exempt categories (no ticket needed):",
+          "  - Any GitHub App bot (author ends with [bot])",
+          "  - Titles starting with: chore(deps, build(deps, Bump",
+          "  - Titles starting with: chore: release, chore(release), release:",
+          "",
+          "To fix: add [OMN-XXXX] or OMN-XXXX to the PR title."
+        ]
+      }
+    },
+    {
+      "name": "synthetic-ticket-embedded",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "fixOMN-77x",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] PR title contains ticket reference: OMN-77"
+        ]
+      }
+    },
+    {
+      "name": "synthetic-unicode-title",
+      "source": {
+        "kind": "captured_from_pinned_script"
+      },
+      "request": {
+        "title": "feat: café ünïcode OMN-9",
+        "author": "recorded-human-login"
+      },
+      "expected": {
+        "exit_code": 0,
+        "stdout_lines": [
+          "[PASS] PR title contains ticket reference: OMN-9"
+        ]
+      }
+    }
+  ]
+}
