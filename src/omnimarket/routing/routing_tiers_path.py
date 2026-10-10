@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Shared routing tiers path authority (OMN-15628).
+"""Shared routing tiers path authority and private harness overlay loader.
+
+Harness routing comes only from DELEGATION_ROUTING_OVERLAY_PATH; an unbound
+selector supplies an empty overlay, with no packaged or home-directory file.
 
 The ONE derivation of where the delegation routing tier ladder lives. Both the
 routing authority (``node_delegation_routing_reducer``, which parses the file
@@ -22,10 +25,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.inference.delegation_config_provenance import resolve_path_config
+import yaml
+from omnibase_infra.errors import ProtocolConfigurationError
+from pydantic import ValidationError
+
+from omnimarket.inference.delegation_config_provenance import (
+    DELEGATION_ROUTING_OVERLAY_CONFIG_KEY,
+    resolve_optional_path_config,
+    resolve_path_config,
+)
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    EMPTY_DELEGATION_ROUTING_OVERLAY,
+    ModelDelegationRoutingOverlay,
+)
+from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 
 #: Env key a contract overlay / deployment MUST bind to pin the tiers file.
 ROUTING_TIERS_PATH_ENV_KEY = "DELEGATION_ROUTING_TIERS_PATH"
+DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY = DELEGATION_ROUTING_OVERLAY_CONFIG_KEY
 
 # OMN-15628: this is the single canonical routing_tiers.yaml location (the
 # diverged omnibase_infra copy was deleted; this repo's packaged copy is the
@@ -72,8 +89,59 @@ def resolve_routing_tiers_path() -> Path:
     return config_path
 
 
+def load_delegation_routing_overlay(
+    overlay_path: Path | None = None,
+) -> ModelDelegationRoutingOverlay:
+    """Load the delegation routing overlay (OMN-20287).
+
+    Which harness backends a deployment has, the harness tiers they serve and
+    each task class's escalation chain are deployment facts: the operator
+    ruled that routing decisions come from overlays, never from this public
+    package's packaged config. The package declares the overlay contract
+    (:class:`ModelDelegationRoutingOverlay`) and its neutral default, the empty
+    overlay, which is what an unbound ``DELEGATION_ROUTING_OVERLAY_PATH``
+    resolves to. There is deliberately no home-directory fallback: a stray file
+    must not route house traffic on a machine that never opted in.
+
+    A bound selector (or an explicit ``overlay_path``) naming a missing,
+    unreadable, non-YAML or invalid file raises
+    :class:`ProtocolConfigurationError` naming the key and the path, rather
+    than degrading to the empty overlay (rule 8: no silent config fallback).
+    """
+    path = overlay_path
+    if path is None:
+        path, _ = resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)
+    if path is None:
+        return EMPTY_DELEGATION_ROUTING_OVERLAY
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            msg = "Expected YAML mapping at root"
+            raise ValueError(msg)
+        return ModelDelegationRoutingOverlay.model_validate(data)
+    except (OSError, UnicodeError, yaml.YAMLError, ValidationError, ValueError) as exc:
+        msg = f"{DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY} overlay at {path} is invalid: {exc}"
+        raise ProtocolConfigurationError(msg) from exc
+
+
+def load_harness_tiers(
+    overlay: ModelDelegationRoutingOverlay | None = None,
+) -> tuple[ModelHarnessTier, ...]:
+    """Return the harness tiers of the delegation routing overlay (OMN-20287).
+
+    Harness tiers are deployment facts, so the packaged ``routing_tiers.yaml``
+    declares none; they come only from the overlay
+    :func:`load_delegation_routing_overlay` resolves. Unbound selector -> ``()``.
+    """
+    resolved = overlay if overlay is not None else load_delegation_routing_overlay()
+    return resolved.harness_tiers
+
+
 __all__ = [
+    "DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY",
     "ROUTING_TIERS_PACKAGED_DEFAULT_PATH",
     "ROUTING_TIERS_PATH_ENV_KEY",
+    "load_delegation_routing_overlay",
+    "load_harness_tiers",
     "resolve_routing_tiers_path",
 ]

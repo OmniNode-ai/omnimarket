@@ -3,6 +3,8 @@
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -41,12 +43,20 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecy
     HandlerPrLifecycleStateReducer,
 )
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red import (
+    PROCESS_INDEX,
     HandlerDetectCiRed,
 )
 from omnimarket.projection.pr_ledger_projection import PR_LEDGER_PROJECTION_TABLE
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 CHECK = "branch-claim-check / branch-claim-check"
+
+
+@pytest.fixture(autouse=True)
+def empty_process_index() -> Iterator[None]:
+    PROCESS_INDEX.clear()
+    yield
+    PROCESS_INDEX.clear()
 
 
 def event(
@@ -82,7 +92,12 @@ def event(
 
 
 def claims(database: InmemoryDatabaseAdapter | None = None) -> ProjectionCiRedClaims:
-    return ProjectionCiRedClaims(database or InmemoryDatabaseAdapter())
+    # A restart here happens a minute after the reds were observed, inside every
+    # claim's lease (test_claim_lease_terminal_refused.py covers its expiry).
+    return ProjectionCiRedClaims(
+        database or InmemoryDatabaseAdapter(),
+        now=lambda: datetime(2026, 10, 8, 10, 1, tzinfo=UTC),
+    )
 
 
 def project(database: InmemoryDatabaseAdapter, outputs: list[Any]) -> None:
