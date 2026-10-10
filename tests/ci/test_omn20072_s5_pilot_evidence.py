@@ -5,15 +5,19 @@
 
 The pilot's verdicts were live observations, so the contract could not bind
 AC4 to AC6 to anything a check can read. ``fixtures/omn20072_s5_pilot_evidence.json``
-holds them as data: the per-PR verdicts with their check-run ids, the window
-totals, the constructed-case observations and the rollback drill's readback. The
-bar is held here, not in the data, so the file cannot lower its own threshold.
+holds them as data: the per-PR verdicts with their merged heads and check-run
+ids, the window totals, the constructed-case observations and the rollback
+drill's readback. The bar is held here, not in the data, so the file cannot
+lower its own threshold. The counted total is the number of recorded per-PR rows,
+never a number the data declares on its own, and the drill is timed against the
+first counted merge.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +52,8 @@ COUNTING_OUTCOMES = frozenset(
     {"agree", "expected_difference", "negative_control_refused"}
 )
 PRE_PILOT_CONTEXT_COUNT = 35
+_MERGED_HEAD = re.compile(r"[0-9a-f]{12}")
+_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 
 
 def _load() -> dict[str, Any]:
@@ -74,13 +80,24 @@ def count_violations(data: dict[str, Any]) -> list[str]:
     for name, value in window["bar_violations"].items():
         if value != 0:
             found.append(f"{name} is {value}, the bar is 0")
-    if len(rows) > counted:
-        found.append(f"{len(rows)} per-PR rows exceed the counted total {counted}")
+    if len(rows) != counted:
+        found.append(f"{len(rows)} per-PR rows are not the counted total {counted}")
+    if len(rows) < S5_MIN_COUNTED:
+        found.append(
+            f"{len(rows)} PRs carry a recorded check run, the bar is {S5_MIN_COUNTED}"
+        )
     for row in rows:
         if row["outcome"] not in COUNTING_OUTCOMES:
             found.append(
                 f"omnimarket#{row['pr']} outcome {row['outcome']} is a finding"
             )
+        if not _MERGED_HEAD.fullmatch(row.get("merged_head", "")):
+            found.append(f"omnimarket#{row['pr']} has no merged head")
+        if not _TIMESTAMP.fullmatch(row.get("merged_at", "")):
+            found.append(f"omnimarket#{row['pr']} has no merge time")
+    prs = [row["pr"] for row in rows]
+    if len(set(prs)) != len(prs):
+        found.append("a PR repeats across per-PR rows")
     run_ids = [row["check_run"] for row in rows]
     if len(set(run_ids)) != len(run_ids):
         found.append("a check run id repeats across per-PR rows")
@@ -123,6 +140,14 @@ def drill_violations(data: dict[str, Any]) -> list[str]:
             f"readback differs: added {drill['readback_added']}, "
             f"removed {drill['readback_removed']}"
         )
+    first_counted = min(row["merged_at"] for row in data["pilot_prs"]["rows"])
+    if not _TIMESTAMP.fullmatch(drill.get("performed_at", "")):
+        found.append("the drill has no time")
+    elif drill["performed_at"] >= first_counted:
+        found.append(
+            f"the drill at {drill['performed_at']} does not precede the first "
+            f"counted PR, merged {first_counted}"
+        )
     return found
 
 
@@ -150,6 +175,25 @@ def test_count_planted_disagreement_fails() -> None:
     ]
     assert any("repeats" in v for v in count_violations(planted))
 
+    planted = copy.deepcopy(data)
+    del planted["pilot_prs"]["rows"][-1]
+    assert any("are not the counted total" in v for v in count_violations(planted))
+
+    planted = copy.deepcopy(data)
+    planted["pilot_prs"]["rows"] = planted["pilot_prs"]["rows"][: S5_MIN_COUNTED - 1]
+    planted["window"]["counted"] = S5_MIN_COUNTED - 1
+    assert any("the bar is" in v for v in count_violations(planted))
+
+    planted = copy.deepcopy(data)
+    planted["pilot_prs"]["rows"][1]["pr"] = planted["pilot_prs"]["rows"][0]["pr"]
+    assert any("a PR repeats" in v for v in count_violations(planted))
+
+
+def test_count_is_the_recorded_rows_not_a_declared_number() -> None:
+    data = _load()
+    assert len(data["pilot_prs"]["rows"]) == data["window"]["counted"]
+    assert len(data["pilot_prs"]["rows"]) >= S5_MIN_COUNTED
+
 
 def test_every_plan_case_has_an_observation() -> None:
     data = _load()
@@ -167,3 +211,9 @@ def test_drill_readback_equals_the_pre_pilot_context_set() -> None:
     planted = copy.deepcopy(data)
     planted["drill"]["readback_removed"] = ["CI Summary"]
     assert any("readback differs" in v for v in drill_violations(planted))
+
+    planted = copy.deepcopy(data)
+    planted["drill"]["performed_at"] = max(
+        row["merged_at"] for row in planted["pilot_prs"]["rows"]
+    )
+    assert any("does not precede" in v for v in drill_violations(planted))

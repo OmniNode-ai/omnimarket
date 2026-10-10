@@ -30,6 +30,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The verifier refuses a contract with an unbound acceptance criterion and the difference step names it incomplete criterion coverage."
     command: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
+  - kind: "tests"
+    description: "The caller pins a released verifier that ships the unbound-criteria refusal, so the required repo-evidence / dod-verify check applies it."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k refuses_unbound"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -57,5 +60,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-repo-evidence-ac3-pinned-verifier"
+    description: "The caller pins a released verifier (0.4.305) that ships the unbound-criteria refusal; the test fails at the merge base, whose caller pins 0.4.294."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k refuses_unbound"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
