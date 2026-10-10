@@ -316,17 +316,10 @@ class HandlerOccReplay:
         login = author or pr.author
         if login in DEPENDENCY_BOT_AUTHORS or pr.author in DEPENDENCY_BOT_AUTHORS:
             return ModelNewPathVerdict(admitted=True), f"exempt: dependency bot {login}"
+        # The canonical clone holds a merged PR's head; the replay never
+        # fetches from GitHub (lanes read the canonical clones).
         if _git(mirror, "cat-file", "-e", f"{head}^{{commit}}")[0] != 0:
-            _git(
-                mirror,
-                "fetch",
-                "--quiet",
-                "--no-tags",
-                f"https://github.com/{request.repository}.git",
-                head,
-            )
-            if _git(mirror, "cat-file", "-e", f"{head}^{{commit}}")[0] != 0:
-                return None, "new path not replayed: head commit unavailable"
+            return None, "new path not replayed: head commit not in the canonical clone"
         rc, out = _git(mirror, "merge-base", pr.parent, head)
         merge_base = out.strip()
         if rc != 0 or not merge_base:
