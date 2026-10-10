@@ -255,7 +255,13 @@ def test_hosted_audience_does_not_execute_local_done_gate(
 
     subprocess_calls: list[object] = []
 
-    def _unexpected_subprocess(*args: object, **kwargs: object) -> None:
+    def _unexpected_subprocess(
+        args: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        # OMN-20696: the one read-only call the contract-subject lookup makes
+        # for a file outside any checkout. Anything else is still refused.
+        if list(args) == ["git", "rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args, 128, stdout="", stderr="")
         subprocess_calls.append((args, kwargs))
         raise AssertionError("hosted audience must not start a local subprocess")
 
@@ -328,6 +334,9 @@ def test_local_done_gate_wrong_private_identifier_remains_a_real_failure(
     def _not_found(
         args: list[str], **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
+        # OMN-20696: the contract-subject lookup, not evidence execution.
+        if list(args) == ["git", "rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args, 128, stdout="", stderr="")
         subprocess_calls.append(args)
         return subprocess.CompletedProcess(
             args=args,

@@ -2,16 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Committed-backend + overlay resolution tests (OMN-15155 / OMN-16442).
 
-OMN-15155 registered the .200 MLX endpoint as the committed ``local-coder-mlx``
-backend_id in ``bifrost_delegation.yaml`` and proved three general properties
-through it. OMN-16442 RETIRED that backend — .200:8401 was re-probed 2026-08-28
-and returns curl exit 7 "Couldn't connect to server", and the Mac Studio's MLX
-server now serves ``Qwen3.8-27B-8bit`` on 127.0.0.1:8099, LOCALHOST-ONLY (so it
-is deliberately NOT re-registered; that needs explicit availability semantics +
-a health check first).
-
-The three properties are NOT specific to that backend, so these tests were
-retargeted onto ``local-ds-v4-flash`` — the surviving local backend with the
+The overlay properties below are exercised through ``local-coder`` — the surviving local backend with the
 identical shape (``endpoint_url: null`` in the committed contract, supplied by
 the overlay/store at deploy time, unauthenticated, ``tier: local``) — rather
 than deleted with the backend:
@@ -76,7 +67,7 @@ _BIFROST_CONFIG_PATH = (
     / "bifrost_delegation.yaml"
 )
 
-_STABILITY_TEST_ENDPOINT = "http://stickybeatz-studio:8101/v1/chat/completions"
+_STABILITY_TEST_ENDPOINT = "http://overlay.test:8101/v1/chat/completions"
 
 
 class _MockStore:
@@ -110,28 +101,28 @@ def _overlay_yaml(backends: list[dict[str, Any]]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. Committed contract declares local-ds-v4-flash correctly
+# 1. Committed contract declares local-coder correctly
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_committed_contract_declares_local_ds_v4_flash() -> None:
+def test_committed_contract_declares_local_coder() -> None:
     raw = yaml.safe_load(_BIFROST_CONFIG_PATH.read_text(encoding="utf-8"))
     backends = {backend["backend_id"]: backend for backend in raw["backends"]}
 
-    assert "local-ds-v4-flash" in backends, (
-        "local-ds-v4-flash must be a COMMITTED backend_id — both overlay merge "
+    assert "local-coder" in backends, (
+        "local-coder must be a COMMITTED backend_id — both overlay merge "
         "paths REJECT a partial overlay-only row, which is what a site overlay "
         "for it carries (OMN-15155, OMN-16903, OMN-17099)."
     )
-    backend = backends["local-ds-v4-flash"]
+    backend = backends["local-coder"]
 
     assert backend["model_name"] is None
     assert backend["tier"] == "local"
     # Committed default is null; the real endpoint is supplied by the
     # stability-test overlay/store, never hardcoded here.
     assert backend["endpoint_url"] is None
-    assert backend["endpoint_url_env"] == "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL"
+    assert backend["endpoint_url_env"] == "BIFROST_LOCAL_CODER_ENDPOINT_URL"
 
     # Unauthenticated local endpoint: no auth fields (OMN-16442: same
     # property held for the retired MLX backend this test was retargeted from).
@@ -141,10 +132,10 @@ def test_committed_contract_declares_local_ds_v4_flash() -> None:
 
 
 @pytest.mark.unit
-def test_committed_local_ds_v4_flash_validates_against_wire_model() -> None:
+def test_committed_local_coder_validates_against_wire_model() -> None:
     """The committed entry must validate against the strict wire DTO."""
     raw = yaml.safe_load(_BIFROST_CONFIG_PATH.read_text(encoding="utf-8"))
-    backend = next(b for b in raw["backends"] if b["backend_id"] == "local-ds-v4-flash")
+    backend = next(b for b in raw["backends"] if b["backend_id"] == "local-coder")
     config = ModelDelegationBackendConfig.model_validate(backend)
     assert config.timeout_ms >= 1
     assert config.max_tokens >= 1
@@ -158,18 +149,18 @@ def test_committed_local_ds_v4_flash_validates_against_wire_model() -> None:
 
 
 @pytest.mark.unit
-def test_stability_test_store_overlay_merges_onto_committed_local_ds_v4_flash() -> None:
+def test_stability_test_store_overlay_merges_onto_committed_local_coder() -> None:
     """A stability-test-shaped store overlay merges field-by-field onto the
-    committed local-ds-v4-flash entry (same overlay/store mechanism the sibling
-    local backends — e.g. local-coder, local-ds-v4-flash — use)."""
+    committed local-coder entry (same overlay/store mechanism the sibling
+    local backends — e.g. local-heavy-reasoning, local-coder — use)."""
     store = _MockStore(
         {
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
                 [
                     {
-                        "backend_id": "local-ds-v4-flash",
+                        "backend_id": "local-coder",
                         "endpoint_url": _STABILITY_TEST_ENDPOINT,
-                        "model_name": "deepseek-v4-flash",
+                        "model_name": "fixture-model-a",
                     }
                 ]
             )
@@ -177,18 +168,16 @@ def test_stability_test_store_overlay_merges_onto_committed_local_ds_v4_flash() 
     )
 
     backends = load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
-    ds_backend = next(b for b in backends if b["backend_id"] == "local-ds-v4-flash")
+    coder_backend = next(b for b in backends if b["backend_id"] == "local-coder")
 
-    assert ds_backend["endpoint_url"] == _STABILITY_TEST_ENDPOINT
+    assert coder_backend["endpoint_url"] == _STABILITY_TEST_ENDPOINT
     # The overlay supplies the served id; the committed tier survives the merge.
-    assert ds_backend["model_name"] == "deepseek-v4-flash"
-    assert ds_backend["tier"] == "local"
+    assert coder_backend["model_name"] == "fixture-model-a"
+    assert coder_backend["tier"] == "local"
 
 
 @pytest.mark.unit
-def test_resolve_delegation_backend_local_ds_v4_flash_ends_in_chat_completions() -> (
-    None
-):
+def test_resolve_delegation_backend_local_coder_ends_in_chat_completions() -> None:
     """End-to-end via the public resolve_delegation_backend entrypoint: the
     resolved endpoint_ref is the COMPLETE chat-completions path, never the bare
     /v1 base (the named silent-failure class this ticket guards against)."""
@@ -197,9 +186,9 @@ def test_resolve_delegation_backend_local_ds_v4_flash_ends_in_chat_completions()
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
                 [
                     {
-                        "backend_id": "local-ds-v4-flash",
+                        "backend_id": "local-coder",
                         "endpoint_url": _STABILITY_TEST_ENDPOINT,
-                        "model_name": "deepseek-v4-flash",
+                        "model_name": "fixture-model-a",
                     }
                 ]
             )
@@ -208,15 +197,15 @@ def test_resolve_delegation_backend_local_ds_v4_flash_ends_in_chat_completions()
 
     resolved = resolve_delegation_backend(
         "code_generation",
-        backend_id="local-ds-v4-flash",
+        backend_id="local-coder",
         config_path=_BIFROST_CONFIG_PATH,
         store=store,
     )
 
-    assert resolved.backend_id == "local-ds-v4-flash"
+    assert resolved.backend_id == "local-coder"
     assert resolved.endpoint_ref == _STABILITY_TEST_ENDPOINT
     assert resolved.endpoint_ref.endswith("/v1/chat/completions")
-    assert resolved.model_id == "deepseek-v4-flash"
+    assert resolved.model_id == "fixture-model-a"
     assert resolved.tier == "local"
     assert resolved.secret_ref is None
     assert resolved.api_key_env is None
@@ -227,15 +216,15 @@ def test_resolve_delegation_backend_rejects_bare_v1_base_class_of_failure() -> N
     """A bare-base URL (no /chat/completions path) is carried verbatim by the
     resolver — never silently constructed into a complete path — so a
     misconfigured overlay is visibly wrong rather than a silent failure."""
-    bare_base = "http://stickybeatz-studio:8101/v1"
+    bare_base = "http://overlay.test:8101/v1"
     store = _MockStore(
         {
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
                 [
                     {
-                        "backend_id": "local-ds-v4-flash",
+                        "backend_id": "local-coder",
                         "endpoint_url": bare_base,
-                        "model_name": "deepseek-v4-flash",
+                        "model_name": "fixture-model-a",
                     }
                 ]
             )
@@ -244,7 +233,7 @@ def test_resolve_delegation_backend_rejects_bare_v1_base_class_of_failure() -> N
 
     resolved = resolve_delegation_backend(
         "code_generation",
-        backend_id="local-ds-v4-flash",
+        backend_id="local-coder",
         config_path=_BIFROST_CONFIG_PATH,
         store=store,
     )
@@ -283,9 +272,9 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
                 [
                     {
-                        "backend_id": "local-ds-v4-flash-not-committed",
+                        "backend_id": "local-coder-not-committed",
                         "endpoint_url": _STABILITY_TEST_ENDPOINT,
-                        "model_name": "deepseek-v4-flash",
+                        "model_name": "fixture-model-a",
                     }
                 ]
             )
@@ -296,9 +285,9 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
         load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
 
     message = str(excinfo.value)
-    assert "local-ds-v4-flash-not-committed" in message, (
+    assert "local-coder-not-committed" in message, (
         "the refusal must NAME the overlay-only backend_id — this is why "
-        "local-ds-v4-flash MUST be committed in bifrost_delegation.yaml, not "
+        "local-coder MUST be committed in bifrost_delegation.yaml, not "
         "overlay-only (OMN-15155/OMN-16903)."
     )
     assert BIFROST_OVERLAY_STORE_KEY in message, (
@@ -312,7 +301,7 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
     with pytest.raises(OverlayBackendIncompleteError):
         resolve_delegation_backend(
             "code_generation",
-            backend_id="local-ds-v4-flash-not-committed",
+            backend_id="local-coder-not-committed",
             config_path=_BIFROST_CONFIG_PATH,
             store=store,
         )

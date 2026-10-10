@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20687"
+title: "Node migration vendoring runs as an omnimarket compute node and effect node over the bus"
+summary: "node_migration_sync_plan_compute ports the decisions of omnibase_infra's sync-node-migrations.sh (copy, keep as declared history, remove as stale, drift, the script's messages and exit code) and node_migration_sync_effect holds its I/O (read the source, vendored and manifest trees; apply the planned copies and removals). Both are contract-declared nodes with definition-B handlers; parity cases are recorded from the old script itself. Repointing the omnibase_infra callers and deleting the script are separate changes; the ticket's other tools are separate slices."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-migration-sync-plan-node"
+    statement: |-
+      The vendoring decisions are a contract.yaml, a compute node and a handler with the canonical handle(request) -> result signature, with command and terminal topics declared in the contract.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the contract resolves, declares its subscribe and publish topics and a terminal event, a request the planner cannot decide is refused or named in the result, and the node holds no filesystem, clock or environment access -- falsifier: tests/nodes/node_migration_sync_plan_compute/test_golden_chain_migration_sync_plan_compute.py and test_error_chain_migration_sync_plan_compute.py
+  - id: "req-migration-sync-effect-node"
+    statement: |-
+      The vendoring I/O is a contract-declared effect node with definition-B handlers: read the three trees into the plan node's inventory, apply the plan's actions below the vendored root.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the effect contract declares its command topic and terminal events, both operations resolve to handle(request) -> result handlers, and every read or write failure is named in a typed result rather than raised or read as an empty tree -- falsifier: tests/nodes/node_migration_sync_effect/test_golden_chain_migration_sync_effect.py and test_error_chain_migration_sync_effect.py
+  - id: "req-parity"
+    statement: |-
+      The read, plan and apply chain, with JSON handed between the nodes, decides what the old script decided on the same trees.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: every recorded case (check and write mode, every exit code of the old script) answers the old script's stdout, stderr, interleaved output, exit code and resulting vendored tree -- falsifier: tests/nodes/node_migration_sync_effect/test_parity_migration_sync.py against fixtures/parity_cases.json, which fails when a decision rule is broken
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden chain, error chain and parity tests for both migration-sync nodes."
+    command: "uv run pytest tests/nodes/node_migration_sync_plan_compute tests/nodes/node_migration_sync_effect -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20687-ac1-plan-node"
+    description: "AC1: plan node golden and error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_migration_sync_plan_compute/test_golden_chain_migration_sync_plan_compute.py tests/nodes/node_migration_sync_plan_compute/test_error_chain_migration_sync_plan_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20687-ac2-effect-node"
+    description: "AC2: effect golden and error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_migration_sync_effect/test_golden_chain_migration_sync_effect.py tests/nodes/node_migration_sync_effect/test_error_chain_migration_sync_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20687-ac3-parity"
+    description: "AC3: parity cases pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_migration_sync_effect/test_parity_migration_sync.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

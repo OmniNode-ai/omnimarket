@@ -11,6 +11,11 @@ projection is computed from this contract.
 
 Uses the canonical omnimarket cost enums (``EnumCostBasis`` / ``EnumUsageSource``)
 rather than redeclaring them, so the cost surface has a single source of truth.
+
+OMN-20833: a cloud row in ``cost_pricing.yaml`` names its provider and model
+only. Its two token prices are read from the omnibase_infra pricing manifest,
+the one pricing authority, when the contract loads. A cloud model the manifest
+does not carry loads as an explicit UNKNOWN entry, never at another rate.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -188,13 +194,78 @@ def _canonical_pricing_payload(contract: ModelCostPricingContract) -> dict[str, 
     }
 
 
+_PER_1K_TOKENS = Decimal("1000")
+
+
+def _resolve_cloud_entry(
+    raw: dict[str, Any], table: ModelPricingTable
+) -> dict[str, Any]:
+    """Fill one cloud row's token prices from the infra pricing manifest."""
+    if (
+        raw.get("input_token_price") is not None
+        or raw.get("output_token_price") is not None
+    ):
+        raise ValueError(
+            f"cloud row {raw.get('provider')!r}/{raw.get('model_id')!r} carries its "
+            "own token price; cloud prices are read from the omnibase_infra pricing "
+            "manifest (OMN-20833)"
+        )
+    manifest_entry = table.get_entry(str(raw.get("model_id", "")))
+    if manifest_entry is None:
+        return {
+            **raw,
+            "input_token_price": None,
+            "output_token_price": None,
+            "provenance": (
+                "Not in the omnibase_infra pricing manifest; explicit UNKNOWN pricing."
+            ),
+            "usage_source": EnumUsageSource.UNKNOWN.value,
+            "cost_basis": EnumCostBasis.UNKNOWN.value,
+        }
+    return {
+        **raw,
+        "input_token_price": Decimal(str(manifest_entry.input_cost_per_1k))
+        / _PER_1K_TOKENS,
+        "output_token_price": Decimal(str(manifest_entry.output_cost_per_1k))
+        / _PER_1K_TOKENS,
+        "provenance": (
+            f"omnibase_infra pricing manifest, source {manifest_entry.source}, "
+            f"effective {manifest_entry.effective_date}, USD per 1K tokens "
+            "converted to per-token rates."
+        ),
+    }
+
+
 def load_cost_pricing(
     path: Path = COST_PRICING_CONTRACT_PATH,
+    *,
+    pricing_table: ModelPricingTable | None = None,
 ) -> ModelCostPricingContract:
-    """Load and validate a cost pricing contract from YAML."""
+    """Load and validate a cost pricing contract from YAML.
+
+    Cloud rows take their prices from ``pricing_table``, by default the
+    omnibase_infra pricing manifest installed with this package.
+    """
     data = yaml.safe_load(path.read_text())
     if not isinstance(data, dict):
         raise ValueError("cost pricing YAML must parse to a mapping")
+    entries = data.get("entries")
+    if isinstance(entries, list):
+        table = (
+            pricing_table
+            if pricing_table is not None
+            else ModelPricingTable.from_yaml()
+        )
+        data = {
+            **data,
+            "entries": [
+                _resolve_cloud_entry(raw, table)
+                if isinstance(raw, dict)
+                and raw.get("cost_basis") == EnumCostBasis.CLOUD_API_COST.value
+                else raw
+                for raw in entries
+            ],
+        }
     return ModelCostPricingContract.model_validate(data)
 
 
@@ -251,10 +322,12 @@ def calculate_inference_cost(
 
 def validate_cost_pricing(
     path: Path = COST_PRICING_CONTRACT_PATH,
+    *,
+    pricing_table: ModelPricingTable | None = None,
 ) -> tuple[bool, tuple[str, ...]]:
     """Validate pricing YAML and return a small gate-friendly result."""
     try:
-        load_cost_pricing(path)
+        load_cost_pricing(path, pricing_table=pricing_table)
     except (OSError, ValueError, ValidationError) as exc:
         return False, (str(exc),)
     return True, ()

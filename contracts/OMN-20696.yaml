@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20696"
+title: "DoD verdict rows name the contract repository and commit they were evaluated at, and the verdict projection rebuilds from replayed events"
+summary: "Split from OR.3 (OMN-20071), plan step S4. node_dod_verify resolves, when it loads the contract file, the repository, commit and repository-relative path the file was read from and whether the file read is exactly that commit's content (product_repository, onex_change_control, inline_goal or unbound). The subject rides on the published state and the dod-verify-completed event, through the wire model and the pure fold, into four columns of omninode_internal.dod_verify_runs (migration 0004, vendored in omnibase_infra). A bound source without its commit is refused by the table. Truncating the table and replaying the same events, shuffled and with redeliveries, rebuilds an identical table."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criteria declared on the OMN-20696 ticket body, as created on 2026-10-07. The ticket body is the source and this block is the copy. AC3 is the omnibase_infra vendoring half and is bound in that repository; AC4 is a property of the diff.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A verification whose contract file is read from a clean GitHub checkout records contract_source, contract_repository, contract_commit_sha and contract_repo_path on the published state, the completed event and the dod_verify_runs row, and a modified, untracked, out-of-checkout or non-GitHub contract records unbound with no commit -- falsifier: env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_contract_subject.py -q in omnimarket fails
+      - id: "AC2"
+        statement: |-
+          AC2: Truncating dod_verify_runs and replaying the same verdict events, shuffled and with redeliveries, through the real writer rebuilds a table whose content digest equals the first build, and the table refuses a product_repository or onex_change_control row without its commit -- falsifier: env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_rebuild_real_postgres.py -q in omnimarket against a real PostgreSQL fails or skips
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract subject is resolved against real git checkouts (clean product repository, onex_change_control, modified, untracked, outside any checkout, non-GitHub origin), recorded by the collector for the file it loaded, carried on the published state and the completed event, folded onto the row and bound into its named upsert columns; the fold rebuilds the same table from any replay order with redeliveries. At the merge base the module does not import."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_contract_subject.py -q -p no:randomly"
+  - kind: "tests"
+    description: "On real PostgreSQL with migrations 0000, 0002, 0003 and 0004: the writer stores the subject in its typed columns; truncating and replaying the same events three times, shuffled with redeliveries, reproduces the first build's content digest; a bound source row without its commit, or with a short commit, raises CheckViolation while the same row with its full commit is accepted. At the merge base migration 0004 does not exist."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/test_omn20696_dod_verdict_rebuild_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20696-contract-subject"
+    description: "The verdict names the contract it was evaluated against, resolved from git when the contract file is loaded, and carries it from the published state to the projection row; an unbound contract never claims a commit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20696_dod_verdict_contract_subject.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20696-rebuild-real-postgres"
+    description: "dod_verify_runs rebuilds to an identical content digest from a shuffled replay of its events with redeliveries on real PostgreSQL, and refuses a bound source without its commit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20696_dod_verdict_rebuild_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

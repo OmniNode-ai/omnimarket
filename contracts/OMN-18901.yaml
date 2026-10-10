@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18901"
+title: "node_dod_verify completed-event publication is covered by a publisher-double and publisher-fault acceptance test"
+summary: "Adds tests/test_omn18901_dod_verify_publishes_completed_event.py. It drives the existing HandlerDodVerify through the contract-declared dispatch adapter and DispatchResultApplier against a capturing event bus, and asserts one dod-verify-completed publication for a succeeded, a failed and an unresolved verdict with a payload equal to the verification result. A fault-injecting publisher checks that the verification result stays intact, the transport failure is logged and the failure still propagates so a lost event can retry. No production code changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-publication-acceptance"
+    statement: |-
+      node_dod_verify publishes exactly one completed event per verification through the runtime applier, and a publisher fault neither corrupts the verification result nor is swallowed.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Succeeded, failed and unresolved verifications each publish one completed event whose payload equals the verification result, and an injected publisher fault leaves the result intact, is logged and propagates -- falsifier: uv run pytest tests/test_omn18901_dod_verify_publishes_completed_event.py -q in omnimarket fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The capturing-bus acceptance file covers the succeeded, failed and unresolved publications, single publication, payload equality, publisher fault handling and negative controls."
+    command: "uv run pytest tests/test_omn18901_dod_verify_publishes_completed_event.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18901-completed-event-publication"
+    description: "The completed event is published once per verification with a payload equal to the result, and publisher faults are handled at the transport boundary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18901_dod_verify_publishes_completed_event.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

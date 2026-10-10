@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_work_ledger_append_effect
-version: "0.1.0"
-description: "Effect: append exact rows on the ledger host over a bus command, returning a receipt. Hosted by a serve process, never by a shared runtime."
+version: "0.2.0"
+description: "Effect: authenticate signed rows and append them with verified principal attribution on the ledger host over a bus command, returning a receipt. Hosted by a serve process, never by a shared runtime."
 pack: pipeline
 node_role: effect
 display_name: "Work Ledger Append Effect (ledger host)"
@@ -18,7 +18,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: write
-dependencies: []
+dependencies:
+  - "cryptography>=50.0.1,<51.0.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "work-ledger"]

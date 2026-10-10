@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -119,7 +119,12 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
+        # OMN-20606: accepted and unused. This port publishes the request to a
+        # deployed lane, whose handler stamps the caller onto its own terminal;
+        # only the in-process port writes an evidence terminal of its own.
+        del attribution
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than

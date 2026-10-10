@@ -1,8 +1,8 @@
 ---
 name: pr_lifecycle_orchestrator
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: orchestrator
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   FSM orchestrator composing 5 pr_lifecycle sub-handlers via a state reducer.
@@ -23,6 +23,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: pr_lifecycle
+      message_category: command
       handler:
         name: HandlerPrLifecycleOrchestrator
         module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator
@@ -35,6 +36,28 @@ handler_routing:
       # fallback. This alias indexes the handler under the contract-canonical
       # dot-path that publishers emit on ModelEventEnvelope.event_type.
       event_type: omnimarket.pr-lifecycle-orchestrator-start
+    - operation: ci_red_triage
+      topic: onex.evt.omnimarket.ci-run-failed.v1
+      message_category: event
+      handler:
+        name: HandlerCiRedTriage
+        module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage
+      event_model:
+        name: ModelCiRunFailedEvent
+        module: omnimarket.models.ci_red_triage
+
+# Plan slice: acting stays off until the landing controller stops dispatching
+# for these same classes, so the two controllers cannot launch competing fixes.
+ci_red_triage:
+  act: false
+
+published_events:
+  - event_type: PrLifecycleStartCommand
+    topic: onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+    description: "Scoped owner start through the existing sweep path."
+  - event_type: CiRedTriageDecided
+    topic: onex.evt.omnimarket.ci-red-triage-decided.v1
+    description: "One deterministic decision per PR head and deciding check."
 
 descriptor:
   node_archetype: orchestrator
@@ -80,6 +103,11 @@ inputs:
     description: "Comma-separated repo slugs to filter (empty = all)"
     required: false
     default: ""
+  pr_numbers:
+    type: tuple[int, ...]
+    description: "Explicit PR numbers for the single repo filter (empty = enumerate)."
+    required: false
+    default: []
   max_parallel_polish:
     type: int
     description: "Maximum concurrent pr-polish agents dispatched during FIXING"
@@ -302,6 +330,7 @@ terminal_events:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+    - onex.evt.omnimarket.ci-run-failed.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
@@ -316,6 +345,8 @@ event_bus:
     # OMN-13586 RH-4: repo-health classify/repair fan-out.
     - onex.cmd.omnimarket.repo-health-classify.v1
     - onex.cmd.omnimarket.repo-health-repair-start.v1
+    - onex.evt.omnimarket.ci-red-triage-decided.v1
+    - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
 
 # OMN-12569: durable, reconstructable PR-ledger projection.
 # The ledger is a DERIVED projection (not authoritative truth) materialized

@@ -19,7 +19,8 @@ marker raises ``ValueError``; it is never guessed at.
 
 What the reason text does and does not tell the reader
 --------------------------------------------------------
-* ``kind`` is the marker's own word, one to one.
+* ``kind`` is the marker's own word, except that ``NOOP`` maps to the existing
+  typed ``DECLINED`` with ``ALREADY_BOUND`` or ``STAMP_REBOUND`` (OMN-18939).
 * ``occ_pr`` is read only where the producer's reason names the companion
   (authored, already bound, stamp rebound).
 * ``stamped`` is ``True`` where the reason proves the product body names the
@@ -31,6 +32,8 @@ Measured on the 2026-09-26 corpus (``tests/fixtures/pr_landing/companion_outcome
 no line said MINTED. Every successful mint was posted as DECLINED with the
 suffix ``OCC companion NOT verified: no OCC companion verifier wired``, which
 this reader classifies as ``AUTHORED_UNVERIFIED`` and still names the companion.
+Since OMN-18939, a mint prints MINTED even without stamp verification; the
+unverified suffix keeps its ``stamped`` field unknown, as on the bus outcome.
 """
 
 from __future__ import annotations
@@ -50,7 +53,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome
 
 _MARKER_RE = re.compile(
     rf"^{re.escape(OUTCOME_MARKER_PREFIX)} "
-    r"(?P<kind>MINTED|DECLINED|ERROR) "
+    r"(?P<kind>MINTED|NOOP|DECLINED|ERROR) "
     r"repo=(?P<repo>\S+) "
     r"pr=(?P<pr>\d+) "
     r"correlation_id=(?P<cid>\S+) "
@@ -144,7 +147,10 @@ def companion_outcome_from_autobind_marker(
         raise ValueError(
             f"not an occ-autobind outcome marker line: {marker_line[:120]!r}"
         )
-    kind = EnumPrLandingCompanionOutcomeKind(match.group("kind"))
+    marker_kind = match.group("kind")
+    kind = EnumPrLandingCompanionOutcomeKind(
+        "DECLINED" if marker_kind == "NOOP" else marker_kind
+    )
     cid_raw = match.group("cid")
     correlation_id = None if cid_raw == "unknown" else UUID(cid_raw)
     reason = match.group("reason").strip()
@@ -168,9 +174,9 @@ def companion_outcome_from_autobind_marker(
             {
                 **common,
                 "occ_pr": int(authored.group(1)) if authored else None,
-                # MINTED is posted only after the read-back verifier confirmed
-                # the product body names the companion (occ_companion_verifier).
-                "stamped": True,
+                # The headline records authoring, not stamp verification.
+                # Legacy verified markers carry no unverified suffix.
+                "stamped": None if _UNVERIFIED_SUFFIX in reason else True,
             }
         )
     code, occ_pr, stamped = classify_companion_decline(primary)

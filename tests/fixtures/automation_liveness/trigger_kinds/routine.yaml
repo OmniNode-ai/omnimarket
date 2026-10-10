@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind routine.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: session/example-routine
+  owner_repo: example-owner/example-repo
+  host: session
+  trigger:
+    kind: routine
+    native_id: example routine
+  expected_interval_seconds: 86400
+  alarm_deadline_seconds: 180000
+  max_runtime_seconds: 3600
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: ledger_rows
+    locator: lane example-routine
+    completion_record: TERMINAL row
+  real_work: rows written
+  demand: none
+  positive_control:
+    kind: class_drill
+    ref: stop a session tick
+  state: active

@@ -147,6 +147,13 @@ from omnimarket.models.delegation.delegation_attempt_lineage import (
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
+from omnimarket.models.delegation.delegation_caller_lane import (
+    DELEGATION_CALLER_LANE_METADATA_KEY,
+)
+from omnimarket.models.delegation.delegation_lineage import LINEAGE_KEYS
+from omnimarket.models.delegation.delegation_ticket_id import (
+    DELEGATION_TICKET_METADATA_KEY,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
 )
@@ -159,6 +166,9 @@ from omnimarket.models.model_usage_call_event import ModelUsageCallEvent
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     current_dispatch_progress,
     dispatch_stage,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
+    ModelDelegationDispatchProgress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -214,8 +224,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 # models package) so this composition stays on the node boundary (OMN-13160).
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerLlmDelegationCall,
+    ModelLlmDelegationCallObservation,
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
+    current_call_observer,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -691,6 +703,7 @@ type _EffectHandler = Callable[
 ]
 type _EffectWorkerMessage = (
     tuple[Literal["ready"]]
+    | tuple[Literal["observed"], ModelLlmDelegationCallObservation]
     | tuple[Literal["ok"], ModelLlmDelegationCallResult]
     | tuple[Literal["error"], str, str]
 )
@@ -766,6 +779,11 @@ def _effect_handler_worker(
     slow package import to the endpoint's transport timeout.
     """
     result_queue.put(("ready",))
+    # Each provider call is reported as it starts and ends, so a parent that
+    # kills this child at its budget still knows the calls already made.
+    current_call_observer.set(
+        lambda observation: result_queue.put(("observed", observation))
+    )
     try:
         result = effect_handler(request)
         result_queue.put(("ok", result))
@@ -834,6 +852,10 @@ async def _run_effect_handler_with_killable_timeout(
         while True:
             message = _read_effect_worker_message(result_queue)
             if message is not None:
+                if message[0] == "observed":
+                    if progress is not None:
+                        progress.in_flight_calls.append(message[1])
+                    continue
                 if message[0] == "ready":
                     boot_seconds = time.monotonic() - boot_started
                     _record_child_boot_observation(boot_seconds)
@@ -860,6 +882,10 @@ async def _run_effect_handler_with_killable_timeout(
                 while (
                     message := _read_effect_worker_message(result_queue)
                 ) is not None:
+                    if message[0] == "observed":
+                        if progress is not None:
+                            progress.in_flight_calls.append(message[1])
+                        continue
                     if message[0] == "ready":
                         continue
                     if message[0] == "ok":
@@ -890,6 +916,49 @@ async def _run_effect_handler_with_killable_timeout(
             _terminate_effect_process(process)
         result_queue.close()
         result_queue.join_thread()
+
+
+def _start_in_flight_attempt(
+    progress: ModelDelegationDispatchProgress | None,
+    backend: ModelResolvedDelegationBackend,
+) -> None:
+    """Record the rung whose attempt starts now, as its settled record would name it.
+
+    OMN-17427: a run the handler's budget cancels mid-attempt reports this rung
+    from here, since the attempt never returns to the ladder below.
+    """
+    if progress is None:
+        return
+    progress.in_flight_attempt = {
+        "tier": _routing_tier_name(backend),
+        "backend_id": backend.backend_id,
+        "model_id": backend.model_id,
+        "substituted_from_backend_id": backend.substituted_from_backend_id,
+        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+        "host": endpoint_host(backend.endpoint_ref),
+    }
+    progress.in_flight_endpoint_ref = backend.endpoint_ref
+    progress.in_flight_secret_ref = backend.secret_ref
+    progress.in_flight_calls = []
+
+
+def _settle_in_flight_attempt(
+    progress: ModelDelegationDispatchProgress | None,
+    outcome: _AttemptOutcome,
+) -> None:
+    """The attempt returned; the ladder records it from here, so drop the in-flight copy.
+
+    Keeps the key provenance the attempt observed, which the ladder's records do
+    not carry, so a later cancelled rung can still name the key.
+    """
+    if progress is None:
+        return
+    progress.in_flight_attempt = None
+    progress.in_flight_calls = []
+    result = outcome.result
+    if result is not None and result.secret_source is not None:
+        progress.secret_source = result.secret_source
+        progress.secret_ref = result.secret_ref
 
 
 def resolve_delegation_backend(
@@ -1127,6 +1196,7 @@ class LocalDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
@@ -1245,7 +1315,13 @@ class LocalDelegationDispatchPort:
         # it, so the usage rows split the run's cost per model. Appended
         # wherever cumulative_cost_usd is, so the two always agree.
         attempt_usage: list[_AttemptUsage] = []
-        attempts: list[dict[str, object]] = []
+        # OMN-17427: the ladder is kept on the request's dispatch progress, so
+        # a run the handler's budget cancels still reports every rung settled
+        # so far. The list is the port's own, appended in place.
+        progress = current_dispatch_progress.get()
+        attempts: list[dict[str, object]] = (
+            progress.attempts if progress is not None else []
+        )
         escalation_count = 0
         # OMN-14220: best authored artifact seen across attempts (highest gate score,
         # non-empty). On a terminal FAILURE the loop below used to return only the
@@ -1405,6 +1481,9 @@ class LocalDelegationDispatchPort:
                 escalation_count += 1
                 backend = over_budget_next
                 continue
+            if progress is not None:
+                progress.escalation_count = escalation_count
+                progress.cost_usd = float(cumulative_cost_usd)
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
                 prompt=prompt,
@@ -1423,6 +1502,7 @@ class LocalDelegationDispatchPort:
                 temperature=temperature,
                 response_format=response_format,
             )
+            _settle_in_flight_attempt(progress, attempt_outcome)
 
             # A hard transport/timeout failure: classify retryable vs terminal and,
             # when retryable, route through the SAME up-tier escalation the
@@ -1639,6 +1719,7 @@ class LocalDelegationDispatchPort:
                     result=transport_result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=transport_failure_message,
@@ -1919,6 +2000,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=True,
                     failure_message="",
@@ -2141,6 +2223,7 @@ class LocalDelegationDispatchPort:
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
+                    attribution=attribution,
                     tenant_id=resolved_tenant_id,
                     quality_passed=False,
                     failure_message=gate_failure_message,
@@ -2922,6 +3005,8 @@ class LocalDelegationDispatchPort:
         # stronger than ``asyncio.to_thread``: when the hard deadline expires, the
         # worker can be terminated so ``asyncio.run`` has no orphaned thread to join.
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
+        progress = current_dispatch_progress.get()
+        _start_in_flight_attempt(progress, backend)
         try:
             with dispatch_stage("inference"):
                 if self._effect_process_boundary:
@@ -2931,7 +3016,13 @@ class LocalDelegationDispatchPort:
                         timeout_seconds=dispatch_deadline_seconds,
                     )
                 else:
-                    result = self._effect_handler(call_request)
+                    observer_token = current_call_observer.set(
+                        None if progress is None else progress.in_flight_calls.append
+                    )
+                    try:
+                        result = self._effect_handler(call_request)
+                    finally:
+                        current_call_observer.reset(observer_token)
         except TimeoutError:
             failure_message = (
                 f"delegation call did not return within "
@@ -3237,6 +3328,7 @@ class LocalDelegationDispatchPort:
         attempts: Sequence[Mapping[str, object]],
         actual_score: float | None,
         required_bar: float | None,
+        attribution: Mapping[str, str] | None = None,
         attempt_usage: Sequence[_AttemptUsage] = (),
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
@@ -3339,6 +3431,15 @@ class LocalDelegationDispatchPort:
                     "non-UUID session id %r omitted from evidence row",
                     source_session_id,
                 )
+        # OMN-20606: who issued the run and what it follows. The handler's own
+        # terminal carries the caller lane and ticket, but on this in-process
+        # path only THIS payload reaches the bus, and it named neither, so every
+        # in-process fallback row on the dev lane had an empty caller_lane and
+        # nothing linking it to the failed delegation it answered. The handler
+        # has already validated each value; only the named keys are copied.
+        for key, value in (attribution or {}).items():
+            if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
+                payload[key] = value
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
         # tenant_id so the evidence row stamps a real tenant.
         #
@@ -3595,6 +3696,14 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation or None,
             partition_key=correlation or None,
         )
+
+
+#: The attribution keys the in-process evidence terminal carries (OMN-20606):
+#: the caller lane, the ticket, and the delegation lineage. Each key is the
+#: terminal key and the delegation_events column of the same name.
+_EVIDENCE_ATTRIBUTION_KEYS: frozenset[str] = frozenset(
+    {DELEGATION_CALLER_LANE_METADATA_KEY, DELEGATION_TICKET_METADATA_KEY} | LINEAGE_KEYS
+)
 
 
 def _local_terminal_topic(*, success: bool) -> str | None:

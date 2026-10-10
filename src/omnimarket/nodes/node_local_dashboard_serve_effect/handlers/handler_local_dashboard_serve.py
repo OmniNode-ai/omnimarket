@@ -24,7 +24,10 @@ fall back to, so the dashboard shows what the developer's runs wrote.
 **The tenant is this install's identity.** A tenant-scoped exposure is read for
 the identity ``onex local init`` minted. A request naming any other tenant is
 refused with ``422 tenant_conflict``; an install with no identity refuses
-scoped reads rather than serving them unscoped.
+scoped reads rather than serving them unscoped. ``GET /projections`` names that
+tenant (``tenant``, ``null`` with no identity) so the served page, which is built
+once for everyone and carries no tenant of its own, knows whom it reads as
+(OMN-20728).
 
 **The bind comes from ``dashboard.bind``.** The overlay key the plan names
 (``beta/plans/2026-09-28-local-mvp-plan.md``, overlay keys) is read from an
@@ -79,7 +82,10 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import projection_read_binding_from_overlay_env
-from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.projection.sqlite_database import (
+    default_evidence_db_path,
+    reconcile_existing_store,
+)
 from omnimarket.projection.table_reader import (
     ProtocolProjectionRowSource,
     TableRowSource,
@@ -98,11 +104,34 @@ def resolve_local_row_source() -> TableRowSource | SqliteTableRowSource:
     """The store this install's writers fill: the read binding's, else the local default."""
     if projection_read_binding_from_overlay_env() is not None:
         return resolve_projection_read_source()
-    return SqliteTableRowSource(default_evidence_db_path())
+    db_path = default_evidence_db_path()
+    # OMN-20226: the row source opens the store read-only, so the store's
+    # one-time upgrades run here, before it is served.
+    reconcile_existing_store(db_path)
+    return SqliteTableRowSource(db_path)
 
 
-def _catalogue_row(cfg: ProjectionTableConfig) -> dict[str, Any]:
+def _catalogue_row(
+    cfg: ProjectionTableConfig, unservable: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """One catalogue entry, as this server can actually serve it.
+
+    ``unservable`` is the row source's own probe failure for this topic. An
+    exposure the contract declares ``ok`` is still listed ``degraded`` when the
+    local store cannot answer it (OMN-20709): advertising ``ok`` for a topic
+    whose read then answers 503 sends the page to fetch a panel that can never
+    load. The page reads ``backing`` as the authority, so a non-``bus`` value
+    there is what makes it show the panel as not served instead of reading it.
+    """
     status = cfg.status if cfg.bus_backed else "degraded"
+    backing = "bus" if cfg.bus_backed else "not_yet_bus_backed"
+    degraded_reason = cfg.degraded_reason or (
+        None if cfg.bus_backed else "not_yet_bus_backed"
+    )
+    if cfg.bus_backed and unservable is not None:
+        status = "degraded"
+        backing = "not_in_local_store"
+        degraded_reason = unservable.get("error") or "not_in_local_store"
     return {
         "topic": cfg.topic,
         "table": cfg.table,
@@ -113,9 +142,8 @@ def _catalogue_row(cfg: ProjectionTableConfig) -> dict[str, Any]:
         "limit": cfg.limit,
         "key_columns": list(cfg.key_columns),
         "bus_backed": cfg.bus_backed,
-        "backing": "bus" if cfg.bus_backed else "not_yet_bus_backed",
-        "degraded_reason": cfg.degraded_reason
-        or (None if cfg.bus_backed else "not_yet_bus_backed"),
+        "backing": backing,
+        "degraded_reason": degraded_reason,
         "served_from": "local_store",
         "tenant_column": cfg.tenant_column,
         "tenant_scoped": cfg.tenant_scoped,
@@ -135,8 +163,14 @@ def create_dashboard_app(
     tenant: str | None,
     topic_map: dict[str, ProjectionTableConfig] | None = None,
     pages: Path | None = None,
+    row_source: ProtocolProjectionRowSource | None = None,
 ) -> FastAPI:
     """The loopback app: the catalogue, reads dispatched to the read node, and the pages.
+
+    ``row_source``, when given, is probed on every catalogue read, and a topic
+    it cannot serve is listed ``degraded`` rather than ``ok`` (OMN-20709). It is
+    probed per request, not once at start, because the local writers create
+    tables after the server is already up.
 
     ``pages``, when given, is a directory of verified static files (the OmniDash
     bundle). Its routes are registered last, after every API route, so the
@@ -150,8 +184,22 @@ def create_dashboard_app(
 
     @app.get("/projections")
     async def projections() -> JSONResponse:
+        failures: dict[str, dict[str, str]] = {}
+        if row_source is not None:
+            _ready, report = await row_source.readiness(topics)
+            reported = report.get("failures")
+            if isinstance(reported, dict):
+                failures = reported
+        # The tenant this process serves, so the page can name it on a scoped
+        # read; null with no identity, and the page then refuses as before.
         return JSONResponse(
-            {"topics": [_catalogue_row(cfg) for cfg in topics.values()]}
+            {
+                "tenant": tenant,
+                "topics": [
+                    _catalogue_row(cfg, failures.get(cfg.topic))
+                    for cfg in topics.values()
+                ],
+            }
         )
 
     @app.get("/projection/{topic:path}")
@@ -297,6 +345,7 @@ class HandlerLocalDashboardServe:
             tenant=request.tenant_id,
             topic_map=topics,
             pages=pages,
+            row_source=source,
         )
         await self._serve(app, request.host, request.port)
         return ModelLocalDashboardServeResult(

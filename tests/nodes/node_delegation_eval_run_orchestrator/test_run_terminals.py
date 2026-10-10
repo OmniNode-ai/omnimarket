@@ -94,10 +94,16 @@ def test_all_items_pass_returns_completed_terminal(
         "call-1:0": 3,
         "call-2:0": 3,
     }
-    assert len(payload.results) == 4
-    assert all(row.total_n == row.accepted_n == 3 for row in payload.results)
-    assert all(row.false_pass_rate == 0.0 for row in payload.results)
-    assert all(row.false_refusal_rate is None for row in payload.results)
+    gate_rows = [row for row in payload.results if row.arm != "rubric"]
+    assert len(gate_rows) == 4
+    # Summarization has a class rubric, so the run also reports its rubric arm.
+    assert {row.stratum for row in payload.results if row.arm == "rubric"} == {
+        "all",
+        "summarization/accepted",
+    }
+    assert all(row.total_n == row.accepted_n == 3 for row in gate_rows)
+    assert all(row.false_pass_rate == 0.0 for row in gate_rows)
+    assert all(row.false_refusal_rate is None for row in gate_rows)
     assert payload == handler.handle(run_request).payload
 
 

@@ -22,6 +22,16 @@ thinking off, which is the OMN-19267 profile change in
 request leaves thinking on, the stand-in returns the measured trace, and the
 extractor refuses it, so these tests fail.
 
+OMN-20469 moved ``reasoning`` (only) to thinking on, after a 60-item two-judge
+replay in which both lab servers returned the trace in a separate field and left
+``message.content`` marked (0 of 60 extraction refusals). The stand-in below
+therefore has two shapes: a server without a reasoning parser, which
+``complex_reasoning`` is still sent to with thinking off, and a server that
+separates the trace, which ``reasoning`` is sent to with thinking on. The
+separation is the servers' reasoning-parser setting; the unparsed shape stays
+asserted as the refused one, so losing that setting is a visible failure of the
+positive control and not a silent blanking.
+
 The live-endpoint half of AC1 (that the served model itself answers with a
 marker once thinking is off) cannot run in hosted CI; it is the lab probe
 recorded on the OCC receipt for the same criterion.
@@ -92,10 +102,16 @@ def _thinking_suppressed(request: ModelLlmDelegationCallRequest) -> bool:
 
 
 class _MeasuredModelServer:
-    """Answers as the measured lab server did, keyed on the request's thinking state."""
+    """Answers as the measured lab server did, keyed on the request's thinking state.
 
-    def __init__(self) -> None:
+    ``trace_separated`` is the server's reasoning-parser setting: when set, the
+    trace is not in ``message.content``, so the content is the marked answer
+    whether thinking is on or off (the 2026-10-09 servers, OMN-20469).
+    """
+
+    def __init__(self, *, trace_separated: bool = False) -> None:
         self.requests: list[ModelLlmDelegationCallRequest] = []
+        self._trace_separated = trace_separated
 
     def __call__(
         self, request: ModelLlmDelegationCallRequest
@@ -103,7 +119,7 @@ class _MeasuredModelServer:
         self.requests.append(request)
         content = (
             _THINKING_OFF_CONTENT
-            if _thinking_suppressed(request)
+            if self._trace_separated or _thinking_suppressed(request)
             else _THINKING_ON_CONTENT
         )
         return ModelLlmDelegationCallResult(
@@ -118,8 +134,10 @@ class _MeasuredModelServer:
         )
 
 
-def _run_reasoning_attempt(tmp_path: Path, task_type: str) -> tuple[Any, Any]:
-    server = _MeasuredModelServer()
+def _run_reasoning_attempt(
+    tmp_path: Path, task_type: str, *, trace_separated: bool = False
+) -> tuple[Any, Any]:
+    server = _MeasuredModelServer(trace_separated=trace_separated)
     port = LocalDelegationDispatchPort(
         effect_handler=server,
         evidence_db_path=tmp_path / "evidence.sqlite",
@@ -141,7 +159,7 @@ def _run_reasoning_attempt(tmp_path: Path, task_type: str) -> tuple[Any, Any]:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("task_type", ["reasoning", "complex_reasoning"])
+@pytest.mark.parametrize("task_type", ["complex_reasoning"])
 def test_local_reasoning_delegation_returns_a_non_empty_deliverable(
     tmp_path: Path, task_type: str
 ) -> None:
@@ -207,3 +225,26 @@ def test_the_measured_thinking_on_response_is_the_refused_shape(
     assert outcome.output_refusal.reason.value == "ambiguous_unmarked_deliverable"
     assert outcome.result is not None
     assert (outcome.result.content or "") == ""
+
+
+@pytest.mark.unit
+def test_reasoning_runs_thinking_on_and_still_returns_a_non_empty_deliverable(
+    tmp_path: Path,
+) -> None:
+    """OMN-20469: `reasoning` is sent with thinking on and the caller still gets an answer.
+
+    The server stand-in separates the trace from ``message.content``, as both
+    lab servers did in the 60-item replay, so the content is the marked answer.
+    """
+
+    outcome, request = _run_reasoning_attempt(
+        tmp_path, "reasoning", trace_separated=True
+    )
+
+    options = dict(request.provider_request_options or {})
+    assert options.get("chat_template_kwargs") == {"enable_thinking": True}, options
+    assert outcome.output_refusal is None, outcome.output_refusal
+    assert outcome.result is not None
+    deliverable = outcome.result.content or ""
+    assert "every bloop is a lazzie" in deliverable
+    assert "We need to respond to user" not in deliverable

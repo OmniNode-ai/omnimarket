@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_plan_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide a lab-fill run from supplied facts without I/O: host capacity, candidate
+  choice, dispatch planning, ownership and completion, authorized lane briefs and
+  structured launches, receipt placement, single engine fallbacks and status with
+  idle diagnostics. Identities, reader facts and observed times arrive in requests.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: plan_lab_fill_capacity
+    handler:
+      name: HandlerLabFillCapacity
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_capacity
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityResult
+  - operation: choose_lab_fill_candidates
+    handler:
+      name: HandlerLabFillCandidateChoice
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_candidate_choice
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceResult
+  - operation: plan_lab_fill_dispatch
+    handler:
+      name: HandlerLabFillDispatchPlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_dispatch_plan
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanResult
+  - operation: decide_lab_fill_ownership
+    handler:
+      name: HandlerLabFillOwnership
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_ownership
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_ownership.ModelLabFillOwnershipRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_ownership.ModelLabFillOwnershipResult
+  - operation: render_lab_fill_lane
+    handler:
+      name: HandlerLabFillLaneRender
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_lane_render
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_render.ModelLabFillLaneRenderRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_render.ModelLabFillLaneRenderResult
+  - operation: verify_lab_fill_placement
+    handler:
+      name: HandlerLabFillPlacement
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_placement
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_placement.ModelLabFillPlacementRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_placement.ModelLabFillPlacementResult
+  - operation: plan_lab_fill_fallbacks
+    handler:
+      name: HandlerLabFillFallbackPlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fallback_plan
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_fallback_plan.ModelLabFillFallbackPlanRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_fallback_plan.ModelLabFillFallbackPlanResult
+  - operation: compose_lab_fill_status
+    handler:
+      name: HandlerLabFillStatus
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_status
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.lab-fill-plan-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lab-fill-plan-decided.v1
+terminal_event: onex.evt.omnimarket.lab-fill-plan-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.lab-fill-plan-decided.v1
+metadata:
+  ticket: OMN-20668
+  origin_tickets:
+  - OMN-17427
+  - OMN-20662
+  transport_type: kafka
+lifecycle: experimental

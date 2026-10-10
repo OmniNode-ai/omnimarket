@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20759"
+title: "The local dashboard Runs and Recent runs tables are wider than their panels at 1440x900, so Host and Run id are clipped"
+summary: "onex dashboard pins omnidash v1.1.9, the first bundle whose Runs and Recent runs tables fit their panels at 1440x900 with every column."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-run-tables-fit"
+    statement: |-
+      The local dashboard's run tables fit their panels at 1440x900 without dropping a column.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: At a 1440x900 viewport, the Runs table and the Overview's Recent runs table fit inside their panels with no clipped cell and no horizontal scroll -- falsifier: a Playwright check at 1440x900 against each page that fails when either table's scrollWidth exceeds its container's clientWidth
+      - id: "AC2"
+        statement: |-
+          AC2: Every column still shows its full value, by wrapping, a shortened display with the full value on hover, or a row detail, never by silently dropping a column -- falsifier: the same Playwright check failing when any served column header present today is missing from either table
+evidence_requirements:
+  - kind: "tests"
+    description: "onex dashboard pins omnidash v1.1.9 or later."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20759.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20759-bundle-pin-1-1-9"
+    description: "onex dashboard pins omnidash v1.1.9 or later, the first bundle whose run tables fit at 1440x900 with every column."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20759.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

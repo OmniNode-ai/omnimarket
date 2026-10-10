@@ -90,7 +90,83 @@ requirements:
       - id: "AC16"
         statement: |-
           AC16: a faithful BLOCKED summary whose host blockers sit on later lines of a contract-declared report section is grounded, a neighbouring report does not ground it, and the readable diagnostic survives the redactor -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q fails at the merge base
+  - id: "req-ambient-tenant-scrub"
+    statement: |-
+      The unit test isolation fixture clears the ambient ONEX_TENANT_ID, so a lane shell that exports it cannot change a delegation unit test's outcome.
+    acceptance:
+      - id: "AC17"
+        statement: |-
+          AC17: with ONEX_TENANT_ID exported by the shell, a unit test sees it unset and a delegation boundary failure yields exactly one ModelDelegationFailed terminal -- falsifier: uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q fails at the merge base
+  - id: "req-pg16-provision-bounded"
+    statement: |-
+      The PostgreSQL 16 server-tools step in every CI job that runs the native migration proofs skips apt when the runner image already has PG16 and bounds apt when it runs, so a stalled mirror cannot hold a test shard to its job timeout and lose its coverage artifact.
+    acceptance:
+      - id: "AC18"
+        statement: |-
+          AC18: the provision step in ci.yml jobs test and integration-guard and in nightly-full-suite.yml job shard has a step timeout of at most 15 minutes and runs apt-get update only inside the branch taken when the PG16 tools are absent, with the fail-closed binary checks after it -- falsifier: uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q fails at the merge base
+      - id: "AC19"
+        statement: |-
+          AC19: .github/workflows/call-repo-evidence-gate.yml pins the omnibase_core receipt-gate reusable at 81b34fe91f995e75acd65694e81ecf2c385456a4, whose dod-verify job derives the OCC writer app's dependency-pin-only exemption from the head's diff, so a post-release version bump that changes only pyproject.toml project.version and uv.lock is exempt without an occ-autobind outcome -- falsifier: uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q fails at the merge base
+  - id: "req-qwen36-planner-vendor-sampling"
+    statement: |-
+      The .200 planner rung's served Qwen3.6-35B-A3B (qwen3.6-35b-a3b) gets the model card's non-thinking request for every class, while the Qwen3.8-27B rungs keep their measured request.
+    acceptance:
+      - id: "AC20"
+        statement: |-
+          AC20: every class the planner rung serves, and a class outside the qwen lists, sends top_p 0.8, top_k 20, min_p 0, presence_penalty 1.5, enable_thinking false and default temperature 0.7 for qwen3.6-35b-a3b, and Qwen3.8-27B planning sends only enable_thinking false -- falsifier: uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q fails at the merge base
+  - id: "req-ci-red-triage-shadow"
+    statement: |-
+      With ci_red_triage.act false, the red-CI triage records its decision and publishes no pr-lifecycle start command, so a shadow triage starts no PR inventory on the operator's GitHub login.
+    acceptance:
+      - id: "AC21"
+        statement: |-
+          AC21: HandlerCiRedTriage with act false records each decision with action_applied false and evidence start=withheld:act=false and publishes no start command, and the contract default is act false -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode fails at the merge base
+  - id: "req-lane-scoped-contracts-main-profile"
+    statement: |-
+      Every node contract that declares runtime_lanes belongs to the main runtime profile only, because no compose lane's effects runtime declares ONEX_RUNTIME_LANE and a lane-scoped contract owned by effects fails closed on discovery, which holds omninode-runtime-effects Docker-unhealthy.
+    acceptance:
+      - id: "AC22"
+        statement: |-
+          AC22: node_branch_claim_check_effect declares runtime_profiles [main] and every contract declaring runtime_lanes is owned by main only -- falsifier: uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q fails at the merge base
+  - id: "req-bound-selector-names-file"
+    statement: |-
+      Every pytest check bound to an acceptance criterion in a repo contract names its target by a test file (or a tests directory), because the repo evidence gate refuses a bare directory selector and that refusal turns Tests (Split 2/20) red on every open pull request.
+    acceptance:
+      - id: "AC23"
+        statement: |-
+          AC23: every binds_ac pytest check in contracts/OMN-*.yaml names an existing .py file or a /tests directory, and dod-omn-20429-ac4 names the golden chain test file -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q fails at the merge base
+  - id: "req-node-auto-wiring-in-process"
+    statement: |-
+      Every node's derived dispatch identifiers fit the limits ModelDispatchRoute declares, and every contract auto-wires in-process through the infra runtime's wire_from_manifest, on every pull request and before every release; the known exceptions are shrink-only.
+    acceptance:
+      - id: "AC24"
+        statement: |-
+          AC24: the gate runs as a blocking step in the ci.yml lint job, the node-auto-wiring-in-process pre-commit hook and before uv build in release.yml and release-cut.yml, reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
+  - id: "req-morning-overlay-at-run"
+    statement: |-
+      The morning ground-state and friction-sweep handlers read their deployment overlay when a run starts, so a runtime without the overlay wires every other node and refuses only that run, instead of failing auto-wiring and crash-looping the effects runtime.
+    acceptance:
+      - id: "AC25"
+        statement: |-
+          AC25: HandlerMorningGroundState and HandlerMorningFrictionSweep construct without an overlay, refuse a run without one with their typed configuration error before any phase runs, and pick an overlay up once it exists without a restart -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k "without_an_overlay or picks_the_overlay_up" and the same selector over tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py fail at the merge base
+  - id: "req-budget-cancel-keeps-evidence"
+    statement: |-
+      A delegation cancelled at its handler execution budget keeps the routing, model, key source and attempts it had reached on its failed terminal, instead of a fresh timeout terminal that names nothing.
+    acceptance:
+      - id: "AC26"
+        statement: |-
+          AC26: when the budget expires at stage=inference on the customer OpenRouter route, the terminal names the provider endpoint and keeps the earlier 429 rung and the in-flight call as the last rung with failure_class timeout -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q fails at the merge base
+  - id: "req-budget-cancel-cause-timeout"
+    statement: |-
+      A delegation the handler budget cancelled names timeout as its terminal failure cause, and any earlier quality-gate refusals stay on their own rungs in its attempts.
+    acceptance:
+      - id: "AC27"
+        statement: |-
+          AC27: a budget-cancelled run whose earlier rungs record a quality-gate refusal and a 429, in either order, terminates with status timeout and cause timeout and keeps the refused rung in attempts, while a run that ended on its own ladder after a gate refusal still names quality_gate_refused -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q fails at the merge base
 evidence_requirements:
+  - kind: "tests"
+    description: "A budget-cancelled run names timeout and keeps its gate refusal; a run that ended on its own ladder is still gate-decided."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q"
   - kind: "tests"
     description: "A keep-alive body cannot extend the total inference deadline and a prompt chunked body still completes."
     command: "uv run pytest tests/unit/delegation/test_omn18852_inference_deadline_bound.py -q -k \"total_inference_deadline or prompt_chunked_body\""
@@ -130,6 +206,39 @@ evidence_requirements:
   - kind: "tests"
     description: "A summary is grounded within its complete report section and the diagnostic label survives the redactor."
     command: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
+  - kind: "tests"
+    description: "The unit isolation fixture clears the ambient ONEX_TENANT_ID and a delegation boundary failure yields one terminal."
+    command: "uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q"
+  - kind: "tests"
+    description: "The PG16 provision step is bounded and runs apt only when the runner image lacks PG16."
+    command: "uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q"
+  - kind: "tests"
+    description: "The caller pins the reusable that derives the writer app's dependency-pin-only exemption in-job."
+    command: "uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q"
+  - kind: "tests"
+    description: "The planner rung's Qwen3.6-35B-A3B gets the vendor non-thinking request and the Qwen3.8-27B rungs keep theirs."
+    command: "uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q"
+  - kind: "tests"
+    description: "A shadow-mode red-CI triage records its decision and publishes no start command."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
+  - kind: "tests"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    command: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+  - kind: "tests"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    command: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
+  - kind: "tests"
+    description: "The morning ground-state node wires without its overlay and refuses a run without one."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+  - kind: "tests"
+    description: "The morning friction-sweep node wires without its overlay and refuses a run without one."
+    command: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+  - kind: "tests"
+    description: "A call re-aimed inside the effect and cancelled at its budget keeps its 429 rung and the call in flight on the terminal."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k re_aimed_inside_the_effect"
+  - kind: "tests"
+    description: "A retry on the customer route cancelled at its budget keeps the earlier 429 rung on the terminal."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k retry_on_the_customer_route"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -239,3 +348,97 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn17427_summary_report_grounding.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn17427-ac17-ambient-tenant-scrub"
+    description: "The unit isolation fixture clears the ambient ONEX_TENANT_ID and a delegation boundary failure yields exactly one terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn17427-ac18-pg16-provision-bounded"
+    description: "The PG16 provision step is bounded and runs apt only when the runner image lacks PG16."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn18693_native_postgres_ci_wiring.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC18"]
+  - id: "dod-omn17427-ac19-writer-pin-only-repin"
+    description: "The caller pins the reusable that derives the writer app's dependency-pin-only exemption in-job."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC19"]
+  - id: "dod-omn17427-ac20-qwen36-planner-vendor-sampling"
+    description: "The planner rung's Qwen3.6-35B-A3B gets the vendor non-thinking request and the Qwen3.8-27B rungs keep theirs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_qwen3_6_35b_planner_vendor_sampling_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn17427-ac21-ci-red-triage-shadow"
+    description: "A shadow-mode red-CI triage records its decision and publishes no start command."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -k shadow_mode"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn17427-ac22-lane-contracts-main-profile"
+    description: "Every lane-scoped node contract is owned by the main runtime profile only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_lane_scoped_contracts_main_profile.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
+  - id: "dod-omn17427-ac23-bound-selector-names-file"
+    description: "Every bound pytest check in a repo contract names a test file or a tests directory."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC23"]
+  - id: "dod-omn17427-ac24-node-auto-wiring-in-process"
+    description: "Every node's derived dispatch ids fit the ModelDispatchRoute limits, shrink-only exceptions. The in-process wire_from_manifest half takes over 30s, so it is gated by the ci.yml lint job, the pre-commit hook and the release workflows instead."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -k 'test_the_gate_runs_on_every_pull_request_commit_and_release or test_limits_are_read_from_the_dispatch_route_model or test_every_derived_dispatch_identifier_fits_the_runtime_limits' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC24"]
+  - id: "dod-omn17427-ac25-morning-overlay-at-run"
+    description: "The morning nodes wire without their overlay and refuse a run without one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py -q -k \"without_an_overlay or picks_the_overlay_up\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
+  - id: "dod-omn17427-ac26-budget-cancel-keeps-evidence"
+    description: "A delegation cancelled at its handler execution budget keeps its provider, earlier rungs and in-flight call on the failed terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k re_aimed_inside_the_effect"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k retry_on_the_customer_route"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC26"]
+  - id: "dod-omn17427-ac27-budget-cancel-cause-timeout"
+    description: "A budget-cancelled run names timeout and keeps its gate refusal in attempts, in either order of events."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC27"]

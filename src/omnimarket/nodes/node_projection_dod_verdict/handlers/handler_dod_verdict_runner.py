@@ -90,10 +90,12 @@ _UPSERT = f"""
         readback_proving_count, unbindable_overlay_count,
         outcome, outcome_refusal, error_message, projected_at,
         delegation_correlation_id, goal_id, parent_goal_id, level,
-        contract_revision
+        contract_revision, contract_source, contract_repository,
+        contract_commit_sha, contract_repo_path
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-            $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+            $27, $28)
     ON CONFLICT (ticket_id, correlation_id, completed_at) DO UPDATE SET
         started_at = EXCLUDED.started_at,
         status = EXCLUDED.status,
@@ -115,7 +117,11 @@ _UPSERT = f"""
         goal_id = EXCLUDED.goal_id,
         parent_goal_id = EXCLUDED.parent_goal_id,
         level = EXCLUDED.level,
-        contract_revision = EXCLUDED.contract_revision
+        contract_revision = EXCLUDED.contract_revision,
+        contract_source = EXCLUDED.contract_source,
+        contract_repository = EXCLUDED.contract_repository,
+        contract_commit_sha = EXCLUDED.contract_commit_sha,
+        contract_repo_path = EXCLUDED.contract_repo_path
     RETURNING ticket_id, correlation_id, completed_at, outcome, outcome_refusal
 """
 
@@ -301,6 +307,10 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
             row.parent_goal_id,
             row.level,
             row.contract_revision,
+            None if row.contract_source is None else row.contract_source.value,
+            row.contract_repository,
+            row.contract_commit_sha,
+            row.contract_repo_path,
         )
         if not written:
             return None

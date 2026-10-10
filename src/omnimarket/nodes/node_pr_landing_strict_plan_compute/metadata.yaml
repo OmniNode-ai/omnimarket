@@ -1,0 +1,23 @@
+name: node_pr_landing_strict_plan_compute
+version: "0.1.0"
+description: "the landing controller's order of a tick's merges and branch updates on a strict base"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_strict_plan_compute: "omnimarket.nodes.node_pr_landing_strict_plan_compute"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the live controller still orders its own copy.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-landing", "landing-controller", "strict-base", "pure"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Strict Plan"
+node_role: "compute"

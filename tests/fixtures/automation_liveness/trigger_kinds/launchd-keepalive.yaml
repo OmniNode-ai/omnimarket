@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind launchd-keepalive.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-a/example-daemon
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger:
+    kind: launchd-keepalive
+    native_id: com.example.daemon
+  expected_interval_seconds: 300
+  alarm_deadline_seconds: 1800
+  max_silence_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: log_line
+    locator: example-state/daemon/daemon.log
+    completion_record: progress applied=
+  real_work: units run
+  demand: journal_backlog > 0
+  positive_control:
+    kind: class_drill
+    ref: stall a launchd KeepAlive daemon's worker while its process stays alive
+  state: active

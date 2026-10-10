@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20074"
+title: "node_dod_verify names contract_in_another_repo as an expected OCC difference"
+summary: "Operator ruling 2026-10-08T09:57:41Z makes a cross-repo ticket whose contract exists only in another product repository an expected OCC difference when the new path refuses and OCC admits. omnibase_core#1907 cites OMN-20704, whose contract is in omnimarket, and stops before writing a head verdict. A caller-supplied contract-home marker lets node_dod_verify name contract_in_another_repo. Operator RULING 2026-10-08T14:59:17Z extends RULING 2026-10-08T09:57:41Z: contract_in_another_repo (expected difference) also covers a PR whose ticket has its only other contract in onex_change_control. A marker naming onex_change_control also yields contract_in_another_repo."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-contract-in-another-repo"
+    statement: |-
+      Classify a missing or unreadable head with a caller-supplied marker naming any repository, including onex_change_control, as contract_in_another_repo, preserving existing head verdicts. Operator RULING 2026-10-08T14:59:17Z extends RULING 2026-10-08T09:57:41Z: contract_in_another_repo (expected difference) also covers a PR whose ticket has its only other contract in onex_change_control.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnibase_core#1907's shape (OMN-20704, no head or base control, contract-home-OMN-20704.txt naming OmniNode-ai/omnimarket, OCC success) prints passed true, outcome expected_difference, and reason_code contract_in_another_repo; a marker naming onex_change_control also prints that expected difference per operator ruling 2026-10-08T14:59:17Z; absent, empty, or unreadable markers leave reason unset, and a verified head with passed control still admits -- falsifier: #1907's shape or an onex_change_control marker still prints unclassified_difference
+  - id: "req-caller-repin-release-cut"
+    statement: |-
+      omnimarket's Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at omnibase_core#1914's squash commit, whose dod-verify job exempts the OCC writer app's release cut derived at the head, with a verifier release that ships the classifiers it imports.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at fb0c6c2117d5868a398b0920cd0048d0824415b1 (omnibase_core#1914) and its verifier-version ships is_release_artifact_only_diff and classify_dependency_pin_only -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q fails at the merge base
+evidence_requirements:
+  - kind: "tests"
+    description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The caller pins the release-cut reusable and its verifier ships the classifiers it imports."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20074-contract-in-another-repo"
+    description: "The #1907 shape prints contract_in_another_repo as an expected OCC difference."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20074-caller-release-cut-repin"
+    description: "The caller pins omnibase_core#1914 and its verifier ships the release-cut classifiers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

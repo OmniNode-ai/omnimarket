@@ -43,6 +43,9 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffHandedOff,
     ModelPrHandoffRequested,
 )
+from omnimarket.models.work_ledger_append.model_work_ledger_append import (
+    ModelWorkLedgerPrincipalRecords,
+)
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
     HandlerWorkLedgerAppendEffect,
@@ -52,7 +55,11 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerAppendCommand,
     LocalLedgerFile,
 )
-from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller, WorkLedgerAppendHost
+from omnimarket.work_ledger_bus.bus import (
+    WorkLedgerAppendCaller,
+    WorkLedgerAppendHost,
+    load_work_ledger_signing_key,
+)
 
 
 @click.group("work-ledger")
@@ -73,6 +80,23 @@ def work_ledger_group(ctx: click.Context) -> None:
     required=True,
     help="Shell-quoted argv prefix, including the ledger path.",
 )
+@click.option(
+    "--principal-records",
+    envvar="ONEX_WORK_LEDGER_PRINCIPAL_RECORDS",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Trusted issuer-owned JSON containing principal -> base64 Ed25519 public key records.",
+)
+@click.option(
+    "--operator-principal",
+    envvar="ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL",
+    help="Operator identity in the issuer records, supplied by the ledger host.",
+)
+@click.option(
+    "--signing-key-file",
+    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Operator Ed25519 private key in PEM form; signs mirrored lab terminals.",
+)
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -81,6 +105,9 @@ def serve_command(
     host_name: str,
     ledger: Path,
     append_command: str,
+    principal_records: Path | None,
+    operator_principal: str | None,
+    signing_key_file: Path | None,
 ) -> None:
     """Serve commands using the local append command on the ledger host."""
     try:
@@ -89,6 +116,34 @@ def serve_command(
         raise click.UsageError(f"--append-command: {exc}") from exc
     if not argv:
         raise click.UsageError("--append-command must not be empty")
+    if principal_records is None or operator_principal is None:
+        raise click.UsageError(
+            "serve requires --principal-records and --operator-principal "
+            "(ONEX_WORK_LEDGER_PRINCIPAL_RECORDS, ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL)"
+        )
+    try:
+        records = ModelWorkLedgerPrincipalRecords.model_validate_json(
+            principal_records.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(
+            "cannot read valid issuer principal records"
+        ) from exc
+    public_keys = records.verification_keys()
+    if operator_principal not in public_keys:
+        raise click.UsageError(
+            "--operator-principal must have an issuer public key record"
+        )
+    mirror_key = None
+    if signing_key_file is not None:
+        try:
+            mirror_key = load_work_ledger_signing_key(signing_key_file)
+        except (OSError, ValueError, TypeError) as exc:
+            raise click.ClickException("cannot read an Ed25519 signing key") from exc
+        if mirror_key.public_key() != public_keys[operator_principal]:
+            raise click.UsageError(
+                "--signing-key-file does not match the operator principal's public key"
+            )
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -110,7 +165,11 @@ def serve_command(
         )
         sys.exit(75)
     handler = HandlerWorkLedgerAppendEffect(
-        LocalLedgerAppendCommand(argv), LocalLedgerFile(ledger), host_name
+        LocalLedgerAppendCommand(argv),
+        LocalLedgerFile(ledger),
+        host_name,
+        public_keys=public_keys,
+        operator_principal=operator_principal,
     )
 
     async def main() -> None:
@@ -125,7 +184,12 @@ def serve_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            host = WorkLedgerAppendHost(opened, handler)
+            host = WorkLedgerAppendHost(
+                opened,
+                handler,
+                mirror_principal=operator_principal if mirror_key else None,
+                mirror_signing_key=mirror_key,
+            )
             await host.start()
             try:
                 await stop.wait()
@@ -153,6 +217,13 @@ def serve_command(
     default=60.0,
     show_default=True,
 )
+@click.option("--principal", envvar="ONEX_WORK_LEDGER_PRINCIPAL")
+@click.option(
+    "--signing-key-file",
+    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Issuer-provisioned Ed25519 private key in PEM form; never sent over the bus.",
+)
 def append_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -163,8 +234,19 @@ def append_command(
     request_id: UUID,
     rows_file: str,
     timeout_s: float,
+    principal: str | None,
+    signing_key_file: Path | None,
 ) -> None:
     """Send exact rows, print one JSON receipt and exit with the outcome."""
+    if principal is None or signing_key_file is None:
+        raise click.UsageError(
+            "append requires --principal and --signing-key-file "
+            "(ONEX_WORK_LEDGER_PRINCIPAL, ONEX_WORK_LEDGER_SIGNING_KEY_FILE)"
+        )
+    try:
+        key = load_work_ledger_signing_key(signing_key_file)
+    except (OSError, ValueError, TypeError) as exc:
+        raise click.ClickException("cannot read an Ed25519 signing key") from exc
     try:
         with click.open_file(rows_file, "r", encoding="utf-8") as source:
             rows = source.read()
@@ -174,7 +256,7 @@ def append_command(
             requested_by_lane=lane,
             requesting_host=host,
             requested_at=datetime.now(UTC),
-        )
+        ).signed(principal, key)
     except (OSError, ValidationError) as exc:
         raise click.ClickException(str(exc)) from exc
 

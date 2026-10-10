@@ -29,14 +29,24 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.handlers.handler_done_write_receipt_gate import declared_ac_bindings
 
+from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+    EvidenceCollector,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+    OccCompanionEmitter,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     render_companion_contract,
     render_downstream_dod_evidence_item,
 )
 from omnimarket.occ_ac_transcription import AUTOBINDER_IDENTITY, ModelTranscribedBinding
+from tests.unit.nodes.node_dod_verify.omn_19428_occ_tree import occ_contract
 
 pytestmark = pytest.mark.unit
 
@@ -144,6 +154,94 @@ class TestUndeclaredTicketRendersTodaysBytes:
         )
         assert with_empty == without
         assert "binds_ac" not in with_empty
+
+
+class TestBornBindingsReachVerifier:
+    """Exercise the rendered item through the collector and the closer's join.
+
+    The command execution port is controlled here; this is a seam test, not a
+    live mint or proof that a ticket's declared falsifier passed. The actual
+    collector must preserve the accepted/draft distinction on its receipt.
+    """
+
+    @pytest.mark.parametrize("repair", [False, True], ids=["fresh", "repair"])
+    @pytest.mark.parametrize("declared", [False, True], ids=["undeclared", "declared"])
+    def test_only_accepted_labels_reach_the_closer_join(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repair: bool,
+        declared: bool,
+    ) -> None:
+        for name in ("CONTRACT_REPO_DIR", "ONEX_CC_REPO_PATH", "OMNI_HOME"):
+            monkeypatch.delenv(name, raising=False)
+        bindings = (_accepted("AC1"), _draft("AC2")) if declared else ()
+        existing = {
+            "id": "existing-item",
+            "checks": [{"check_type": "command", "check_value": "false"}],
+        }
+        path = Path(occ_contract(tmp_path, [existing], ticket_id="OMN-18332"))
+        check_value = "pytest tests/declared_falsifier.py"
+        if repair:
+            OccCompanionEmitter()._ensure_base_dod_evidence(
+                path,
+                repo="OmniNode-ai/omnimarket",
+                pr_number=1,
+                evidence_id="born-item",
+                ac_bindings=bindings,
+                ci_evidence_id="born-item-ci",
+                downstream_check_value=check_value,
+            )
+            contract = yaml.safe_load(path.read_text())
+            assert (
+                next(
+                    row
+                    for row in contract["dod_evidence"]
+                    if row["id"] == "existing-item"
+                )
+                == existing
+            )
+        else:
+            contract = yaml.safe_load(
+                render_companion_contract(
+                    ticket_id="OMN-18332",
+                    repo="OmniNode-ai/omnimarket",
+                    pr_number=1,
+                    evidence_id="born-item",
+                    ac_bindings=bindings,
+                    downstream_check_value=check_value,
+                )
+            )
+        # Scope collection to the born item; provenance and CI rows do not
+        # execute the declaration's falsifier and are a different seam.
+        item = next(row for row in contract["dod_evidence"] if row["id"] == "born-item")
+        path.write_text(
+            yaml.safe_dump({"ticket_id": "OMN-18332", "dod_evidence": [item]})
+        )
+        executed: list[str] = []
+
+        def run_check(
+            _self: EvidenceCollector,
+            check: dict[str, object],
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[bool, str]:
+            executed.append(str(check["check_value"]))
+            return True, "Controlled behavior check passed"
+
+        monkeypatch.setattr(EvidenceCollector, "_run_command_check", run_check)
+        results = EvidenceCollector().collect("OMN-18332", contract_path=str(path))
+        assert executed == [check_value]
+        assert len(results) == 1
+        result = results[0]
+        assert result.status.value == "verified"
+        assert result.binds_ac == (("AC1", "AC2") if declared else ())
+        assert result.draft_binds_ac == (("AC2",) if declared else ())
+        _, counted, drafts = declared_ac_bindings(
+            {"checks": [result.model_dump(mode="json")]}
+        )
+        assert tuple(counted) == (("AC1",) if declared else ())
+        assert tuple(drafts) == (("AC2",) if declared else ())
 
 
 class TestOneReaderServesBothProducers:

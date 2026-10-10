@@ -129,6 +129,8 @@ class HandlerLabWorkUnitEffect:
             host=self._host,
             repo=request.repo,
             commit_sha=request.commit_sha,
+            lane=request.lane,
+            kind=request.kind,
             status=EnumLabWorkUnitStatus.REFUSED,
             detail=f"{reason}; nothing was fetched or run",
         )

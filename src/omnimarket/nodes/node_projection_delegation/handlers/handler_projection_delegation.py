@@ -72,6 +72,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
+    HandlerDelegationLineageFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
     HandlerDelegationRunAttributionFold,
     ModelDelegationRunAttributionFoldRequest,
@@ -333,6 +336,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     # OMN-19448: the deciding terminal's stop reason and output truncation.
     finish_reason: str | None = Field(default=None)
     truncated: bool | None = Field(default=None)
+    # OMN-19448: the first requested model and measured terminal timings (0058).
+    requested_model: str | None = Field(default=None)
+    queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
+    execution_ms: int | None = Field(default=None, ge=0, strict=True)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -777,7 +784,7 @@ class HandlerProjectionDelegation:
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
             payload = _canonical_result_to_task_delegated_payload(payload)
 
-        event = ModelTaskDelegatedEvent(**payload)
+        event = ModelTaskDelegatedEvent.model_validate(payload)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
@@ -1006,6 +1013,13 @@ class HandlerProjectionDelegation:
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        _stamp_terminal_timing_and_requested_model(
+            row,
+            event.attempts[0].model_id if event.attempts else None,
+            event.queue_wait_ms,
+            event.execution_duration_ms,
+        )
+        _stamp_routing_tier(row, reduction.attempt_history)
         # OMN-18889: how many up-tier re-dispatches this terminal took. The
         # terminal model has always carried it (inherited from the response
         # model) and the local port has always sent it; it was dropped here,
@@ -1055,6 +1069,18 @@ class HandlerProjectionDelegation:
                 caller_lane.caller_lane_refusal,
             )
         row.update(caller_lane.row_columns())
+        # OMN-20606: the delegation this one falls back or escalates from, as
+        # the pure fold returns it. No lineage, or a malformed one, names no
+        # column, so a lineage-less re-emit leaves stored lineage untouched and
+        # a bad value never dead-letters the row.
+        lineage = HandlerDelegationLineageFold().handle(event)
+        if lineage.lineage_refusal is not None:
+            logger.warning(
+                "delegation terminal lineage refused (correlation_id=%s): %s",
+                event.correlation_id,
+                lineage.lineage_refusal,
+            )
+        row.update(lineage.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
@@ -1700,6 +1726,11 @@ def _canonical_result_to_task_delegated_payload(
         "host": _blank_to_none(payload.get("host")),
         "finish_reason": finish_reason,
         "truncated": truncated,
+        # Canonical escalation rungs name model_used, not model_id; only an
+        # explicit requested_model identifies the requested model on this wire.
+        "requested_model": _blank_to_none(payload.get("requested_model")),
+        "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
+        "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2010,11 +2041,16 @@ def _preserve_existing_evidence(
         "backend_id",
         "host",
         "finish_reason",
+        "requested_model",
     ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
             if key == "finish_reason" and row.get("truncated") is None:
                 row["truncated"] = existing.get("truncated")
+    # A measured zero is evidence, so only None may inherit a stored timing.
+    for key in ("queue_wait_ms", "execution_ms"):
+        if row.get(key) is None and existing.get(key) is not None:
+            row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
         row["request_override_applied"] = True
     if existing.get("override_within_bounds") is False:
@@ -2084,6 +2120,34 @@ def _stamp_terminal_trace_and_routing(
         if not _is_blank(value):
             row[key] = str(value).strip()
 
+    _stamp_terminal_timing_and_requested_model(
+        row, event.requested_model, event.queue_wait_ms, event.execution_ms
+    )
+
+
+def _nonnegative_int_or_none(value: object) -> int | None:
+    """Accept measured non-negative integers without coercing booleans."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _stamp_terminal_timing_and_requested_model(
+    row: dict[str, object],
+    requested_model: str | None,
+    queue_wait_ms: int | None,
+    execution_ms: int | None,
+) -> None:
+    """Name only the terminal's requested model and measured timings (0058)."""
+    if not _is_blank(requested_model):
+        row["requested_model"] = requested_model
+    for key, value in (
+        ("queue_wait_ms", queue_wait_ms),
+        ("execution_ms", execution_ms),
+    ):
+        if value is not None:
+            row[key] = value
+
 
 def _blank_to_none(value: object) -> str | None:
     """Return a stripped string, or None for a missing or blank value."""
@@ -2110,6 +2174,38 @@ def _stamp_accepting_attempt(
             if text is not None:
                 row[key] = text
         return
+
+
+def _stamp_routing_tier(
+    row: dict[str, object],
+    attempts: Iterable[ModelDelegateSkillAttemptRecord],
+) -> None:
+    """Name the routing tier the run was served on (OMN-20755).
+
+    The tier the delegate's receipt reports as ``routing_tier``: the accepting
+    attempt's ``tier`` (the first rung whose gate passed with no failure class,
+    the same rung :func:`_stamp_accepting_attempt` reads), else the last rung
+    the run reached, because a run that was refused everywhere was still routed
+    there. A terminal with no attempts names no column, so a tier an earlier
+    terminal recorded for the same correlation is not overwritten.
+
+    Before this the delegate-skill terminal named no ``cost_tier_name`` at all,
+    so a local install stored NULL on every run and the Tier mix showed every
+    run as not tier-routed while each receipt named its tier.
+    """
+    ladder = list(attempts)
+    accepted = next(
+        (
+            attempt
+            for attempt in ladder
+            if attempt.quality_gate_passed and not (attempt.failure_class or "").strip()
+        ),
+        None,
+    )
+    serving = accepted if accepted is not None else (ladder[-1] if ladder else None)
+    tier = _blank_to_none(serving.tier) if serving is not None else None
+    if tier is not None:
+        row["cost_tier_name"] = tier
 
 
 def _stamp_declared_failure_cause(

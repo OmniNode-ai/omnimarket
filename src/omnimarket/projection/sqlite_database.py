@@ -27,6 +27,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
+from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -51,7 +52,11 @@ CREATE TABLE IF NOT EXISTS delegation_events (
     correlation_id          TEXT    NOT NULL UNIQUE,
     -- OMN-19448: nullable terminal stop reason and truncation evidence.
     finish_reason           TEXT,
-    truncated               INTEGER
+    truncated               INTEGER,
+    -- OMN-19448: nullable requested model and terminal timings (0058).
+    requested_model         TEXT,
+    queue_wait_ms           INTEGER,
+    execution_ms            INTEGER
 )
 """
 
@@ -80,18 +85,24 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "delegated_to",
     "delegation_latency_ms",
     "escalation_count",
+    "execution_ms",
     "finish_reason",
     "host",
     "latency_ms",
+    "lineage_kind",
     "model_name",
     "override_within_bounds",
+    "parent_correlation_id",
+    "parent_failure_cause",
     "pricing_manifest_version",
     "prompt_text",
     "quality_gate_detail",
     "quality_gate_passed",
     "quality_gates_checked",
     "quality_gates_failed",
+    "queue_wait_ms",
     "request_override_applied",
+    "requested_model",
     "required_bar",
     "response_text",
     "routed_model",
@@ -99,6 +110,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "session_id",
     "task_type",
     "tenant_id",
+    "terminal_ok",
     "timestamp",
     "tokens_input",
     "tokens_output",
@@ -283,6 +295,9 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     counterfactual_usd TEXT,
     savings_usd TEXT,
     savings_per_measured_run_usd TEXT,
+    compression_ratio TEXT,
+    cache_hit_rate TEXT,
+    runs_cache_answered INTEGER,
     summary_json TEXT NOT NULL
 )
 """
@@ -304,9 +319,18 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     name        TEXT,
     provider    TEXT,
     created_at  TEXT NOT NULL,
-    revoked_at  TEXT
+    revoked_at  TEXT,
+    fingerprint TEXT,
+    set_at      TEXT
 )
 """
+
+# 0005: a file made before the fingerprint and set time existed gains them on open,
+# so a read of the exposure's declared columns never meets a missing one.
+_TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
+    "fingerprint": None,
+    "set_at": None,
+}
 
 _DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
 CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
@@ -372,6 +396,33 @@ CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
+# OMN-20709: the SQLite counterpart of node_projection_delegation migration
+# 0050's projection_delegation_summary view. It lives with the node that owns
+# delegation_events and the Postgres view; the file explains the differences.
+_DELEGATION_SUMMARY_VIEW_STEP = "omn20709_delegation_summary_view"
+_DELEGATION_SUMMARY_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_delegation",
+    "sqlite/delegation_summary_view.sql",
+)
+# OMN-20754: the counterparts of migration 0055's model-routing view and 0045's
+# quality-gate view, the relations the Overview's Run locally, Tier mix and
+# Quality rows read. Same home and pattern as the summary view.
+_DELEGATION_ROUTING_QUALITY_VIEWS_STEP = "omn20754_delegation_routing_quality_views"
+# OMN-20226: metering_summary's three not-yet-measured fields. A store written
+# before them has the table without the columns, and CREATE TABLE IF NOT EXISTS
+# leaves it so; the read node then refuses the whole exposure
+# (projection_column_missing). They are added once, nullable with no default
+# like migration 0003, so a row written before them reads null, never a zero.
+_METERING_SUMMARY_MEASURES_STEP = "omn20226_metering_summary_measure_columns"
+_METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("compression_ratio", "TEXT"),
+    ("cache_hit_rate", "TEXT"),
+    ("runs_cache_answered", "INTEGER"),
+)
+_DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
+    ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
+    ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -448,6 +499,11 @@ class SqliteDatabaseAdapter:
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
         conn.commit()
+        self._ensure_columns(
+            conn,
+            "tenant_inference_credentials",
+            _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+        )
         self._apply_store_steps(conn, self._db_path)
         return conn
 
@@ -551,6 +607,30 @@ class SqliteDatabaseAdapter:
                     "added the usage-by-model-day columns and cursor triggers",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SUMMARY_VIEW_STEP,
+                    cls._create_delegation_summary_view,
+                    "created the delegation summary view",
+                )
+            )
+        if not cls._store_step_recorded(conn, _DELEGATION_ROUTING_QUALITY_VIEWS_STEP):
+            pending.append(
+                (
+                    _DELEGATION_ROUTING_QUALITY_VIEWS_STEP,
+                    cls._create_delegation_routing_quality_views,
+                    "created the delegation model-routing and quality-gate views",
+                )
+            )
+        if not cls._store_step_recorded(conn, _METERING_SUMMARY_MEASURES_STEP):
+            pending.append(
+                (
+                    _METERING_SUMMARY_MEASURES_STEP,
+                    cls._add_metering_summary_measure_columns,
+                    "added the metering-summary compression and cache columns",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -607,6 +687,47 @@ class SqliteDatabaseAdapter:
         for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
             conn.execute(trigger)
 
+    @classmethod
+    def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:
+        """OMN-20226: give a store written before them metering_summary's
+        compression and cache columns, run once per store as a store step.
+
+        The columns are read again here, under the step's write lock, so a fresh
+        store, whose table already has them, and two first opens that race both
+        add nothing twice.
+        """
+        existing = cls._existing_columns(conn, "metering_summary")
+        for column, declaration in _METERING_SUMMARY_ADDED_COLUMNS:
+            if column not in existing:
+                conn.execute(
+                    f"ALTER TABLE metering_summary ADD COLUMN {column} {declaration}"
+                )
+
+    @staticmethod
+    def _create_delegation_summary_view(conn: sqlite3.Connection) -> None:
+        """OMN-20709: give the store the summary relation the exposure reads.
+
+        Dropped first so a store that somehow holds an older definition takes
+        this one; a later revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SUMMARY_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_summary")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_routing_quality_views(conn: sqlite3.Connection) -> None:
+        """OMN-20754: give the store the model-routing and quality-gate relations.
+
+        Same shape as the summary step: each view is dropped first, and a later
+        revision is a new step, never an edit to this one.
+        """
+        package, _ = _DELEGATION_SUMMARY_VIEW_SQL
+        for view, resource in _DELEGATION_ROUTING_QUALITY_VIEWS_SQL:
+            ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
+            conn.execute(ddl)
+
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -649,6 +770,16 @@ class SqliteDatabaseAdapter:
             # sqlite cannot bind Decimal; store cost columns as float text-safe.
             return float(value)
         return value
+
+    def reconcile(self) -> None:
+        """Bring an existing store's tables and one-time steps up to date.
+
+        Readers open the store read-only and never run the store steps, so a
+        process that only reads (the local dashboard) calls this before it
+        serves. A store this process cannot write raises sqlite3.OperationalError
+        with SQLITE_READONLY; the caller decides whether to serve it as it is.
+        """
+        self._connect().close()
 
     def upsert(
         self,
@@ -786,9 +917,29 @@ class SqliteDatabaseAdapter:
             conn.close()
 
 
+def reconcile_existing_store(db_path: Path) -> None:
+    """Upgrade an existing local store before something only reads it (OMN-20226).
+
+    Readers open the store read-only and never run the one-time store steps, so
+    a store written by an earlier build would keep its old tables, and the read
+    node would refuse any exposure whose declared column they lack. No store yet
+    is left alone (nothing is created), and a store this process cannot write is
+    left as it is, which keeps the read node's honest refusal.
+    """
+    if not db_path.exists():
+        return
+    try:
+        SqliteDatabaseAdapter(db_path).reconcile()
+    except sqlite3.OperationalError as exc:
+        if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
+            raise
+        logger.warning("%s is read-only; reading it as it is", db_path)
+
+
 __all__ = [
     "SQLITE_SCHEMES",
     "SqliteDatabaseAdapter",
     "default_evidence_db_path",
+    "reconcile_existing_store",
     "sqlite_path_from_dsn",
 ]

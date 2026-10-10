@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20793"
+title: "Automation-liveness contract, overlay and event schema seam"
+summary: "Shared automation-liveness models declare process triggers, observation evidence, alarm timing, verdicts and bus payloads. Packaged topic and overlay schemas ship with a neutral default; trigger, verdict and event fixtures exercise their validation."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-automation-liveness-models"
+    statement: "The overlay entries, verdicts and events validate their declared shapes and round-trip the trigger, verdict and event fixtures."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: trigger, verdict and event fixtures round-trip, invalid payloads are refused and the packaged JSON schema matches the model -- falsifier: uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_models"
+  - id: "req-automation-liveness-deadlines"
+    statement: "Alarm timing bounds include observation, confirmation, retry and delivery overhead and refuse declarations that cannot meet the deadline."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: deadline arithmetic accepts its inclusive boundary, refuses excessive bounds and enforces evidence, cadence and trigger-correlation constraints -- falsifier: uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_deadline_arithmetic"
+  - id: "req-automation-liveness-topics"
+    statement: "Every event has a distinct canonical topic and its declared payload model resolves to the matching event model."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: every topic passes the canonical suffix validator, an underscore producer is refused and contract payload bindings match the event models -- falsifier: uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_topics_format"
+  - id: "req-automation-liveness-neutral-default"
+    statement: "The packaged default overlay declares no deployment processes or deployment identity."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the default overlay has only its schema version and empty process list, and the neutrality check rejects a populated or identity-bearing overlay -- falsifier: uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_default_overlay_neutral"
+evidence_requirements:
+  - kind: "tests"
+    description: "Model, deadline, topic and default-overlay conformance tests."
+    command: "uv run pytest tests/unit/test_automation_liveness_seam.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20793-ac1-models"
+    description: "AC1 model and fixture conformance."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_models"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20793-ac2-deadlines"
+    description: "AC2 alarm deadline arithmetic and evidence constraints."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_deadline_arithmetic"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20793-ac3-topics"
+    description: "AC3 canonical topic format and payload bindings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_topics_format"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20793-ac4-neutral-default"
+    description: "AC4 neutral packaged default overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_automation_liveness_seam.py -q -k automation_liveness_default_overlay_neutral"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

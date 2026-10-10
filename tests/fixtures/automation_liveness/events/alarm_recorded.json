@@ -1,0 +1,6 @@
+{
+  "episode_id": "6f1d2c3b-4a5e-4f60-8a71-9b8c7d6e5f40",
+  "recorded_at": "2026-10-09T02:31:40Z",
+  "ledger_line": "2026-10-09T02:31:40Z | FRICTION | class=automation-liveness | process=host-a/example-interval-job | verdict=missed | episode=6f1d2c3b-4a5e-4f60-8a71-9b8c7d6e5f40",
+  "recorded_by": "host-d/watchdog-deadman"
+}

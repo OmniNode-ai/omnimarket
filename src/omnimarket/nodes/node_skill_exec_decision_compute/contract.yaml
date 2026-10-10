@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_skill_exec_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of the executor behind the self-running ledger skills
+  (operator-ruling, ledger-write, ledger-msg, friction-record; OMN-20686). From the argument
+  text and the facts a caller read (environment values, a sourced session file, files the plan
+  asked for) it returns the command to run, the files to write beside the argument file and the
+  refusal text; from what the process printed it returns the executor's whole output and exit
+  code, including the CITE-AS line, the corrected example and the missing-cell line. Reads no
+  files, runs no process, has no clock (the caller supplies the elapsed time), mutates nothing.
+  Behaviour-preserving port of the argument and result decisions of the retired skill_exec.py.
+input_model:
+  name: ModelSkillExecRequest
+  module: omnimarket.nodes.node_skill_exec_decision_compute.models.model_skill_exec_decision
+output_model:
+  name: ModelSkillExecResult
+  module: omnimarket.nodes.node_skill_exec_decision_compute.models.model_skill_exec_decision
+handler:
+  module: omnimarket.nodes.node_skill_exec_decision_compute.handlers.handler_skill_exec_decision
+  class: HandlerSkillExecDecision
+  input_model: omnimarket.nodes.node_skill_exec_decision_compute.models.model_skill_exec_decision.ModelSkillExecRequest
+  output_model: omnimarket.nodes.node_skill_exec_decision_compute.models.model_skill_exec_decision.ModelSkillExecResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_skill_exec_decision_compute.handlers.handler_skill_exec_decision:HandlerSkillExecDecision
+  handlers:
+    - operation: decide_skill_exec
+      handler:
+        name: HandlerSkillExecDecision
+        module: omnimarket.nodes.node_skill_exec_decision_compute.handlers.handler_skill_exec_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  phase: {type: str, required: true, enum: [plan, report, usage]}
+  skill: {type: str, required: false}
+  argument_text: {type: str, required: false}
+  read_error: {type: str, required: false}
+  args_file: {type: str, required: false}
+  plugin_dir: {type: str, required: false}
+  python: {type: str, required: false}
+  env: {type: object, required: false}
+  session_env: {type: object, required: false}
+  session_env_error: {type: str, required: false}
+  texts: {type: object, required: false}
+  exists: {type: object, required: false}
+  command: {type: list, required: false}
+  returncode: {type: int, required: false}
+  stdout: {type: str, required: false}
+  stderr: {type: str, required: false}
+  timed_out: {type: bool, required: false}
+  elapsed_s: {type: float, required: false}
+  usage_skills: {type: list, required: false}
+outputs:
+  status: {type: str}
+  exit_code: {type: int}
+  output: {type: str}
+  stderr: {type: str}
+  command: {type: list}
+  write_files: {type: object}
+  env_updates: {type: object}
+  budget_s: {type: float}
+  need_session_env: {type: str}
+  need_texts: {type: list}
+  need_exists: {type: list}
+terminal_event: onex.evt.omnimarket.skill-exec-decision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.skill-exec-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.skill-exec-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.skill-exec-decision-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.skill-exec-decision-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Skill executor decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20686]

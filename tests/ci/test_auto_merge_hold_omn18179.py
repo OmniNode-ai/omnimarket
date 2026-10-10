@@ -283,7 +283,12 @@ class TestWorkflowWiring:
         assert arming_steps, "no arming step found in auto-merge.yml"
         for step in arming_steps:
             condition = str(step.get("if", ""))
-            assert "steps.hold_gate.outputs.hold != 'true'" in condition, (
+            # `hold == 'false'` (OMN-19032) is the fail-closed form: it is
+            # false when the hold gate did not run.
+            assert (
+                "steps.hold_gate.outputs.hold != 'true'" in condition
+                or "steps.hold_gate.outputs.hold == 'false'" in condition
+            ), (
                 f"step {step.get('name')!r} arms auto-merge without the "
                 f"OMN-18179 hold gate; its condition is {condition!r}"
             )

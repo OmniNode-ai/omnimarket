@@ -1,0 +1,30 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19032"
+title: "Refuse feature-base auto-merge in the existing workflows"
+summary: "The auto-merge workflow reads the base ref immediately before arming and refuses feature or unreadable bases, and the non-dev base guard fails for armed or unreadable declared stacks. AC1 is bound to the focused regression that runs the workflow shell steps with only the gh transport mocked. The ticket is partial: live feature-base required enforcement and a real refused-merge probe are not claimed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-feature-base-auto-merge-refusal"
+    statement: "The auto-merge and non-dev-base-guard workflows refuse to arm or keep armed a PR whose base is a feature or unreadable base, and preserve dev and main. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the non-dev base guard regression tests pass at the head -- falsifier: uv run pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The non-dev base guard regression tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19032-ac1-base-guard-tests"
+    description: "AC1 hosted probe. The non-dev base guard regression tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

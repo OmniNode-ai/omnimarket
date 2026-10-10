@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_hook_refusal_row_compute
+version: 1.0.0
+description: Decides the redacted, deduplicated ledger row for one plugin hook
+  refusal.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Hook Refusal Row Compute
+entry_points:
+  onex.nodes:
+    node_hook_refusal_row_compute: omnimarket.nodes.node_hook_refusal_row_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- hooks
+- refusal

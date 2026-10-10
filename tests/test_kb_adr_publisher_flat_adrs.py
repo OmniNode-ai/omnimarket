@@ -118,7 +118,7 @@ async def test_publisher_writes_flat_adrs_with_sequential_numbers(
                 if f.is_dir():
                     subdirs_seen.append(f.relative_to(adrs).as_posix())
         m = MagicMock()
-        m.stdout = "https://github.com/OmniNode-ai/knowledge-base/pull/1\n"
+        m.stdout = "https://github.com/OmniNode-ai/knowledge_base/pull/1\n"
         m.returncode = 0
         return m
 

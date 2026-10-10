@@ -785,3 +785,98 @@ class TestRealPostgresRoutingOverlayWritePath:
             assert decision.endpoint_url.startswith("https://openrouter.ai/")
             assert decision.route == "byok-openrouter"
             assert decision.provider == "openrouter"
+
+
+# --- OMN-19985: fingerprint and set_at on real Postgres ---
+#
+# Failure modes, each with a test below:
+#   P1  set_at arrives as ISO text on the bus and the column is TIMESTAMPTZ: an
+#       unconverted string would fail the asyncpg bind (the OMN-15905 class);
+#   P2  a later event without the fields (the hosted producer sends neither)
+#       erases a stored fingerprint and set time;
+#   P3  a revoke clears them.
+
+_FINGERPRINT = "0123abcd"
+_SET_AT_TEXT = "2026-10-07T07:00:00+00:00"
+
+
+def _local_registered(ref: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "tenant_id": "localinstall",
+        "provider": "openrouter",
+        "name": "llm.openrouter.api_key",
+        "api_key_ref": ref,
+        **extra,
+    }
+
+
+def _meta(ref: str, topic: str) -> MessageMeta:
+    return MessageMeta(partition=0, offset=0, fallback_id=ref, topic=topic)
+
+
+@pytest.mark.integration
+class TestRealPostgresFingerprintAndSetAt:
+    async def test_p1_registered_stores_a_typed_fingerprint_and_set_time(
+        self,
+    ) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            ref = f"cred_localinstall_openrouter_{uuid4().hex}"
+            ok = await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, fingerprint=_FINGERPRINT, set_at=_SET_AT_TEXT),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT fingerprint, set_at FROM tenant_inference_credentials "
+                "WHERE api_key_ref = $1",
+                ref,
+            )
+            assert row is not None
+            assert row["fingerprint"] == _FINGERPRINT
+            assert row["set_at"] == datetime(2026, 10, 7, 7, 0, tzinfo=UTC)
+
+    async def test_p2_an_event_without_them_keeps_the_stored_ones(self) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            ref = f"cred_localinstall_openrouter_{uuid4().hex}"
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, fingerprint=_FINGERPRINT, set_at=_SET_AT_TEXT),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, fingerprint=None, set_at=None),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            row = await admin_conn.fetchrow(
+                "SELECT fingerprint, set_at FROM tenant_inference_credentials "
+                "WHERE api_key_ref = $1",
+                ref,
+            )
+            assert row is not None
+            assert row["fingerprint"] == _FINGERPRINT
+            assert row["set_at"] == datetime(2026, 10, 7, 7, 0, tzinfo=UTC)
+
+    async def test_p3_a_revoke_keeps_them(self) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            ref = f"cred_localinstall_openrouter_{uuid4().hex}"
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, fingerprint=_FINGERPRINT, set_at=_SET_AT_TEXT),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            await runner.project_event(
+                TOPIC_REVOKED,
+                {"tenant_id": "localinstall", "api_key_ref": ref},
+                _meta(ref, TOPIC_REVOKED),
+            )
+            row = await admin_conn.fetchrow(
+                "SELECT fingerprint, set_at, revoked_at FROM "
+                "tenant_inference_credentials WHERE api_key_ref = $1",
+                ref,
+            )
+            assert row is not None
+            assert row["revoked_at"] is not None
+            assert row["fingerprint"] == _FINGERPRINT
+            assert row["set_at"] == datetime(2026, 10, 7, 7, 0, tzinfo=UTC)

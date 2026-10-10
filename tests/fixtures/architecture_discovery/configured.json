@@ -1,0 +1,567 @@
+{
+  "args": {
+    "date": "2026-09-11",
+    "writeState": true,
+    "profiles": [
+      {
+        "name": "collaborator",
+        "surfaces": [
+          "UI",
+          "cloud"
+        ],
+        "excluded_domains": [
+          "prod"
+        ],
+        "planning_loop_eligible": false
+      }
+    ],
+    "fences": [
+      "OMN-111",
+      "lane=occupied"
+    ]
+  },
+  "calls": [
+    {
+      "label": "discovery-linear",
+      "phase": "Scan",
+      "model": "sonnet",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "handoff_path",
+          "sources_read",
+          "item_count",
+          "unreadable_sources",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "handoff_path": {
+            "type": "string"
+          },
+          "sources_read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "item_count": {
+            "type": "number"
+          },
+          "unreadable_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "089495432c6aab76012b23e78f7bc67ce44d1b8f961fc83d7b8b1527dcb972e4",
+      "prompt_sha256": "b21d1d247a5eb42b64486b782f541f2a0fa5fb6a7988af15ca3b607fec37cbed",
+      "legacy_prompt_sha256": "c055f3062ce0ac7ca76cf5009cff97fae70b09e786be5360883637706486991a"
+    },
+    {
+      "label": "discovery-marketplace",
+      "phase": "Scan",
+      "model": "opus",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "handoff_path",
+          "sources_read",
+          "item_count",
+          "unreadable_sources",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "handoff_path": {
+            "type": "string"
+          },
+          "sources_read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "item_count": {
+            "type": "number"
+          },
+          "unreadable_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "cf25a01d4141c915854e2c568e9231f36b26fc396b0b354324b10593b5c3d312",
+      "prompt_sha256": "c98b67ae6dd639b735d5ec4e03f97b58440fd6526c3c10bae9eb2c9fe87f6920",
+      "legacy_prompt_sha256": "a3249b2c18cd636c40aa84e471846c3d1012c54c65b88d7056dd44badb02ab74"
+    },
+    {
+      "label": "discovery-plans",
+      "phase": "Scan",
+      "model": "sonnet",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "handoff_path",
+          "sources_read",
+          "item_count",
+          "unreadable_sources",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "handoff_path": {
+            "type": "string"
+          },
+          "sources_read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "item_count": {
+            "type": "number"
+          },
+          "unreadable_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "689f6919f8880e4f30dac23d6c97c5dd69985451f247e2bb6c052f8c995b719c",
+      "prompt_sha256": "4d0873fa0aac93175d7e7a2c2d9e8f5dc5807fef6fbdc3138e1c23fcfd838674",
+      "legacy_prompt_sha256": "fb4bd9525726f72ebde71d55f13d34e076ed227e8ca68ce1df163570e6ac802d"
+    },
+    {
+      "label": "discovery-process",
+      "phase": "Scan",
+      "model": "sonnet",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "handoff_path",
+          "sources_read",
+          "item_count",
+          "unreadable_sources",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "handoff_path": {
+            "type": "string"
+          },
+          "sources_read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "item_count": {
+            "type": "number"
+          },
+          "unreadable_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "f21b592c494f28eb081b5b484e7dad96f260a33080b233d0803ad1707448006e",
+      "prompt_sha256": "6e5d4a3bec802d578295812a26f00ceaba8be131c9ab83b3b69fd16ddf48f17b",
+      "legacy_prompt_sha256": "c20fb19bdfd457b59713d662ff59bc1789f2ee9fe483c72356269329466e10d1"
+    },
+    {
+      "label": "discovery-adjudicate",
+      "phase": "Adjudicate",
+      "model": "opus",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "handoff_path",
+          "unintegrated",
+          "non_beta_backlog",
+          "automation_candidates",
+          "slate",
+          "excluded",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "handoff_path": {
+            "type": "string"
+          },
+          "unintegrated": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "non_beta_backlog": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "automation_candidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "slate": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "bb11ba19e5c8c7f537a741c2789f75280e3eb6c40c56674d25d633361332e5ec",
+      "prompt_sha256": "fb7367afc9d69085204f10321f4eb25030d651aa7b77d36081c7ebe444a7585a",
+      "legacy_prompt_sha256": "235510d0fc3694c16a2386f3ad6911416686dbec0e0838257a0d4537a2a524db"
+    },
+    {
+      "label": "discovery-report",
+      "phase": "Report",
+      "model": "opus",
+      "effort": "high",
+      "schema": {
+        "type": "object",
+        "required": [
+          "report_path",
+          "state_path",
+          "commit_sha",
+          "slate_summary",
+          "ledger_rows",
+          "delegation"
+        ],
+        "properties": {
+          "report_path": {
+            "type": "string"
+          },
+          "state_path": {
+            "type": "string"
+          },
+          "commit_sha": {
+            "type": "string"
+          },
+          "slate_summary": {
+            "type": "string"
+          },
+          "ledger_rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegation": {
+            "type": "object",
+            "required": [
+              "delegated",
+              "runs",
+              "reason"
+            ],
+            "properties": {
+              "delegated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "raw_prompt_sha256": "03cb2c8799c26a5f2230c6c4d1a869a8e27256b90fe333d2575464675f484b4a",
+      "prompt_sha256": "016b038315e8c016d9f37238645d026053964ce7f591775e311c110993fd8929",
+      "legacy_prompt_sha256": "03cb2c8799c26a5f2230c6c4d1a869a8e27256b90fe333d2575464675f484b4a"
+    }
+  ],
+  "result": {
+    "date": "2026-09-11",
+    "writeState": true,
+    "profiles": [
+      {
+        "name": "collaborator",
+        "surfaces": [
+          "UI",
+          "cloud"
+        ],
+        "excluded_domains": [
+          "prod"
+        ],
+        "planning_loop_eligible": false
+      }
+    ],
+    "report": "beta/tracking/2026-09-11-architecture-work-discovery.md",
+    "delegation": {
+      "delegated": 1,
+      "runs": [
+        "fixture-run"
+      ],
+      "reason": ""
+    },
+    "state": "beta/tracking/architecture-work-discovery-state.json",
+    "commit": "abcdef0123456789",
+    "slate": "fixture",
+    "scan": {
+      "linear": {
+        "delegation": {
+          "delegated": 1,
+          "runs": [
+            "fixture-run"
+          ],
+          "reason": ""
+        },
+        "ledger_rows": [],
+        "handoff_path": "discovery-linear.json",
+        "sources_read": [
+          "fixture"
+        ],
+        "item_count": 1,
+        "unreadable_sources": []
+      },
+      "market": {
+        "delegation": {
+          "delegated": 1,
+          "runs": [
+            "fixture-run"
+          ],
+          "reason": ""
+        },
+        "ledger_rows": [],
+        "handoff_path": "discovery-marketplace.json",
+        "sources_read": [
+          "fixture"
+        ],
+        "item_count": 1,
+        "unreadable_sources": []
+      },
+      "plans": {
+        "delegation": {
+          "delegated": 1,
+          "runs": [
+            "fixture-run"
+          ],
+          "reason": ""
+        },
+        "ledger_rows": [],
+        "handoff_path": "discovery-plans.json",
+        "sources_read": [
+          "fixture"
+        ],
+        "item_count": 1,
+        "unreadable_sources": []
+      },
+      "process": {
+        "delegation": {
+          "delegated": 1,
+          "runs": [
+            "fixture-run"
+          ],
+          "reason": ""
+        },
+        "ledger_rows": [],
+        "handoff_path": "discovery-process.json",
+        "sources_read": [
+          "fixture"
+        ],
+        "item_count": 1,
+        "unreadable_sources": []
+      }
+    },
+    "adjudication": {
+      "delegation": {
+        "delegated": 1,
+        "runs": [
+          "fixture-run"
+        ],
+        "reason": ""
+      },
+      "ledger_rows": [],
+      "handoff_path": "adjudication.json",
+      "unintegrated": [],
+      "non_beta_backlog": [],
+      "automation_candidates": [],
+      "slate": [],
+      "excluded": []
+    }
+  },
+  "source_sha256": "e9869b56dd6c6a61c37695eeb7ae439188e91ae27d5f5c0d7a28889b97df4390"
+}

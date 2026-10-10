@@ -106,6 +106,12 @@ class HandlerProjectionMeteringSummary:
                     savings_per_measured_run_usd=savings_per_measured_run(
                         summary.savings_usd, summary.runs_measured
                     ),
+                    # OMN-20226: no metering record carries a raw or compressed
+                    # token count or a semantic-cache answer, so there is
+                    # nothing to divide: null, never 0 or 1.00x.
+                    compression_ratio=None,
+                    cache_hit_rate=None,
+                    runs_cache_answered=None,
                     summary_json=json.dumps(
                         payload, sort_keys=True, separators=(",", ":")
                     ),
