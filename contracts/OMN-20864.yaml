@@ -24,12 +24,12 @@ requirements:
   - id: "req-held-and-unfixable-prs-skipped"
     statement: "The fallback skips held PRs and PRs blocked on a cause no lane can fix."
     acceptance:
-      - id: "AC-M1"
+      - id: "AC4"
         statement: |-
-          AC-M1 (stay-out hold): given an open PR under a stay-out hold and an idle slot, the selection compute returns SKIP_HELD naming the hold id, no pr-land dispatch is emitted, and the hold list is read in code from the hold source; an unreadable hold source fails loud (typed error) and never dispatches
-      - id: "AC-M8"
+          AC4 (AC-M1, stay-out hold): given an open PR under a stay-out hold and an idle slot, the selection compute returns SKIP_HELD naming the hold id, no pr-land dispatch is emitted, and the hold list is read in code from the hold source; an unreadable hold source fails loud (typed error) and never dispatches
+      - id: "AC5"
         statement: |-
-          AC-M8 (blocked PRs not retried): given a PR whose last landing outcome is blocked on a cause class the lane cannot fix (required-approval, base-red, held, external-owner) and no new head or cause change since, the selection compute returns SKIP_BLOCKED_UNFIXABLE with the cause and no dispatch; a new head sha or a cleared cause makes it eligible again
+          AC5 (AC-M8, blocked PRs not retried): given a PR whose last landing outcome is blocked on a cause class the lane cannot fix (required-approval, base-red, held, external-owner) and no new head or cause change since, the selection compute returns SKIP_BLOCKED_UNFIXABLE with the cause and no dispatch; a new head sha or a cleared cause makes it eligible again
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -73,7 +73,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly -k "acm1 or hold_source"'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-M1"]
+    binds_ac: ["AC4"]
   - id: "dod-omn20864-acm8"
     description: "AC-M8: a PR blocked on an unfixable cause is SKIP_BLOCKED_UNFIXABLE until a new head or a cleared cause."
     source: "manual"
@@ -81,7 +81,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_pr_land_fallback.py -q -p no:randomly -k "acm8 or base_or_a_shared_cause"'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-M8"]
+    binds_ac: ["AC5"]
   - id: "dod-omn20864-deploy"
     description: "Deploy: the dev lane's runtime imports the shared pr-land fallback rule after the deploy agent rolls the merge."
     source: "manual"
