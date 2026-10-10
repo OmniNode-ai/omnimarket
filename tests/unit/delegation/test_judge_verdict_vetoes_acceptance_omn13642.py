@@ -390,7 +390,7 @@ class TestJudgeVerdictVetoRealDispatchPath:
         workflow = HandlerDelegationWorkflow(workflows={})
         request = ModelDelegationRequest(
             prompt="Write a unit test for add(a, b).",
-            task_type="test",
+            task_type="code_generation",
             correlation_id=uuid4(),
             max_tokens=512,
             emitted_at=datetime.now(UTC),

@@ -60,6 +60,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     _get_config,
     _tier_order_from_contract,
     describe_no_higher_tier_available,
+    first_eligible_tier,
     next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -179,11 +180,13 @@ def _advance_to_gate_evaluated(
     handler: HandlerDelegationWorkflow,
     cid: UUID,
     tier_name: str = "local",
+    *,
+    task_type: str = "test",
 ) -> None:
     """Drive the FSM from RECEIVED through to GATE_EVALUATED (inference done)."""
-    request = _make_request(correlation_id=cid)
+    request = _make_request(correlation_id=cid, task_type=task_type)
     handler.handle_delegation_request(request)
-    decision = _make_routing_decision(cid, tier_name=tier_name)
+    decision = _make_routing_decision(cid, task_type=task_type, tier_name=tier_name)
     handler.handle_routing_decision(decision)
     # OMN-17427: an unmarked response to a marker-required contract is refused
     # and floors the gate; open the answer with the class's declared marker so
@@ -212,7 +215,9 @@ class TestGateFailWithFallbackTriggersEscalation:
     ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
-        _advance_to_gate_evaluated(handler, cid, tier_name="local")
+        _advance_to_gate_evaluated(
+            handler, cid, tier_name="local", task_type="code_generation"
+        )
 
         gate = _make_gate_result(
             cid,
@@ -372,7 +377,9 @@ class TestGateFailFallbackNotRecommended:
     ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
-        _advance_to_gate_evaluated(handler, cid, tier_name="local")
+        _advance_to_gate_evaluated(
+            handler, cid, tier_name="local", task_type="code_generation"
+        )
 
         gate = _make_gate_result(
             cid,
@@ -395,7 +402,7 @@ class TestGateFailFallbackNotRecommended:
         ]
         assert len(escalations) == 1
         assert "score_below_required_bar" in escalations[0].escalation_reason
-        assert "required_bar=0.800" in escalations[0].escalation_reason
+        assert "required_bar=0.850" in escalations[0].escalation_reason
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +420,9 @@ class TestRoutingReducerMinTierName:
         """Verify the escalation path emits intent with min_tier_name set."""
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
-        _advance_to_gate_evaluated(handler, cid, tier_name="local")
+        _advance_to_gate_evaluated(
+            handler, cid, tier_name="local", task_type="code_generation"
+        )
 
         gate = _make_gate_result(
             cid,
@@ -806,11 +815,13 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
             handler = HandlerDelegationWorkflow(workflows={})
             cid = uuid4()
 
-            request = _make_request(correlation_id=cid, task_type="test")
+            request = _make_request(correlation_id=cid, task_type="code_generation")
             handler.handle_delegation_request(request)
 
             # Attempt 1: local tier, gate fails with fallback -> escalate.
-            decision1 = _make_routing_decision(cid, task_type="test", tier_name="local")
+            decision1 = _make_routing_decision(
+                cid, task_type="code_generation", tier_name="local"
+            )
             handler.handle_routing_decision(decision1)
             handler.handle_inference_response(_make_inference_response(cid))
             gate1 = _make_gate_result(
@@ -829,7 +840,7 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
             # remains -> terminal FAILED, emitted cleanly (no ValidationError).
             decision2 = _make_routing_decision(
                 cid,
-                task_type="test",
+                task_type="code_generation",
                 tier_name="claude",
                 selected_model="gemini-2.5-flash",
             )
@@ -1212,21 +1223,22 @@ class TestTestResearchTierPolicyVerified:
     def test_cloud_tier_reachable_when_configured(
         self, register_local_secret: Callable[..., None]
     ) -> None:
-        # OMN-17427: the reachable cloud rung is the non-Gemini OpenRouter
+        # OMN-20477: test starts on the cloud; local is no longer in its ladder.
+        # The reachable cloud rung is the non-Gemini OpenRouter
         # cheap_frontier tier, declared in `test`'s closed tier_order. It is
         # selectable once its credential resolves and not before.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        before = next_eligible_tier("local", frozenset(), task_type="test")
+        before = first_eligible_tier("test")
         register_local_secret("llm.openrouter.api_key", "test-openrouter-key")
         routing._load_bifrost_endpoints.cache_clear()
         try:
-            after = next_eligible_tier("local", frozenset(), task_type="test")
+            after = first_eligible_tier("test")
         finally:
             routing._load_bifrost_endpoints.cache_clear()
-        assert before != "cheap_frontier"
+        assert before is None
         assert after == "cheap_frontier"
 
     @pytest.mark.parametrize("task_type", ["test", "research"])
@@ -1302,31 +1314,32 @@ class TestDescribeNoHigherTierAvailable:
 
 @pytest.mark.unit
 class TestTestTaskDeadEndEmitsPreciseReason:
-    """OMN-13167 (2) end-to-end: a `test` task that fails on local with the
-    claude tier unconfigured must terminate FAILED with a PRECISE reason naming
-    the exhausted policy and missing tier — not a bare token.
-    """
+    """A test task exhausts its cloud ladder and emits a precise terminal reason."""
 
     def test_test_task_terminal_reason_is_precise(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13167 (2) / OMN-13667: a 'test' task that fails on local AND
-        cheap_cloud AND claude (max_escalations=2 exhausted) must terminate FAILED
-        with a PRECISE reason naming the exhausted policy.
+        """OMN-20477: cheap_frontier -> cheap_cloud -> claude exhausts two hops."""
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+            handler_delegation_routing as routing,
+        )
 
-        OMN-13667: the ceiling now uses cloud-glm (same backend as cheap_cloud),
-        which carries a non-empty endpoint in frontier_unconfigured_bifrost. The
-        dead-end shape therefore requires all 3 tiers to fail (local → cheap_cloud →
-        claude) before FAILED is emitted, not just 2 (OMN-13351 era).
-        """
+        policy = routing._get_task_class_contract()["task_classes"]["test"][
+            "escalation_policy"
+        ]
+        assert policy["tier_order"] == ["cheap_frontier", "cheap_cloud", "claude"]
+        assert policy["max_escalations"] == 2
+
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
 
         request = _make_request(correlation_id=cid, task_type="test")
         handler.handle_delegation_request(request)
 
-        # Attempt 1: local tier, gate fails with fallback -> escalate to cheap_cloud.
-        decision1 = _make_routing_decision(cid, task_type="test", tier_name="local")
+        # Attempt 1: cheap_frontier fails -> cheap_cloud.
+        decision1 = _make_routing_decision(
+            cid, task_type="test", tier_name="cheap_frontier"
+        )
         handler.handle_routing_decision(decision1)
         handler.handle_inference_response(_make_inference_response(cid))
         gate1 = _make_gate_result(
@@ -1337,12 +1350,12 @@ class TestTestTaskDeadEndEmitsPreciseReason:
             fallback_recommended=True,
         )
         events1 = handler.handle_gate_result(gate1)
-        assert any(isinstance(e, ModelRoutingIntent) for e in events1)
+        assert [
+            e.min_tier_name for e in events1 if isinstance(e, ModelRoutingIntent)
+        ] == ["cheap_cloud"]
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
 
-        # Attempt 2: cheap_cloud tier, gate fails -> claude tier IS now configured
-        # (cloud-glm shared backend, non-empty in frontier_unconfigured_bifrost) ->
-        # escalate to claude (OMN-13667: ceiling no longer dead-ends here).
+        # Attempt 2: cheap_cloud fails -> claude.
         decision2 = _make_routing_decision(
             cid, task_type="test", tier_name="cheap_cloud"
         )
@@ -1356,10 +1369,9 @@ class TestTestTaskDeadEndEmitsPreciseReason:
             fallback_recommended=True,
         )
         events2 = handler.handle_gate_result(gate2)
-        assert any(isinstance(e, ModelRoutingIntent) for e in events2), (
-            "cheap_cloud failure should escalate to claude (OMN-13667: ceiling "
-            "now uses cloud-glm which is routable in this fixture)"
-        )
+        assert [
+            e.min_tier_name for e in events2 if isinstance(e, ModelRoutingIntent)
+        ] == ["claude"]
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
 
         # Attempt 3: claude tier (ceiling), gate fails -> max_escalations=2 reached
@@ -1384,12 +1396,14 @@ class TestTestTaskDeadEndEmitsPreciseReason:
         assert isinstance(result, ModelDelegationResult)
         assert result.fallback_to_claude is True
         assert result.terminal_failure_reason is not None
-        # All 3 tiers failed (local → cheap_cloud → claude) exhausting
-        # max_escalations=2 for the 'test' task class. The terminal reason reflects
-        # max escalations reached (not the no_higher_tier_available token, which
-        # only fires when the ceiling is unroutable — OMN-13667 made the ceiling
-        # routable via cloud-glm, so the dead-end is now max-escalations-based).
-        assert result.terminal_failure_reason is not None
+        assert workflow.escalation_count == 2
+        assert result.escalation_count == 2
+        assert [entry["tier_name"] for entry in result.escalation_history] == [
+            "cheap_frontier",
+            "cheap_cloud",
+            "claude",
+        ]
+        assert result.terminal_failure_reason == "max_escalation_attempts_reached"
 
 
 # ---------------------------------------------------------------------------

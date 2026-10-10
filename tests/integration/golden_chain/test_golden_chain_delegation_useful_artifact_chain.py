@@ -150,12 +150,16 @@ def _bifrost_contract(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     handler_delegation_routing._get_task_class_contract.cache_clear()
 
 
-def _run_chain_to_inference_intent(prompt: str) -> ModelInferenceIntent:
+# OMN-20477: recorded test-class replay callers explicitly pin local-coder.
+def _run_chain_to_inference_intent(
+    prompt: str, *, backend_id: str | None = None
+) -> ModelInferenceIntent:
     """Run routing + intent construction LIVE and return the inference intent."""
     workflow = HandlerDelegationWorkflow(workflows={})
     request = ModelDelegationRequest(
         prompt=prompt,
         task_type="test",
+        backend_id=backend_id,
         correlation_id=uuid4(),
         max_tokens=4096,
         emitted_at=datetime.now(UTC),
@@ -181,6 +185,8 @@ def test_delegation_chain_returns_useful_task_artifact() -> None:
     request = ModelDelegationRequest(
         prompt="Write pytest unit tests for omnibase_infra normalize_unit_state(state: str).",
         task_type="test",
+        # OMN-20477: preserve the recorded test request via an explicit local pin.
+        backend_id="local-coder",
         correlation_id=uuid4(),
         max_tokens=4096,
         emitted_at=datetime.now(UTC),
@@ -217,7 +223,8 @@ def test_replay_is_deterministic_across_runs() -> None:
     """Replay returns identical recorded bytes on repeated runs (offline-of-model)."""
     fixture = load_fixture(_FIXTURE_PATH)
     intent = _run_chain_to_inference_intent(
-        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str)."
+        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str).",
+        backend_id="local-coder",
     )
     contents = []
     for _ in range(2):
@@ -245,7 +252,8 @@ def test_wrong_model_route_fails_replay_not_pass_anyway() -> None:
     fixture = load_fixture(_FIXTURE_PATH)
     transport = RecordedReplayInferenceTransport([fixture])
     intent = _run_chain_to_inference_intent(
-        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str)."
+        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str).",
+        backend_id="local-coder",
     )
     # Plant the wrong route: same endpoint, but a different concrete model than
     # the fixture was recorded against (simulates a routing/selection regression).
@@ -273,7 +281,8 @@ def test_tier_name_as_model_fails_route_not_resolved() -> None:
     fixture = load_fixture(_FIXTURE_PATH)
     transport = RecordedReplayInferenceTransport([fixture])
     intent = _run_chain_to_inference_intent(
-        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str)."
+        "Write pytest unit tests for omnibase_infra normalize_unit_state(state: str).",
+        backend_id="local-coder",
     )
     tier_intent = intent.model_copy(update={"model": "cheap_cloud"})
     with (
@@ -290,7 +299,9 @@ def test_tier_name_as_model_fails_route_not_resolved() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("task_type", ["test", "code_generation"])
+# OMN-20477: Qwen3.8-27B writes tests only inside the run-and-repair loop,
+# which pins local-coder by --backend-id; unpinned test has no route in this fixture.
+@pytest.mark.parametrize("task_type", ["code_generation"])
 def test_live_final_artifacts_pass_routing_and_quality_gate_di(task_type: str) -> None:
     """Replay real final artifacts through routing and the quality gate.
 

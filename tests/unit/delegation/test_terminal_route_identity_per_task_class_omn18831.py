@@ -48,6 +48,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import yaml
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
@@ -300,6 +301,14 @@ def test_every_accepted_class_declares_a_first_rung_backend(task_class: str) -> 
 @pytest.mark.usefixtures("local_tier_endpoints")
 def test_the_terminal_carries_the_declared_route(task_class: str) -> None:
     request = _request(task_class, uuid4())
+    # OMN-20477: test has no local rung; this overlay binds only local backends.
+    if task_class == "test":
+        with pytest.raises(
+            ProtocolConfigurationError,
+            match="No routable backend for task_type='test'",
+        ):
+            routing.delta(request, surface=EnumDelegationSurface.CLOUD)
+        return
     decision = routing.delta(request, surface=EnumDelegationSurface.CLOUD)
     v1, v2 = _drive_to_completed_terminals(request, decision)
 

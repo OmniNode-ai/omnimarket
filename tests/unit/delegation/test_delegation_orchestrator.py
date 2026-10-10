@@ -880,9 +880,13 @@ class TestInferenceErrorEscalation:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="code_generation")
+        )
         handler.handle_routing_decision(
-            _make_routing_decision_with_tier(cid, tier_name="local")
+            _make_routing_decision_with_tier(
+                cid, task_type="code_generation", tier_name="local"
+            )
         )
 
         intents = handler.handle_inference_response(
@@ -1137,9 +1141,13 @@ class TestInferenceErrorEscalation:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="code_generation")
+        )
         handler.handle_routing_decision(
-            _make_routing_decision_with_tier(cid, tier_name="local")
+            _make_routing_decision_with_tier(
+                cid, task_type="code_generation", tier_name="local"
+            )
         )
 
         events = handler.handle_inference_response(
@@ -1173,9 +1181,13 @@ class TestInferenceErrorEscalation:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="code_generation")
+        )
         handler.handle_routing_decision(
-            _make_routing_decision_with_tier(cid, tier_name="local")
+            _make_routing_decision_with_tier(
+                cid, task_type="code_generation", tier_name="local"
+            )
         )
         handler.handle_inference_response(
             _make_error_inference_response(cid, "timed out")
@@ -1213,11 +1225,15 @@ class TestInferenceErrorEscalation:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="code_generation")
+        )
 
         # First tier: local — auth error
         handler.handle_routing_decision(
-            _make_routing_decision_with_tier(cid, tier_name="local")
+            _make_routing_decision_with_tier(
+                cid, task_type="code_generation", tier_name="local"
+            )
         )
         escalation_intents = handler.handle_inference_response(
             _make_error_inference_response(cid, "401 Unauthorized: missing API key")
@@ -1227,7 +1243,10 @@ class TestInferenceErrorEscalation:
         # Second tier: cheap_cloud — succeeds
         handler.handle_routing_decision(
             _make_routing_decision_with_tier(
-                cid, tier_name="cheap_cloud", selected_model="glm-4-flash"
+                cid,
+                task_type="code_generation",
+                tier_name="cheap_cloud",
+                selected_model="glm-4-flash",
             )
         )
         handler.handle_inference_response(
