@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from omnimarket.models.lab_fill import ModelLabFillPrLandPlan
+
 from .enum_lab_fill_skip_reason import EnumLabFillSkipReason
 from .model_lab_fill_selection_request import ModelLabFillInputBaseline
 
@@ -31,3 +33,5 @@ class ModelLabFillSelectionResult:
 
     decisions: tuple[ModelLabFillDecision, ...]
     baselines: tuple[ModelLabFillInputBaseline, ...]
+    # The idle-slot pr-land fallback's plan (OMN-20864); None when the request carried no PR facts.
+    pr_land: ModelLabFillPrLandPlan | None = None

@@ -12,6 +12,11 @@ PR number. Validation, field names and serialization stay the producer's.
 ``ModelPrLandingReconcileCommand`` is the one new wire model: the per-row
 reconciliation prompt the tick fan-out publishes (revision 1 of plan 5.1,
 section 6), which carries the key itself.
+
+``ModelPrLandingObservedPrompt`` (OMN-20866) reads the PR watcher's
+``pr-state-observed`` payload as a prompt. It keeps only the fields the prompt
+needs and ignores the rest of the watcher's wire payload, whose envelope
+fields change without this workflow.
 """
 
 from __future__ import annotations
@@ -32,6 +37,8 @@ from omnimarket.events.pr_landing_github.model_pr_landing_github_failed import (
 from omnimarket.events.pr_lifecycle_fix.model_fix_command import (
     ModelPrLifecycleFixCommand,
 )
+from omnimarket.events.pr_state import EnumPrState
+from omnimarket.models.ci_red_triage import ci_red_repo_slug
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_observation import (
     REPOSITORY_PATTERN,
     fill_landing_key,
@@ -133,8 +140,44 @@ class ModelPrLandingReconcileCommand(BaseModel):
         return self
 
 
+class ModelPrLandingObservedPrompt(BaseModel):
+    """I3: one PR watcher observation (``pr-state-observed``), read as a prompt.
+
+    Like the push prompt it is not a snapshot: the orchestrator answers with a
+    conditional ``read_pr_state`` and dispatches whatever the row has queued,
+    so a PR whose checks were pending is read again on the watcher's cadence.
+    Only the repositories the contract names (``observed_prompt_repositories``)
+    are prompted; every other observation is dropped before any read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    repo: str = Field(..., min_length=1, description="name or owner/name.")
+    pr_number: int = Field(..., ge=1)
+    state: EnumPrState
+    head_sha: str = Field(..., description="The head the watcher observed.")
+    observed_at: datetime = Field(..., description="When the watcher observed it.")
+
+    @field_validator("observed_at")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            msg = "observed_at must be timezone-aware"
+            raise ValueError(msg)
+        return value
+
+    @property
+    def repository(self) -> str:
+        return ci_red_repo_slug(self.repo)
+
+    @property
+    def landing_key(self) -> str:
+        return landing_key(self.repository, self.pr_number)
+
+
 PrLandingOrchestratorInput = (
     ModelPrLandingAutobindPrompt
+    | ModelPrLandingObservedPrompt
     | ModelPrLandingMergedIngress
     | ModelPrLandingCompanionOutcomeIngress
     | ModelPrLandingGithubCompletedIngress
@@ -149,6 +192,7 @@ __all__: list[str] = [
     "ModelPrLandingGithubCompletedIngress",
     "ModelPrLandingGithubFailedIngress",
     "ModelPrLandingMergedIngress",
+    "ModelPrLandingObservedPrompt",
     "ModelPrLandingReconcileCommand",
     "PrLandingOrchestratorInput",
 ]

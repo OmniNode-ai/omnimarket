@@ -118,7 +118,9 @@ def test_scan_sees_sibling_reads() -> None:
     """Positive control: the scan finds the known sibling reads, so zero cannot pass."""
     reads = sibling_reads(_steps())
     assert len(reads) > 50
-    assert {r[2] for r in reads} >= set(SIBLINGS)
+    # OMN-20885: the schema-compat job installs the locked omnibase_spi wheel and
+    # clones no sibling, so no workflow reads omnibase_spi from git any more.
+    assert {r[2] for r in reads} >= set(SIBLINGS) - {"omnibase_spi"}
 
 
 def test_every_sibling_read_is_pinned() -> None:

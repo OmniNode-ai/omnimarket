@@ -21,6 +21,27 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at fb0c6c2117d5868a398b0920cd0048d0824415b1 (omnibase_core#1914) and its verifier-version ships is_release_artifact_only_diff and classify_dependency_pin_only -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q fails at the merge base
+  - id: "req-writer-bump-classifiers"
+    statement: |-
+      The writer-app exemption classifiers admit omniclaude's two refused bot bump shapes, a plugin manifest version bump and a sibling lock refresh that moves tool.uv.override-dependencies, and still refuse any other change beside them.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: classify_plugin_manifest_version_only admits omniclaude#2644's shape (only the version of .claude-plugin/plugin.json and of the marketplace entry moves, increasing) and refuses another key, a non-increasing or non-numeric version, a path outside .claude-plugin manifests, an unreadable, added or deleted manifest, no moved version and too many files; classify_dependency_pin_only admits omniclaude#2646's tool.uv.override-dependencies rev move and still refuses it beside project.scripts -- falsifier: uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q fails at the merge base
+  - id: "req-emitter-caller-absent"
+    statement: |-
+      The OCC companion emitter authors no companion for a product PR whose base branch no longer carries .github/workflows/call-occ-autobind.yml, because that repository has cut over; the cut-over state is read from the repository's own base branch, not from a list of repositories.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: an autobind command for a PR whose base branch returns 404 for .github/workflows/call-occ-autobind.yml returns skip:CALLER_ABSENT with no clone and no change-control write, a base that still carries the caller authors as before, and a non-404 read failure raises -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py -q -k TestCutOverCallerAbsent fails at the merge base
+  - id: "req-deploy-gate-reads-repo-contract"
+    statement: |-
+      omnimarket's deploy gate reads the cited ticket's deploy evidence from this repository's contracts/OMN-<n>.yaml at the pull request head, the contract repo-evidence / dod-verify reads, with the pinned validator's strictness unchanged and no change control checkout.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: .github/workflows/deploy-gate.yml checks out the pull request head's contracts/ and hands that directory to the pinned omniclaude deploy-gate action, and no step reads onex_change_control -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -28,6 +49,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The caller pins the release-cut reusable and its verifier ships the classifiers it imports."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
+  - kind: "tests"
+    description: "The writer-app bump classifiers admit the two real omniclaude bump shapes and refuse every other change."
+    command: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
+  - kind: "tests"
+    description: "The emitter declines a cut-over repository's PR and still authors for a repository that keeps its caller."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py -q -k TestCutOverCallerAbsent"
+  - kind: "tests"
+    description: "The deploy gate reads the pull request head's repo contracts and no change control tree."
+    command: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,3 +79,27 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20074-writer-bump-classifiers"
+    description: "The writer-app bump classifiers admit omniclaude#2644 and #2646 shapes and refuse every other change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20074-emitter-caller-absent"
+    description: "The emitter declines a PR whose base branch has no autobind caller and still authors where the caller remains."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py -q -k TestCutOverCallerAbsent"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20074-deploy-gate-repo-contract"
+    description: "The deploy gate hands the pull request head's contracts/ to the pinned validator and reads no change control tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

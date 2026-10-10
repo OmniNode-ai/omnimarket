@@ -36,14 +36,17 @@ evidence_requirements:
     description: "After the S6 cut-over the caller passes compare-with-occ false and still pins a verifier release that ships node_dod_verify occ-difference, so one input is the rollback."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k s6_cutover"
   - kind: "tests"
-    description: "The recorded S5 count meets the bar of 30 with no violation, and a planted disagreement fails it."
+    description: "The recorded S5 count is 103 per-PR rows with check run ids, meets the bar of 30 with no violation, and a planted disagreement fails it."
     command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k count"
   - kind: "tests"
     description: "Every kept constructed case has a recorded observation."
     command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k plan_case"
   - kind: "tests"
-    description: "The rollback drill's readback equals the pre-pilot context set."
+    description: "The rollback drill's readback equals the pre-pilot context set and the drill precedes the first counted PR."
     command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
+  - kind: "tests"
+    description: "Dev requires repo-evidence / dod-verify from GitHub Actions only and none of the four OCC contexts, read from the live rules and branch protection."
+    command: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -66,7 +69,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-s5-pilot-count-meets-bar"
-    description: "The per-PR verdicts and window totals in tests/ci/fixtures/omn20072_s5_pilot_evidence.json meet the S5 bar of 30 with no violation; planted disagreements fail it."
+    description: "The 103 per-PR rows in tests/ci/fixtures/omn20072_s5_pilot_evidence.json, each with its merged head and repo-evidence / dod-verify check run id, are the counted total and meet the S5 bar of 30; a missing row, a repeated PR or check run, a non-counting outcome and a declared total above the rows all fail it."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -82,10 +85,18 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-s5-drill-readback-equals-pre-pilot"
-    description: "The drill's readback has no context added or removed against the 35 pre-pilot contexts; a planted difference fails the test."
+    description: "The drill's readback has no context added or removed against the 35 pre-pilot contexts, and the drill is timed before the first counted PR merged; a planted difference and a drill after the first counted PR both fail the test."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-s5-s6-ruleset-readback"
+    description: "The ruleset half of AC3: dev's active ruleset requires repo-evidence / dod-verify with GitHub Actions as the only source, and the live rules and branch protection require none of the four OCC contexts; planted payloads violate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

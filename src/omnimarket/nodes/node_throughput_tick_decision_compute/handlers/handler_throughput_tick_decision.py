@@ -18,6 +18,12 @@ a repository with zero merges past `park_max_hours` is MISSING with the manual-u
 host with no recent reading is UNKNOWN, never a quiet NOTE; a runner receipt that ended without
 running (no-host, host-limited, a guard limit, failed) is MISSING until a later receipt of its
 brief runs; and an open count rising across the last three tick runs is MISSING.
+
+OMN-20864 (operator ruling 2026-10-10T04:08:23Z): idle lab capacity is never left idle while PRs are
+open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dispatch through the
+lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule lab-fill selection runs
+(omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
+hold source is UNKNOWN and names no lane.
 """
 
 from __future__ import annotations
@@ -29,6 +35,8 @@ from typing import Any
 
 from omnibase_core.types import JsonType
 
+from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelLabHeadroomFacts,
     ModelLabMark,
@@ -690,19 +698,33 @@ def _receipt_summary(
     return running, latest
 
 
+PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
+HOLD_SOURCE_FIX = (
+    "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
+    "are unread"
+)
+
+
 def check_lab_headroom(
-    rep: Report, facts: ModelLabHeadroomFacts, now: datetime
-) -> None:
-    """Free lane slots in the runner's recent placement receipts; never probes or places."""
+    rep: Report,
+    facts: ModelLabHeadroomFacts,
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None = None,
+) -> ModelLabFillPrLandPlan | None:
+    """Free lane slots in the runner's recent placement receipts; never probes or places. With PR-land
+    facts, the free slots' FIX names the pr-land fallback's lanes (OMN-20864)."""
     rep.checked.append("lab-headroom")
     if facts.module_unavailable:
         rep.note("lab-headroom: placement module unavailable")
-        return
+        return None
     for name in facts.unavailable_hosts:
         rep.note(f"lab-headroom:{name} | unavailable in host table; no dispatch")
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
-        return
+        return None
+    free_lines: list[
+        tuple[int, int]
+    ] = []  # (index in rep.lines, free slots), host order
     running, latest = _receipt_summary(facts)
     placed: dict[str, int] = {}
     for name in facts.live_marker_hosts:
@@ -775,6 +797,7 @@ def check_lab_headroom(
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
         if free:
+            free_lines.append((len(rep.lines), free))
             rep.miss(
                 label,
                 f"running lanes {count} of cap {cap}, free slots {free}",
@@ -783,6 +806,22 @@ def check_lab_headroom(
             )
         else:
             rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    if pr_land is None:
+        return None
+    plan = plan_pr_land_fallback(
+        pr_land, sum(free for _, free in free_lines), now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    if plan.failure is not None:
+        rep.unk("lab-headroom:pr-land", plan.reason, HOLD_SOURCE_FIX)
+        return plan
+    lanes = [f"{d.pr} ({d.pr_class})" for d in plan.dispatch]
+    for index, free in free_lines:
+        mine, lanes = lanes[:free], lanes[free:]
+        if mine:
+            rep.lines[index] += PR_LAND_FIX.format(prs=", ".join(mine))
+    if free_lines and not plan.dispatch:
+        rep.note(f"lab-headroom:pr-land | {plan.reason}")
+    return plan
 
 
 def _receipt_reason(receipt: ModelLabReceipt) -> str:
@@ -906,8 +945,11 @@ class HandlerThroughputTickDecision:
         report_escalated(rep, escalated, covers, ticks)
         if request.open_history is not None:
             check_open_trend(rep, request, now, opened)
+        pr_land = None
         if request.lab_headroom is not None:
-            check_lab_headroom(rep, request.lab_headroom, now)
+            pr_land = check_lab_headroom(
+                rep, request.lab_headroom, now, request.pr_land
+            )
             if request.dispatch_window_hours is not None:
                 check_dispatches(
                     rep, request.lab_headroom, now, request.dispatch_window_hours
@@ -920,4 +962,5 @@ class HandlerThroughputTickDecision:
             checked=rep.checked,
             exit_code=0 if not rep.missing and not rep.unknown else 1,
             open_count=opened,
+            pr_land=pr_land,
         )

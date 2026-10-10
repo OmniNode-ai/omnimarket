@@ -2,7 +2,7 @@
   "scenario": "arm_auto_merge_200",
   "operation": "arm_auto_merge",
   "provenance": "documented",
-  "provenance_note": "The first exchange, the landing policy read, is a real read-only GraphQL call recorded 2026-09-27T06:58Z with gh api -i graphql against an open, non-draft PR (auto-merge allowed, no merge queue on dev, already armed SQUASH); headers are the recorded ones. The mutation response is documented, not recorded: recording it would need a mutating call.",
+  "provenance_note": "The first exchange, the landing policy read, is a real read-only GraphQL call recorded 2026-09-27T06:58Z with gh api -i graphql against an open, non-draft PR (auto-merge allowed, no merge queue on dev, already armed SQUASH); headers are the recorded ones. The mutation response is documented, not recorded: recording it would need a mutating call. OMN-20866 edited the recorded read's autoMergeRequest to null, so this scenario covers an unarmed PR; arm_auto_merge_already_armed keeps the read as recorded.",
   "recorded_at": null,
   "command": {
     "repository": "OmniNode-ai/omnimarket",
@@ -22,7 +22,7 @@
         "method": "POST",
         "path": "/graphql",
         "body": {
-          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
+          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue mergeStateStatus labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
           "variables": {
             "owner": "OmniNode-ai",
             "name": "omnimarket",
@@ -59,9 +59,7 @@
                 "labels": {
                   "nodes": []
                 },
-                "autoMergeRequest": {
-                  "mergeMethod": "SQUASH"
-                }
+                "autoMergeRequest": null
               }
             }
           }

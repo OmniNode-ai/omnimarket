@@ -6486,6 +6486,7 @@
       "producer": "node_pr_lifecycle_state_reducer",
       "readers": [
         "node_database_sweep",
+        "node_pr_lifecycle_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

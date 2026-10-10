@@ -45,10 +45,9 @@ class HandlerHandshakePolicyGateRun:
             from ..protocols.local_handshake_policy_gate_adapters import (
                 GitHubPolicyGateReader,
                 TimePolicyGateSleeper,
-                resolve_policy_gate_token,
             )
 
-            reader = reader or GitHubPolicyGateReader(resolve_policy_gate_token())
+            reader = reader or GitHubPolicyGateReader()
             sleeper = sleeper or TimePolicyGateSleeper()
         self._reader = reader
         self._sleeper = sleeper
