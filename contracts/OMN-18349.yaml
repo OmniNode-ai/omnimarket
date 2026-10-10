@@ -34,11 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_delegation_nightly_placement.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn18349-ac5-runner-deadline-outlives-handler-cancel"
+  - id: "dod-omn18349-ac5-runner-deadline"
     description: "AC5 deadline regression: for every task class in the integration corpus, the runner's per-case deadline is at least the handler's cancel bound after pickup plus the projection margin, with the bound read from the task-class authority and not from the runner."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/delegation_golden/test_runner_corpus_pacing.py::TestPerCaseDeadlineReadsTheBoundThatBinds::test_deadline_outlives_the_handler_budget_terminal -q"
+        check_value: "uv run pytest tests/delegation_golden/test_runner_corpus_pacing.py -k test_deadline_outlives_the_handler_budget_terminal -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
