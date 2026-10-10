@@ -215,6 +215,24 @@ def artifact_archive_request(
 # --- REST: pull requests and checks ------------------------------------------
 
 
+def pull_requests_request(
+    repository: str, *, state: Literal["open", "closed", "all"], per_page: int
+) -> ModelGithubHttpRequest:
+    """GET a repo's pull requests in one state, newest first."""
+    query = _query({"state": state, "per_page": per_page})
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/pulls?{query}"
+    )
+
+
+def compare_request(repository: str, base: str, head: str) -> ModelGithubHttpRequest:
+    """GET the comparison of two refs: file counts, additions, deletions, patches."""
+    spec = f"{urllib.parse.quote(base, safe='')}...{urllib.parse.quote(head, safe='')}"
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/compare/{spec}"
+    )
+
+
 def issue_comments_request(
     repository: str, number: int, *, per_page: int
 ) -> ModelGithubHttpRequest:
@@ -499,6 +517,7 @@ __all__: list[str] = [
     "artifact_request",
     "branch_request",
     "branch_rules_request",
+    "compare_request",
     "convert_to_draft_request",
     "create_commit_request",
     "create_issue_comment_request",
@@ -520,6 +539,7 @@ __all__: list[str] = [
     "next_page_request",
     "open_pulls_for_head_request",
     "pull_request_request",
+    "pull_requests_request",
     "releases_request",
     "rerun_failed_jobs_request",
     "run_artifacts_request",

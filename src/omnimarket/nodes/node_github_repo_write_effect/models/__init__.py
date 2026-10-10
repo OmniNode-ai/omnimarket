@@ -15,6 +15,11 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
 )
+from omnimarket.nodes.node_github_repo_write_effect.models.model_source_control_github import (
+    ModelSourceControlHealthStatus,
+    SourceControlOperationNotSupportedError,
+    SourceControlWriteRefusedError,
+)
 
 __all__ = [
     "MAX_BODY_CHARS",
@@ -26,4 +31,7 @@ __all__ = [
     "ModelRepoWriteConfig",
     "ModelRepoWriteFailed",
     "ModelRepoWriteRequest",
+    "ModelSourceControlHealthStatus",
+    "SourceControlOperationNotSupportedError",
+    "SourceControlWriteRefusedError",
 ]

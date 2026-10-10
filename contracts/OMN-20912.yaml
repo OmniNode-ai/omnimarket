@@ -28,6 +28,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: node_github_repo_write_effect performs pr_create, pr_edit, pr_ready, pr_close, pr_comment and workflow_dispatch on a recorded fake transport; pr_close without the lane's claim in node_pr_claim_registry_effect and a call under the quota floor are refused with typed reasons before any mutation."
     command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: HandlerSourceControlGithub conforms to omnibase_spi ProtocolSourceControl and ProtocolCodeRepository, serves the reads and create_pr on the shared transport, and raises SourceControlOperationNotSupportedError for the merge and ref operations it does not serve."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,3 +52,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20912-ac3-source-control-adapter"
+    description: "AC3: the omnibase_spi ProtocolSourceControl adapter on the shared transport passes its protocol conformance test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
