@@ -71,7 +71,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_fresh_readings_publishes_one_plan_naming_the_idle_hosts -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_fresh_readings_publishes_one_plan_naming_the_idle_hosts"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20867-fire-stale-reading-headroom-unknown"
@@ -79,7 +79,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_a_stale_reading_fails_headroom_unknown_on_the_failure_topic -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_a_stale_reading_fails_headroom_unknown_on_the_failure_topic"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20867-fire-no-reading-headroom-unknown"
@@ -87,7 +87,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_no_reading_at_all_fails_headroom_unknown -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_no_reading_at_all_fails_headroom_unknown"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20867-fire-replay-publishes-nothing-new"
@@ -95,7 +95,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_replayed_fire_with_the_same_fire_id_publishes_nothing_new -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_replayed_fire_with_the_same_fire_id_publishes_nothing_new"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20867-deploy-one-fire-plan-per-fire-id"
     description: "Deploy probe on the lab dev lane once the deploy agent rolls this change: the dev lane runtime has published at least one onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1 and no fire_id appears on it twice. Run with KAFKA_BOOTSTRAP_SERVERS set to the dev lane broker (bus-local); it exits nonzero on a runtime that predates this change, which publishes none to that topic. Hosted CI has no dev broker, so only the local Done gate runs it."
