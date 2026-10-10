@@ -51,10 +51,13 @@ def test_the_retired_key_and_env_var_are_gone() -> None:
     assert RETIRED_ENV not in text
 
 
-def test_second_voter_url_is_the_registry_env_var_on_8131() -> None:
+def test_second_voter_url_is_the_registry_env_var_from_a_variable() -> None:
     workflow = yaml.safe_load(_text())
     env = workflow["jobs"]["hostile-review"]["env"]
-    assert env["LLM_LOCAL_STUDIO_PLANNER_URL"].endswith(":8131")
+    assert (
+        env["LLM_LOCAL_STUDIO_PLANNER_URL"]
+        == "${{ vars.LLM_LOCAL_STUDIO_PLANNER_URL }}"
+    )
 
 
 def test_every_roster_site_names_the_renamed_key() -> None:

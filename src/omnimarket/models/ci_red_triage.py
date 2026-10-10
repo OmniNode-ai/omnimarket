@@ -6,16 +6,16 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Self
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+from omnimarket.events.pr_state import ISO_Z_PATTERN, ModelPrCheckFact
 
-ISO_Z_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+DEFAULT_GITHUB_OWNER = "OmniNode-ai"
 
 
 def ci_red_repo_slug(repo: str) -> str:
@@ -47,6 +47,41 @@ def ci_red_owner_run_id(owner_key: str) -> str:
 def ci_red_cause_key(slug: str, check: str) -> str:
     """Check-level cause key, used for a red whose annotations are unread."""
     return f"cause:{slug}:{hashlib.sha256(check.encode()).hexdigest()[:12]}"
+
+
+# The owner claim is a lease. Its writer (node_pr_lifecycle_state_reducer) stamps
+# the expiry, the row's next_check_at, from the TTL its contract declares; an owner
+# read counts a claim only before that expiry. So an owner that never closes, as a
+# lane whose TERMINAL the ledger refused, stops owning its PRs at the TTL.
+def ci_red_owner_claim_ttl(block: object) -> timedelta:
+    """The contract's ``owner_claim_lease`` block; a missing or unknown TTL is refused."""
+    if not isinstance(block, dict) or set(block) != {"ttl_seconds"}:
+        raise ValueError(
+            "owner_claim_lease must declare exactly ttl_seconds, got "
+            f"{sorted(block) if isinstance(block, dict) else type(block).__name__}"
+        )
+    ttl = block["ttl_seconds"]
+    if type(ttl) is not int or ttl <= 0:
+        raise ValueError(
+            f"owner_claim_lease.ttl_seconds must be a positive integer, got {ttl!r}"
+        )
+    return timedelta(seconds=ttl)
+
+
+def ci_red_claim_holds(lease_expires_at: object, now: datetime) -> bool:
+    """True while an owner claim's lease (its row's next_check_at) has not expired.
+
+    Raises ValueError for an expiry that is not a timezone-aware time: an unknown
+    lease is unread, never a claim held or released.
+    """
+    expires = (
+        lease_expires_at
+        if isinstance(lease_expires_at, datetime)
+        else datetime.fromisoformat(str(lease_expires_at))
+    )
+    if expires.tzinfo is None:
+        raise ValueError(f"lease expiry has no timezone: {lease_expires_at!r}")
+    return now < expires
 
 
 class EnumCiRedClass(StrEnum):
@@ -98,6 +133,11 @@ class ModelCiRunFailedEvent(BaseModel):
     observed_at: str = Field(pattern=ISO_Z_PATTERN)
     source_digest: str
     peers: tuple[ModelCiRedPeer, ...] = ()
+    # Per-check facts (PR-state schema version 2 and webhook check runs). Empty when the source
+    # observation predates them; the triage then reads the checks from GitHub.
+    failing_runs: tuple[ModelPrCheckFact, ...] = ()
+    base_red_checks: tuple[str, ...] = ()
+    base_read: bool = False
 
     @field_validator("failing_checks")
     @classmethod
@@ -118,7 +158,14 @@ class ModelCiRunFailedEvent(BaseModel):
             self.repo, self.pr_number, self.head_sha, self.failing_checks
         ):
             raise ValueError("event_id does not match red CI identity")
+        if not {run.check for run in self.failing_runs} <= set(self.failing_checks):
+            raise ValueError("failing_runs must name failing_checks only")
         return self
+
+    @property
+    def carries_check_facts(self) -> bool:
+        """True when every failing check has its conclusion on the event itself."""
+        return {run.check for run in self.failing_runs} == set(self.failing_checks)
 
 
 class ModelCiRedFacts(BaseModel):
@@ -139,6 +186,22 @@ class ModelCiRedFacts(BaseModel):
     annotations_read: bool = False
     base_red_checks: tuple[str, ...] = ()
     base_read: bool = False
+
+
+def facts_from_event(event: ModelCiRunFailedEvent) -> ModelCiRedFacts | None:
+    """The classifier's facts as the event states them; None when it does not carry them all.
+
+    Every failing check's conclusion and the base branch's read are both needed: with the base
+    unread the dev-head class cannot be ruled in or out, which is a decision, not a default.
+    """
+    if not (event.carries_check_facts and event.base_read):
+        return None
+    return ModelCiRedFacts(
+        event=event,
+        check_conclusions={run.check: run.conclusion for run in event.failing_runs},
+        base_red_checks=event.base_red_checks,
+        base_read=event.base_read,
+    )
 
 
 class ModelCiRedClassification(BaseModel):
