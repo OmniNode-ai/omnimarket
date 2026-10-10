@@ -18,6 +18,11 @@ whatever OCC said, because every negative control must be rejected by the new
 path even when OCC accepted it; its admission fails as
 ``accepted_negative_control``.
 
+OMN-20917: a PR whose diff is only dependency pins and lock files, refused by
+the new path's must-fail control (its bound test also passes at the merge
+base) while OCC admitted, is the expected difference ``dependency_repin``; the
+same refusal on a PR that also changes anything else stays unclassified.
+
 Classification is pure; only the two loader helpers read supplied files.
 """
 
@@ -39,6 +44,7 @@ from omnimarket.nodes.node_dod_verify.models.model_occ_verdict_difference import
     ModelOccVerdictDifferenceResult,
     OccDifferenceOutcome,
 )
+from omnimarket.occ_content_probe import classify_dependency_pin_only
 
 # Published OR.1 inventory: reason_code -> (old_path, new_path, expected).
 EXPECTED_DIFFERENCES: Final[Mapping[str, tuple[str, str, bool]]] = {
@@ -49,6 +55,7 @@ EXPECTED_DIFFERENCES: Final[Mapping[str, tuple[str, str, bool]]] = {
     "PR_number_only_binding": ("admits_stale_or_foreign_commit", "refuse", True),
     "contract_in_another_repo": ("may_admit", "refuse", True),
     "foreign_policy_outside_declared_manifest": ("may_refuse", "admit", True),
+    "dependency_repin": ("may_admit", "refuse", True),
     "old_behavioral_refusal": ("refuse", "admit", False),
     "unclassified": ("any", "any", False),
     "accepted_negative_control": ("any", "admit", False),
@@ -75,6 +82,41 @@ _NEW_PATH_STRICTER_REASONS: Final[frozenset[str]] = frozenset(
 _OCC_REFUSAL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"OCC PREFLIGHT FAILED: reason=([A-Za-z_]+)"
 )
+
+# OMN-20917: the lock files a dependency re-pin may touch beside the
+# pyproject.toml and uv.lock that classify_dependency_pin_only already reads.
+# This names a difference reason, never an exemption: the new path still
+# refuses such a PR, so this set does not widen DEPENDENCY_LOCK_BASENAMES.
+DEPENDENCY_REPIN_PACKAGE_LOCK_BASENAMES: Final[frozenset[str]] = frozenset(
+    {"package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"}
+)
+
+
+def classify_dependency_repin(
+    changed_paths: Sequence[str],
+    *,
+    pyproject_head: str | None,
+    pyproject_base: str | None,
+) -> tuple[bool, str]:
+    """Pure: is every changed path a dependency pin or a lock file? ``(verdict, why)``.
+
+    pyproject.toml and uv.lock are judged by ``classify_dependency_pin_only``
+    (only version and dependency-pin keys may differ); a package lock file
+    may change freely. Any other path, an empty diff or an unreadable
+    manifest is not a re-pin.
+    """
+    if not changed_paths:
+        return False, "no changed files observed"
+    python_paths = [
+        path
+        for path in changed_paths
+        if path.rsplit("/", 1)[-1] not in DEPENDENCY_REPIN_PACKAGE_LOCK_BASENAMES
+    ]
+    if not python_paths:
+        return True, "package lock files only"
+    return classify_dependency_pin_only(
+        python_paths, pyproject_head=pyproject_head, pyproject_base=pyproject_base
+    )
 
 
 def parse_occ_verdict(check_run: object) -> ModelOccVerdict:
@@ -113,7 +155,9 @@ def load_occ_verdict(check_run_path: Path) -> ModelOccVerdict:
     return parse_occ_verdict(payload)
 
 
-def _ticket_verdict(head: object, control_first_line: str) -> ModelNewPathVerdict:
+def _ticket_verdict(
+    head: object, control_first_line: str, dependency_repin: bool = False
+) -> ModelNewPathVerdict:
     """Derive one ticket's verdict from an already-loaded head and base control."""
     if not isinstance(head, dict):
         return ModelNewPathVerdict(admitted=False)
@@ -159,14 +203,13 @@ def _ticket_verdict(head: object, control_first_line: str) -> ModelNewPathVerdic
             )
         return ModelNewPathVerdict(admitted=False)
     if not control_first_line.startswith("passed"):
-        return ModelNewPathVerdict(
-            admitted=False,
-            reason=(
-                EnumOccVerdictDifferenceReason.INCOMPLETE_CRITERION_COVERAGE.value
-                if not bound_checks
-                else None
-            ),
-        )
+        reason: str | None = None
+        if not bound_checks:
+            reason = EnumOccVerdictDifferenceReason.INCOMPLETE_CRITERION_COVERAGE.value
+        elif dependency_repin:
+            # OMN-20917: a re-pin's bound test also passes at the merge base.
+            reason = EnumOccVerdictDifferenceReason.DEPENDENCY_REPIN.value
+        return ModelNewPathVerdict(admitted=False, reason=reason)
     return ModelNewPathVerdict(admitted=True)
 
 
@@ -175,7 +218,9 @@ def _contract_home_repository(line: str) -> str:
     return line.strip().split("/", 1)[-1]
 
 
-def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdict:
+def load_new_verdict(
+    dod_dir: Path, tickets: Sequence[str], *, dependency_repin: bool = False
+) -> ModelNewPathVerdict:
     """Require every sorted ticket's verified head and passed base control.
 
     OMN-20074, ruling 2026-10-08T09:57:41Z: when head is None, the first
@@ -188,6 +233,9 @@ def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdi
     or unreadable marker leaves the refusal unclassified.
     A present head ignores the marker. Missing or empty controls have no passed
     first line. An empty ticket list refuses without a reason.
+    ``dependency_repin`` (OMN-20917, from ``classify_dependency_repin`` over the
+    PR's diff) names a must-fail control refusal with bound checks
+    ``dependency_repin``; it changes no other verdict.
     """
     if not tickets:
         return ModelNewPathVerdict(admitted=False)
@@ -223,7 +271,9 @@ def load_new_verdict(dod_dir: Path, tickets: Sequence[str]) -> ModelNewPathVerdi
             )
         except (OSError, UnicodeError):
             control_lines = []
-        verdict = _ticket_verdict(head, control_lines[0] if control_lines else "")
+        verdict = _ticket_verdict(
+            head, control_lines[0] if control_lines else "", dependency_repin
+        )
         if not verdict.admitted:
             return verdict
     return ModelNewPathVerdict(admitted=True)

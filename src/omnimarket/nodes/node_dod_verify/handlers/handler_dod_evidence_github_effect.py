@@ -73,6 +73,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
     ModelDodEvidenceGithubLookupResultEvent,
+    ModelPrHeadFacts,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
@@ -577,6 +578,10 @@ class HandlerDodEvidenceGithubEffect:
             return self._fetch_pr_checks_green(command)
         if command.operation == EnumDodEvidenceGithubOperation.FETCH_PR_DIFF_FACTS:
             return self._fetch_pr_diff_facts(command)
+        if command.operation == EnumDodEvidenceGithubOperation.FETCH_PR_HEAD_FACTS:
+            return self._fetch_pr_head_facts(command)
+        if command.operation == EnumDodEvidenceGithubOperation.FETCH_HEAD_CHECK_RUN:
+            return self._fetch_head_check_run(command)
         raise ValueError(f"Unknown operation: {command.operation!r}")
 
     # ------------------------------------------------------------------
@@ -883,6 +888,138 @@ class HandlerDodEvidenceGithubEffect:
     # An unmerged PR resolves with an empty merge commit and no files; any read
     # that fails is ``resolved=False``, never a partial answer.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # FETCH_PR_HEAD_FACTS / FETCH_HEAD_CHECK_RUN (OMN-20917): the S7 replay's
+    # reads. Local first (the PR watcher's records); the gh read below each
+    # runs only when the watcher does not hold the fact.
+    # ------------------------------------------------------------------
+    def _fetch_pr_head_facts(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        repo = command.repo or ""
+        pr_number = command.pr_number or 0
+        local = self._local.pr_head_facts(repo, pr_number) if repo else None
+        data: object = local
+        detail = ""
+        if data is None and repo and pr_number:
+            data, detail = _gh_json(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/pulls/{pr_number}",
+                    "--jq",
+                    "{head_sha: .head.sha, author: .user.login, "
+                    "labels: [.labels[].name], title: .title}",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+        if not isinstance(data, dict) or not isinstance(data.get("head_sha"), str):
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                resolved=False,
+                detail=detail or "PR head facts unreadable",
+            )
+        raw_labels = data.get("labels")
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            pr_head_facts=ModelPrHeadFacts(
+                head_sha=str(data["head_sha"]),
+                author=str(data.get("author") or ""),
+                labels=tuple(str(label) for label in raw_labels)
+                if isinstance(raw_labels, list)
+                else (),
+                title=str(data.get("title") or ""),
+            ),
+            detail="pr-watcher" if local is not None else "github",
+        )
+
+    def _fetch_head_check_run(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        repo = command.repo or ""
+        head_sha = command.head_sha or ""
+        name = command.check_name or ""
+
+        def _result(
+            run: dict[str, object] | None, detail: str, resolved: bool = True
+        ) -> ModelDodEvidenceGithubLookupResultEvent:
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                resolved=resolved,
+                check_run=run,
+                detail=detail,
+            )
+
+        if not (repo and head_sha and name):
+            return _result(None, "repo, head_sha and check_name are required", False)
+        found, local = self._local.head_check_run(
+            repo, command.pr_number or 0, head_sha, name
+        )
+        source = "pr-watcher"
+        conclusion: object = None
+        run_id: object = None
+        if found == "absent":
+            return _result(None, f"pr-watcher: no '{name}' run at {head_sha[:12]}")
+        if found == "found" and local is not None:
+            conclusion, run_id = local.get("conclusion"), local.get("id")
+        else:
+            source = "github"
+            listing, detail = _gh_json(
+                [
+                    "gh",
+                    "api",
+                    "-X",
+                    "GET",
+                    f"repos/{repo}/commits/{head_sha}/check-runs",
+                    "-f",
+                    f"check_name={name}",
+                    "-f",
+                    "filter=latest",
+                    "-f",
+                    "per_page=1",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+            if not isinstance(listing, dict):
+                return _result(None, f"check-run listing unreadable: {detail}", False)
+            runs = listing.get("check_runs")
+            if not isinstance(runs, list) or not runs or not isinstance(runs[0], dict):
+                return _result(None, f"github: no '{name}' run at {head_sha[:12]}")
+            run = runs[0]
+            if run.get("status") != "completed":
+                return _result(
+                    {"conclusion": None, "annotations": [], "id": run.get("id")},
+                    f"github: '{name}' is {run.get('status')} at {head_sha[:12]}",
+                )
+            conclusion, run_id = run.get("conclusion"), run.get("id")
+        annotations: list[dict[str, object]] = []
+        detail = source
+        # Only a refusal carries the OCC PREFLIGHT FAILED reason annotation.
+        if conclusion == "failure" and isinstance(run_id, int) and run_id > 0:
+            raw, annotations_detail = _gh_json(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/check-runs/{run_id}/annotations?per_page=100",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+            if isinstance(raw, list):
+                annotations = [
+                    {"message": item.get("message")}
+                    for item in raw
+                    if isinstance(item, dict)
+                ]
+            else:
+                detail = f"{source}; annotations unreadable: {annotations_detail}"
+        return _result(
+            {"conclusion": conclusion, "annotations": annotations, "id": run_id},
+            detail,
+        )
+
     def _fetch_pr_diff_facts(
         self, command: ModelDodEvidenceGithubLookupCommand
     ) -> ModelDodEvidenceGithubLookupResultEvent:

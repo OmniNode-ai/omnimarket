@@ -416,6 +416,80 @@ class DodEvidenceLocalSource:
             return None
         return f"{match.group(1)}/{match.group(2)}"
 
+    def pr_head_facts(self, repo: str, number: int) -> dict[str, Any] | None:
+        """A merged or held PR's head sha, author, labels and title (OMN-20917).
+
+        From the watcher's PR record, else its merge record; ``None`` when
+        neither names a head sha, or a non-terminal record is stale.
+        """
+        state = self._state()
+        if state is None:
+            return None
+        key = f"{self._short(repo)}#{number}"
+        prs = state.get("prs")
+        rec = prs.get(key) if isinstance(prs, dict) else None
+        merges = state.get("merges")
+        merge = merges.get(key) if isinstance(merges, dict) else None
+        facts = rec.get("facts") if isinstance(rec, dict) else None
+        source: dict[str, Any] | None = None
+        if isinstance(facts, dict) and facts.get("head_sha"):
+            if facts.get("state") != "MERGED" and not self._state_is_fresh(state):
+                return None
+            source = facts
+        elif isinstance(merge, dict) and merge.get("head_sha"):
+            source = merge
+        if source is None:
+            return None
+        labels = source.get("labels")
+        self.local_reads += 1
+        return {
+            "head_sha": str(source["head_sha"]),
+            "author": str(source.get("author") or ""),
+            "labels": [str(label) for label in labels]
+            if isinstance(labels, list)
+            else [],
+            "title": str(source.get("title") or ""),
+        }
+
+    def head_check_run(
+        self, repo: str, number: int, head_sha: str, name: str
+    ) -> tuple[str, dict[str, Any] | None]:
+        """The watcher's newest copy of check ``name`` at ``head_sha`` (OMN-20917).
+
+        ``("found", {"conclusion", "id"})`` when the watcher's read of exactly
+        that head holds a completed copy; ``("absent", None)`` when that read
+        settled CI (a GREEN or RED verdict) with no copy of the name;
+        ``("unknown", None)`` otherwise.
+        """
+        state = self._state()
+        prs = state.get("prs") if isinstance(state, dict) else None
+        rec = (
+            prs.get(f"{self._short(repo)}#{number}") if isinstance(prs, dict) else None
+        )
+        ci = rec.get("ci") if isinstance(rec, dict) else None
+        if not isinstance(ci, dict) or ci.get("sha") != head_sha:
+            return "unknown", None
+        ids = {
+            str(row[0]): row[1]
+            for row in ci.get("detail") or ()
+            if isinstance(row, list) and len(row) >= 2
+        }
+        for row in ci.get("runs") or ():
+            if not isinstance(row, list) or len(row) < 3 or str(row[0]) != name:
+                continue
+            if str(row[1]).lower() != "completed":
+                return "unknown", None
+            raw_id = str(ids.get(name) or "")
+            self.local_reads += 1
+            return "found", {
+                "conclusion": str(row[2]).lower() if row[2] is not None else None,
+                "id": int(raw_id) if raw_id.isdigit() else -1,
+            }
+        if ci.get("verdict") in {"GREEN", "RED"}:
+            self.local_reads += 1
+            return "absent", None
+        return "unknown", None
+
     # ------------------------------------------------------------ checks
 
     def head_check_runs(
