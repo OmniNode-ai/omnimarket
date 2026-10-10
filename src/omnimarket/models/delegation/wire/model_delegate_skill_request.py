@@ -164,6 +164,23 @@ class ModelDelegateSkillRequest(BaseModel):
             "the backend via the normal cheapest-first tier_order selection."
         ),
     )
+    # OMN-20844: the model the customer's own provider key runs for THIS call
+    # (``onex delegate --model``), overriding the model stored with their key.
+    # Declared consumer-first and excluded when unset, the OMN-18852 rule: a
+    # request that names no model is byte-identical to today's, so a consumer
+    # predating the field keeps accepting every such request. The in-process
+    # port applies it to the customer's BYOK route only and refuses it for any
+    # other route; the runtime port refuses it (Core's request has no field).
+    model: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Optional model id for the customer's own provider key, for this "
+            "call only. None runs the model stored with the key. Omitted from "
+            "serialisation when None."
+        ),
+    )
     # OMN-18931, step 2 of 2: the declared field. Step 1 released a consumer
     # that decodes this key without declaring it (false/null dropped, true
     # refused by name), which is what lets the Wire Compatibility Gate pass

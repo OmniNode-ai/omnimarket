@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20844"
+title: "Customers choose their own OpenRouter model when they add their key"
+summary: "A customer who brings their own OpenRouter key names the model it runs: key registration takes the model, checks it against the provider's list for that key and stores it; onex delegate takes a per-call model; no free model is picked for the customer, and the delegation names the chosen model."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "ModelDelegateSkillRequest.model"
+  - "ModelInferenceCredentialCreateRequest.model"
+  - "ModelByokProviderBackend.customer_chooses_model"
+requirements:
+  - id: "req-customer-chooses-openrouter-model"
+    statement: |-
+      The customer chooses the OpenRouter model their own key runs.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: onex models add, onex secret set and onex secret register-tenant-key take --model, and the hosted intake takes model; the model is checked against the provider's list for the key, a model the list does not name is refused with nothing stored, and a listed model is stored with the customer's credential.
+      - id: "AC2"
+        statement: |-
+          AC2: ModelDelegateSkillRequest declares an optional model field, omitted from the wire when unset; the delegate handler passes it to the dispatch port only when set; the in-process port runs the customer's own route on it and refuses it for any other route; the runtime port refuses it.
+      - id: "AC3"
+        statement: |-
+          AC3: with no model named for OpenRouter, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN; a credential with no model is refused at call time; a model the customer named is never re-aimed at a catalogue pick.
+      - id: "AC4"
+        statement: |-
+          AC4: the delegation result names the chosen model, and onex models add fails its test when the answer names another model than the chosen one.
+      - id: "AC5"
+        statement: |-
+          AC5: the OpenRouter catalogue row declares customer_chooses_model and its billing is pay_as_you_go, not free_tier.
+evidence_requirements:
+  - kind: "tests"
+    description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
+    command: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20844-openrouter-model-choice"
+    description: "The customer's OpenRouter model is taken at registration, checked against the key's list, stored, overridable per call, never replaced by a catalogue pick, and named by the delegation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5"]

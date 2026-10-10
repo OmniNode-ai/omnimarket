@@ -177,6 +177,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -198,6 +199,25 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _ModelChoiceDispatchKwargs(TypedDict, total=False):
+    """The model the caller named for this call, passed only when set (OMN-20844).
+
+    Same rule as ``_NoEscalationDispatchKwargs``: a port that predates the
+    keyword keeps serving every request that names no model, and a request
+    that names one fails loudly there instead of running a model nobody chose.
+    """
+
+    model: str
+
+
+def _model_choice_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _ModelChoiceDispatchKwargs:
+    if request.model is not None:
+        return {"model": request.model}
     return {}
 
 
@@ -1322,6 +1342,8 @@ class HandlerDelegateSkill:
                     response_format=request.response_format,
                     # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
                     **_no_escalation_dispatch_kwargs(request),
+                    # OMN-20844: only when named -- see _ModelChoiceDispatchKwargs.
+                    **_model_choice_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
                 ),

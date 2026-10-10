@@ -1197,6 +1197,7 @@ class LocalDelegationDispatchPort:
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]:
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
@@ -1286,6 +1287,35 @@ class LocalDelegationDispatchPort:
                 backend=backend,
                 house_refs=shipped_house_credential_refs(),
             )
+
+        # OMN-20844: ``onex delegate --model`` names the model the customer's
+        # own key runs for this call. It applies only to their BYOK route, on
+        # every attempt that lands on it; a model named for a house or local
+        # rung is refused rather than sent somewhere the customer did not mean.
+        chosen_route_id: str | None = None
+        if model is not None:
+            if not _is_customer_byok_route(backend):
+                raise ValueError(
+                    f"--model {model!r} names a model on your own provider key, "
+                    f"but this delegation resolved to {backend.backend_id!r}, "
+                    "which is not a customer key route. Pin your key's route "
+                    "with --backend-id byok-<provider>."
+                )
+            chosen_route_id = backend.backend_id
+
+        def _with_model_choice(
+            candidate: ModelResolvedDelegationBackend,
+        ) -> ModelResolvedDelegationBackend:
+            if model is None or candidate.backend_id != chosen_route_id:
+                return candidate
+            return candidate.model_copy(
+                update={
+                    "model_id": model,
+                    "model_id_source": "the caller's --model for this delegation",
+                }
+            )
+
+        backend = _with_model_choice(backend)
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
@@ -1479,7 +1509,7 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 escalation_count += 1
-                backend = over_budget_next
+                backend = _with_model_choice(over_budget_next)
                 continue
             if progress is not None:
                 progress.escalation_count = escalation_count
@@ -1687,7 +1717,7 @@ class LocalDelegationDispatchPort:
                         correlation_id,
                         transport_failure_message,
                     )
-                    backend = transport_sibling
+                    backend = _with_model_choice(transport_sibling)
                     continue
 
                 if escalated_backend is not None:
@@ -1705,7 +1735,7 @@ class LocalDelegationDispatchPort:
                         transport_failure_message,
                     )
                     escalation_count += 1
-                    backend = escalated_backend
+                    backend = _with_model_choice(escalated_backend)
                     continue
 
                 # Cannot escalate (non-retryable failure_class, budget exhausted,
@@ -2196,7 +2226,7 @@ class LocalDelegationDispatchPort:
                     correlation_id,
                     gate_failure_message,
                 )
-                backend = gate_sibling
+                backend = _with_model_choice(gate_sibling)
                 continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
@@ -2321,7 +2351,7 @@ class LocalDelegationDispatchPort:
                 gate_failure_message,
             )
             escalation_count += 1
-            backend = next_backend
+            backend = _with_model_choice(next_backend)
 
     def _is_quality_accepted(
         self, task_type: str, gate_result: ModelQualityGateResult
