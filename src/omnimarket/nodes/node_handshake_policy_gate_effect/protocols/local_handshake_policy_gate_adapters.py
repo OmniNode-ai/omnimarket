@@ -3,7 +3,9 @@
 """Local adapters of the policy gate ports: the GitHub REST reader and a real sleep (OMN-20671).
 
 The token is resolved at this boundary from the contract-declared secret, never read from the
-process environment by name here.
+process environment by name here. It is resolved at the first read, never when the reader is
+built: the runtime builds the handler at kernel boot, where a missing secret would stop the
+kernel instead of failing one run (OMN-20871).
 """
 
 from __future__ import annotations
@@ -49,15 +51,20 @@ def _error_text(exc: GitHubApiError) -> str:
 class GitHubPolicyGateReader:
     """Reads the repo and workflow-runs endpoints through the shared GitHub REST helper."""
 
-    def __init__(self, token: str) -> None:
-        if not token:
+    def __init__(self, token: str | None = None) -> None:
+        if token is not None and not token:
             raise PolicyGatePortError("GitHub token must not be empty")
         self._token = token
+
+    def _resolved_token(self) -> str:
+        if self._token is None:
+            self._token = resolve_policy_gate_token()
+        return self._token
 
     def default_branch(self, endpoint: str) -> str:
         """The default branch, or "" when the lookup fails: the compute node then names "main"."""
         try:
-            page = rest_json("GET", f"/{endpoint}", token=self._token)
+            page = rest_json("GET", f"/{endpoint}", token=self._resolved_token())
         except GitHubApiError:
             return ""
         branch = page.get("default_branch")
@@ -65,7 +72,7 @@ class GitHubPolicyGateReader:
 
     def latest_run(self, endpoint: str) -> PolicyGateRead:
         try:
-            page = rest_json("GET", f"/{endpoint}", token=self._token)
+            page = rest_json("GET", f"/{endpoint}", token=self._resolved_token())
         except GitHubApiError as exc:
             return PolicyGateRead(api_ok=False, api_error_text=_error_text(exc))
         runs = page.get("workflow_runs")

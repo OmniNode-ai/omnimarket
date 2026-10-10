@@ -287,6 +287,48 @@ def test_no_token_is_exit_two_with_a_message(
     assert "ERROR: no GitHub token" in out.err
 
 
+def test_building_the_handler_resolves_no_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-20871: the runtime wires this handler at kernel boot with no ports; a boot with no
+    secret store (or one that is down) must not die in the constructor. The token is resolved
+    at the first GitHub read, inside handle(), where a missing token is the run's error."""
+    calls: list[str] = []
+
+    def refuse() -> str:
+        calls.append("resolve")
+        raise PolicyGatePortError("no GitHub token: GH_TOKEN is not set")
+
+    monkeypatch.setattr(adapters, "resolve_policy_gate_token", refuse)
+    handler = HandlerHandshakePolicyGateRun()
+    assert calls == []
+    with pytest.raises(PolicyGatePortError, match="no GitHub token"):
+        handler.handle(ModelPolicyGateRunRequest(repos_conf_text="a\n", strict=True))
+    assert calls == ["resolve"]
+
+
+def test_real_reader_resolves_the_token_once_at_the_first_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def resolve() -> str:
+        calls.append("resolve")
+        return "tok"
+
+    monkeypatch.setattr(adapters, "resolve_policy_gate_token", resolve)
+    monkeypatch.setattr(
+        adapters,
+        "rest_json",
+        _fake_rest({"/repos/OmniNode-ai/alpha": {"default_branch": "dev"}}),
+    )
+    reader = adapters.GitHubPolicyGateReader()
+    assert calls == []
+    assert reader.default_branch("repos/OmniNode-ai/alpha") == "dev"
+    assert reader.default_branch("repos/OmniNode-ai/alpha") == "dev"
+    assert calls == ["resolve"]
+
+
 def test_missing_repos_conf_is_exit_two(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
