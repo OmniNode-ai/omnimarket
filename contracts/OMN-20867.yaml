@@ -144,10 +144,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py::test_jittered_ticks_fire_every_window_exactly_once -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_jittered_ticks_fire_every_window_exactly_once"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py::test_jittered_ticks_open_the_audit_trail_daily_slot_exactly_once -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_jittered_ticks_open_the_audit_trail_daily_slot_exactly_once"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20867-tick-window-prune-in-interval"
@@ -155,16 +155,16 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py::test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py::test_skipped_tick_never_resolves_sink -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_skipped_tick_never_resolves_sink"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py::test_a_scheduled_tick_runs_once_per_interval_and_skips_in_between -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_a_scheduled_tick_runs_once_per_interval_and_skips_in_between"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py::test_skipped_tick_never_resolves_sink -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_skipped_tick_never_resolves_sink"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20867-tick-window-boot-one-record"
@@ -172,7 +172,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py::test_runtime_tick_boot_one_tick_is_one_record_and_dead_letters_nothing -q -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_runtime_tick_boot_one_tick_is_one_record_and_dead_letters_nothing"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20867-tick-window-prune-destination"
@@ -180,10 +180,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py::test_the_scheduled_run_result_has_a_declared_destination -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_the_scheduled_run_result_has_a_declared_destination"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py::test_the_scheduled_run_result_has_a_declared_destination -q -p no:randomly"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_the_scheduled_run_result_has_a_declared_destination"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20867-tick-window-dev-lane-per-fire"
