@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind launchd-interval.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-a/example-interval-job
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger:
+    kind: launchd-interval
+    native_id: com.example.interval-job
+  expected_interval_seconds: 300
+  alarm_deadline_seconds: 1800
+  max_silence_seconds: 900
+  max_runtime_seconds: 240
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: receipts_file
+    locator: example-state/interval-job/fire-receipts.jsonl
+    completion_record: outcome and exit_code
+  real_work: placed
+  demand: free_slots > 0 and eligible > 0
+  positive_control:
+    kind: class_drill
+    ref: stop a launchd interval job
+  state: active

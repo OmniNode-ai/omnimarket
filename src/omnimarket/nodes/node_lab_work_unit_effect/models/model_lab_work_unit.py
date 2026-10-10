@@ -112,6 +112,8 @@ class ModelLabWorkUnitReceipt(BaseModel):
     host: str
     repo: str
     commit_sha: str
+    lane: str = ""
+    kind: WorkKind = "other"
     status: EnumLabWorkUnitStatus
     exit_code: int | None = None
     log_path: str = ""

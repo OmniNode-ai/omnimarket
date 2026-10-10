@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: hook_refusal_row_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Decides the redacted, deduplicated ledger row for one plugin hook
+  refusal. Rate-limit state, lane resolution and the ledger append stay with
+  the caller.
+input_model: omnimarket.nodes.node_hook_refusal_row_compute.models.ModelHookRefusalRowRequest
+output_model: omnimarket.nodes.node_hook_refusal_row_compute.models.ModelHookRefusalRowResult
+handler:
+  module: omnimarket.nodes.node_hook_refusal_row_compute.handlers.handler_hook_refusal_row
+  class: HandlerHookRefusalRowCompute
+  input_model: omnimarket.nodes.node_hook_refusal_row_compute.models.ModelHookRefusalRowRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHookRefusalRowCompute
+      module: omnimarket.nodes.node_hook_refusal_row_compute.handlers.handler_hook_refusal_row
+    event_model:
+      name: ModelHookRefusalRowRequest
+      module: omnimarket.nodes.node_hook_refusal_row_compute.models
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.hook-refusal-row-built.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.hook-refusal-row-build.v1
+  publish_topics:
+  - onex.evt.omnimarket.hook-refusal-row-built.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-refusal-row-build.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.hook-refusal-row-built.v1
+metadata:
+  transport_type: kafka
+inputs:
+  guard:
+    type: string
+    required: true
+    description: The refusing guard's id, unredacted.
+  reason:
+    type: string
+    required: true
+    description: The guard's reason text, unredacted.
+  detail:
+    type: string
+    required: false
+    description: The refusal's first line.
+  lane:
+    type: string
+    required: false
+    description: The resolved lane; empty when unresolved.
+  lane_source:
+    type: string
+    required: false
+    description: How the lane was resolved.
+  session:
+    type: string
+    required: false
+    description: Session scope for the secret guard's retry budget.
+  suppressed:
+    type: integer
+    required: false
+    description: Refusals of this key swallowed since the last emitted row.
+  timestamp:
+    type: string
+    required: true
+    description: UTC timestamp of the row.
+outputs:
+  row:
+    type: string
+    description: One pipe-delimited FRICTION ledger row.
+  key:
+    type: string
+    description: Twelve-character dedupe key of the refusal class.

@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.68
+          ref: v0.38.69
           path: omnibase_infra-dest
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -125,13 +125,13 @@ jobs:
             dest_file="omnibase_infra-dest/docker/migrations/forward/nodes/${node_name}/${filename}"
 
             if [ ! -f "${dest_file}" ]; then
-              echo "::warning::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in the pinned omnibase_infra v0.38.68. This repo is ahead of its pin; omnibase_infra vendors it through its own consumer PR (scripts/sync-node-migrations.sh) and this repo bumps the pin after integration testing." >&2
+              echo "::warning::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in the pinned omnibase_infra v0.38.69. This repo is ahead of its pin; omnibase_infra vendors it through its own consumer PR (scripts/sync-node-migrations.sh) and this repo bumps the pin after integration testing." >&2
               ahead=1
               continue
             fi
 
             if ! cmp -s "${src_file}" "${dest_file}"; then
-              echo "::warning::${src_file} differs from the vendored copy in the pinned omnibase_infra v0.38.68 (${dest_file}). This repo is ahead of its pin; omnibase_infra re-runs scripts/sync-node-migrations.sh through its own consumer PR." >&2
+              echo "::warning::${src_file} differs from the vendored copy in the pinned omnibase_infra v0.38.69 (${dest_file}). This repo is ahead of its pin; omnibase_infra re-runs scripts/sync-node-migrations.sh through its own consumer PR." >&2
               ahead=1
             fi
           done
@@ -141,4 +141,4 @@ jobs:
             exit 0
           fi
 
-          echo "::notice::All changed node migrations are already vendored in the pinned omnibase_infra v0.38.68."
+          echo "::notice::All changed node migrations are already vendored in the pinned omnibase_infra v0.38.69."

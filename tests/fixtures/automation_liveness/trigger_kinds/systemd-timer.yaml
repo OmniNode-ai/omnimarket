@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind systemd-timer.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-b/example-timer
+  owner_repo: example-owner/example-repo
+  host: host-b
+  trigger:
+    kind: systemd-timer
+    native_id: example-timer.timer
+  expected_interval_seconds: 3600
+  alarm_deadline_seconds: 7800
+  max_runtime_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: systemd_journal
+    locator: example-timer.service
+    completion_record: unit finished with its exit status
+  real_work: scanned
+  demand: none
+  positive_control:
+    kind: class_drill
+    ref: disable a systemd timer
+  state: active

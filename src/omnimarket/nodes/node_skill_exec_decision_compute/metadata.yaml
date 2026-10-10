@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_skill_exec_decision_compute
+version: "1.0.0"
+description: Deterministic decisions of the self-running ledger skills' executor (argument parsing, command planning, result reporting)
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_skill_exec_decision_compute: omnimarket.nodes.node_skill_exec_decision_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger, skill, executor]
+node_role: compute
+pack: "routing"
+display_name: "Skill Exec Decision Compute"

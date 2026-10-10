@@ -35,10 +35,9 @@ The rules:
   ``model_dump(mode="json")``. The unit tests pin this against the real dev-lane
   captures.
 
-Only the top-level dimensions and the build identity are checked in depth here:
-the build identity is the dimension K3 exists to separate, and the full nested
-validation belongs to the typed infra model, which this repository cannot
-import until an omnibase_infra release carries it.
+The released infra model validates every nested identity and policy field before
+a key enters the projection. The original wire key is retained without model
+normalization, so validation cannot supply evidence or change its digest.
 """
 
 from __future__ import annotations
@@ -201,7 +200,7 @@ class HandlerDelegationCohortKeyFold:
             return ModelDelegationCohortKeyFold(
                 cohort_key_refusal="cohort_key must be a JSON object", carried=True
             )
-        refusal = _refusal(key)
+        refusal = _refusal(key) or request.cohort_key_validation_refusal()
         if refusal is not None:
             return ModelDelegationCohortKeyFold(
                 cohort_key_refusal=refusal, carried=True

@@ -9,8 +9,9 @@ model agreeing with itself. On the OMN-17492 eval (2026-09-25), the same
 model on two hosts agreed on a critical finding in 2 of 8 runs and both were
 false; paired with gpt-oss-120b it blocked nothing.
 
-The roster is now ``qwen3-review`` (Qwen3.8-27B, .201) and ``gpt-oss-review``
-(gpt-oss-120b on the .200 Mac Studio, registered in omniintelligence#945).
+The roster is now ``qwen3-review`` (Qwen3.8-27B, .201) and ``local-studio-planner``
+(Qwen3.6-35B-A3B on the .200 Mac Studio's :8131, registered in omniintelligence#945 as
+``gpt-oss-review`` and renamed in omniintelligence#1014).
 Both are lab models: private diffs never go to a third-party cloud reviewer
 (operator, 2026-09-25; OPERATOR-CONSENT on the rolling ledger, row 4842).
 .200 is always on, so there is no single-model pass: a lost reviewer leaves
@@ -40,7 +41,7 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-ROSTER = ["qwen3-review", "gpt-oss-review"]
+ROSTER = ["qwen3-review", "local-studio-planner"]
 NOT_VOTERS = ("qwen3-review-b", "deepseek-r1", "glm-review")
 
 

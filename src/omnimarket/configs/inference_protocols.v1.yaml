@@ -345,7 +345,6 @@ profiles:
       - "code_review"
       - "planning"
       - "escalation"
-      - "reasoning"
       - "complex_reasoning"
     directive:
       placement: user_prefix
@@ -355,6 +354,38 @@ profiles:
     request_options:
       chat_template_kwargs:
         enable_thinking: false
+
+  # OMN-20469: task type `reasoning` (only) runs on Qwen3.8-27B with thinking ON.
+  #
+  # The OMN-19267 blanking above was measured on 2026-09-23 with six prompts per
+  # class and a server that returned the trace inline. The pre-registered replay
+  # of 2026-10-09 ran 60 stored reasoning prompts under both arms at temperature
+  # 0.3 and the delegate's own max_tokens, judged blind by a Codex judge and an
+  # Opus judge: thinking on was accepted 48 of 60 (both judges); thinking off, as
+  # the profile above sent it, 28 of 60 (Codex) and 35 of 60 (Opus). Gains of 33.3
+  # and 21.7 points, exact paired p 0.00001 and 0.00098, clear the bar of 15
+  # points and p below 0.05 on each judge. In the thinking-on arm 0 of 60
+  # responses were refused by the extractor and the servers returned the trace in
+  # `reasoning_content`, never in `content`. That separation is the servers'
+  # reasoning-parser setting, so a deployment has to keep it.
+  #
+  # Cost, from the replay: median latency 3.1 s to 40.5 s, mean completion
+  # tokens 387 to 3,818, slowest call 239.9 s against the backend's 300 s timeout.
+  #
+  # No directive: the measured arm sent no `/no_think` prefix and no other prompt
+  # text. No `default_temperature` and no `max_tokens`: both stay what they were.
+  # Scoped to the model that was measured. Qwen3.6-35B-A3B on the Studio planner
+  # rung is not matched by this pattern and keeps its own thinking-off profile.
+  # `complex_reasoning` was not part of the replay and stays on the profile above.
+  - profile_id: local-qwen38-reasoning-thinking-on
+    enabled: true
+    model_name_patterns:
+      - "*qwen3.8-27b*"
+    task_types:
+      - "reasoning"
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: true
 
   # OMN-17427: the .200 Mac Studio planner rung (backend local-studio-planner,
   # llama.cpp on :8130) serves Qwen3.6-35B-A3B under the alias

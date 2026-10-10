@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_handshake_policy_gate_effect
+version: "1.0.0"
+description: "Effect: runs the architecture handshake policy gate. Reads each active repo's default branch and latest completed handshake run from GitHub, asks node_handshake_policy_gate_compute what each read means, sleeps between retries and returns the report, verdict and exit code."
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_handshake_policy_gate_effect: omnimarket.nodes.node_handshake_policy_gate_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  side_effect_class: read
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, handshake, policy-gate, ci]
+node_role: effect
+pack: "routing"
+display_name: "Handshake Policy Gate Effect"

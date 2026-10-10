@@ -85,6 +85,7 @@ from omnimarket.models.delegation.wire.model_response_source_attempt import (
 )
 from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    budget_cancelled_result,
     current_dispatch_progress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
@@ -941,7 +942,19 @@ def _response_from_result(
     # rung's 429 on ``6ce51f77``) is the last thing that went wrong, not what
     # decided the run, and the response model refuses that contradiction.
     # Otherwise an explicit cause stays authoritative, as before.
+    #
+    # Operator RULING 2026-10-10T00:27:40Z: a run the handler budget cancelled
+    # (``budget_cancelled_result``: status timeout, explicit cause timeout)
+    # names timeout, whatever its earlier rungs record. The budget stopped the
+    # ladder with a rung in flight, so the gate did not decide it; any earlier
+    # gate refusals stay on their own rungs in ``attempts``.
     if (
+        status_value == "timeout"
+        and explicit_terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.TIMEOUT
+    ):
+        terminal_failure_cause = EnumDelegationTerminalFailureCause.TIMEOUT
+    elif (
         terminal_failure_cause
         is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     ):
@@ -1381,24 +1394,32 @@ class HandlerDelegateSkill:
                     "(the budget is measured from pickup, not from publish)"
                 )
             )
-            return ModelDelegateSkillFailed(
-                status="timeout",
-                correlation_id=request.correlation_id,
-                task_type=request.task_type,
-                tenant_id=resolved_tenant_id,
-                provenance=request.provenance,
-                error_message=(
-                    f"delegation exceeded the handler execution budget of "
-                    f"{execution_timeout_seconds}s and was cancelled at "
-                    f"stage={progress.cancelled_stage or progress.stage}; "
-                    "the consumer commits "
-                    "this terminal instead of being evicted mid-handle "
-                    f"(OMN-15504){queue_clause}"
-                ),
-                terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
-                queue_wait_ms=queue_wait_ms,
-                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
-                budget_evidence=budget_evidence,
+            # OMN-17427: the terminal is built from what the dispatch already
+            # learned, not from nothing. Cancelled at stage=inference, a run had
+            # already been routed, had resolved its key and had made calls; C29
+            # run 37977092319 lost all of it and its receipt named no backend,
+            # model, key source or attempt.
+            cancelled_stage = progress.cancelled_stage or progress.stage
+            return delegate_skill_terminal_from_response(
+                _response_from_result(
+                    request,
+                    budget_cancelled_result(
+                        progress,
+                        cancel_message=(
+                            f"delegation exceeded the handler execution budget of "
+                            f"{execution_timeout_seconds}s and was cancelled at "
+                            f"stage={cancelled_stage}; "
+                            "the consumer commits "
+                            "this terminal instead of being evicted mid-handle "
+                            f"(OMN-15504){queue_clause}"
+                        ),
+                        cancelled_stage=cancelled_stage,
+                    ),
+                    tenant_id=resolved_tenant_id,
+                    queue_wait_ms=queue_wait_ms,
+                    execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+                    budget_evidence=budget_evidence,
+                )
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(

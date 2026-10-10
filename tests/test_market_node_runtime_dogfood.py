@@ -71,6 +71,9 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # The host-reconcile effect is likewise run from the command line by a host
+    # timer; it subscribes to no topic and has no onex.nodes entry point.
+    "node_host_reconcile_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -81,10 +84,23 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_disk_hygiene_effect",
+    # OMN-20674: hosted from the operator tooling repository, whose copy is
+    # still registered; its briefs, paths and lanes arrive through a deployment
+    # overlay, so it has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_morning_friction_sweep_orchestrator",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
+    # OMN-19985: the local secret store runs from `onex secret set` / `onex
+    # secret delete`; it returns credential events for the CLI shim to fold and
+    # subscribes to no topic, so it has no onex.nodes entry point.
+    "node_local_secret_store_effect",
+    # OMN-20817: the model setup effect runs from `onex models`; it returns its
+    # status and test results to the CLI shim and subscribes to no topic, so it
+    # has no onex.nodes entry point.
+    "node_model_setup_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
@@ -292,7 +308,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # so it is experimental with no handler_routing: 10 -> 11.
     # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
     # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
-    assert summary["skipped"] == 17
+    # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
+    # the writer calls in process, so it has no handler_routing: 17 -> 18.
+    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
+    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    assert summary["skipped"] == 19
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

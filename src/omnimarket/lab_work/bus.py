@@ -26,8 +26,10 @@ import contextlib
 import inspect
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
 from typing import Any, Protocol
@@ -55,6 +57,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelHostCapacityProbeRequest,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    WorkKind,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +65,11 @@ logger = logging.getLogger(__name__)
 LAB_WORK_NODE = "node_lab_work_unit_effect"
 GROUP_SERVICE = "omnimarket"
 DEFAULT_MAX_COMMAND_AGE_SECONDS = 900
+#: A worker that holds a unit logs a progress line at least this often.
+DEFAULT_PROGRESS_SECONDS = 300.0
+#: A held unit still unanswered after this many of its limits means the worker is wedged.
+STUCK_LIMIT_MULTIPLE = 2
+_WATCH_SECONDS = 5.0
 DEFAULT_TOOLS = (
     "git",
     "uv",
@@ -73,6 +81,17 @@ DEFAULT_TOOLS = (
     "node",
     "docker",
 )
+
+
+@dataclass
+class _HeldUnit:
+    """A unit one worker holds, with the clock it has been held on."""
+
+    unit_id: str
+    started: float
+    limit_seconds: float
+    last_logged: float
+    past_limit_logged: bool = False
 
 
 class ModelLabWorkTopics(BaseModel):
@@ -91,6 +110,11 @@ class ModelLabWorkCommandFailure(BaseModel):
     status: str = "failed"
     work_unit_id: str = ""
     host: str = ""
+    lane: str = ""
+    repo: str = ""
+    commit_sha: str = ""
+    kind: WorkKind = "other"
+    duration_seconds: float = 0.0
     error_message: str = Field(default="", max_length=2000)
 
 
@@ -178,6 +202,9 @@ class LabWorkHost:
         tools: tuple[str, ...] = DEFAULT_TOOLS,
         max_command_age_seconds: int = DEFAULT_MAX_COMMAND_AGE_SECONDS,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
+        check_seconds: float = _WATCH_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._bus = bus
         self._work = work_handler
@@ -189,22 +216,38 @@ class LabWorkHost:
         self._tools = tools
         self._max_age = max_command_age_seconds
         self._now = now
+        self._progress_seconds = progress_seconds
+        self._check_seconds = check_seconds
+        self._clock = clock
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
+        self._beat_task: asyncio.Task[None] | None = None
+        self._held: dict[int, _HeldUnit] = {}
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
         self.running = 0
         self.processed = 0
         self.advertised = 0
+        self.checks = 0
+        #: Set when a worker has held one unit past two of its limits; the serve
+        #: process exits non-zero on it, whatever the advertiser behind it still says.
+        self.stuck = asyncio.Event()
+        self.stuck_unit = ""
 
     @property
     def topics(self) -> ModelLabWorkTopics:
         return self._topics
 
+    @property
+    def advertiser_alive(self) -> bool:
+        return self._beat_task is not None and not self._beat_task.done()
+
     async def start(self, *, advertise: bool = True) -> None:
-        for _ in range(self._max_units):
-            self._tasks.append(asyncio.create_task(self._worker()))
+        for index in range(self._max_units):
+            self._tasks.append(asyncio.create_task(self._worker(index)))
+        self._tasks.append(asyncio.create_task(self._watch()))
         if advertise:
-            self._tasks.append(asyncio.create_task(self._beat()))
+            self._beat_task = asyncio.create_task(self._beat())
+            self._tasks.append(self._beat_task)
         self._unsubscribe = await _subscribe(
             self._bus,
             self._topics.command,
@@ -262,14 +305,68 @@ class LabWorkHost:
             await self.advertise_once()
             await asyncio.sleep(self._topics.cadence_seconds)
 
+    async def _watch(self) -> None:
+        while True:
+            self.check_progress()
+            await asyncio.sleep(self._check_seconds)
+
+    def check_progress(self) -> None:
+        """Log progress for every held unit and flag a worker that never answers.
+
+        A live advertiser and a live process prove nothing about the worker, so
+        this reads the unit the worker holds: a progress line at least every
+        ``progress_seconds``, one when the unit passes its limit, and the stuck
+        verdict once it has been held for two limits.
+        """
+        self.checks += 1
+        now = self._clock()
+        queued = self._queue.qsize()
+        for held in list(self._held.values()):
+            elapsed = now - held.started
+            if elapsed > STUCK_LIMIT_MULTIPLE * held.limit_seconds:
+                if not self.stuck.is_set():
+                    self.stuck_unit = held.unit_id
+                    logger.critical(
+                        "lab-work host %s: worker stuck, unit %s held %ds, over two limits "
+                        "(limit %ds, %d queued); the advertiser is %s",
+                        self._host,
+                        held.unit_id,
+                        int(elapsed),
+                        int(held.limit_seconds),
+                        queued,
+                        "alive" if self.advertiser_alive else "down",
+                    )
+                    self.stuck.set()
+                continue
+            past_limit = elapsed > held.limit_seconds
+            if now - held.last_logged >= self._progress_seconds or (
+                past_limit and not held.past_limit_logged
+            ):
+                logger.warning(
+                    "lab-work host %s: holding unit %s for %ds (limit %ds)%s, %d queued",
+                    self._host,
+                    held.unit_id,
+                    int(elapsed),
+                    int(held.limit_seconds),
+                    ", past its limit" if past_limit else "",
+                    queued,
+                )
+                held.last_logged = now
+                held.past_limit_logged = past_limit
+
     async def _enqueue(self, message: ProtocolBusMessage) -> None:
         self._queue.put_nowait(message)
 
-    async def _worker(self) -> None:
+    async def _worker(self, index: int) -> None:
         while True:
             message = await self._queue.get()
+            now = self._clock()
+            # Until the command is read, the host's own age limit bounds the hold.
+            self._held[index] = _HeldUnit(
+                "<unread command>", now, float(self._max_age), now
+            )
             try:
-                await self._process(message)
+                await self._process(message, index)
             except (
                 Exception
             ):  # fallback-ok: one bad command must not stop the host; it is logged
@@ -277,9 +374,10 @@ class LabWorkHost:
                     "lab-work host %s: command processing failed", self._host
                 )
             finally:
+                self._held.pop(index, None)
                 self._queue.task_done()
 
-    async def _process(self, message: ProtocolBusMessage) -> None:
+    async def _process(self, message: ProtocolBusMessage, index: int) -> None:
         try:
             raw = json.loads(message.value)
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -307,6 +405,11 @@ class LabWorkHost:
             )
             return
         self.running += 1
+        started = time.monotonic()
+        now = self._clock()
+        self._held[index] = _HeldUnit(
+            request.work_unit_id, now, float(request.timeout_seconds), now
+        )
         try:
             receipt = await self._work.handle(request)
         except (
@@ -314,14 +417,20 @@ class LabWorkHost:
         ) as exc:  # fallback-ok: a handler crash is answered on the failure terminal
             logger.exception("lab-work handler raised")
             await self._publish_failure(
-                command_id, request.work_unit_id, f"{type(exc).__name__}: {exc}"
+                command_id,
+                request.work_unit_id,
+                f"{type(exc).__name__}: {exc}",
+                request=request,
+                duration_seconds=time.monotonic() - started,
             )
             return
         finally:
             self.running -= 1
             self.processed += 1
         envelope = ModelEventEnvelope[dict[str, object]](
-            payload=receipt.model_dump(mode="json"),
+            payload=receipt.model_copy(
+                update={"lane": request.lane, "kind": request.kind}
+            ).model_dump(mode="json"),
             correlation_id=_uuid_or_none(raw.get("correlation_id")) or uuid.uuid4(),
             parent_envelope_id=command_id,
             event_type=event_type_for(self._topics.success),
@@ -343,10 +452,23 @@ class LabWorkHost:
         return (self._now() - sent).total_seconds()
 
     async def _publish_failure(
-        self, command_id: uuid.UUID | None, work_unit_id: str, message: str
+        self,
+        command_id: uuid.UUID | None,
+        work_unit_id: str,
+        message: str,
+        *,
+        request: ModelLabWorkUnitRequest | None = None,
+        duration_seconds: float = 0.0,
     ) -> None:
         failure = ModelLabWorkCommandFailure(
-            work_unit_id=work_unit_id, host=self._host, error_message=message[:2000]
+            work_unit_id=work_unit_id,
+            host=self._host,
+            error_message=message[:2000],
+            lane=request.lane if request else "",
+            repo=request.repo if request else "",
+            commit_sha=request.commit_sha if request else "",
+            kind=request.kind if request else "other",
+            duration_seconds=duration_seconds,
         )
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=failure.model_dump(mode="json"),
@@ -524,6 +646,8 @@ def _infra_error(
         host="",
         repo=request.repo,
         commit_sha=request.commit_sha,
+        lane=request.lane,
+        kind=request.kind,
         status=EnumLabWorkUnitStatus.INFRA_ERROR,
         detail=detail[:2000],
     )
@@ -531,6 +655,7 @@ def _infra_error(
 
 __all__ = [
     "DEFAULT_MAX_COMMAND_AGE_SECONDS",
+    "DEFAULT_PROGRESS_SECONDS",
     "DEFAULT_TOOLS",
     "LAB_WORK_NODE",
     "EnumPlacementDecision",

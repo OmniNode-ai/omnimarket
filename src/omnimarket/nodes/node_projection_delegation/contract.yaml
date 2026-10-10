@@ -402,6 +402,11 @@ projection_api:
         # Tier Distribution reads tier from the projection (deletes modelTier.ts).
         - cost_tier_name
         - cost_tier_type
+        # OMN-20753: the run's terminal outcome (migration 0029) and its measured
+        # cost, so Runs shows what the receipt recorded instead of Not recorded.
+        # cost_usd is null for a run whose cost was never measured.
+        - terminal_ok
+        - cost_usd
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source
@@ -422,6 +427,10 @@ projection_api:
         # OMN-19448: the deciding terminal's stop reason (migration 0053).
         - finish_reason
         - truncated
+        # OMN-19448: requested model and measured terminal timings (migration 0058).
+        - requested_model
+        - queue_wait_ms
+        - execution_ms
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model

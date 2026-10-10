@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19392"
+title: "Remove the retired local delegation rung"
+summary: "The parked local delegation backend, its registry and swarm entries, generated constant, and retired values in active comments and fixtures are removed. Synthetic fallback coverage uses neutral model ids and .test endpoints, and the immutable recorded benchmark output is kept byte-for-byte."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-retired-rung-removed"
+    statement: |-
+      No active file names the retired local delegation endpoints, and the packaged routing contract still renders and reduces for the affected task classes.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The installed core retired-value policy finds no retired value outside HISTORICAL files -- falsifier: tests/test_no_retired_model_values.py fails on any active file
+      - id: "AC2"
+        statement: |-
+          AC2: The routing tiers contract and the delegation routing reducer pass with the rung removed -- falsifier: tests/test_routing_tiers_contract.py or tests/nodes/node_delegation_routing_reducer fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The retired-value regression, routing tiers contract and routing reducer tests pass."
+    command: "uv run pytest tests/test_no_retired_model_values.py tests/test_routing_tiers_contract.py tests/nodes/node_delegation_routing_reducer -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19392-no-retired-values"
+    description: "No active file carries a retired local delegation value."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_no_retired_model_values.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19392-routing-contract"
+    description: "The routing tiers contract and the routing reducer pass with the rung removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/node_delegation_routing_reducer/test_omn15628_bifrost_renderer_reducer_seam.py::test_packaged_contract_renders_and_routes_after_retirement tests/test_routing_tiers_contract.py tests/nodes/node_delegation_routing_reducer -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

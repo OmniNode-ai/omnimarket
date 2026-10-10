@@ -70,9 +70,13 @@ class TestRecomputeActualCostAndSavings:
         )
         assert m.cash_cost_usd == pytest.approx(0.003)
         assert m.cost_measurement_source == "metered"
-        # The bug being closed: saving is NOT the full counterfactual (0.0525).
+        # The bug being closed: saving is NOT the full counterfactual. The
+        # counterfactual is priced from the pricing manifest (OMN-20833), so the
+        # expectation is derived from it rather than from a pinned Opus rate.
         assert m.cost_savings_usd != float(cf.counterfactual_cost_usd)
-        assert m.cost_savings_usd == pytest.approx(0.0495)
+        assert m.cost_savings_usd == pytest.approx(
+            float(cf.counterfactual_cost_usd) - 0.003
+        )
 
     def test_free_local_actual_is_zero_full_counterfactual_saved(self) -> None:
         cf = build_premium_counterfactual(
@@ -139,8 +143,11 @@ class TestProjectionWiresMeasuredActualCost:
         assert Decimal(str(row["cost_usd"])) == Decimal("0.003")
         assert row["cost_measurement_source"] == "metered"
         assert row["cost_tier_type"] == "metered"
-        # Saving is counterfactual - real_actual.
-        assert Decimal(str(row["cost_savings_usd"])) == Decimal("0.0495")
+        # Saving is counterfactual - real_actual, with the counterfactual priced
+        # from the pricing manifest (OMN-20833).
+        assert Decimal(str(row["cost_savings_usd"])) == (
+            cf.counterfactual_cost_usd - Decimal("0.003")
+        )
         validate_actual_cost_provenance(row)
 
     def test_free_local_row_full_counterfactual_saved(self) -> None:

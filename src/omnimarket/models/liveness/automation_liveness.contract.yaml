@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Topic contract of the automation-liveness seam (OMN-20793).
+#
+# The events every automatic process's monitoring exchanges: run facts from the
+# processes and their observers, heartbeats from daemons, observers and the
+# watchdog legs, the loaded overlay, verdict changes and the alarm episode
+# lifecycle. All are owned by omnimarket and travel on the fleet bus.
+#
+# This file names the topics and their payload models; it declares no node.
+# The nodes that publish and consume them (the host and GitHub observers, the
+# liveness projection, the watchdog legs) declare each topic in their own
+# contract.yaml publish_topics / subscribe_topics, and those must match the
+# names here. Emitters resolve topics through the runtime resolver, never by
+# building the string. Every name passes the ONEX topic-format check
+# (onex.{kind}.{producer}.{event-name}.v{n}, kebab-case producer).
+name: automation_liveness_seam
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Automation-liveness run, heartbeat, declaration, verdict and alarm events.
+owner_repo: omnimarket
+payload_module: omnimarket.models.liveness.model_automation_liveness
+event_topics:
+  run_observed:
+    topic: onex.evt.omnimarket.automation-run-observed.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationRunObserved
+  heartbeat:
+    topic: onex.evt.omnimarket.automation-heartbeat.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationHeartbeat
+  liveness_declared:
+    topic: onex.evt.omnimarket.automation-liveness-declared.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationLivenessDeclared
+  liveness_verdict:
+    topic: onex.evt.omnimarket.automation-liveness-verdict.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationLivenessVerdictEvent
+  alarm_raised:
+    topic: onex.evt.omnimarket.automation-liveness-alarm-raised.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationAlarmRaised
+  alarm_cleared:
+    topic: onex.evt.omnimarket.automation-liveness-alarm-cleared.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationAlarmCleared
+  alarm_delivered:
+    topic: onex.evt.omnimarket.automation-liveness-alarm-delivered.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationAlarmDelivered
+  alarm_recorded:
+    topic: onex.evt.omnimarket.automation-liveness-alarm-recorded.v1
+    payload_model: omnimarket.models.liveness.model_automation_liveness.ModelAutomationAlarmRecorded

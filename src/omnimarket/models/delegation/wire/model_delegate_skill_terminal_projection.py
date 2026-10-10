@@ -13,6 +13,9 @@ from typing import Any, Protocol, Self
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_infra.models.delegation.model_delegation_cohort_key import (
+    ModelDelegationCohortKey,
+)
 from pydantic import (
     AliasChoices,
     AwareDatetime,
@@ -20,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -262,6 +266,25 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     @classmethod
     def _blank_baseline_to_empty(cls, value: str) -> str:
         return value.strip()
+
+    def cohort_key_validation_refusal(self) -> str | None:
+        """Validate carried cohort evidence without rejecting its terminal.
+
+        An invalid key is persisted as a named refusal by the cohort fold.
+        It must not dead-letter an otherwise valid delegation event, and the
+        original wire value must not be normalized or filled from defaults.
+        """
+        if self.cohort_key is None:
+            return None
+        try:
+            ModelDelegationCohortKey.model_validate(self.cohort_key)
+        except ValidationError as exc:
+            error = exc.errors(
+                include_url=False, include_context=False, include_input=False
+            )[0]
+            path = ".".join(str(part) for part in error["loc"])
+            return f"invalid cohort_key: {path} ({error['type']})"
+        return None
 
     @classmethod
     def from_payload(

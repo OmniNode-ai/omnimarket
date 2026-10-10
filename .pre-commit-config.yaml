@@ -294,6 +294,20 @@ repos:
       - id: kb-doc-gate
         require_serial: true
 
+  # Public-repo hygiene gate (OMN-20781). Runs the same script, at the same
+  # omniclaude commit, as .github/workflows/public-repo-hygiene.yml, over the
+  # lines the commit adds, so the local and CI verdicts cannot diverge. The five
+  # classes in `enforce_classes` of .public-repo-hygiene.yaml fail the commit;
+  # the whole-tree residue is reported. The hook declares no `args`, `files` or
+  # `exclude` here: it is meant to run on every commit, over every file type.
+  # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
+  # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
+  - repo: https://github.com/OmniNode-ai/omniclaude
+    rev: 6e47aa311ac5d177d116d9597b07966a233d2463
+    hooks:
+      - id: public-repo-hygiene
+        require_serial: true
+
   # Essential file formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -430,6 +444,21 @@ repos:
         language: system
         entry: bash scripts/ci/check_subscriber_dispatcher_resolution.sh
         files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/subscriber_dispatcher_resolution_baseline\.yaml|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-19684: the full-suite shards run only the test files
+      # scripts/ci/merge_test_durations.py plans for them from the committed
+      # config/test_file_durations.json. These tests pin the planner's exact-once
+      # assignment, the record's balance over the real tree and the ci.yml wiring.
+      # The CI twin is the "Prove the shard plans partition the collected files"
+      # step of the typecheck job, which checks the plan against a real
+      # `pytest --collect-only`.
+      - id: test-shard-plan
+        name: Full-suite test shard plan stays balanced and exact-once (OMN-19684)
+        language: system
+        entry: uv run pytest tests/unit/test_ci_shard_plan_omn19684.py tests/unit/test_ci_workflow_shape_durations_merge.py -q --no-cov
+        files: ^(\.github/workflows/ci\.yml|scripts/ci/merge_test_durations\.py|config/test_file_durations\.json|tests/unit/test_ci_shard_plan_omn19684\.py|tests/unit/test_ci_workflow_shape_durations_merge\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -809,6 +838,19 @@ repos:
         entry: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
         pass_filenames: false
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
+        stages: [pre-commit]
+
+      # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
+      # ref, provider, tier or per-class order) in the packaged routing configs.
+      # Routing decisions belong in a deployment overlay. Same entry point as
+      # the `Deployment Fact Gate` CI job; here the commit being made is judged
+      # against HEAD, which is the shrink-only baseline.
+      - id: deployment-fact-gate
+        name: No new deployment fact in packaged routing configs
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/nodes/node_deployment_fact_gate_effect/.*)$
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
@@ -1388,6 +1430,23 @@ repos:
         stages: [pre-commit]
 
       # OMN-18932: the release bar is checked here and in ci.yml.
+      # OMN-20282: each hook runs one focused file; both are paired with ci.yml.
+      - id: work-ledger-principal-auth
+        name: Work-ledger signature and operator-only consent
+        entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: work-ledger-principal-cli
+        name: Work-ledger signing configuration and bus round-trip
+        entry: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: output-only-release-acceptance
         name: D1 output-only release acceptance (OMN-18932)
         entry: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
@@ -1457,6 +1516,15 @@ repos:
         language: system
         entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+      # OMN-17427: SYNC with the ci.yml lint-job step of the same name and the
+      # pre-build step in release.yml and release-cut.yml.
+      - id: node-auto-wiring-in-process
+        name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427\.py|uv\.lock)$
         pass_filenames: false
         stages: [pre-commit]
 

@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
@@ -97,7 +98,12 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
         bus = _Bus()
         await bus.start()
         handler = _Handler()
-        host = WorkLedgerAppendHost(bus, handler)
+        host = WorkLedgerAppendHost(
+            bus,
+            handler,
+            mirror_principal="operator",
+            mirror_signing_key=Ed25519PrivateKey.generate(),
+        )
         caller = WorkLedgerAppendCaller(bus)
         await host.start()
         try:
@@ -110,7 +116,18 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
                 host.topics.command,
                 "local.omnimarket.node_work_ledger_append_effect.consume.v1",
             )
-            groups = [group for _, group in bus.groups[1:]]
+            mirror_groups = [group for _, group in bus.groups[1:3]]
+            assert mirror_groups == [
+                "local.omnimarket.node_work_ledger_bus_mirror.consume.v1",
+                "local.omnimarket.node_work_ledger_bus_mirror.consume.v1",
+            ]
+            assert [group for _, group in bus.groups[3:5]] == [
+                "local.omnimarket.node_work_ledger_delegation_mirror.consume.v1"
+            ] * 2
+            assert [topic for topic, _ in bus.groups[3:5]] == list(
+                host.delegation_topics
+            )
+            groups = [group for _, group in bus.groups[5:]]
             assert len(groups) == 2
             assert groups[0] == groups[1]
             assert groups[0].startswith(

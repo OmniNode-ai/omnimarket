@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Neutral default automation-liveness overlay (OMN-20793). It declares no
+# process, host, unit or lane: which automatic processes a deployment runs is a
+# deployment fact and lives in that deployment's private overlay, validated by
+# ModelAutomationLivenessOverlay and automation_liveness_overlay.schema.json.
+schema_version: automation-liveness-overlay/v1
+processes: []

@@ -1,0 +1,2681 @@
+{
+ "_source": "Captured by running the pure block of omnibase_internal src/omnibase_internal/handlers/hourly_tick/linear-comments-hourly.js at commit 38c45975d93d870cb3f4f1a5eee2860357bd211f under node v24, over the inputs below (OMN-20680). The port in node_linear_comments_decision_compute must reproduce every output.",
+ "cases": {
+  "roles": [
+   {
+    "role": ""
+   },
+   {
+    "role": "autoclose-sweep bot"
+   },
+   {
+    "role": "linear-closer app"
+   },
+   {
+    "role": "the CTO candidate"
+   },
+   {
+    "role": "someone from the design side"
+   },
+   {
+    "role": "a collaborator"
+   },
+   {
+    "role": "orchestrator/autoclose-sweep (posted as the operator's own Linear identity)"
+   },
+   {
+    "role": "human collaborator (a collaborator) — not automation; posted under his own Linear identity, not the operator's"
+   },
+   {
+    "role": "human collaborator (a collaborator) — explicitly @-mentions the operator; not automation"
+   },
+   {
+    "role": "human collaborator (another collaborator); comment itself contains no automation markers"
+   },
+   {
+    "role": "human collaborator, posting under their own identity"
+   },
+   {
+    "role": "orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)"
+   },
+   {
+    "role": "GitHub Actions workflow"
+   },
+   {
+    "role": "github-actions"
+   },
+   {
+    "role": "onexbot"
+   },
+   {
+    "role": "cron job"
+   },
+   {
+    "role": "webhook integration"
+   },
+   {
+    "role": "teammate, not a bot"
+   },
+   {
+    "role": "an engineer rather than an automated sweep"
+   },
+   {
+    "role": "neither a bot nor an app, a real person"
+   },
+   {
+    "role": "the operator's own account"
+   },
+   {
+    "role": "posted by the operator"
+   },
+   {
+    "role": "self-authored"
+   },
+   {
+    "role": "as the operator"
+   },
+   {
+    "role": "under the operator's own identity"
+   },
+   {
+    "role": "contributor; no automation involved"
+   },
+   {
+    "role": "robot"
+   },
+   {
+    "role": "Workflow"
+   },
+   {
+    "role": "colleague who is never automated"
+   },
+   {
+    "role": "human, but also an app"
+   },
+   {
+    "role": "not an automation, a person (a bot would not ask this)"
+   },
+   {
+    "role": "co-founder"
+   },
+   {
+    "role": "candidate"
+   },
+   {
+    "role": "Unknown thing"
+   },
+   {
+    "role": "nobody in particular"
+   },
+   {
+    "role": "bots"
+   },
+   {
+    "role": "Apps"
+   },
+   {
+    "role": "INTEGRATION"
+   },
+   {
+    "role": "real person; non-bot"
+   }
+  ],
+  "items": [
+   {
+    "ticket": "OMN-18268",
+    "ticket_title": "AC-binding gap on the autoclose sweep",
+    "comment_id": "bf9a438b-ca16-4e7a-8c92-5f760f0f2df9",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18268#comment-bf9a438b",
+    "author_role": "orchestrator/autoclose-sweep (posted as the operator's own Linear identity)",
+    "posted_at": "2026-09-14T11:36:52Z",
+    "text": "AC-binding gap: dod_verify 4/6 verified, 0 failed, but AC1-AC3 have no binds_ac entry in contracts/OMN-18268.yaml; not auto-closable until labeled.",
+    "needs_reply": true,
+    "asks": [
+     "label the AC bindings"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-18086",
+    "ticket_title": "Evidence gap on the autoclose sweep",
+    "comment_id": "8354b627-f18a-4359-b1e3-3a9a873c7fcc",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18086#comment-8354b627",
+    "author_role": "autoclose-sweep bot",
+    "posted_at": "2026-09-14T10:47:18Z",
+    "text": "Evidence gap: dod_verify 7/15 ACs verified, 2 failed - not all ACs receipt-proven, not flipped.",
+    "needs_reply": true,
+    "asks": [
+     "prove the remaining ACs"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-18160",
+    "ticket_title": "MSK broker right-sizing",
+    "comment_id": "568e6a23-973d-4033-aaa6-be60c969de3f",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18160#comment-568e6a23",
+    "author_role": "the CTO candidate",
+    "posted_at": "2026-09-11T09:23:45Z",
+    "text": "Broker right-sizing readback answering the three questions.",
+    "needs_reply": true,
+    "asks": [
+     "confirm the disposition"
+    ],
+    "already_answered_by": "operator comment 22f885c7, 2026-09-11T12:54:59Z"
+   },
+   {
+    "ticket": "OMN-16964",
+    "ticket_title": "Chain canary AC1 probe",
+    "comment_id": "aa11bb22-cccc-4444-8888-999900001111",
+    "comment_url": "https://linear.app/omninode/issue/OMN-16964#comment-aa11bb22",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-13T15:52:47Z",
+    "text": "What is the governed probe and the expected result for AC1?",
+    "needs_reply": true,
+    "asks": [
+     "name the probe",
+     "name the expected result"
+    ],
+    "already_answered_by": "operator comment fd2a9c30, 2026-09-13T16:59:38Z"
+   },
+   {
+    "ticket": "OMN-18052",
+    "ticket_title": "Runtime rebuild trigger",
+    "comment_id": "dd44ee55-6666-4777-8888-99990000aaaa",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18052#comment-dd44ee55",
+    "author_role": "linear-closer app",
+    "posted_at": "2026-09-14T11:02:00Z",
+    "text": "Automated closure precheck ran; no action required.",
+    "needs_reply": false,
+    "asks": [],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-18164",
+    "ticket_title": "C5 inbox - verify subdomain delegation",
+    "comment_id": "collab_unanswered_ask",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18164#comment-collab",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-14T11:10:00Z",
+    "text": "Is the inbox path unblocked yet? I still cannot send to the verify subdomain and I do not know whether we are waiting on us or on the registrar.",
+    "needs_reply": true,
+    "asks": [
+     "is the inbox unblocked",
+     "who are we waiting on"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "e1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "e2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "   \n",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "a1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "actor: sweep (sonnet)\nCan this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "a2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Actor: lane-1 (opus)\nbody",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "a3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "actor: x\nno parens",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "a4",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "text first\nactor: x (y)",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "a5",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "actor: x (y) trailing",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k1",
+    "comment_url": "u",
+    "author_role": "autoclose bot",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "human"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "automation"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "operator_self"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k4",
+    "comment_url": "u",
+    "author_role": "human collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "unknown"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k5",
+    "comment_url": "u",
+    "author_role": "",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "HUMAN"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "k6",
+    "comment_url": "u",
+    "author_role": "a bot",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "",
+    "author_kind": "bogus"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": false,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "comment 22f885c7"
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": "  "
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n4",
+    "comment_url": "u",
+    "author_role": "",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n5",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n6",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "ticket_title": "T",
+    "comment_id": "n7",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": false,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-17276",
+    "ticket_title": "T",
+    "comment_id": "selftest_human_with_ask",
+    "comment_url": "u",
+    "author_role": "human collaborator (a collaborator) — not automation; posted under his own Linear identity, not the operator's",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Can this land?",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   },
+   {
+    "ticket": "OMN-16106",
+    "ticket_title": "T",
+    "comment_id": "selftest_automation",
+    "comment_url": "u",
+    "author_role": "orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)",
+    "posted_at": "2026-09-17T13:01:36.497Z",
+    "text": "Autoclose sweep: this ticket has no dod_evidence.",
+    "needs_reply": true,
+    "asks": [
+     "land?"
+    ],
+    "already_answered_by": ""
+   }
+  ],
+  "drafts": [
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "See comment 0a1b2c3d-0000-4000-8000-00000000abcd.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "See comment 0a1b2c3d-0000-4000-8000-00000000abcd.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts 0a1b2c3d-0000-4000-8000-00000000abcd"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "other",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": null,
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "  selftest_id_1 ",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "comment_id: zzz999 is wrong",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "comment_id: aabbccdd is in the source text",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "comment above and comment thread",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "comment 2026-09-17 date, ticket comment OMN-123",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "\"comment_id\": \"qq11ww22\"",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [
+      "comment id c91f2a77"
+     ],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [
+      "comment: 4417aa90"
+     ],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "facts c91f2a77"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "comment 4417aa90 and comment 4417AA90",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "text": "ask about run 77ab12cd and comment aabbccdd"
+    },
+    "x"
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "selftest_id_1",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "T",
+     "comment_id": "",
+     "text": ""
+    },
+    ""
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "comment_id": "",
+     "their_summary": "s",
+     "proposed_reply": "Verified per the facts.",
+     "facts_cited": [],
+     "open_points_for_operator": [],
+     "confidence": "high"
+    },
+    {
+     "ticket": "T",
+     "comment_id": "",
+     "text": ""
+    },
+    ""
+   ]
+  ],
+  "trunc": [
+   {},
+   {
+    "truncated": true
+   },
+   {
+    "finish_reason": "length"
+   },
+   {
+    "finish_reason": "LENGTH "
+   },
+   {
+    "finish_reason": "max_tokens"
+   },
+   {
+    "finish_reason": "stop",
+    "response_head": "{\"a\"",
+    "response_tail": "}"
+   },
+   {
+    "finish_reason": "stop",
+    "response_head": "{\"a\"",
+    "response_tail": "\"x"
+   },
+   {
+    "response_head": "```json\n{\"a\"",
+    "response_tail": "\"x\"\n```"
+   },
+   {
+    "response_head": "```json\n{\"a\"",
+    "response_tail": "\"x"
+   },
+   {
+    "response_head": "no json here",
+    "response_tail": "abc"
+   },
+   {
+    "response_head": "{",
+    "response_tail": ""
+   },
+   {
+    "truncated": true,
+    "finish_reason": "length",
+    "response_head": "{",
+    "response_tail": "x"
+   },
+   {
+    "finish_reason": "token_limit"
+   },
+   {
+    "finish_reason": "max_output_tokens"
+   },
+   {
+    "finish_reason": "stop"
+   }
+  ],
+  "held": [
+   {
+    "stage": "delegate",
+    "reason": "onex delegate exited 3 ... below the proven floor"
+   },
+   {
+    "stage": "delegate",
+    "reason": "exit code: 3"
+   },
+   {
+    "stage": "delegate",
+    "reason": "exited 3"
+   },
+   {
+    "stage": "delegate",
+    "reason": "ran about 12 minutes against a 5 minute shell budget"
+   },
+   {
+    "stage": "delegate",
+    "reason": "execution budget exceeded"
+   },
+   {
+    "stage": "delegate",
+    "reason": "timed out"
+   },
+   {
+    "stage": "delegate",
+    "reason": "peer reconcile holds the lock"
+   },
+   {
+    "stage": "delegate",
+    "reason": "background time limit"
+   },
+   {
+    "stage": "delegate",
+    "reason": "cut off mid-sentence"
+   },
+   {
+    "stage": "delegate",
+    "reason": "truncated response"
+   },
+   {
+    "stage": "delegate",
+    "reason": "x",
+    "truncated": true
+   },
+   {
+    "stage": "source_check",
+    "reason": "anything"
+   },
+   {
+    "stage": "verify",
+    "reason": "the facts table does not support this"
+   },
+   {
+    "stage": "verify",
+    "reason": "not in the facts"
+   },
+   {
+    "stage": "verify",
+    "reason": "   "
+   },
+   {
+    "stage": "verify",
+    "reason": "nope"
+   },
+   {
+    "stage": "verify",
+    "reason": ""
+   },
+   {
+    "stage": "delegate",
+    "reason": "invented a PR"
+   },
+   {
+    "stage": "delegate",
+    "reason": "fabricated id"
+   },
+   {
+    "stage": "pipeline",
+    "reason": "the drafting stage returned no verdict at all"
+   },
+   {
+    "stage": "delegate",
+    "reason": "unsupported claim"
+   },
+   {
+    "stage": "delegate",
+    "reason": ""
+   },
+   {
+    "stage": "",
+    "reason": "proven floor and timed out"
+   },
+   {
+    "stage": "delegate",
+    "reason": "timed out",
+    "truncated": true
+   },
+   {
+    "stage": "delegate",
+    "reason": "exited 30"
+   },
+   {
+    "stage": "delegate",
+    "reason": "connection reset"
+   }
+  ],
+  "heldlists": [
+   [],
+   [
+    {
+     "stage": "delegate",
+     "reason": "onex delegate exited 3 ... below the proven floor"
+    },
+    {
+     "stage": "delegate",
+     "reason": "exit code: 3"
+    },
+    {
+     "stage": "delegate",
+     "reason": "exited 3"
+    }
+   ],
+   [
+    {
+     "stage": "delegate",
+     "reason": "onex delegate exited 3 ... below the proven floor"
+    },
+    {
+     "stage": "delegate",
+     "reason": "exit code: 3"
+    },
+    {
+     "stage": "delegate",
+     "reason": "exited 3"
+    },
+    {
+     "stage": "delegate",
+     "reason": "ran about 12 minutes against a 5 minute shell budget"
+    },
+    {
+     "stage": "delegate",
+     "reason": "execution budget exceeded"
+    },
+    {
+     "stage": "delegate",
+     "reason": "timed out"
+    },
+    {
+     "stage": "delegate",
+     "reason": "peer reconcile holds the lock"
+    },
+    {
+     "stage": "delegate",
+     "reason": "background time limit"
+    },
+    {
+     "stage": "delegate",
+     "reason": "cut off mid-sentence"
+    },
+    {
+     "stage": "delegate",
+     "reason": "truncated response"
+    },
+    {
+     "stage": "delegate",
+     "reason": "x",
+     "truncated": true
+    },
+    {
+     "stage": "source_check",
+     "reason": "anything"
+    },
+    {
+     "stage": "verify",
+     "reason": "the facts table does not support this"
+    },
+    {
+     "stage": "verify",
+     "reason": "not in the facts"
+    },
+    {
+     "stage": "verify",
+     "reason": "   "
+    },
+    {
+     "stage": "verify",
+     "reason": "nope"
+    },
+    {
+     "stage": "verify",
+     "reason": ""
+    },
+    {
+     "stage": "delegate",
+     "reason": "invented a PR"
+    },
+    {
+     "stage": "delegate",
+     "reason": "fabricated id"
+    },
+    {
+     "stage": "pipeline",
+     "reason": "the drafting stage returned no verdict at all"
+    },
+    {
+     "stage": "delegate",
+     "reason": "unsupported claim"
+    },
+    {
+     "stage": "delegate",
+     "reason": ""
+    },
+    {
+     "stage": "",
+     "reason": "proven floor and timed out"
+    },
+    {
+     "stage": "delegate",
+     "reason": "timed out",
+     "truncated": true
+    },
+    {
+     "stage": "delegate",
+     "reason": "exited 30"
+    },
+    {
+     "stage": "delegate",
+     "reason": "connection reset"
+    }
+   ],
+   [
+    {
+     "stage": "delegate",
+     "reason": "onex delegate exited 3 ... below the proven floor",
+     "reason_class": "timeout"
+    },
+    {
+     "stage": "delegate",
+     "reason": "exit code: 3"
+    }
+   ],
+   [
+    {
+     "stage": "delegate",
+     "reason": "exited 3",
+     "reason_class": "bogus"
+    }
+   ]
+  ],
+  "degraded": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ],
+   [
+    3,
+    0
+   ],
+   [
+    3,
+    1
+   ],
+   [
+    0,
+    3
+   ],
+   [
+    2,
+    2
+   ]
+  ],
+  "metrics": [
+   {
+    "_source": "Real receipt.json from a measured `onex delegate --task-type document` run on 2026-09-14, drafting a Linear reply for OMN-18164. Kept verbatim except prompt_text/response_text, which are stripped for size. It pins the trap: `model_cloud_baseline` is the PREMIUM COUNTERFACTUAL baseline, not the model that answered. A metrics reader that reports it as the answering model reports an Anthropic model for a call that never touched Anthropic.",
+    "backend_id": "cloud-gemini-flash",
+    "correlation_id": "1b815ba3-b6af-4bd3-a8a2-b2e97402fe70",
+    "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    "model": "gemini-2.5-flash-lite",
+    "receipt": {
+     "artifact_refs": [
+      {
+       "ref": "sha256:0616b35a018caa8647e0621f608e21516a9a1f8254276461908fa40267d6016f"
+      },
+      {
+       "ref": "sha256:8f58ce558b4ac57412ae630aa9c2b658b87f1ed3e6cc2598e8ce5f6b5f0b7d41"
+      }
+     ],
+     "correlation_id": "1b815ba3-b6af-4bd3-a8a2-b2e97402fe70",
+     "duration_ms": 71092,
+     "exit_code": 0,
+     "metrics": {
+      "capture_log_bytes": 27242.0
+     },
+     "node_name": "node_delegate_skill_orchestrator",
+     "result": {
+      "attempts": [
+       {
+        "acceptance_decision": "climb",
+        "acceptance_reason": "score_below_required_bar",
+        "backend_id": "local-heavy-reasoning",
+        "cost_usd": 0.0,
+        "error_message": "",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.6-35B-A3B",
+        "quality_gate_passed": false,
+        "quality_score": 0.9,
+        "tier": "local"
+       },
+       {
+        "acceptance_decision": "climb",
+        "acceptance_reason": "score_below_required_bar",
+        "backend_id": "local-heavy-reasoning",
+        "cost_usd": 0.0,
+        "error_message": "",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.6-35B-A3B",
+        "quality_gate_passed": false,
+        "quality_score": 0.9,
+        "tier": "local"
+       },
+       {
+        "acceptance_decision": "climb",
+        "acceptance_reason": "score_below_required_bar",
+        "backend_id": "local-heavy-reasoning",
+        "cost_usd": 0.0,
+        "error_message": "",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.6-35B-A3B",
+        "quality_gate_passed": false,
+        "quality_score": 0.9,
+        "tier": "local"
+       },
+       {
+        "acceptance_decision": "accept",
+        "acceptance_reason": "quality_bar_met",
+        "backend_id": "cloud-gemini-flash",
+        "cost_usd": 0.001168,
+        "error_message": "",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "gemini-2.5-flash-lite",
+        "quality_gate_passed": true,
+        "quality_score": 1.0,
+        "tier": "cheap_cloud"
+       }
+      ],
+      "attempts_count": 4,
+      "correlation_id": "1b815ba3-b6af-4bd3-a8a2-b2e97402fe70",
+      "error_message": "",
+      "escalation_count": 1,
+      "metrics": {
+       "compliance_attempts": 0,
+       "cost_savings_usd": 0.020972,
+       "cost_usd": 0.001168,
+       "frontier_costs_usd": {
+        "claude-haiku-3-5": 0.0011808,
+        "claude-opus-4-6": 0.02214,
+        "claude-sonnet-4-20250514": 0.004428,
+        "gpt-4o": 0.0031325
+       },
+       "input_tokens": 361,
+       "latency_ms": 937,
+       "output_tokens": 223,
+       "premium_counterfactual": {
+        "as_of": "2026-02-01",
+        "counterfactual_cost_usd": "0.02214",
+        "measured": false,
+        "model": "claude-opus-4-6",
+        "price_in_per_1k": "0.015",
+        "price_out_per_1k": "0.075",
+        "pricing_source": "pricing_manifest",
+        "tokens_in": 361,
+        "tokens_out": 223
+       },
+       "tokens_to_compliance": 0,
+       "total_tokens": 584
+      },
+      "model_cloud_baseline": "claude-opus-4-6",
+      "model_name": "gemini-2.5-flash-lite",
+      "pricing_manifest_version": 1,
+      "provider": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "quality_gate_passed": true,
+      "quality_gates_failed": [],
+      "quality_score": 1.0,
+      "response": "```json\n{\n  \"ticket\": \"OMN-18164\",\n  \"comment_id\": \"9f2a1c\",\n  \"their_summary\": \"Collaborator is asking if the inbox path is unblocked and who is responsible for the delay.\",\n  \"proposed_reply\": \"The inbox path is still blocked. We are waiting on the registrar to update the NS record for verify.omninode.ai. This is a DNS issue on their end. The AWS side of the work is complete.\",\n  \"facts_cited\": [\n    \"Ruling at ledger line 6419: the C5 inbox approach is NS delegation of verify.omninode.ai; the registrar record is pending at GoDaddy and it is their DNS issue.\",\n    \"The AWS half of OMN-18164 has landed; the lane is blocked on the registrar NS record only.\"\n  ],\n  \"open_points_for_operator\": [],\n  \"confidence\": \"high\"\n}\n```",
+      "status": "completed",
+      "task_type": "document",
+      "tenant_id": null
+     },
+     "result_model": "omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillCompleted",
+     "run_id": "0e1c073a-beb1-4cb5-adf8-d02b5d52b58b",
+     "runtime_identity": {
+      "config_source": "/opt/onex/venv/lib/python3.12/site-packages/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml",
+      "execution_locus": "/opt/onex/venv",
+      "host": "Stickybeatz-Studio.local",
+      "interpreter": "/opt/onex/venv/bin/python3",
+      "locus_kind": "venv",
+      "packages": {
+       "omnibase_compat": {
+        "commit": null,
+        "import_path": null,
+        "name": "omnibase_compat",
+        "source": "registry",
+        "version": "0.5.7"
+       },
+       "omnibase_core": {
+        "commit": null,
+        "import_path": null,
+        "name": "omnibase_core",
+        "source": "registry",
+        "version": "0.47.13"
+       },
+       "omnibase_infra": {
+        "commit": null,
+        "import_path": null,
+        "name": "omnibase_infra",
+        "source": "local_path",
+        "version": "0.38.25"
+       },
+       "omnibase_spi": {
+        "commit": null,
+        "import_path": null,
+        "name": "omnibase_spi",
+        "source": "registry",
+        "version": "0.23.3"
+       },
+       "omnimarket": {
+        "commit": "ce01f7de22d7a247bd06327893d1cce831cc6cee",
+        "import_path": null,
+        "name": "omnimarket",
+        "source": "vcs",
+        "version": "0.4.83"
+       }
+      },
+      "schema_version": {
+       "build": null,
+       "major": 1,
+       "minor": 0,
+       "patch": 0,
+       "prerelease": null
+      },
+      "stamped_at": "2026-09-14T11:51:44.918385Z"
+     },
+     "schema_version": {
+      "build": null,
+      "major": 1,
+      "minor": 1,
+      "patch": 0,
+      "prerelease": null
+     },
+     "skill_name": "node_delegate_skill_orchestrator",
+     "status": "success"
+    },
+    "receipt_id": "1b815ba3-b6af-4bd3-a8a2-b2e97402fe70",
+    "routing_tier": "cheap_cloud",
+    "run_id": "0e1c073a-beb1-4cb5-adf8-d02b5d52b58b",
+    "status": "success"
+   },
+   {
+    "receipt": {}
+   },
+   {
+    "backend_id": "b",
+    "receipt": {
+     "duration_ms": 5,
+     "result": {
+      "attempts": [
+       {
+        "tier": "local",
+        "backend_id": "x",
+        "model_id": "m1",
+        "acceptance_decision": "climb"
+       },
+       {
+        "tier": "cloud",
+        "backend_id": "y",
+        "model_id": "m2",
+        "acceptance_decision": "accept",
+        "quality_score": 1,
+        "cost_usd": 0.5
+       }
+      ],
+      "metrics": {
+       "total_tokens": 10,
+       "latency_ms": 3,
+       "cost_usd": 0.1
+      }
+     }
+    }
+   },
+   {
+    "receipt": {
+     "result": {
+      "model_name": "mn",
+      "attempts_count": 4,
+      "escalation_count": 1,
+      "model_cloud_baseline": "premium"
+     }
+    }
+   }
+  ],
+  "prompts": [
+   [
+    {
+     "ticket": "OMN-18268",
+     "ticket_title": "AC-binding gap on the autoclose sweep",
+     "comment_id": "bf9a438b-ca16-4e7a-8c92-5f760f0f2df9",
+     "comment_url": "https://linear.app/omninode/issue/OMN-18268#comment-bf9a438b",
+     "author_role": "orchestrator/autoclose-sweep (posted as the operator's own Linear identity)",
+     "posted_at": "2026-09-14T11:36:52Z",
+     "text": "AC-binding gap: dod_verify 4/6 verified, 0 failed, but AC1-AC3 have no binds_ac entry in contracts/OMN-18268.yaml; not auto-closable until labeled.",
+     "needs_reply": true,
+     "asks": [
+      "label the AC bindings"
+     ],
+     "already_answered_by": ""
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-18086",
+     "ticket_title": "Evidence gap on the autoclose sweep",
+     "comment_id": "8354b627-f18a-4359-b1e3-3a9a873c7fcc",
+     "comment_url": "https://linear.app/omninode/issue/OMN-18086#comment-8354b627",
+     "author_role": "autoclose-sweep bot",
+     "posted_at": "2026-09-14T10:47:18Z",
+     "text": "Evidence gap: dod_verify 7/15 ACs verified, 2 failed - not all ACs receipt-proven, not flipped.",
+     "needs_reply": true,
+     "asks": [
+      "prove the remaining ACs"
+     ],
+     "already_answered_by": ""
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-18160",
+     "ticket_title": "MSK broker right-sizing",
+     "comment_id": "568e6a23-973d-4033-aaa6-be60c969de3f",
+     "comment_url": "https://linear.app/omninode/issue/OMN-18160#comment-568e6a23",
+     "author_role": "the CTO candidate",
+     "posted_at": "2026-09-11T09:23:45Z",
+     "text": "Broker right-sizing readback answering the three questions.",
+     "needs_reply": true,
+     "asks": [
+      "confirm the disposition"
+     ],
+     "already_answered_by": "operator comment 22f885c7, 2026-09-11T12:54:59Z"
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-16964",
+     "ticket_title": "Chain canary AC1 probe",
+     "comment_id": "aa11bb22-cccc-4444-8888-999900001111",
+     "comment_url": "https://linear.app/omninode/issue/OMN-16964#comment-aa11bb22",
+     "author_role": "a collaborator",
+     "posted_at": "2026-09-13T15:52:47Z",
+     "text": "What is the governed probe and the expected result for AC1?",
+     "needs_reply": true,
+     "asks": [
+      "name the probe",
+      "name the expected result"
+     ],
+     "already_answered_by": "operator comment fd2a9c30, 2026-09-13T16:59:38Z"
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-18052",
+     "ticket_title": "Runtime rebuild trigger",
+     "comment_id": "dd44ee55-6666-4777-8888-99990000aaaa",
+     "comment_url": "https://linear.app/omninode/issue/OMN-18052#comment-dd44ee55",
+     "author_role": "linear-closer app",
+     "posted_at": "2026-09-14T11:02:00Z",
+     "text": "Automated closure precheck ran; no action required.",
+     "needs_reply": false,
+     "asks": [],
+     "already_answered_by": ""
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-18164",
+     "ticket_title": "C5 inbox - verify subdomain delegation",
+     "comment_id": "collab_unanswered_ask",
+     "comment_url": "https://linear.app/omninode/issue/OMN-18164#comment-collab",
+     "author_role": "a collaborator",
+     "posted_at": "2026-09-14T11:10:00Z",
+     "text": "Is the inbox path unblocked yet? I still cannot send to the verify subdomain and I do not know whether we are waiting on us or on the registrar.",
+     "needs_reply": true,
+     "asks": [
+      "is the inbox unblocked",
+      "who are we waiting on"
+     ],
+     "already_answered_by": ""
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "ticket_title": "T",
+     "comment_id": "c1",
+     "comment_url": "u",
+     "author_role": "a collaborator",
+     "posted_at": "2026-09-17T13:01:36.497Z",
+     "text": "Can this land?",
+     "needs_reply": true,
+     "asks": [],
+     "already_answered_by": ""
+    },
+    "Ground-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd."
+   ],
+   [
+    {
+     "ticket": "OMN-1",
+     "ticket_title": "T",
+     "comment_id": "we/ird id",
+     "comment_url": "u",
+     "author_role": "a collaborator",
+     "posted_at": "2026-09-17T13:01:36.497Z",
+     "text": "Can this land?",
+     "needs_reply": true,
+     "asks": [
+      "a",
+      "b"
+     ],
+     "already_answered_by": ""
+    },
+    ""
+   ]
+  ]
+ },
+ "expected": {
+  "classify_author_role": [
+   "unknown",
+   "automation",
+   "automation",
+   "human",
+   "unknown",
+   "human",
+   "automation",
+   "human",
+   "human",
+   "human",
+   "human",
+   "automation",
+   "automation",
+   "automation",
+   "automation",
+   "automation",
+   "automation",
+   "human",
+   "automation",
+   "human",
+   "operator_self",
+   "operator_self",
+   "operator_self",
+   "operator_self",
+   "operator_self",
+   "human",
+   "automation",
+   "automation",
+   "human",
+   "automation",
+   "automation",
+   "human",
+   "human",
+   "unknown",
+   "unknown",
+   "automation",
+   "automation",
+   "automation",
+   "human"
+  ],
+  "classify_author": [
+   "automation",
+   "automation",
+   "human",
+   "human",
+   "automation",
+   "human",
+   "human",
+   "human",
+   "automation",
+   "automation",
+   "human",
+   "human",
+   "human",
+   "human",
+   "automation",
+   "human",
+   "human",
+   "human",
+   "automation",
+   "human",
+   "human",
+   "human",
+   "unknown",
+   "unknown",
+   "human",
+   "unknown",
+   "human",
+   "automation"
+  ],
+  "decide": [
+   {
+    "ticket": "OMN-18268",
+    "comment_id": "bf9a438b-ca16-4e7a-8c92-5f760f0f2df9",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18268#comment-bf9a438b",
+    "author_role": "orchestrator/autoclose-sweep (posted as the operator's own Linear identity)",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"orchestrator/autoclose-sweep (posted as the operator's own Linear identity)\""
+   },
+   {
+    "ticket": "OMN-18086",
+    "comment_id": "8354b627-f18a-4359-b1e3-3a9a873c7fcc",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18086#comment-8354b627",
+    "author_role": "autoclose-sweep bot",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"autoclose-sweep bot\""
+   },
+   {
+    "ticket": "OMN-18160",
+    "comment_id": "568e6a23-973d-4033-aaa6-be60c969de3f",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18160#comment-568e6a23",
+    "author_role": "the CTO candidate",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by operator comment 22f885c7, 2026-09-11T12:54:59Z"
+   },
+   {
+    "ticket": "OMN-16964",
+    "comment_id": "aa11bb22-cccc-4444-8888-999900001111",
+    "comment_url": "https://linear.app/omninode/issue/OMN-16964#comment-aa11bb22",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by operator comment fd2a9c30, 2026-09-13T16:59:38Z"
+   },
+   {
+    "ticket": "OMN-18052",
+    "comment_id": "dd44ee55-6666-4777-8888-99990000aaaa",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18052#comment-dd44ee55",
+    "author_role": "linear-closer app",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"linear-closer app\""
+   },
+   {
+    "ticket": "OMN-18164",
+    "comment_id": "collab_unanswered_ask",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18164#comment-collab",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "e1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "empty_text",
+    "reason": "the collector recorded no comment text for this item"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "e2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "empty_text",
+    "reason": "the collector recorded no comment text for this item"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "agent-posted: actor: sweep (sonnet)"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "agent-posted: Actor: lane-1 (opus)"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a4",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a5",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k1",
+    "comment_url": "u",
+    "author_role": "autoclose bot",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"a collaborator\""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k4",
+    "comment_url": "u",
+    "author_role": "human collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k5",
+    "comment_url": "u",
+    "author_role": "(none recorded)",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k6",
+    "comment_url": "u",
+    "author_role": "a bot",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"a bot\""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "no_reply_needed",
+    "reason": "the collector set needs_reply false for this comment"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": false,
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by comment 22f885c7"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n3",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n4",
+    "comment_url": "u",
+    "author_role": "(none recorded)",
+    "author_kind": "unknown",
+    "draft": false,
+    "reason_class": "author_unclassified",
+    "reason": "HELD for operator adjudication: author_role \"(none recorded)\" names neither a human collaborator nor an automation, so this item was not classified either way"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n5",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "author_kind": "unknown",
+    "draft": false,
+    "reason_class": "author_unclassified",
+    "reason": "HELD for operator adjudication: author_role \"mystery\" names neither a human collaborator nor an automation, so this item was not classified either way"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n6",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n7",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "author_kind": "unknown",
+    "draft": false,
+    "reason_class": "no_reply_needed",
+    "reason": "the collector set needs_reply false for this comment"
+   },
+   {
+    "ticket": "OMN-17276",
+    "comment_id": "selftest_human_with_ask",
+    "comment_url": "u",
+    "author_role": "human collaborator (a collaborator) — not automation; posted under his own Linear identity, not the operator's",
+    "author_kind": "human",
+    "draft": true,
+    "reason_class": "",
+    "reason": ""
+   },
+   {
+    "ticket": "OMN-16106",
+    "comment_id": "selftest_automation",
+    "comment_url": "u",
+    "author_role": "orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)",
+    "author_kind": "automation",
+    "draft": false,
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)\""
+   }
+  ],
+  "select": [
+   "collab_unanswered_ask",
+   "a3",
+   "a4",
+   "a5",
+   "k1",
+   "k3",
+   "k4",
+   "k5",
+   "n3",
+   "n6",
+   "selftest_human_with_ask"
+  ],
+  "refusals": [
+   {
+    "ticket": "OMN-18268",
+    "comment_id": "bf9a438b-ca16-4e7a-8c92-5f760f0f2df9",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18268#comment-bf9a438b",
+    "author_role": "orchestrator/autoclose-sweep (posted as the operator's own Linear identity)",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"orchestrator/autoclose-sweep (posted as the operator's own Linear identity)\""
+   },
+   {
+    "ticket": "OMN-18086",
+    "comment_id": "8354b627-f18a-4359-b1e3-3a9a873c7fcc",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18086#comment-8354b627",
+    "author_role": "autoclose-sweep bot",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"autoclose-sweep bot\""
+   },
+   {
+    "ticket": "OMN-18160",
+    "comment_id": "568e6a23-973d-4033-aaa6-be60c969de3f",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18160#comment-568e6a23",
+    "author_role": "the CTO candidate",
+    "author_kind": "human",
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by operator comment 22f885c7, 2026-09-11T12:54:59Z"
+   },
+   {
+    "ticket": "OMN-16964",
+    "comment_id": "aa11bb22-cccc-4444-8888-999900001111",
+    "comment_url": "https://linear.app/omninode/issue/OMN-16964#comment-aa11bb22",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by operator comment fd2a9c30, 2026-09-13T16:59:38Z"
+   },
+   {
+    "ticket": "OMN-18052",
+    "comment_id": "dd44ee55-6666-4777-8888-99990000aaaa",
+    "comment_url": "https://linear.app/omninode/issue/OMN-18052#comment-dd44ee55",
+    "author_role": "linear-closer app",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"linear-closer app\""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "e1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "reason_class": "empty_text",
+    "reason": "the collector recorded no comment text for this item"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "e2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "reason_class": "empty_text",
+    "reason": "the collector recorded no comment text for this item"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "agent-posted: actor: sweep (sonnet)"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "a2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "agent-posted: Actor: lane-1 (opus)"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"a collaborator\""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "k6",
+    "comment_url": "u",
+    "author_role": "a bot",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"a bot\""
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n1",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "reason_class": "no_reply_needed",
+    "reason": "the collector set needs_reply false for this comment"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n2",
+    "comment_url": "u",
+    "author_role": "a collaborator",
+    "author_kind": "human",
+    "reason_class": "already_answered",
+    "reason": "already answered in-thread by comment 22f885c7"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n4",
+    "comment_url": "u",
+    "author_role": "(none recorded)",
+    "author_kind": "unknown",
+    "reason_class": "author_unclassified",
+    "reason": "HELD for operator adjudication: author_role \"(none recorded)\" names neither a human collaborator nor an automation, so this item was not classified either way"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n5",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "author_kind": "unknown",
+    "reason_class": "author_unclassified",
+    "reason": "HELD for operator adjudication: author_role \"mystery\" names neither a human collaborator nor an automation, so this item was not classified either way"
+   },
+   {
+    "ticket": "OMN-1",
+    "comment_id": "n7",
+    "comment_url": "u",
+    "author_role": "mystery",
+    "author_kind": "unknown",
+    "reason_class": "no_reply_needed",
+    "reason": "the collector set needs_reply false for this comment"
+   },
+   {
+    "ticket": "OMN-16106",
+    "comment_id": "selftest_automation",
+    "comment_url": "u",
+    "author_role": "orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)",
+    "author_kind": "automation",
+    "reason_class": "automation",
+    "reason": "automation-authored: the collector's author_role reads \"orchestrator/autoclose-sweep bot (posted as the operator's own Linear identity)\""
+   }
+  ],
+  "cite": [
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) 0a1b2c3d-0000-4000-8000-00000000abcd that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "0a1b2c3d-0000-4000-8000-00000000abcd"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft's comment_id \"other\" is not the item's \"selftest_id_1\"",
+    "foreign_ids": [],
+    "comment_id_mismatch": true
+   },
+   {
+    "ok": false,
+    "reason": "the draft's comment_id null is not the item's \"selftest_id_1\"",
+    "foreign_ids": [],
+    "comment_id_mismatch": true
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) zzz999 that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "zzz999"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) qq11ww22 that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "qq11ww22"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) c91f2a77 that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "c91f2a77"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) 4417aa90 that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "4417aa90"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft cites comment id(s) 4417aa90 that are in neither the source set nor the facts table",
+    "foreign_ids": [
+     "4417aa90"
+    ],
+    "comment_id_mismatch": false
+   },
+   {
+    "ok": false,
+    "reason": "the draft's comment_id \"selftest_id_1\" is not the item's \"\"",
+    "foreign_ids": [],
+    "comment_id_mismatch": true
+   },
+   {
+    "ok": true,
+    "reason": "",
+    "foreign_ids": [],
+    "comment_id_mismatch": false
+   }
+  ],
+  "truncation": [
+   {
+    "truncated": false,
+    "signals": []
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "receipt_truncated"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "finish_reason:length"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "finish_reason:length"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "finish_reason:max_tokens"
+    ]
+   },
+   {
+    "truncated": false,
+    "signals": []
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "unclosed_json"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "unclosed_json"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "unclosed_json"
+    ]
+   },
+   {
+    "truncated": false,
+    "signals": []
+   },
+   {
+    "truncated": false,
+    "signals": []
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "receipt_truncated",
+     "finish_reason:length",
+     "unclosed_json"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "finish_reason:token_limit"
+    ]
+   },
+   {
+    "truncated": true,
+    "signals": [
+     "finish_reason:max_output_tokens"
+    ]
+   },
+   {
+    "truncated": false,
+    "signals": []
+   }
+  ],
+  "classify_held": [
+   "floor_refused",
+   "floor_refused",
+   "floor_refused",
+   "timeout",
+   "timeout",
+   "timeout",
+   "timeout",
+   "timeout",
+   "truncated",
+   "truncated",
+   "truncated",
+   "unsourced",
+   "unsourced",
+   "unsourced",
+   "transport",
+   "unsourced",
+   "transport",
+   "unsourced",
+   "unsourced",
+   "transport",
+   "unsourced",
+   "transport",
+   "floor_refused",
+   "timeout",
+   "transport",
+   "transport"
+  ],
+  "held_by_class": [
+   {
+    "floor_refused": 0,
+    "truncated": 0,
+    "unsourced": 0,
+    "transport": 0,
+    "timeout": 0
+   },
+   {
+    "floor_refused": 3,
+    "truncated": 0,
+    "unsourced": 0,
+    "transport": 0,
+    "timeout": 0
+   },
+   {
+    "floor_refused": 4,
+    "truncated": 3,
+    "unsourced": 7,
+    "transport": 6,
+    "timeout": 6
+   },
+   {
+    "floor_refused": 1,
+    "truncated": 0,
+    "unsourced": 0,
+    "transport": 0,
+    "timeout": 1
+   },
+   {
+    "floor_refused": 1,
+    "truncated": 0,
+    "unsourced": 0,
+    "transport": 0,
+    "timeout": 0
+   }
+  ],
+  "degraded": [
+   false,
+   true,
+   true,
+   false,
+   false,
+   false
+  ],
+  "metrics": [
+   {
+    "model": "gemini-2.5-flash-lite",
+    "backend_id": "cloud-gemini-flash",
+    "tier": "cheap_cloud",
+    "total_tokens": 584,
+    "input_tokens": 361,
+    "output_tokens": 223,
+    "latency_ms": 937,
+    "wall_ms": 71092,
+    "cost_usd": 0.001168,
+    "cost_savings_usd": 0.020972,
+    "premium_counterfactual_model": "claude-opus-4-6",
+    "attempts": 4,
+    "escalations": 1,
+    "accepted": true,
+    "tried": [
+     {
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "quality_score": 0.9,
+      "decision": "climb",
+      "cost_usd": 0
+     },
+     {
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "quality_score": 0.9,
+      "decision": "climb",
+      "cost_usd": 0
+     },
+     {
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "quality_score": 0.9,
+      "decision": "climb",
+      "cost_usd": 0
+     },
+     {
+      "tier": "cheap_cloud",
+      "backend_id": "cloud-gemini-flash",
+      "model_id": "gemini-2.5-flash-lite",
+      "quality_score": 1,
+      "decision": "accept",
+      "cost_usd": 0.001168
+     }
+    ]
+   },
+   {
+    "model": null,
+    "backend_id": null,
+    "tier": null,
+    "total_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "latency_ms": null,
+    "wall_ms": null,
+    "cost_usd": null,
+    "cost_savings_usd": null,
+    "premium_counterfactual_model": null,
+    "attempts": 0,
+    "escalations": null,
+    "accepted": false,
+    "tried": []
+   },
+   {
+    "model": "m2",
+    "backend_id": "b",
+    "tier": "cloud",
+    "total_tokens": 10,
+    "input_tokens": null,
+    "output_tokens": null,
+    "latency_ms": 3,
+    "wall_ms": 5,
+    "cost_usd": 0.1,
+    "cost_savings_usd": null,
+    "premium_counterfactual_model": null,
+    "attempts": 2,
+    "escalations": null,
+    "accepted": true,
+    "tried": [
+     {
+      "tier": "local",
+      "backend_id": "x",
+      "model_id": "m1",
+      "decision": "climb"
+     },
+     {
+      "tier": "cloud",
+      "backend_id": "y",
+      "model_id": "m2",
+      "quality_score": 1,
+      "decision": "accept",
+      "cost_usd": 0.5
+     }
+    ]
+   },
+   {
+    "model": "mn",
+    "backend_id": null,
+    "tier": null,
+    "total_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "latency_ms": null,
+    "wall_ms": null,
+    "cost_usd": null,
+    "cost_savings_usd": null,
+    "premium_counterfactual_model": "premium",
+    "attempts": 4,
+    "escalations": 1,
+    "accepted": false,
+    "tried": []
+   }
+  ],
+  "prompt": [
+   "Draft the operator's reply comment for Linear OMN-18268 (AC-binding gap on the autoclose sweep), replying to comment bf9a438b-ca16-4e7a-8c92-5f760f0f2df9 by orchestrator/autoclose-sweep (posted as the operator's own Linear identity) at 2026-09-14T11:36:52Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: bf9a438b-ca16-4e7a-8c92-5f760f0f2df9\ncomment text:\n---\nAC-binding gap: dod_verify 4/6 verified, 0 failed, but AC1-AC3 have no binds_ac entry in contracts/OMN-18268.yaml; not auto-closable until labeled.\n---\nAsks: [\"label the AC bindings\"].\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-18086 (Evidence gap on the autoclose sweep), replying to comment 8354b627-f18a-4359-b1e3-3a9a873c7fcc by autoclose-sweep bot at 2026-09-14T10:47:18Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: 8354b627-f18a-4359-b1e3-3a9a873c7fcc\ncomment text:\n---\nEvidence gap: dod_verify 7/15 ACs verified, 2 failed - not all ACs receipt-proven, not flipped.\n---\nAsks: [\"prove the remaining ACs\"].\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-18160 (MSK broker right-sizing), replying to comment 568e6a23-973d-4033-aaa6-be60c969de3f by the CTO candidate at 2026-09-11T09:23:45Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: 568e6a23-973d-4033-aaa6-be60c969de3f\ncomment text:\n---\nBroker right-sizing readback answering the three questions.\n---\nAsks: [\"confirm the disposition\"].\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-16964 (Chain canary AC1 probe), replying to comment aa11bb22-cccc-4444-8888-999900001111 by a collaborator at 2026-09-13T15:52:47Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: aa11bb22-cccc-4444-8888-999900001111\ncomment text:\n---\nWhat is the governed probe and the expected result for AC1?\n---\nAsks: [\"name the probe\",\"name the expected result\"].\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-18052 (Runtime rebuild trigger), replying to comment dd44ee55-6666-4777-8888-99990000aaaa by linear-closer app at 2026-09-14T11:02:00Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: dd44ee55-6666-4777-8888-99990000aaaa\ncomment text:\n---\nAutomated closure precheck ran; no action required.\n---\nAsks: the collector did not enumerate them. Read the comment above and answer what it actually asks. If it asks nothing answerable, say so in open_points_for_operator and leave proposed_reply empty rather than writing a filler acknowledgement.\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-18164 (C5 inbox - verify subdomain delegation), replying to comment collab_unanswered_ask by a collaborator at 2026-09-14T11:10:00Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: collab_unanswered_ask\ncomment text:\n---\nIs the inbox path unblocked yet? I still cannot send to the verify subdomain and I do not know whether we are waiting on us or on the registrar.\n---\nAsks: [\"is the inbox unblocked\",\"who are we waiting on\"].\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-1 (T), replying to comment c1 by a collaborator at 2026-09-17T13:01:36.497Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: c1\ncomment text:\n---\nCan this land?\n---\nAsks: the collector did not enumerate them. Read the comment above and answer what it actually asks. If it asks nothing answerable, say so in open_points_for_operator and leave proposed_reply empty rather than writing a filler acknowledgement.\n\nGround-truth facts you may cite, and nothing else:\nGround-truth facts.\n- 2026-09-17T13:00:00Z OMN-17276 merged in PR#12 at run 77ab12cd.\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object.",
+   "Draft the operator's reply comment for Linear OMN-1 (T), replying to comment we/ird id by a collaborator at 2026-09-17T13:01:36.497Z.\n\nSOURCE SET -- the only comment ids and comment texts you may cite. Cite no comment id outside this set; every comment_id in your answer is the one below.\ncomment id: we/ird id\ncomment text:\n---\nCan this land?\n---\nAsks: [\"a\",\"b\"].\n\nGround-truth facts you may cite, and nothing else:\n\n\nOperator voice: plain, direct, first person, SHORT (3 to 10 sentences), no bullets unless listing options, no em-dashes. Answer every ask with a verified fact and cite the ticket, PR, run id or ledger line it comes from. Never invent a fact, never use a placeholder, and never promise a date the facts do not support. Where only the operator can decide, write a bracketed [OPERATOR: ...] line naming the options.\n\nNever write a holding non-answer: no 'I'll look into it', no 'we're tracking this', no 'more soon', no bare acknowledgement of receipt. If the facts above do not answer an ask, that ask goes in open_points_for_operator and does not appear in proposed_reply at all. A reply that answers nothing must come back with proposed_reply empty.\n\nDo not echo the asker's own uncertainty phrasing back at them, and never write a disclaimer about what you or they do not know. State what is true. When something the asker wants is genuinely not in the facts above, do not hedge about it in the reply text: leave it out of proposed_reply and put it in open_points_for_operator instead.\n\nYour entire output must be one JSON object and nothing else. The first character you emit is { and the last is }. No reasoning, no preamble, no explanation, no code fence, no text after the object.\nKeys: ticket, comment_id, their_summary, proposed_reply, facts_cited (array of strings), open_points_for_operator (array of strings), confidence (one of high, medium, low).\nIn their_summary, paraphrase what they asked in your own words. Never quote their comment verbatim anywhere in the object."
+  ],
+  "source_set": [
+   {
+    "comment_ids": [
+     "bf9a438b-ca16-4e7a-8c92-5f760f0f2df9"
+    ],
+    "texts": [
+     "AC-binding gap: dod_verify 4/6 verified, 0 failed, but AC1-AC3 have no binds_ac entry in contracts/OMN-18268.yaml; not auto-closable until labeled."
+    ]
+   },
+   {
+    "comment_ids": [
+     "8354b627-f18a-4359-b1e3-3a9a873c7fcc"
+    ],
+    "texts": [
+     "Evidence gap: dod_verify 7/15 ACs verified, 2 failed - not all ACs receipt-proven, not flipped."
+    ]
+   },
+   {
+    "comment_ids": [
+     "568e6a23-973d-4033-aaa6-be60c969de3f"
+    ],
+    "texts": [
+     "Broker right-sizing readback answering the three questions."
+    ]
+   },
+   {
+    "comment_ids": [
+     "aa11bb22-cccc-4444-8888-999900001111"
+    ],
+    "texts": [
+     "What is the governed probe and the expected result for AC1?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "dd44ee55-6666-4777-8888-99990000aaaa"
+    ],
+    "texts": [
+     "Automated closure precheck ran; no action required."
+    ]
+   },
+   {
+    "comment_ids": [
+     "collab_unanswered_ask"
+    ],
+    "texts": [
+     "Is the inbox path unblocked yet? I still cannot send to the verify subdomain and I do not know whether we are waiting on us or on the registrar."
+    ]
+   },
+   {
+    "comment_ids": [
+     "e1"
+    ],
+    "texts": [
+     ""
+    ]
+   },
+   {
+    "comment_ids": [
+     "e2"
+    ],
+    "texts": [
+     "   \n"
+    ]
+   },
+   {
+    "comment_ids": [
+     "a1"
+    ],
+    "texts": [
+     "actor: sweep (sonnet)\nCan this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "a2"
+    ],
+    "texts": [
+     "Actor: lane-1 (opus)\nbody"
+    ]
+   },
+   {
+    "comment_ids": [
+     "a3"
+    ],
+    "texts": [
+     "actor: x\nno parens"
+    ]
+   },
+   {
+    "comment_ids": [
+     "a4"
+    ],
+    "texts": [
+     "text first\nactor: x (y)"
+    ]
+   },
+   {
+    "comment_ids": [
+     "a5"
+    ],
+    "texts": [
+     "actor: x (y) trailing"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k1"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k2"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k3"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k4"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k5"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "k6"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n1"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n2"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n3"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n4"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n5"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n6"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "n7"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "selftest_human_with_ask"
+    ],
+    "texts": [
+     "Can this land?"
+    ]
+   },
+   {
+    "comment_ids": [
+     "selftest_automation"
+    ],
+    "texts": [
+     "Autoclose sweep: this ticket has no dod_evidence."
+    ]
+   }
+  ],
+  "extract_ids": [
+   [],
+   [
+    "0a1b2c3d-0000-4000-8000-00000000abcd"
+   ],
+   [
+    "0a1b2c3d-0000-4000-8000-00000000abcd"
+   ],
+   [],
+   [],
+   [],
+   [
+    "zzz999"
+   ],
+   [
+    "aabbccdd"
+   ],
+   [],
+   [],
+   [
+    "qq11ww22"
+   ],
+   [],
+   [],
+   [
+    "4417aa90"
+   ],
+   [],
+   []
+  ]
+ }
+}

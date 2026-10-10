@@ -4253,7 +4253,17 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.request is not None
         return [
-            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+            # OMN-19215: a quality retry after transport failover must retain
+            # the unavailable same-model rung's routing exclusion. The set holds
+            # only backends whose call failed in transport on this workflow, so
+            # it is empty when none did; the escalation intents carry the same set.
+            ModelRoutingIntent(
+                payload=workflow.request,
+                min_tier_name=tier,
+                excluded_backend_refs=tuple(
+                    sorted(workflow.transport_failed_backend_refs)
+                ),
+            ),
         ]
 
     def _build_escalation_event(
@@ -5311,9 +5321,9 @@ class HandlerDelegationWorkflow:
         # OMN-18928: lifecycle completion is not evidence of returned content.
         # Decide before advancing the FSM so a missing artifact closes FAILED
         # once, rather than manufacturing a perfect score from the status text.
+        # An empty artifact map also contains no returned answer.
         missing_final_artifact = (
-            next_state is EnumDelegationState.COMPLETED
-            and lifecycle_event.artifact is None
+            next_state is EnumDelegationState.COMPLETED and not lifecycle_event.artifact
         )
         if missing_final_artifact:
             next_state = EnumDelegationState.FAILED
@@ -5344,7 +5354,7 @@ class HandlerDelegationWorkflow:
         # returned no artifact; its final verdict and score remain unscored.
         content, history_dicts = _terminal_response_fields(
             workflow,
-            content if lifecycle_event.artifact is not None else "",
+            content if lifecycle_event.artifact else "",
             retain_best=not completed,
         )
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token

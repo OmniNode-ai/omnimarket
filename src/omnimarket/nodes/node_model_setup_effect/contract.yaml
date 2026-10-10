@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Model Setup Effect (OMN-20817)
+#
+# CLI-run effect, like node_local_secret_store_effect: no subscription and no
+# onex.nodes entry point, invoked by the `onex models` shim. `experimental` is
+# the drift gate's marker for an intentionally unregistered node; the topic
+# graph sees it as an externally triggered ingress root.
+name: model_setup_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Model setup EFFECT. Reports which of the models delegation can use (Gemini,
+  OpenRouter, OpenAI, Ollama) are set up on this machine, and tests one by
+  running a single delegation pinned to its backend (`onex delegate
+  --backend-id`, pin-or-refuse), recording pass, or fail with the provider's
+  reason, and the time. Storing a key is not this node's work: the `onex models`
+  shim stores it through node_local_secret_store_effect first. No request,
+  result or record carries a key.
+
+output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
+
+handler:
+  module: omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup
+  class: HandlerModelSetup
+  input_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request.ModelModelSetupRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup:HandlerModelSetup
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false  # every test runs, and records, one delegation
+  timeout_ms: 1200000  # up to four test delegations, each bounded at 300 s
+  runtime_profiles:
+    - effects
+
+# The node publishes nothing: the test delegation writes its own record, and the
+# result is returned to the shim that asked.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: kafka

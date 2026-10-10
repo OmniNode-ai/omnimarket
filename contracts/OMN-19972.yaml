@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19972"
 title: "serve a slug-named tenant read as its registry UUID"
-summary: "This PR delivers the product serving-path half of AC3 (a slug-named tenant read is served as its registry UUID); the full AC3 readback is the dedicated-lab receipt of 2026-10-06T05:36:43Z (MANIFEST sha256 3b44d5ed1cc79b61652ccead4b1659bf0293fbe25c2c5ab8a1a0327e12878305), correlation 524182b0-1fd7-4493-97a4-d365b5c880a5: one Runs row returned identically via registry UUID and slug (byte-equality digest 4ff8a6cf20d9e53b), while an unknown slug returned HTTP 422 tenant_context_unresolved. These tests prove only the product contribution; the lab receipt proves the full AC3 readback. AC1 and AC2 are omnibase_infra's and are not claimed."
+summary: "This PR delivers the product serving-path half of AC3 (a slug-named tenant read is served as its registry UUID); the full AC3 readback is the dedicated-lab receipt of 2026-10-06T05:36:43Z (MANIFEST sha256 3b44d5ed1cc79b61652ccead4b1659bf0293fbe25c2c5ab8a1a0327e12878305), correlation 524182b0-1fd7-4493-97a4-d365b5c880a5: one Runs row returned identically via registry UUID and slug (byte-equality digest 4ff8a6cf20d9e53b), while an unknown slug returned HTTP 422 tenant_context_unresolved. These tests prove only the product contribution; the lab receipt proves the full AC3 readback. AC1 and AC2 are omnibase_infra's and are not claimed. A later item binds AC1 and AC2 only for verifier enablement: the must-fail runner reads a shallow source, so the sweep can grade their must-fail controls; it does not prove either criterion."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,6 +14,16 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: On a laptop, a boot then one delegation writes a row to the compose Postgres, and the stack's Runs exposure serves it -- falsifier: the lab-step readback
+  - id: "req-ac1-ac2-must-fail-verifier-enablement"
+    statement: |-
+      The must-fail runner checks out the pre-change commit when the product clone is shallow, so the evidence sweep can grade the must-fail controls behind AC1 (omnibase_infra#4339) and AC2 (omnibase_infra#4352) instead of reporting infra_error. This is verifier enablement only: it does not prove AC1 or AC2, which omnibase_infra's own evidence proves.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The rendered bundle publishes no port on anything but `127.0.0.1` and names no lab host -- falsifier: the render test run with uv run pytest finds one
+      - id: "AC2"
+        statement: |-
+          AC2: The CI boot job `runtime-boot-laptop-profile` asserts each added service healthy -- falsifier: the job's health assertion step run in ci.yml passes with an added service stopped
 evidence_requirements:
   - kind: "tests"
     description: "The OMN-15797 tenant-context regression suite uses registry UUID-stamped rows. The command fails with the PR's tests overlaid onto the merge base, where the serving path still compares a slug verbatim. Measured at 0.78 seconds locally."
@@ -42,6 +52,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The real-Postgres proof exercises the same registry resolution when integration credentials are available and otherwise emits the repository's explicit environment-gated skip. The test is absent at the merge base and its overlaid version fails against the merge-base serving implementation. Measured at 0.61 seconds with the explicit laptop skip."
     command: "uv run pytest tests/integration/projection/test_omn19972_serving_tenant_registry_real_postgres.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
+  - kind: "tests"
+    description: "A depth-1 clone used as the must-fail runner's source still lets it run the test on the pre-change commit. The command fails with the PR's tests overlaid onto the merge base, where the throwaway tree cannot read that commit and the run returns checkout failed. Measured at 2.6 seconds on the lab host."
+    command: "uv run pytest tests/unit/delegated_test_loop/test_must_fail_local_tree_run_shallow_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -112,4 +125,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/integration/projection/test_omn19972_serving_tenant_registry_real_postgres.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19972-must-fail-shallow-source"
+    binds_ac: ["AC1", "AC2"]
+    description: "The must-fail runner runs the test on the pre-change commit when its source is a depth-1 clone. This binds only the evidence sweep's ability to grade the must-fail controls for omnibase_infra#4339 (AC1) and #4352 (AC2); it does not prove AC1 or AC2."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegated_test_loop/test_must_fail_local_tree_run_shallow_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"

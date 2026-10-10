@@ -82,7 +82,7 @@ def corpus() -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
         "correlation_id": "c2",
         "request_id": "r2",
         "task_type": "codegen",
-        "model_id": "ds-v4-flash",
+        "model_id": "fixture-model-a",
         "attempt_number": 1,
         "escalation_reason": "timed out",
         "next_model_id": "claude",
@@ -91,7 +91,7 @@ def corpus() -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
         "correlation_id": "c3",
         "request_id": "r3",
         "task_type": "codegen",
-        "attempted_models": ["ds-v4-flash", "qwen3-coder-30b", "claude"],
+        "attempted_models": ["fixture-model-a", "qwen3-coder-30b", "claude"],
     }
     return [
         (completed, expected_completed),
@@ -115,7 +115,7 @@ def corpus() -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
                 "correlation_id": "c2",
                 "request_id": "r2",
                 "task_type": "codegen",
-                "model_id": "ds-v4-flash",
+                "model_id": "fixture-model-a",
                 "success": False,
                 "is_escalation": True,
                 "latency_ms": 0,
