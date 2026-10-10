@@ -55,7 +55,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_held_prs_skipped -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py -q -k test_held_prs_skipped"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20866-gate-facts-missing-receipt-not-armed"
@@ -63,7 +63,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_missing_receipt_not_armed -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py -q -k test_missing_receipt_not_armed"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20866-gate-facts-pass-receipt-armed"
@@ -71,7 +71,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_pass_receipt_plus_green_clean_armed -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py -q -k test_pass_receipt_plus_green_clean_armed"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20866-gate-facts-unreadable-fails-closed"
@@ -79,7 +79,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_projection_unreadable_fails_closed -q"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py -q -k test_projection_unreadable_fails_closed"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20866-deploy-withheld-reason-on-transitions"
