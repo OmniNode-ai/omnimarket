@@ -29,7 +29,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'JOB_LOG_TAIL = \"job_log_tail\"'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'JOB_LOG_TAIL = \"job_log_tail\"' > /dev/null"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20912-ac1-gateway-reads"
