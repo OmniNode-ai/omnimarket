@@ -9,13 +9,14 @@
 #   - OMN-8083: Create pr_lifecycle_triage_compute Node
 #   - OMN-19825: classify_head_checks operation seam (declared, not routed)
 #   - OMN-19830: classify_head_checks classifier; verdict carries run attempts (F7)
+#   - OMN-20745: the landing controller's red rules, one copy, as pure operations
 name: "node_pr_lifecycle_triage_compute"
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 1
-  minor: 2
+  minor: 3
   patch: 0
-node_version: "1.2.0"
+node_version: "1.3.0"
 description: "Pure computation: classifies PRs into triage categories (green/red/conflicted/needs_review) from inventory data with zero network calls."
 event_bus:
   subscribe_topics:
@@ -36,6 +37,14 @@ output_model:
 # classifier is built (OMN-19830) but it stays absent from handler_routing:
 # wiring it into the landing workflow is a later task, and until then no
 # runtime routes a message to it.
+#
+# The landing controller's red rules (OMN-20745) are the same kind of operation:
+# classify_landing_red, classify_cascade_checks, list_cancelled_checks,
+# apply_reviewer_pool, count_reviewer_runs_in_flight, fired_edge_graded_stale,
+# classify_companion_wait, classify_stale_summary, next_stale_step and
+# list_pending_required. Each is a pure definition-B handle(request) -> verdict
+# with no topic of its own; the controller calls them in process through its
+# decision bridge, so the contract-topic graph gains no edge.
 operations:
   - name: "triage_prs"
     description: "Classify inventoried PRs into triage categories."
@@ -77,6 +86,126 @@ operations:
     handler:
       name: "HandlerClassifyCiRed"
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_ci_red"
+  - name: "classify_landing_red"
+    description: >-
+      The landing controller's red class of one head (product, cascade, runner_saturation, cancelled_producer, reviewer_pool), from its red check names and the watcher's run rows, in first-match order. Pure, no I/O; the controller calls it in process.
+    input_model:
+      name: "ModelLandingRedFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_landing_red_facts"
+    output_model:
+      name: "ModelLandingRedVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_landing_red_verdict"
+    handler:
+      name: "HandlerClassifyLandingRed"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_landing_red"
+  - name: "classify_cascade_checks"
+    description: >-
+      Which of a head's red checks are in the change-control cascade (the Coverage Sweep Gate only on its skipped-shards cascade, never a check whose annotation names the PR's own red), and whether the red is only that cascade. Pure, no I/O.
+    input_model:
+      name: "ModelCascadeCheckFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_cascade_check_facts"
+    output_model:
+      name: "ModelCascadeCheckVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_cascade_check_verdict"
+    handler:
+      name: "HandlerClassifyCascadeChecks"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks"
+  - name: "list_cancelled_checks"
+    description: >-
+      The check names whose newest copy on a head is completed and cancelled. Pure, no I/O.
+    input_model:
+      name: "ModelCancelledChecksFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_cancelled_checks_facts"
+    output_model:
+      name: "ModelCancelledChecksVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_cancelled_checks_verdict"
+    handler:
+      name: "HandlerListCancelledChecks"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_list_cancelled_checks"
+  - name: "apply_reviewer_pool"
+    description: >-
+      Which reviewer-pool reds earn their one rerun now, oldest first while the reviewer endpoint has free slots; every other one is presented as pending. Pure, no I/O.
+    input_model:
+      name: "ModelReviewerPoolFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_pool_facts"
+    output_model:
+      name: "ModelReviewerPoolResult"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_pool_result"
+    handler:
+      name: "HandlerApplyReviewerPool"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_apply_reviewer_pool"
+  - name: "count_reviewer_runs_in_flight"
+    description: >-
+      Hostile-review runs queued or running on open PRs' current heads, from the watcher's records. Pure, no I/O.
+    input_model:
+      name: "ModelReviewerRunsFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_facts"
+    output_model:
+      name: "ModelReviewerRunsCount"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_count"
+    handler:
+      name: "HandlerCountReviewerRunsInFlight"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_count_reviewer_runs_in_flight"
+  - name: "fired_edge_graded_stale"
+    description: >-
+      Whether every order-edge predecessor merged after the head's red was graded. Pure, no I/O.
+    input_model:
+      name: "ModelFiredEdgeFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_fired_edge_facts"
+    output_model:
+      name: "ModelFiredEdgeVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_fired_edge_verdict"
+    handler:
+      name: "HandlerFiredEdgeGradedStale"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_fired_edge_graded_stale"
+  - name: "classify_companion_wait"
+    description: >-
+      Whether a red PR only waits on its open change-control companion, and the companion's own reds. Pure, no I/O.
+    input_model:
+      name: "ModelCompanionWaitFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_companion_wait_facts"
+    output_model:
+      name: "ModelCompanionWaitVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_companion_wait_verdict"
+    handler:
+      name: "HandlerClassifyCompanionWait"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_companion_wait"
+  - name: "classify_stale_summary"
+    description: >-
+      Whether a head's red is only a CI Summary left red by cancelled or skipped siblings, and which remedy goes first (rerun, refresh, refresh_first). Pure, no I/O.
+    input_model:
+      name: "ModelStaleSummaryFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_stale_summary_facts"
+    output_model:
+      name: "ModelStaleSummaryVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_stale_summary_verdict"
+    handler:
+      name: "HandlerClassifyStaleSummary"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_stale_summary"
+  - name: "next_stale_step"
+    description: >-
+      The next stale-summary action for a head (rerun or update_branch), from the controller's memory of the PR. Pure, no I/O.
+    input_model:
+      name: "ModelStaleStepFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_stale_step_facts"
+    output_model:
+      name: "ModelStaleStepVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_stale_step_verdict"
+    handler:
+      name: "HandlerNextStaleStep"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_next_stale_step"
+  - name: "list_pending_required"
+    description: >-
+      The required contexts still running on a head; a context pending longer than two hours holds nothing. Pure, no I/O.
+    input_model:
+      name: "ModelPendingRequiredFacts"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pending_required_facts"
+    output_model:
+      name: "ModelPendingRequiredVerdict"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pending_required_verdict"
+    handler:
+      name: "HandlerListPendingRequired"
+      module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_list_pending_required"
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -99,3 +228,4 @@ metadata:
     - "OMN-8070"
     - "OMN-19825"
     - "OMN-19830"
+    - "OMN-20745"
