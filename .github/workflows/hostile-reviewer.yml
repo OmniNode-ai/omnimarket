@@ -246,8 +246,10 @@ jobs:
         # overlay reader is imported from omniintelligence.review_pairing, whose
         # package __init__ needs numpy. Run from a bare clone, the preflight died
         # on ModuleNotFoundError, resolved no voter and reported DEGRADED.
+        # No continue-on-error: a failed install fails this job here, and the
+        # always() enforce and comment steps report it; nothing downstream can
+        # read a verdict from an environment that was never built.
         id: install-omniintelligence
-        continue-on-error: true
         working-directory: ../omniintelligence
         env:
           UV_CONCURRENT_DOWNLOADS: "1"

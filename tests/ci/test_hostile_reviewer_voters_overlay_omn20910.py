@@ -155,4 +155,7 @@ def test_preflight_runs_in_the_installed_environment() -> None:
     run = str(_step("Preflight")["run"])
     assert "--no-project" not in run
     assert "uv run --no-sync python" in run
-    assert "if" not in _step("Install omniintelligence dependencies")
+    install_step = _step("Install omniintelligence dependencies")
+    assert "if" not in install_step
+    # A failed install fails the job; no step can read a verdict without it.
+    assert "continue-on-error" not in install_step
