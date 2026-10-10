@@ -162,7 +162,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA e346cb6b841917089cddf1146e0039de2d5fea87
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 8782c0507035e2cec20ccacbc404d32f894161b5
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -241,6 +241,37 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      - name: Install omniintelligence dependencies
+        # OMN-20910: the install runs before the voter preflight, because the
+        # overlay reader is imported from omniintelligence.review_pairing, whose
+        # package __init__ needs numpy. Run from a bare clone, the preflight died
+        # on ModuleNotFoundError, resolved no voter and reported DEGRADED.
+        id: install-omniintelligence
+        continue-on-error: true
+        working-directory: ../omniintelligence
+        env:
+          UV_CONCURRENT_DOWNLOADS: "1"
+          UV_HTTP_TIMEOUT: "600"
+          UV_SYNC_ATTEMPTS: "5"
+          UV_SYNC_RETRY_DELAY_SECONDS: "10"
+          UV_TORCH_BACKEND: "cpu"
+        run: |
+          set -euo pipefail
+
+          attempt=1
+          until uv sync --locked; do
+            status=$?
+            if [ "$attempt" -ge "$UV_SYNC_ATTEMPTS" ]; then
+              echo "::error::uv sync failed after ${attempt} attempt(s)"
+              exit "$status"
+            fi
+
+            sleep_seconds=$((UV_SYNC_RETRY_DELAY_SECONDS * attempt))
+            echo "::warning::uv sync attempt ${attempt}/${UV_SYNC_ATTEMPTS} failed with exit ${status}; retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+            attempt=$((attempt + 1))
+          done
+
       - name: Preflight — probe review endpoint reachability
         id: preflight
         working-directory: ../omniintelligence
@@ -253,15 +284,15 @@ jobs:
           # -e is intentionally OMITTED: an unreachable endpoint must never fail
           # this step; it records a DEGRADED verdict and the enforce step fails
           # the job. The targets come from the voters overlay through the same
-          # loader and node the review uses (OMN-20910), imported from source
-          # with only pyyaml and pydantic, before the ~3.6 GiB install. An
-          # invalid overlay is DEGRADED with the refusal, which names the voter.
+          # loader and node the review uses (OMN-20910), from the environment
+          # the install step built. An invalid overlay, or an install that left
+          # the reader unimportable, is DEGRADED with the reason; an overlay
+          # refusal names the voter.
           set -o pipefail
 
-          PROBE_TARGETS="$(uv run --no-project --with pyyaml --with pydantic python -I - "$REVIEW_VOTERS_OVERLAY" <<'PYEOF'
+          PROBE_TARGETS="$(uv run --no-sync python -I - "$REVIEW_VOTERS_OVERLAY" <<'PYEOF'
           import sys
 
-          sys.path.insert(0, "src")
           from omniintelligence.nodes.node_review_voters_overlay_compute.handlers.handler_review_voters_overlay import (
               probe_target_lines,
           )
@@ -321,8 +352,8 @@ jobs:
 
           # EVERY voter is unreachable; the overlay names no fallback, so the
           # reviewer would call nobody. Short-circuit with the same DEGRADED
-          # verdict and skip the install.
-          echo "::warning::All review voters [${UNREACHABLE}] unreachable after 3 attempts; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          # verdict and skip the review.
+          echo "::warning::All review voters [${UNREACHABLE}] unreachable after 3 attempts; short-circuiting to DEGRADED and skipping the review."
           {
             echo "reachable=false"
             echo "verdict=degraded"
@@ -332,37 +363,6 @@ jobs:
             echo "error=all review voters [${UNREACHABLE}] unreachable — preflight short-circuit"
           } >> "$GITHUB_OUTPUT"
           exit 0
-
-      - name: Install omniintelligence dependencies
-        # Skip the heavy dependency sync when the review endpoint is unreachable
-        # (preflight short-circuit). Any non-'false' value — including a crashed
-        # or unset preflight — runs the install unchanged (fail-open).
-        if: steps.preflight.outputs.reachable != 'false'
-        id: install-omniintelligence
-        continue-on-error: true
-        working-directory: ../omniintelligence
-        env:
-          UV_CONCURRENT_DOWNLOADS: "1"
-          UV_HTTP_TIMEOUT: "600"
-          UV_SYNC_ATTEMPTS: "5"
-          UV_SYNC_RETRY_DELAY_SECONDS: "10"
-          UV_TORCH_BACKEND: "cpu"
-        run: |
-          set -euo pipefail
-
-          attempt=1
-          until uv sync --locked; do
-            status=$?
-            if [ "$attempt" -ge "$UV_SYNC_ATTEMPTS" ]; then
-              echo "::error::uv sync failed after ${attempt} attempt(s)"
-              exit "$status"
-            fi
-
-            sleep_seconds=$((UV_SYNC_RETRY_DELAY_SECONDS * attempt))
-            echo "::warning::uv sync attempt ${attempt}/${UV_SYNC_ATTEMPTS} failed with exit ${status}; retrying in ${sleep_seconds}s"
-            sleep "$sleep_seconds"
-            attempt=$((attempt + 1))
-          done
 
       - name: Validate retry-budget invariant (OMN-15066)
         # Cheap, no GPU/network calls -- reads the just-installed

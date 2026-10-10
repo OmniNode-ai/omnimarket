@@ -138,3 +138,21 @@ def test_overlay_is_read_live_from_omnibase_infra_dev() -> None:
 def test_omniintelligence_is_pinned_to_a_full_sha() -> None:
     run = str(_step("Clone omniintelligence")["run"])
     assert re.search(r"clone_with_retry omniintelligence \S+ \S+ [0-9a-f]{40}\b", run)
+
+
+def test_preflight_runs_in_the_installed_environment() -> None:
+    """The overlay reader imports omniintelligence.review_pairing, which needs numpy.
+
+    A preflight run from the bare clone (``uv run --no-project``) before the
+    install died on ModuleNotFoundError, resolved no voter and reported DEGRADED
+    on every run, so the install comes first and the preflight uses its
+    environment.
+    """
+    names = [str(s.get("name", "")) for s in _steps()]
+    install = names.index("Install omniintelligence dependencies")
+    preflight = next(i for i, n in enumerate(names) if n.startswith("Preflight"))
+    assert install < preflight
+    run = str(_step("Preflight")["run"])
+    assert "--no-project" not in run
+    assert "uv run --no-sync python" in run
+    assert "if" not in _step("Install omniintelligence dependencies")

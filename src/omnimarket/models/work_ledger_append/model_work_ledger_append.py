@@ -91,3 +91,28 @@ class ModelWorkLedgerAppendReceipt(BaseModel):
     ledger_host: str
     duration_ms: int = Field(ge=0)
     principal: PrincipalName | None = None
+
+
+class ModelWorkLedgerTerminalRefused(BaseModel):
+    """The ledger host refused a request carrying TERMINAL rows.
+
+    The CLAIMs those rows would have closed stay open on the ledger. Owner
+    claims are leases (a claim owns only until its contract-declared TTL), so
+    the refused TERMINAL holds no PR past that TTL; this event makes the
+    refusal observable instead of silent.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event: Literal["TERMINAL_REFUSED"] = "TERMINAL_REFUSED"
+    request_id: UUID
+    requested_by_lane: str
+    requesting_host: str
+    ledger_host: str
+    principal: PrincipalName | None = None
+    exit_code: int
+    reason: str = Field(max_length=2000)
+    terminal_lanes: tuple[str, ...]
+    tickets: tuple[str, ...]
+    prs: tuple[str, ...]
+    refused_at: Annotated[datetime, AwareDatetime]
