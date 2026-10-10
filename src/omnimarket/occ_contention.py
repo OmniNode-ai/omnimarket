@@ -133,7 +133,13 @@ _MAX_CANDIDATES = 10
 # An evidence id the gate binds a product PR by: ``dod-<repo-slug>-pr-<n>`` or its
 # ``-ci`` sibling, where the slug is the repo with ``/`` turned into ``-``. The
 # same shape ``OccCompanionEmitter`` mints and ``ci_check_evidence_id`` extends.
-_EVIDENCE_ID_RE = re.compile(r"dod-(?P<slug>.+?)-pr-(?P<number>\d+)(?:-ci)?")
+# OMN-20899: a hand-authored companion appends what the evidence is
+# (``dod-omnibase-core-pr-1938-cosmetic-lint-tests``), so any ``-<suffix>`` is
+# accepted after the number; the number still ends at a ``-`` or the id's end.
+_EVIDENCE_ID_RE = re.compile(
+    r"dod-(?P<slug>.+?)-pr-(?P<number>\d+)(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?"
+)
+_EVIDENCE_ID_PREFIX = "dod-"
 
 # An evidence id added to a contract file: ``+  - id: "dod-…-pr-<n>"`` in a patch.
 _ADDED_EVIDENCE_ID_RE = re.compile(
@@ -308,12 +314,21 @@ def companion_may_cover_pr(
     ADDS to ``contracts/<ticket>.yaml`` (the ``patch`` of that file entry).
     Whole-id comparison, never a substring: ``…-pr-3210`` is not ``…-pr-321``.
 
+    OMN-20899: hand-authored ids carry a descriptive suffix after the number
+    and a slug that is not always the full repo slug (``omnibase-core``,
+    ``omn20885-omniclaude``). An id naming another PR number names another PR.
+    An id naming this PR's number covers it unless its slug is the full
+    ``<owner>-<repo>`` slug of a different repo; any shorter slug might be this
+    repo, so it covers.
+
     Fails toward deferring (``True``) whenever coverage cannot be read: no ids
-    found, or a contract file entry with no ``patch`` (GitHub omits it for a
-    large diff) and no receipt directory. A needless defer is recoverable on the
-    next ``synchronize``; a wrong mint over a hand-authored companion is not.
+    found, a ``dod-`` id that names no PR number, or a contract file entry with
+    no ``patch`` (GitHub omits it for a large diff) and no receipt directory. A
+    needless defer is recoverable on the next ``synchronize``; a wrong mint over
+    a hand-authored companion is not.
     """
-    subject = (repo.replace("/", "-").casefold(), pr_number)
+    subject_slug = repo.replace("/", "-").casefold()
+    owner_prefix = f"{repo.split('/', 1)[0].casefold()}-"
     contract_path = f"contracts/{ticket_id}.yaml"
     receipt_prefix = f"drift/dod_receipts/{ticket_id}/"
     evidence_ids: set[str] = set()
@@ -331,14 +346,22 @@ def companion_may_cover_pr(
                 added = _ADDED_EVIDENCE_ID_RE.match(line)
                 if added:
                     evidence_ids.add(added.group("id"))
-    covered: set[tuple[str, int]] = set()
+    named: list[tuple[str, int]] = []
     for evidence_id in evidence_ids:
+        if not evidence_id.startswith(_EVIDENCE_ID_PREFIX):
+            continue
         match = _EVIDENCE_ID_RE.fullmatch(evidence_id)
-        if match:
-            covered.add((match.group("slug").casefold(), int(match.group("number"))))
-    if not covered:
+        if match is None:
+            return True  # a dod id naming no PR could be this PR's evidence
+        named.append((match.group("slug").casefold(), int(match.group("number"))))
+    if not named:
         return True
-    return subject in covered
+    for slug, number in named:
+        if number != pr_number:
+            continue  # evidence for another PR
+        if slug == subject_slug or not slug.startswith(owner_prefix):
+            return True
+    return False
 
 
 def decide_contention(

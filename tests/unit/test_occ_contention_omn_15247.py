@@ -486,6 +486,175 @@ class TestCompanionMayCoverPr:
 
 
 # ---------------------------------------------------------------------------
+# companion_may_cover_pr — suffixed evidence ids (OMN-20899)
+# ---------------------------------------------------------------------------
+# Hand-authored companions name their evidence ``dod-<slug>-pr-<n>-<what>``.
+# OMN-20412 parsed only ``dod-<slug>-pr-<n>`` and ``…-ci``, so a companion
+# whose every id carried a suffix read as "coverage unreadable" and deferred
+# every PR on its ticket. The three cases below are the live 2026-10-10 rows:
+# each product PR was DECLINED skip:DEFER_HAND_AUTHORED behind a companion
+# whose evidence names a different PR, so no companion was minted and no
+# evidence-source line was written, and the product PR's preflight waited
+# out its deadline.
+
+_OMNICLAUDE = "OmniNode-ai/omniclaude"
+
+
+def _ticket_contract_patch(ticket_id: str, *ids: str) -> list[dict[str, object]]:
+    added = "".join(f'+  - id: "{i}"\n+    source: "manual"\n' for i in ids)
+    return [
+        {
+            "filename": f"contracts/{ticket_id}.yaml",
+            "patch": f"@@ -1,2 +1,9 @@\n dod_evidence:\n{added}",
+        }
+    ]
+
+
+_LIVE_OTHER_PR_COMPANIONS = [
+    pytest.param(
+        "OMN-20074",
+        2656,
+        [
+            *_ticket_contract_patch(
+                "OMN-20074", "dod-omnibase-core-pr-1938-cosmetic-lint-tests"
+            ),
+            {
+                "filename": "drift/dod_receipts/OMN-20074/"
+                "dod-omnibase-core-pr-1938-cosmetic-lint-tests/test_passes.yaml"
+            },
+            {
+                "filename": "drift/occ_bindings/OMN-20074/"
+                "occ-self-bind-pr-13567/command.yaml"
+            },
+        ],
+        id="OCC-13567-vs-omniclaude-2656",
+    ),
+    pytest.param(
+        "OMN-9050",
+        2657,
+        [
+            *_ticket_contract_patch(
+                "OMN-9050", "dod-OmniNode-ai-omniintelligence-pr-1034-hs-wf"
+            ),
+            {
+                "filename": "drift/dod_receipts/OMN-9050/"
+                "dod-OmniNode-ai-omniintelligence-pr-1034-hs-wf/command.yaml"
+            },
+        ],
+        id="OCC-13579-vs-omniclaude-2657",
+    ),
+    pytest.param(
+        "OMN-20885",
+        2655,
+        [
+            *_ticket_contract_patch(
+                "OMN-20885",
+                "req-pr-title-check-node",
+                "AC1",
+                "dod-omn20885-pr-3702-title-check-tests",
+                "dod-omn20885-pr-3702-deploy-source-readback",
+            ),
+            {
+                "filename": "drift/dod_receipts/OMN-20885/"
+                "dod-omn20885-pr-3702-title-check-tests/test_passes.yaml"
+            },
+        ],
+        id="OCC-13549-at-13-17Z-vs-omniclaude-2655",
+    ),
+]
+
+
+@pytest.mark.unit
+class TestSuffixedEvidenceIds:
+    @pytest.mark.parametrize(
+        ("ticket_id", "pr_number", "files"), _LIVE_OTHER_PR_COMPANIONS
+    )
+    def test_suffixed_ids_naming_only_other_prs_do_not_cover_this_one(
+        self, ticket_id: str, pr_number: int, files: list[dict[str, object]]
+    ) -> None:
+        assert not companion_may_cover_pr(
+            files=files, ticket_id=ticket_id, repo=_OMNICLAUDE, pr_number=pr_number
+        )
+
+    @pytest.mark.parametrize(
+        "evidence_id",
+        [
+            "dod-omn20885-omniclaude-pr-2655-schema-compat-tests",
+            "dod-OmniNode-ai-omniclaude-pr-2655-schema-compat-tests",
+            "dod-OmniNode-ai-omniclaude-pr-2655",
+            "dod-OmniNode-ai-omniclaude-pr-2655-ci",
+        ],
+    )
+    def test_a_suffixed_id_naming_this_pr_covers_it(self, evidence_id: str) -> None:
+        files = _ticket_contract_patch("OMN-20885", evidence_id)
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-20885", repo=_OMNICLAUDE, pr_number=2655
+        )
+
+    def test_a_suffixed_id_compares_the_whole_number(self) -> None:
+        files = _ticket_contract_patch(
+            "OMN-20885", "dod-OmniNode-ai-omniclaude-pr-26550-schema-compat-tests"
+        )
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-20885", repo=_OMNICLAUDE, pr_number=2655
+        )
+
+    def test_an_owner_qualified_other_repo_with_this_number_does_not_cover(
+        self,
+    ) -> None:
+        files = _ticket_contract_patch(
+            "OMN-20885", "dod-OmniNode-ai-omnimarket-pr-2655-schema-compat-tests"
+        )
+        assert not companion_may_cover_pr(
+            files=files, ticket_id="OMN-20885", repo=_OMNICLAUDE, pr_number=2655
+        )
+
+    def test_this_number_under_an_unqualified_slug_keeps_the_defer(self) -> None:
+        """``omnibase-core`` might be shorthand for any repo; when the number is
+        this PR's own, a needless defer is the recoverable direction."""
+        files = _ticket_contract_patch(
+            "OMN-20074", "dod-omnibase-core-pr-2656-cosmetic-lint-tests"
+        )
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-20074", repo=_OMNICLAUDE, pr_number=2656
+        )
+
+    def test_an_evidence_id_naming_no_pr_keeps_the_defer(self) -> None:
+        """A dod id with no PR number could be this PR's evidence, so coverage is
+        unreadable even when another id names a different PR."""
+        files = _ticket_contract_patch(
+            "OMN-20885",
+            "dod-omn20885-pr-3702-title-check-tests",
+            "dod-omn20885-schema-compat-tests",
+        )
+        assert companion_may_cover_pr(
+            files=files, ticket_id="OMN-20885", repo=_OMNICLAUDE, pr_number=2655
+        )
+
+    @pytest.mark.parametrize(
+        ("ticket_id", "pr_number", "files"), _LIVE_OTHER_PR_COMPANIONS
+    )
+    def test_the_live_declines_now_mint(
+        self, ticket_id: str, pr_number: int, files: list[dict[str, object]]
+    ) -> None:
+        findings = find_open_companions(
+            tickets=[ticket_id],
+            occ_repo="OmniNode-ai/onex_change_control",
+            own_branch=f"auto/omninode-ai-omniclaude-pr-{pr_number}-occ-autobind",
+            repo=_OMNICLAUDE,
+            pr_number=pr_number,
+            search_issues=lambda _p: _search_payload(13567),
+            get_pull=lambda _n: {
+                "head": {"ref": "landing/l5754-omn20074-core1938-evidence"},
+                "labels": [],
+            },
+            list_pr_files=lambda _n: files,
+        )
+        assert findings == ()
+        assert decide_contention(findings)[0] is False
+
+
+# ---------------------------------------------------------------------------
 # resolve_red_ref — the merge base, not pr.base.sha
 # ---------------------------------------------------------------------------
 
