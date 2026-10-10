@@ -51,6 +51,20 @@ This service refuses the Linear Done transition when any of the following holds:
 3. The contract version on the OCC governance ref does not yet declare the
    receipt-bound evidence checks (i.e. the ref still has the stale contract).
 
+Product repository first (OMN-20071)
+------------------------------------
+A ticket whose merged PRs carry ``contracts/<TICKET>.yaml`` in their own
+repository (a repository cut over from OCC) is governed by that contract, read
+the way the omniclaude Done gate reads it: at each merged PR's merge commit;
+of several merged PRs in one repository that carry it, the newest merged one
+decides; the verdict is the ``repo-evidence / dod-verify`` check run on that
+PR's head, whose contract must equal the merged one; and every labelled
+criterion of the ticket must be bound. For such a ticket check 3 reads that
+contract instead of OCC, and checks 1 and 2 (the OCC receipt trail) do not
+apply. A merged PR whose repository has no contract, or whose newest
+contract-carrying PR has no such run, leaves the ticket on the OCC path, which
+decides exactly as before. See :func:`evaluate_repo_evidence`.
+
 The gate is pure logic plus pluggable Protocol probes (git receipt-tracked,
 gh pr view, contract loader). Tests inject deterministic probe stubs;
 production wiring uses subprocess implementations.
@@ -60,6 +74,7 @@ from __future__ import annotations
 
 import json
 import re
+from html import escape
 from typing import Protocol
 
 from omnibase_core.validation.runtime_ops_verb_loader import (
@@ -71,9 +86,18 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    EnumRepoEvidenceOutcome,
     ModelCitedMergeCommit,
     ModelDurableEvidenceCheckResult,
     ModelDurableEvidenceGateResult,
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelRepoEvidenceVerdict,
+    ModelTicketMergedPr,
+)
+from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
+    resolve_retirements,
 )
 from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     evaluate_receipt_bound,
@@ -91,6 +115,7 @@ from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
     evaluate_runtime_ops_readback,
     is_runtime_ops_receipt_set,
 )
+from omnimarket.occ_contract_pin import acceptance_criteria_items, canonical_ac_label
 
 _PR_URL_RE = re.compile(
     r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<num>\d+)"
@@ -155,8 +180,15 @@ DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 # ``evidence/<TICKET>/dod_report.json`` file (OMN-12593 config-drift fix).
 _RECEIPT_DIR_PREFIX = "drift/dod_receipts"
 
-# Canonical contract path prefix relative to the OCC repo root.
+# Canonical contract path prefix relative to the OCC repo root. A product
+# repository that owns its evidence uses the same layout (OMN-20071).
 _CONTRACT_DIR_PREFIX = "contracts"
+
+# The repository-owned verdict (OMN-20071): the check run the product
+# repository's ``repo-evidence`` caller workflow reports on a PR head, from the
+# workflow the PR cannot edit. Matches the omniclaude Done gate's constants.
+REPO_EVIDENCE_CHECK_NAME = "repo-evidence / dod-verify"
+REPO_EVIDENCE_APP_SLUG = "github-actions"
 
 
 def default_receipt_dir(ticket_id: str) -> str:
@@ -306,6 +338,284 @@ class ReceiptsOnRefLoader(Protocol):
     def __call__(
         self, repo_path: str, ref: str, receipt_dir: str
     ) -> list[dict[str, object]]: ...
+
+
+class RepoContractReader(Protocol):
+    """Probe: ``contracts/<ticket_id>.yaml`` of ``repo`` at commit ``ref``.
+
+    Production wiring reads ``repos/<repo>/contents/contracts/<ticket>.yaml``
+    at the fixed commit through the GitHub REST API. ``ABSENT`` is a definite
+    "this commit carries no contract"; ``ERROR`` is unreadable and refuses.
+    """
+
+    def __call__(
+        self, repo: str, ref: str, ticket_id: str
+    ) -> ModelRepoContractRead: ...
+
+
+class RepoEvidenceCheckRunsReader(Protocol):
+    """Probe: the latest check runs on ``sha`` of ``repo``, or ``None``.
+
+    Production wiring reads ``repos/<repo>/commits/<sha>/check-runs`` with
+    ``filter=latest`` and the :data:`REPO_EVIDENCE_CHECK_NAME` name filter.
+    ``None`` means unreadable and refuses.
+    """
+
+    def __call__(
+        self, repo: str, sha: str
+    ) -> tuple[ModelRepoEvidenceCheckRun, ...] | None: ...
+
+
+def _diagnostic_text(value: object) -> str:
+    """Render external evidence as inert, single-line diagnostic text.
+
+    Contract fields, probe errors and ticket text are untrusted. Escape markup
+    and quotes for display, and render control characters (including terminal
+    escapes and Unicode line/direction controls) visibly instead of executing
+    them or letting them forge a second log line. Only presentation changes;
+    probes and contract comparisons always use the original values.
+    """
+    return escape(
+        "".join(
+            char if char.isprintable() else ascii(char)[1:-1] for char in str(value)
+        )
+    )
+
+
+def _repo_contract_or_refusal(
+    read: ModelRepoContractRead, ticket_id: str, source: str
+) -> dict[str, object] | ModelRepoEvidenceVerdict:
+    """The contract mapping of a read, or the refusal it amounts to."""
+    if read.status is not EnumRepoContractReadStatus.FOUND or read.contract is None:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.REFUSED,
+            detail=(
+                f"{_diagnostic_text(source)}: "
+                f"{_diagnostic_text(default_contract_path(ticket_id))} is {read.status.value}"
+                f" ({_diagnostic_text(read.error or 'contract absent')}); restore readable evidence."
+            ),
+        )
+    named = read.contract.get("ticket_id")
+    if named is not None and named != ticket_id:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.REFUSED,
+            detail=(
+                f"{_diagnostic_text(source)}: contract names ticket_id "
+                f"{_diagnostic_text(repr(named))}, not {_diagnostic_text(ticket_id)}; "
+                "correct the ticket binding."
+            ),
+        )
+    return read.contract
+
+
+def _contract_bindings(contract: dict[str, object]) -> dict[str, list[str]]:
+    """``{criterion label: [item id, ...]}`` for every live ``binds_ac`` entry.
+
+    A binding retired through ``ac_bindings`` (the node's own retirement
+    resolution) does not count, so this reads the same bound set the node's
+    unbound-criteria rule reads.
+    """
+    raw_items = contract.get("dod_evidence")
+    items = (
+        [item for item in raw_items if isinstance(item, dict)]
+        if isinstance(raw_items, list)
+        else []
+    )
+    retired = resolve_retirements(items).pairs
+    bindings: dict[str, list[str]] = {}
+    for item in items:
+        item_id = item.get("id")
+        raw_binds = item.get("binds_ac")
+        if not isinstance(item_id, str) or not isinstance(raw_binds, list):
+            continue
+        for raw in raw_binds:
+            label = canonical_ac_label(str(raw))
+            if label and (item_id, label) not in retired:
+                bindings.setdefault(label, []).append(item_id)
+    return bindings
+
+
+def evaluate_repo_evidence(
+    ticket_id: str,
+    ticket_description: str,
+    merged_prs: tuple[ModelTicketMergedPr, ...],
+    *,
+    read_repo_contract: RepoContractReader,
+    read_repo_check_runs: RepoEvidenceCheckRunsReader,
+) -> ModelRepoEvidenceVerdict:
+    """Decide a ticket from the product repositories its PRs merged into.
+
+    The resolution order of the omniclaude Done gate, all I/O through the two
+    readers:
+
+    1. Read ``contracts/<ticket>.yaml`` at every merged PR's merge commit. No PR
+       carrying one leaves the ticket NOT_ENGAGED (OCC decides); an unreadable
+       or malformed contract REFUSES.
+    2. Within one repository, only the newest merged contract-carrying PR
+       decides, because its check re-verifies the whole contract. A PR without
+       a merge time is never treated as superseded.
+    3. A deciding PR with no ``repo-evidence / dod-verify`` run on its head has
+       not adopted the repo path; when no deciding PR has one, NOT_ENGAGED.
+       Unreadable check runs REFUSE.
+    4. The newest run on each engaged head must be a completed success, and the
+       contract at that head must equal the merged one, or REFUSED.
+    5. Every labelled acceptance criterion of the ticket description must be
+       bound by some engaged contract, or REFUSED. A description with no
+       criterion, or an unlabelled one, REFUSES: there is nothing to bind.
+    """
+    candidates = {(pr.repo, pr.pr_number): pr for pr in merged_prs}
+    if not candidates:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED,
+            detail="no merged product PR to read repo evidence from",
+        )
+    contract_path = _diagnostic_text(default_contract_path(ticket_id))
+    contracts: list[tuple[ModelTicketMergedPr, dict[str, object]]] = []
+    for (repo, number), pr in candidates.items():
+        read = read_repo_contract(repo, pr.merge_commit_sha, ticket_id)
+        if read.status is EnumRepoContractReadStatus.ABSENT:
+            continue
+        parsed = _repo_contract_or_refusal(
+            read, ticket_id, f"{repo}#{number} at merge {pr.merge_commit_sha}"
+        )
+        if isinstance(parsed, ModelRepoEvidenceVerdict):
+            return parsed
+        contracts.append((pr, parsed))
+    if not contracts:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED,
+            detail=f"no merged product PR carries {contract_path}",
+        )
+
+    newest: dict[str, str] = {}
+    for pr, _contract in contracts:
+        if pr.merged_at:
+            newest[pr.repo] = max(newest.get(pr.repo, ""), pr.merged_at)
+    contracts = [
+        (pr, contract)
+        for pr, contract in contracts
+        if not pr.merged_at or pr.merged_at == newest[pr.repo]
+    ]
+
+    engaged: list[
+        tuple[ModelTicketMergedPr, dict[str, object], list[ModelRepoEvidenceCheckRun]]
+    ] = []
+    skipped: list[str] = []
+    for pr, contract in contracts:
+        source = f"{pr.repo}#{pr.pr_number}"
+        runs = read_repo_check_runs(pr.repo, pr.head_sha)
+        if runs is None:
+            return ModelRepoEvidenceVerdict(
+                outcome=EnumRepoEvidenceOutcome.REFUSED,
+                detail=(
+                    f"{_diagnostic_text(source)} at head {_diagnostic_text(pr.head_sha)}: check runs unreadable; "
+                    "restore GitHub check-run access."
+                ),
+            )
+        kept = [
+            run
+            for run in runs
+            if run.name == REPO_EVIDENCE_CHECK_NAME
+            and run.app_slug == REPO_EVIDENCE_APP_SLUG
+        ]
+        if not kept:
+            skipped.append(
+                f"{_diagnostic_text(source)} carries {contract_path} but no "
+                f"{REPO_EVIDENCE_CHECK_NAME} run on head {_diagnostic_text(pr.head_sha[:12])}"
+            )
+            continue
+        engaged.append((pr, contract, kept))
+    if not engaged:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED, detail="; ".join(skipped)
+        )
+
+    bindings: dict[str, list[str]] = {}
+    governing: list[dict[str, object]] = []
+    sources: list[str] = []
+    for pr, contract, kept in engaged:
+        source = f"{pr.repo}#{pr.pr_number}"
+        context = f"{source} at head {pr.head_sha} and merge {pr.merge_commit_sha}"
+        safe_context = _diagnostic_text(context)
+        # Check-run ids only grow, so the newest copy is the highest id: a rerun
+        # still in progress must not lose to an older success.
+        run = max(kept, key=lambda r: r.id)
+        if run.status != "completed" or run.conclusion != "success":
+            return ModelRepoEvidenceVerdict(
+                outcome=EnumRepoEvidenceOutcome.REFUSED,
+                detail=(
+                    f"{safe_context}: {REPO_EVIDENCE_CHECK_NAME} run {run.id} has "
+                    f"status={_diagnostic_text(run.status)} and "
+                    f"conclusion={_diagnostic_text(run.conclusion)}; obtain "
+                    "a completed success."
+                ),
+            )
+        head_contract = _repo_contract_or_refusal(
+            read_repo_contract(pr.repo, pr.head_sha, ticket_id), ticket_id, context
+        )
+        if isinstance(head_contract, ModelRepoEvidenceVerdict):
+            return head_contract
+        if head_contract != contract:
+            return ModelRepoEvidenceVerdict(
+                outcome=EnumRepoEvidenceOutcome.REFUSED,
+                detail=(
+                    f"{safe_context}: contract changed between the verified head and "
+                    "the merge commit, so the check run does not cover what "
+                    "merged; verify the merged contract in a new PR."
+                ),
+            )
+        sources.append(f"{safe_context} ({REPO_EVIDENCE_CHECK_NAME} run {run.id})")
+        governing.append(contract)
+        for label, item_ids in _contract_bindings(contract).items():
+            bindings.setdefault(label, []).extend(
+                f"{_diagnostic_text(item_id)} ({_diagnostic_text(source)})"
+                for item_id in item_ids
+            )
+
+    context = ", ".join(sources)
+    criteria = acceptance_criteria_items(ticket_description)
+    if not criteria:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.REFUSED,
+            detail=(
+                f"{context}: no acceptance criterion could be read from the "
+                "ticket description, so there is nothing for the contract to "
+                "bind; list labelled criteria under an `Acceptance criteria` "
+                "heading."
+            ),
+        )
+    unlabelled = [c for c in criteria if not canonical_ac_label(c)]
+    if unlabelled:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.REFUSED,
+            detail=(
+                f"{context}: acceptance criteria carry no label and cannot be "
+                f"bound by `binds_ac`: {_diagnostic_text('; '.join(unlabelled))}; label each "
+                "criterion."
+            ),
+        )
+    labels = sorted({canonical_ac_label(c) for c in criteria})
+    unbound = [label for label in labels if label not in bindings]
+    if unbound:
+        return ModelRepoEvidenceVerdict(
+            outcome=EnumRepoEvidenceOutcome.REFUSED,
+            detail=(
+                " | ".join(
+                    f"{label}: no dod_evidence item in the contracts of {context} "
+                    "binds it"
+                    for label in unbound
+                )
+                + "; add the missing binds_ac entries."
+            ),
+        )
+    return ModelRepoEvidenceVerdict(
+        outcome=EnumRepoEvidenceOutcome.PASSED,
+        detail=(
+            f"repo-bound by {context}: "
+            + ", ".join(f"{label}<-{sorted(bindings[label])[0]}" for label in labels)
+        ),
+        governing_contracts=tuple(governing),
+    )
 
 
 def parse_pr_url(pr_url: str) -> tuple[str, int] | None:
@@ -665,6 +975,8 @@ class DurableEvidenceGate:
         index_release_files: IndexReleaseFilesProbe,
         occ_repo_path: str,
         occ_governance_ref: str = DEFAULT_OCC_GOVERNANCE_REF,
+        read_repo_contract: RepoContractReader | None = None,
+        read_repo_check_runs: RepoEvidenceCheckRunsReader | None = None,
     ) -> None:
         self._is_receipt_tracked = is_receipt_tracked
         self._gh_pr_view = gh_pr_view
@@ -680,6 +992,18 @@ class DurableEvidenceGate:
         self._index_release_files = index_release_files
         self._occ_repo_path = occ_repo_path
         self._occ_governance_ref = occ_governance_ref
+        # OMN-20071: the product-repository readers come as a pair. Without
+        # them no repo evidence is read and every ticket is decided on the OCC
+        # path, which is the stricter side: the repo path can only admit on an
+        # affirmative verdict it read.
+        if (read_repo_contract is None) != (read_repo_check_runs is None):
+            msg = (
+                "read_repo_contract and read_repo_check_runs are a pair: pass "
+                "both or neither"
+            )
+            raise ValueError(msg)
+        self._read_repo_contract = read_repo_contract
+        self._read_repo_check_runs = read_repo_check_runs
 
     def evaluate_default(
         self,
@@ -687,6 +1011,8 @@ class DurableEvidenceGate:
         ticket_id: str,
         contract: dict[str, object],
         ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
     ) -> ModelDurableEvidenceGateResult:
         """Run the gate against the canonical platform layout for ``ticket_id``.
 
@@ -712,6 +1038,8 @@ class DurableEvidenceGate:
             receipt_dir=default_receipt_dir(ticket_id),
             contract_rel_path=default_contract_path(ticket_id),
             ticket_labels=ticket_labels,
+            merged_prs=merged_prs,
+            ticket_description=ticket_description,
         )
 
     def evaluate(
@@ -722,6 +1050,8 @@ class DurableEvidenceGate:
         receipt_dir: str,
         contract_rel_path: str,
         ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
     ) -> ModelDurableEvidenceGateResult:
         """Run the three durable-evidence checks and return an aggregate result.
 
@@ -736,10 +1066,25 @@ class DurableEvidenceGate:
             contract_rel_path: Path to the contract YAML relative to the OCC
                 repo root, e.g. ``contracts/OMN-9855.yaml``. Use
                 :func:`default_contract_path` to build it.
+            merged_prs: The ticket's merged PRs. Their repositories are read
+                for the ticket's contract first (OMN-20071).
+            ticket_description: The ticket description whose labelled
+                acceptance criteria a repo contract must bind.
 
         Pure result — does not raise. Callers that want hard-fail semantics
         invoke :meth:`enforce` instead.
         """
+        repo_verdict = self._repo_verdict(ticket_id, ticket_description, merged_prs)
+        if repo_verdict.outcome is not EnumRepoEvidenceOutcome.NOT_ENGAGED:
+            return self._evaluate_repo_governed(
+                ticket_id=ticket_id,
+                contract=contract,
+                receipt_dir=receipt_dir,
+                ticket_labels=ticket_labels,
+                merged_prs=merged_prs,
+                verdict=repo_verdict,
+            )
+
         checks: list[ModelDurableEvidenceCheckResult] = []
 
         # Check 1: at least one receipt is tracked under the ticket's receipt
@@ -948,25 +1293,7 @@ class DurableEvidenceGate:
             if (citation.repo, citation.pr_number) in merged_oids
             and is_publishing_repo(citation.repo)
         )
-        released_result = evaluate_released(
-            released_inputs,
-            release_tags_containing=self._release_tags_containing,
-            index_release_files=self._index_release_files,
-        )
-        checks.append(
-            ModelDurableEvidenceCheckResult(
-                check=EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
-                passed=released_result.passed,
-                message=(
-                    released_result.message
-                    if released_result.outcome is not EnumReleasedOutcome.NOT_APPLICABLE
-                    else (
-                        "No merged evidence PR lands in a publishing repo, so the "
-                        "released-is-Done check does not apply."
-                    )
-                ),
-            )
-        )
+        checks.append(self._released_check(released_inputs))
 
         # Check 3: the OCC governance ref contains a contract version declaring
         # the schema-valid evidence checks for the receipt-bound PR commits.
@@ -1030,102 +1357,26 @@ class DurableEvidenceGate:
         # pre-commit hook path or PR) OR a structured non-recurrence note. This
         # converts repairs into ratchets per Rule 5 so the same failure class
         # does not return. Non-defect tickets are exempt (the check passes N/A).
-        defect_labels = EnumDefectLabel.values()
-        present_defect_labels = sorted(ticket_labels & defect_labels)
-        if not present_defect_labels:
-            checks.append(
-                ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
-                    passed=True,
-                    message=(
-                        "Not a defect-class ticket — repair-to-ratchet rule does "
-                        "not apply."
-                    ),
-                )
-            )
-        else:
-            prevention_gate, non_recurrence_note = extract_defect_prevention(contract)
-            if prevention_gate is not None or non_recurrence_note is not None:
-                satisfied_by = (
-                    f"prevention_gate={prevention_gate!r}"
-                    if prevention_gate is not None
-                    else f"non_recurrence_note={non_recurrence_note!r}"
-                )
-                checks.append(
-                    ModelDurableEvidenceCheckResult(
-                        check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
-                        passed=True,
-                        message=(
-                            f"Defect ticket (label(s) {present_defect_labels}) "
-                            f"satisfies repair-to-ratchet via {satisfied_by}."
-                        ),
-                    )
-                )
-            else:
-                checks.append(
-                    ModelDurableEvidenceCheckResult(
-                        check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
-                        passed=False,
-                        message=(
-                            f"Defect ticket (label(s) {present_defect_labels}) "
-                            "cannot close: the contract links no prevention gate "
-                            "and carries no non-recurrence note. Add a top-level "
-                            "'prevention_gate' (CI workflow / pre-commit hook path "
-                            "or PR URL) OR a 'non_recurrence_note' explaining why "
-                            "no automated gate is feasible before transitioning "
-                            "Linear to Done (OMN-13339, Rule 5)."
-                        ),
-                    )
-                )
+        checks.append(self._defect_prevention_check(contract, ticket_labels))
 
         # Check 4 (OMN-13337, retro R2): the ticket must carry at least one
         # approved done-class label, and the label must be backed by durable
         # evidence. A plain-Done ticket with no class label — or a labelled
         # ticket whose receipt is not tracked on the governance ref — is
         # rejected here so done-detection cannot be gamed with a bare Done.
-        approved_labels = EnumDoneClassLabel.values()
-        present_done_classes = sorted(ticket_labels & approved_labels)
-        if not present_done_classes:
-            checks.append(
-                ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
-                    passed=False,
-                    message=(
-                        "Ticket carries no approved done-class label. Add exactly "
-                        "one of "
-                        f"{sorted(approved_labels)} that reflects how the work was "
-                        "proven Done (backed by RECEIPT_TRACKED / "
-                        "CONTRACT_CITES_MERGE_COMMIT / CONTRACT_ON_OCC_MAIN) "
-                        "before transitioning Linear to Done. A plain Done with no "
-                        "done-class label is rejected (OMN-13337)."
-                    ),
-                )
+        checks.append(
+            self._done_class_check(
+                ticket_labels,
+                backed=receipt_tracked,
+                unbacked=(
+                    "but no durable receipt is tracked on "
+                    f"{self._occ_governance_ref}. A done-class label must be "
+                    "backed by a tracked receipt (RECEIPT_TRACKED) — the label "
+                    "alone is not evidence (OMN-13337)."
+                ),
+                backed_by="backed by a tracked durable receipt.",
             )
-        elif not receipt_tracked:
-            checks.append(
-                ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
-                    passed=False,
-                    message=(
-                        f"Ticket carries done-class label(s) {present_done_classes} "
-                        "but no durable receipt is tracked on "
-                        f"{self._occ_governance_ref}. A done-class label must be "
-                        "backed by a tracked receipt (RECEIPT_TRACKED) — the label "
-                        "alone is not evidence (OMN-13337)."
-                    ),
-                )
-            )
-        else:
-            checks.append(
-                ModelDurableEvidenceCheckResult(
-                    check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
-                    passed=True,
-                    message=(
-                        f"Done-class label(s) {present_done_classes} present and "
-                        "backed by a tracked durable receipt."
-                    ),
-                )
-            )
+        )
 
         all_pass = all(c.passed for c in checks)
         return ModelDurableEvidenceGateResult(
@@ -1138,6 +1389,243 @@ class DurableEvidenceGate:
             checks=checks,
         )
 
+    def _repo_verdict(
+        self,
+        ticket_id: str,
+        ticket_description: str,
+        merged_prs: tuple[ModelTicketMergedPr, ...],
+    ) -> ModelRepoEvidenceVerdict:
+        """The product-repository verdict, NOT_ENGAGED when no reader is wired."""
+        if self._read_repo_contract is None or self._read_repo_check_runs is None:
+            return ModelRepoEvidenceVerdict(
+                outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED,
+                detail="no product-repository reader is wired",
+            )
+        return evaluate_repo_evidence(
+            ticket_id,
+            ticket_description,
+            merged_prs,
+            read_repo_contract=self._read_repo_contract,
+            read_repo_check_runs=self._read_repo_check_runs,
+        )
+
+    def _evaluate_repo_governed(
+        self,
+        *,
+        ticket_id: str,
+        contract: dict[str, object],
+        receipt_dir: str,
+        ticket_labels: frozenset[str],
+        merged_prs: tuple[ModelTicketMergedPr, ...],
+        verdict: ModelRepoEvidenceVerdict,
+    ) -> ModelDurableEvidenceGateResult:
+        """Decide a ticket whose contract lives in its product repository.
+
+        The OCC receipt trail (checks 1 and 2) does not apply: the durable
+        record is the merged contract and the check run on the merged head,
+        both of which :func:`evaluate_repo_evidence` read. Check 3 carries that
+        verdict. The caller's ``contract`` is not compared against the merged
+        one: it may be an OCC copy, and an OCC copy does not govern a ticket
+        its repository governs. Released, repair-to-ratchet and done-class keep
+        their meaning, the released check over every merged PR of a publishing
+        repository and repair-to-ratchet over the governing contracts.
+        """
+        not_applicable = (
+            f"Not applicable: {ticket_id} is governed by its product-repository "
+            f"contract, so OCC receipts under {receipt_dir}/ are not read; "
+            f"{EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN.value} carries the "
+            "verdict."
+        )
+        checks = [
+            ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.RECEIPT_TRACKED,
+                passed=True,
+                message=not_applicable,
+            ),
+            ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+                passed=True,
+                message=not_applicable,
+            ),
+            self._released_check(
+                tuple(
+                    ModelReleasedCitationInput(
+                        repo=pr.repo,
+                        pr_number=pr.pr_number,
+                        merge_sha=pr.merge_commit_sha,
+                    )
+                    for pr in merged_prs
+                    if is_publishing_repo(pr.repo)
+                )
+            ),
+        ]
+
+        governed = verdict.outcome is EnumRepoEvidenceOutcome.PASSED
+        message = (
+            f"Product-repository contract governs: {verdict.detail}."
+            if governed
+            else (
+                f"Product-repository contract refused: {verdict.detail} "
+                "Transitioning Linear to Done needs the repo evidence fixed; "
+                "OCC is not consulted for a ticket its repository governs."
+            )
+        )
+        checks.append(
+            ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
+                passed=governed,
+                message=message,
+            )
+        )
+        # The merged repo contract is the one that governs, so repair-to-ratchet
+        # reads its prevention fields; the caller's copy (possibly an OCC one)
+        # is used only when no repo contract governed.
+        defect_contract = next(
+            (
+                governing_contract
+                for governing_contract in verdict.governing_contracts
+                if any(
+                    field is not None
+                    for field in extract_defect_prevention(governing_contract)
+                )
+            ),
+            verdict.governing_contracts[0] if verdict.governing_contracts else contract,
+        )
+        checks.append(self._defect_prevention_check(defect_contract, ticket_labels))
+        checks.append(
+            self._done_class_check(
+                ticket_labels,
+                backed=governed,
+                unbacked=(
+                    "but the product-repository contract does not govern the "
+                    "ticket (contract_on_occ_main failed). A done-class label "
+                    "must be backed by durable evidence — the label alone is "
+                    "not evidence (OMN-13337)."
+                ),
+                backed_by=(
+                    "backed by the product-repository contract and its green "
+                    f"{REPO_EVIDENCE_CHECK_NAME} run."
+                ),
+            )
+        )
+        return ModelDurableEvidenceGateResult(
+            ticket_id=ticket_id,
+            status=(
+                EnumDurableEvidenceStatus.PASS
+                if all(c.passed for c in checks)
+                else EnumDurableEvidenceStatus.FAIL
+            ),
+            checks=checks,
+        )
+
+    def _released_check(
+        self, released_inputs: tuple[ModelReleasedCitationInput, ...]
+    ) -> ModelDurableEvidenceCheckResult:
+        """Check 2b (OMN-18010): every merge in a publishing repo is released."""
+        released_result = evaluate_released(
+            released_inputs,
+            release_tags_containing=self._release_tags_containing,
+            index_release_files=self._index_release_files,
+        )
+        return ModelDurableEvidenceCheckResult(
+            check=EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
+            passed=released_result.passed,
+            message=(
+                released_result.message
+                if released_result.outcome is not EnumReleasedOutcome.NOT_APPLICABLE
+                else (
+                    "No merged evidence PR lands in a publishing repo, so the "
+                    "released-is-Done check does not apply."
+                )
+            ),
+        )
+
+    @staticmethod
+    def _defect_prevention_check(
+        contract: dict[str, object], ticket_labels: frozenset[str]
+    ) -> ModelDurableEvidenceCheckResult:
+        """Check 4 (OMN-13339): a defect ticket links a prevention gate or note."""
+        defect_labels = EnumDefectLabel.values()
+        present_defect_labels = sorted(ticket_labels & defect_labels)
+        if not present_defect_labels:
+            return ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+                passed=True,
+                message=(
+                    "Not a defect-class ticket — repair-to-ratchet rule does not apply."
+                ),
+            )
+        prevention_gate, non_recurrence_note = extract_defect_prevention(contract)
+        if prevention_gate is not None or non_recurrence_note is not None:
+            satisfied_by = (
+                f"prevention_gate={prevention_gate!r}"
+                if prevention_gate is not None
+                else f"non_recurrence_note={non_recurrence_note!r}"
+            )
+            return ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+                passed=True,
+                message=(
+                    f"Defect ticket (label(s) {present_defect_labels}) "
+                    f"satisfies repair-to-ratchet via {satisfied_by}."
+                ),
+            )
+        return ModelDurableEvidenceCheckResult(
+            check=EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
+            passed=False,
+            message=(
+                f"Defect ticket (label(s) {present_defect_labels}) "
+                "cannot close: the contract links no prevention gate "
+                "and carries no non-recurrence note. Add a top-level "
+                "'prevention_gate' (CI workflow / pre-commit hook path "
+                "or PR URL) OR a 'non_recurrence_note' explaining why "
+                "no automated gate is feasible before transitioning "
+                "Linear to Done (OMN-13339, Rule 5)."
+            ),
+        )
+
+    @staticmethod
+    def _done_class_check(
+        ticket_labels: frozenset[str],
+        *,
+        backed: bool,
+        unbacked: str,
+        backed_by: str,
+    ) -> ModelDurableEvidenceCheckResult:
+        """Check 4 (OMN-13337): an approved done-class label backed by evidence."""
+        approved_labels = EnumDoneClassLabel.values()
+        present_done_classes = sorted(ticket_labels & approved_labels)
+        if not present_done_classes:
+            return ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+                passed=False,
+                message=(
+                    "Ticket carries no approved done-class label. Add exactly "
+                    "one of "
+                    f"{sorted(approved_labels)} that reflects how the work was "
+                    "proven Done (backed by RECEIPT_TRACKED / "
+                    "CONTRACT_CITES_MERGE_COMMIT / CONTRACT_ON_OCC_MAIN) "
+                    "before transitioning Linear to Done. A plain Done with no "
+                    "done-class label is rejected (OMN-13337)."
+                ),
+            )
+        if not backed:
+            return ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+                passed=False,
+                message=(
+                    f"Ticket carries done-class label(s) {present_done_classes} "
+                    f"{unbacked}"
+                ),
+            )
+        return ModelDurableEvidenceCheckResult(
+            check=EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+            passed=True,
+            message=(
+                f"Done-class label(s) {present_done_classes} present and {backed_by}"
+            ),
+        )
+
     def enforce(
         self,
         *,
@@ -1146,6 +1634,8 @@ class DurableEvidenceGate:
         receipt_dir: str,
         contract_rel_path: str,
         ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate` and raise on failure.
 
@@ -1158,6 +1648,8 @@ class DurableEvidenceGate:
             receipt_dir=receipt_dir,
             contract_rel_path=contract_rel_path,
             ticket_labels=ticket_labels,
+            merged_prs=merged_prs,
+            ticket_description=ticket_description,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -1169,6 +1661,8 @@ class DurableEvidenceGate:
         ticket_id: str,
         contract: dict[str, object],
         ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate_default` and raise on failure.
 
@@ -1181,6 +1675,8 @@ class DurableEvidenceGate:
             ticket_id=ticket_id,
             contract=contract,
             ticket_labels=ticket_labels,
+            merged_prs=merged_prs,
+            ticket_description=ticket_description,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -1189,6 +1685,8 @@ class DurableEvidenceGate:
 
 __all__: list[str] = [
     "DEFAULT_OCC_GOVERNANCE_REF",
+    "REPO_EVIDENCE_APP_SLUG",
+    "REPO_EVIDENCE_CHECK_NAME",
     "ContractOnRefLoader",
     "DurableEvidenceGate",
     "DurableEvidenceGateError",
@@ -1198,9 +1696,12 @@ __all__: list[str] = [
     "PrCommitsProbe",
     "ReceiptsOnRefLoader",
     "ReleaseTagsContainingProbe",
+    "RepoContractReader",
+    "RepoEvidenceCheckRunsReader",
     "apply_supersessions",
     "default_contract_path",
     "default_receipt_dir",
+    "evaluate_repo_evidence",
     "extract_contract_check_keys",
     "extract_receipt_merge_commits",
     "parse_pr_url",

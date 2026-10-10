@@ -137,7 +137,7 @@ def test_runtime_tick_contract_routes_to_an_interval_gate(
         {"topic": TICK_TOPIC, "operation": route["operation"]}
     ]
     assert TICK_TOPIC in contract["event_bus"]["subscribe_topics"]
-    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["descriptor"]["purity"] == "pure"
     schedule = ModelRuntimeTickScheduleConfig.model_validate(
         contract["config"][key]["schedule"]

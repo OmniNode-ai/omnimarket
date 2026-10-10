@@ -20,6 +20,16 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: node_dod_verify refuses a contract that declares an acceptance criterion no dod_evidence item binds through binds_ac, reading NO_ACCEPTANCE_CHECKS and naming the unbound criterion, so a repository adopting the repo-evidence gate needs no contract-binds test of its own, and the S5 difference step classifies that refusal as incomplete_criterion_coverage -- falsifier: uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q
+      - id: "AC5"
+        statement: |-
+          AC5: the four outcomes of the OR.2 scratch pull requests read back from GitHub: a real fix's repo-evidence / dod-verify check run (GitHub Actions) concluded success, each always-pass pull request's check run of that context concluded failure, a pull request that edited the caller to evidence-source occ still ran the base branch's dod-verify definition (dod-verify executed and verify was skipped, from pull_request_target), and the ruleset names GitHub Actions as the only source of the context while case C16 records the token status refused -- falsifier: uv run pytest tests/ci/test_ruleset_readback_omn20070.py -q -k scratch_outcomes
+# Linear AC4 (ruleset half) is deliberately not declared above, so it is unbound.
+# The live ruleset 24462257 on dev requires repo-evidence / dod-verify with
+# integration_id 15368 (GitHub Actions) and nothing more: it carries no workflows
+# rule that pins the evidence workflow to a ref, and dev has no pull_request rule
+# with code-owner review, which is the criterion's stated fallback. A readback test
+# of the criterion as written is red, so it is not committed and not bound; the
+# before/after ruleset payloads went to orchestrator-9f8a.
 evidence_requirements:
   - kind: "tests"
     description: "The caller workflow has the required base-branch trigger, immutable pin, inputs and read-only permissions."
@@ -30,6 +40,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The verifier refuses a contract with an unbound acceptance criterion and the difference step names it incomplete criterion coverage."
     command: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
+  - kind: "tests"
+    description: "The caller pins a released verifier that ships the unbound-criteria refusal, so the required repo-evidence / dod-verify check applies it."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k refuses_unbound"
+  - kind: "tests"
+    description: "The four scratch-PR outcomes read back from recorded check runs and the ruleset's expected source."
+    command: "uv run pytest tests/ci/test_ruleset_readback_omn20070.py -q -k scratch_outcomes"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -59,3 +75,19 @@ dod_evidence:
         check_value: "uv run pytest tests/test_dod_verify_every_criterion_bound.py tests/test_dod_verify_s5_case_list.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-repo-evidence-ac3-pinned-verifier"
+    description: "The caller pins a released verifier (0.4.305) that ships the unbound-criteria refusal; the test fails at the merge base, whose caller pins 0.4.294."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k refuses_unbound"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-repo-evidence-ac5"
+    description: "The recorded check runs of the real-fix, always-pass and workflow-edit pull requests and the live ruleset source read back as the criterion states; planted runs violate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20070.py -q -k scratch_outcomes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

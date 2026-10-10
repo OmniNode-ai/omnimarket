@@ -527,7 +527,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # test omnimarket's own OCC companion emitter and its schema compatibility
     # against a pinned onex_change_control checkout. Neither reads a PR's
     # companion, so CI Summary keeps enforcing them until the emitter itself is
-    # retired (plan S7 to S9).
+    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    # reads the ticket-contract schema from omnibase_core, its owner, and checks
+    # out no onex_change_control; it keeps its context name.
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
