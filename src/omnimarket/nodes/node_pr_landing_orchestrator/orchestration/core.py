@@ -17,15 +17,21 @@ assigns to the orchestrator:
   with every arm or enqueue carrying its expected head (the intent's head) and
   passed through node_pr_arm_gate_compute before it is queued. A withheld arm is
   never queued, so the row's ``armed`` flag is cleared with it;
+* before that gate, the ledger's gate facts (OMN-20866, :mod:`.gate_facts`): a
+  green head of a PR a HOLD row holds, of a lab-proof repository with no PASS
+  lab proof for the head, or whose facts cannot be read is kept pending, its
+  reason named on the transition, and read again on the next poll;
 * the completion bound per state entry (R2a, R2b): applied on the tick, tagged
   (episode, state_entry_generation), never in PARKED, once per entry;
 * the events: one transitioned per transition with the orchestrator-owned
   per-key ``seq``; agent-needed once per (head, reason); one merged or closed
   terminal per (PR, episode) (P4, F9, F10).
 
-The function is deterministic: time comes only from the message, ids are
-derived from the row and the message, and the in-process nodes it calls are
-pure. The handler wraps it in the ``state_io`` compare-and-set with retry.
+The function is deterministic but for one read: time comes only from the
+message, ids are derived from the row and the message, the in-process nodes it
+calls are pure, and the gate facts port is read only for a green head, its
+answer recorded on the transition as the withheld reason. The handler wraps it
+in the ``state_io`` compare-and-set with retry.
 """
 
 from __future__ import annotations
@@ -97,6 +103,10 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_agent
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_gate_facts import (
+    EnumPrLandingWithheldReason,
+    ModelPrLandingGateDecision,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
     ModelPrLandingAutobindPrompt,
     ModelPrLandingCompanionOutcomeIngress,
@@ -129,6 +139,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workf
     ModelPrLandingInFlight,
     ModelPrLandingWorkflowRow,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.gate_facts import (
+    decide_gate,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.outbox import (
     PR_LANDING_NAMESPACE,
     add_intents,
@@ -138,6 +151,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.outbox import (
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     ProtocolPrLandingArmGate,
+    ProtocolPrLandingGateFacts,
     ProtocolPrLandingHeadCheckClassifier,
     ProtocolPrLandingReducer,
     call_reducer,
@@ -193,6 +207,27 @@ _OP_BY_COMPANION_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingCompanionOp
 
 
 @dataclass(frozen=True)
+class PrLandingGateFactsConfig:
+    """Where the arm decision reads its ledger facts, and which repos need a lab pass.
+
+    Built from the contract's ``landing_gate_facts`` block (OMN-20866).
+    """
+
+    # Rule 24: a runtime-affecting PR in these repositories lands only with a
+    # PASS lab proof for its head. The workflow reads no changed-file class, so
+    # every PR of these repositories counts as runtime-affecting (unknown
+    # fails closed as runtime).
+    lab_proof_repos: frozenset[str]
+    # The ledger projection must have projected a row within this bound, else a
+    # hold written since could not be seen and the holds read UNKNOWN.
+    ledger_freshness_bound: timedelta
+    dsn_env: str
+    hold_state_relation: str
+    ledger_rows_relation: str
+    lab_proof_receipts_relation: str
+
+
+@dataclass(frozen=True)
 class PrLandingOrchestratorConfig:
     """Operator-controlled knobs. Defaults are shadow mode (plan 5.5, wave 3).
 
@@ -234,6 +269,10 @@ class PrLandingOrchestratorConfig:
     # a read, as a push prompt does. Every other repository's observation is
     # dropped.
     observed_prompt_repos: frozenset[str] = frozenset()
+    # The ledger gate facts every green head is checked against before an arm
+    # (OMN-20866). None, the default of a hand-built config, reads none; the
+    # contract declares them, so the runtime always reads them.
+    gate_facts: PrLandingGateFactsConfig | None = None
 
     def companion_required(self, repository: str) -> bool:
         return repository not in self.companion_exempt_repos
@@ -265,6 +304,9 @@ class PrLandingOrchestratorPorts:
     reducer: ProtocolPrLandingReducer
     arm_gate: ProtocolPrLandingArmGate
     classifier: ProtocolPrLandingHeadCheckClassifier
+    # The read of the ledger gate facts; None withholds every green head of a
+    # config that declares the gate (fail closed).
+    gate_facts: ProtocolPrLandingGateFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -292,6 +334,8 @@ class _Leg:
         self.config = config
         self.ports = ports
         self.emitted: list[BaseModel] = []
+        # The gate facts' reason, carried by the next transition published.
+        self.withheld_reason: str | None = None
 
     # ------------------------------------------------------------------ reduce
 
@@ -325,8 +369,10 @@ class _Leg:
                 trigger=output.trigger,
                 intents=output.intents,
                 transitioned_at=observation.observed_at,
+                withheld_reason=self.withheld_reason,
             )
         )
+        self.withheld_reason = None
         self._terminal(before, after, observation.observed_at)
         self._drain_local(before, observation.observed_at)
         return True
@@ -422,6 +468,38 @@ class _Leg:
         if decision.decision is not EnumArmDecision.ARM:
             return None
         return self.config.arm_method(landing.repository)
+
+    async def gate_decision(self, head_sha: str) -> ModelPrLandingGateDecision:
+        """The ledger gate facts' answer for a green head (OMN-20866), fail-closed.
+
+        A draft or held (title or label) row is parked by the reducer and
+        never reaches an arm, so it needs no read.
+        """
+        landing = self.row.landing
+        gate = self.config.gate_facts
+        if gate is None or landing is None or landing.draft or landing.held:
+            return ModelPrLandingGateDecision()
+        port = self.ports.gate_facts
+        if port is None:
+            return ModelPrLandingGateDecision(
+                withheld=EnumPrLandingWithheldReason.LEDGER_HOLDS_UNKNOWN,
+                detail="no gate facts reader is wired",
+            )
+        try:
+            facts = await port.read(
+                landing.repository, landing.pr_number, head_sha, self.now
+            )
+        except Exception as exc:  # fail closed on any reader failure
+            return ModelPrLandingGateDecision(
+                withheld=EnumPrLandingWithheldReason.LEDGER_HOLDS_UNKNOWN,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+        return decide_gate(
+            facts,
+            now=self.now,
+            lab_proof_required=landing.repository in gate.lab_proof_repos,
+            ledger_freshness_bound=gate.ledger_freshness_bound,
+        )
 
     def _arm_candidate(self, state: ModelPrLandingState) -> ModelArmCandidate:
         companion_ok = (
@@ -1096,6 +1174,18 @@ async def _apply_head_checks(
         # mergeability yet, or still reports it blocked (a required context not
         # posted yet): the head is still pending, read again after the interval.
         verdict = verdict.model_copy(update={"verdict": EnumHeadCheckVerdict.PENDING})
+    if verdict.verdict is EnumHeadCheckVerdict.GREEN:
+        gate = await leg.gate_decision(message.head_sha)
+        if gate.withheld is not None:
+            # A hold in force, no PASS lab proof for this head, or facts that
+            # cannot be read: never armed. The head stays pending, its reason
+            # named on the transition, and the next poll is a full read (no
+            # etag) so a RELEASE or a new PASS is seen without a new push.
+            verdict = verdict.model_copy(
+                update={"verdict": EnumHeadCheckVerdict.PENDING}
+            )
+            leg.withheld_reason = gate.reason_text
+            leg.row = leg.row.model_copy(update={"head_checks_etag": None})
     arm_method = await leg.arm_method_for(verdict.verdict)
     await leg.apply_and_evaluate(
         ModelPrLandingObservation(
@@ -1144,6 +1234,7 @@ async def _on_github_failed(
 
 __all__: list[str] = [
     "DEFAULT_STATE_BOUNDS",
+    "PrLandingGateFactsConfig",
     "PrLandingOrchestratorConfig",
     "PrLandingOrchestratorPorts",
     "PrLandingStepResult",

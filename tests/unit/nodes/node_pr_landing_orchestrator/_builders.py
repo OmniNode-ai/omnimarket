@@ -23,6 +23,12 @@ from omnimarket.nodes.node_pr_landing_github_effect.models import (
     ModelPrLandingGithubCompleted,
     ModelPrLandingGithubRequest,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_gate_facts import (
+    EnumPrLandingFactState,
+    ModelPrLandingGateFacts,
+    ModelPrLandingLabPass,
+    ModelPrLandingLedgerHold,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
     ModelPrLandingAutobindPrompt,
     ModelPrLandingGithubCompletedIngress,
@@ -214,3 +220,64 @@ class ArmingGate:
 
 def later(minutes: float) -> datetime:
     return T0 + timedelta(minutes=minutes)
+
+
+class FixedGateFacts:
+    """The ledger projection as a test states it: holds, PASS heads, or unreadable."""
+
+    def __init__(
+        self,
+        *,
+        holds: tuple[ModelPrLandingLedgerHold, ...] = (),
+        lab_heads: tuple[str, ...] = (),
+        unreadable: str | None = None,
+        raise_on_read: bool = False,
+        pass_every_head: bool = False,
+    ) -> None:
+        self.holds = holds
+        self.lab_heads = lab_heads
+        self.pass_every_head = pass_every_head
+        self.unreadable = unreadable
+        self.raise_on_read = raise_on_read
+        self.reads: list[tuple[str, int, str]] = []
+
+    async def read(
+        self, repository: str, pr_number: int, head_sha: str, now: datetime
+    ) -> ModelPrLandingGateFacts:
+        self.reads.append((repository, pr_number, head_sha))
+        if self.raise_on_read:
+            msg = "the reader broke"
+            raise RuntimeError(msg)
+        state = (
+            EnumPrLandingFactState.UNKNOWN
+            if self.unreadable is not None
+            else EnumPrLandingFactState.KNOWN
+        )
+        return ModelPrLandingGateFacts(
+            repository=repository,
+            pr_number=pr_number,
+            head_sha=head_sha,
+            read_at=now,
+            holds_state=state,
+            holds=self.holds if self.unreadable is None else (),
+            ledger_newest_projected_at=now if self.unreadable is None else None,
+            lab_state=state,
+            lab_passes=tuple(
+                ModelPrLandingLabPass(
+                    source="lab_proof_receipt",
+                    ref=f"{repository}#{pr_number}@{head}:runtime@1",
+                    head_sha=head,
+                    result="PASS",
+                    verifier_token="PASS",
+                )
+                for head in ((head_sha,) if self.pass_every_head else self.lab_heads)
+            )
+            if self.unreadable is None
+            else (),
+            unknown_detail=self.unreadable,
+        )
+
+
+def passing_gate_facts(*heads: str) -> FixedGateFacts:
+    """No hold in force and a PASS lab proof for each head named (every head if none)."""
+    return FixedGateFacts(lab_heads=heads, pass_every_head=not heads)

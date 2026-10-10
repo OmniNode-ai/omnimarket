@@ -88,6 +88,7 @@ from tests.unit.nodes.node_pr_landing_orchestrator._builders import (
     FixedClassifier,
     answer,
     only_request,
+    passing_gate_facts,
     prompt,
 )
 
@@ -113,7 +114,9 @@ def _contract_handler(
 ) -> HandlerPrLandingOrchestrator:
     """The handler as the runtime builds it: real reducer, gate and classifier.
 
-    No ``config`` means the handler's own default, the contract's block.
+    No ``config`` means the handler's own default, the contract's block. The
+    ledger gate facts read no hold in force and a PASS lab proof for every head
+    (OMN-20866; test_pr_landing_gate_facts_omn_20866 withholds on them).
     """
     return HandlerPrLandingOrchestrator(
         reducer=HandlerPrLandingReducer(),
@@ -121,6 +124,7 @@ def _contract_handler(
         classifier=classifier,
         config=config,
         store=store if store is not None else InMemoryPrLandingRowStore(),
+        gate_facts=passing_gate_facts(),
     )
 
 
