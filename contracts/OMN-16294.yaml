@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-16294"
+title: "Worktree lease node refuses a second lane in a held worktree"
+summary: "node_worktree_lease_compute refuses a lane starting in a worktree another lane's live ledger CLAIM holds, naming the holder lane and the release path. It grants when the tree is unclaimed, held by the requester, released, or stale."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-lease-refuses-second-lane"
+    statement: "A lane asking for a worktree that another lane's live CLAIM holds is refused with the holder lane and its claim stamp. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the lease handler refuses a second lane in a held worktree and grants an unclaimed, self-held, released or stale one -- falsifier: uv run pytest tests/unit/nodes/node_worktree_lease_compute/test_handler_worktree_lease.py tests/test_golden_chain_worktree_lease_compute.py -q fails when the refusal is removed"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The lease handler and golden-chain tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_worktree_lease_compute/test_handler_worktree_lease.py tests/test_golden_chain_worktree_lease_compute.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn16294-ac1-worktree-lease-refusal"
+    description: "AC1 hosted probe. The lease handler and golden-chain tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_worktree_lease_compute/test_handler_worktree_lease.py tests/test_golden_chain_worktree_lease_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
