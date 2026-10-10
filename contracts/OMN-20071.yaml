@@ -22,10 +22,10 @@ requirements:
           AC6: The change adds no new non-canonical file -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k no_module fails
 evidence_requirements:
   - kind: "tests"
-    description: "A cut-over-repository ticket with every criterion bound and a green check run on the newest merged head passes with no OCC contract, including over a red run on a superseded merged PR of the same repository."
+    description: "A cut-over-repository ticket with every criterion bound and a green check run on the newest merged head passes with no OCC contract, including over a red run on a superseded merged PR of the same repository and over an OCC copy that carries items the repo contract lacks."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k admits"
   - kind: "tests"
-    description: "The same ticket is refused with one criterion unbound, a red or in-progress run, a contract changed after the verified head, an unreadable contract or check runs, no readable or labelled criterion, a missing repo contract and no OCC contract, a stale local contract, no done-class label, or a merged but unreleased publishing-repo PR."
+    description: "The same ticket is refused with one criterion unbound, a red or in-progress run, a contract changed after the verified head, an unreadable contract or check runs, no readable or labelled criterion, a missing repo contract and no OCC contract, a defect label with no prevention gate in the repo contract, no done-class label, or a merged but unreleased publishing-repo PR."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k refuses"
   - kind: "tests"
     description: "Fourteen OCC-only gate inputs whose decisions were recorded at 3fe55c842, before the change, replay to identical decisions through the changed gate."

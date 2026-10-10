@@ -512,7 +512,7 @@ def evaluate_repo_evidence(
         )
 
     bindings: dict[str, list[str]] = {}
-    check_keys: set[tuple[str, str]] = set()
+    governing: list[dict[str, object]] = []
     sources: list[str] = []
     for pr, contract, kept in engaged:
         source = f"{pr.repo}#{pr.pr_number}"
@@ -544,7 +544,7 @@ def evaluate_repo_evidence(
                 ),
             )
         sources.append(f"{context} ({REPO_EVIDENCE_CHECK_NAME} run {run.id})")
-        check_keys |= extract_contract_check_keys(contract)
+        governing.append(contract)
         for label, item_ids in _contract_bindings(contract).items():
             bindings.setdefault(label, []).extend(
                 f"{item_id} ({source})" for item_id in item_ids
@@ -592,7 +592,7 @@ def evaluate_repo_evidence(
             f"repo-bound by {context}: "
             + ", ".join(f"{label}<-{sorted(bindings[label])[0]}" for label in labels)
         ),
-        contract_check_keys=frozenset(check_keys),
+        governing_contracts=tuple(governing),
     )
 
 
@@ -1402,8 +1402,11 @@ class DurableEvidenceGate:
         The OCC receipt trail (checks 1 and 2) does not apply: the durable
         record is the merged contract and the check run on the merged head,
         both of which :func:`evaluate_repo_evidence` read. Check 3 carries that
-        verdict. Released, repair-to-ratchet and done-class keep their meaning,
-        the released check over every merged PR of a publishing repository.
+        verdict. The caller's ``contract`` is not compared against the merged
+        one: it may be an OCC copy, and an OCC copy does not govern a ticket
+        its repository governs. Released, repair-to-ratchet and done-class keep
+        their meaning, the released check over every merged PR of a publishing
+        repository and repair-to-ratchet over the governing contracts.
         """
         not_applicable = (
             f"Not applicable: {ticket_id} is governed by its product-repository "
@@ -1436,25 +1439,15 @@ class DurableEvidenceGate:
         ]
 
         governed = verdict.outcome is EnumRepoEvidenceOutcome.PASSED
-        if not governed:
-            message = (
+        message = (
+            f"Product-repository contract governs: {verdict.detail}."
+            if governed
+            else (
                 f"Product-repository contract refused: {verdict.detail} "
                 "Transitioning Linear to Done needs the repo evidence fixed; "
                 "OCC is not consulted for a ticket its repository governs."
             )
-        else:
-            missing = sorted(
-                extract_contract_check_keys(contract) - verdict.contract_check_keys
-            )
-            if missing:
-                governed = False
-                message = (
-                    "Product-repository contract is stale — missing local "
-                    f"check(s) {missing}. Merge the contract change in the "
-                    "product repository before transitioning Linear to Done."
-                )
-            else:
-                message = f"Product-repository contract governs: {verdict.detail}."
+        )
         checks.append(
             ModelDurableEvidenceCheckResult(
                 check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
@@ -1462,7 +1455,21 @@ class DurableEvidenceGate:
                 message=message,
             )
         )
-        checks.append(self._defect_prevention_check(contract, ticket_labels))
+        # The merged repo contract is the one that governs, so repair-to-ratchet
+        # reads its prevention fields; the caller's copy (possibly an OCC one)
+        # is used only when no repo contract governed.
+        defect_contract = next(
+            (
+                governing_contract
+                for governing_contract in verdict.governing_contracts
+                if any(
+                    field is not None
+                    for field in extract_defect_prevention(governing_contract)
+                )
+            ),
+            verdict.governing_contracts[0] if verdict.governing_contracts else contract,
+        )
+        checks.append(self._defect_prevention_check(defect_contract, ticket_labels))
         checks.append(
             self._done_class_check(
                 ticket_labels,

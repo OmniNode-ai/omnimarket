@@ -224,11 +224,11 @@ class ModelRepoEvidenceVerdict(BaseModel):
 
     outcome: EnumRepoEvidenceOutcome = Field(...)
     detail: str = Field(...)
-    contract_check_keys: frozenset[tuple[str, str]] = Field(
-        default_factory=frozenset,
+    governing_contracts: tuple[dict[str, object], ...] = Field(
+        default=(),
         description=(
-            "(evidence_item_id, check_type) keys the deciding contracts declare; "
-            "empty unless PASSED."
+            "The merged contracts that decided the ticket, one per engaged "
+            "repository; empty unless PASSED."
         ),
     )
 

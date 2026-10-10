@@ -296,6 +296,30 @@ class TestRepoFirstAdmits:
 
         assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
 
+    def test_admits_over_an_occ_copy_carrying_items_the_repo_contract_lacks(
+        self,
+    ) -> None:
+        merged = _contract(["AC1"], ["AC2"])
+        occ_copy = _contract(["AC1"], ["AC2"], ["AC2"])
+        result = _evaluate(
+            _no_occ_gate(**_green_readers(merged)), (_pr(),), contract=occ_copy
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+
+    def test_admits_defect_ticket_whose_repo_contract_links_a_prevention_gate(
+        self,
+    ) -> None:
+        merged = {**_contract(["AC1"], ["AC2"]), "prevention_gate": "ci.yml"}
+        result = _evaluate(
+            _no_occ_gate(**_green_readers(merged)),
+            (_pr(),),
+            contract=_contract(["AC1"], ["AC2"]),
+            labels=frozenset({"source-done", "bug"}),
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+
     def test_admits_verdict_names_the_binding_items(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
         verdict = evaluate_repo_evidence(
@@ -422,15 +446,23 @@ class TestRepoFirstRefuses:
         )
         self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "is not present on")
 
-    def test_refuses_local_contract_check_absent_from_the_merged_contract(
+    def test_refuses_defect_ticket_whose_repo_contract_links_no_prevention(
         self,
     ) -> None:
         merged = _contract(["AC1"], ["AC2"])
-        local = _contract(["AC1"], ["AC2"], ["AC2"])
-        self._refused(
-            _evaluate(_no_occ_gate(**_green_readers(merged)), (_pr(),), contract=local),
-            "dod-3",
+        local = {**merged, "prevention_gate": ".github/workflows/ci.yml"}
+        result = _evaluate(
+            _no_occ_gate(**_green_readers(merged)),
+            (_pr(),),
+            contract=local,
+            labels=frozenset({"source-done", "bug"}),
         )
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
+        assert _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN).passed
+        assert not _check(
+            result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        ).passed
 
     def test_refuses_green_repo_ticket_without_a_done_class_label(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
