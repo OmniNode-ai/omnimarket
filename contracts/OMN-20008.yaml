@@ -42,6 +42,9 @@ dod_evidence:
     description: "AC2 local-surface probe. In a clean HOME, onex local init mints the install, a measured run is recorded in its store, and onex dashboard serves delegation.savings.v1 with that run's basis read as measured; the check exits non-zero when the exposure answers 503 or the basis is not measured."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_sqlite_delegation_savings_view_omn20008.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
           set -eu
