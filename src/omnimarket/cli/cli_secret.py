@@ -427,17 +427,15 @@ def register_tenant_key(
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(
-        json.dumps(
-            {
-                "api_key_ref": response.api_key_ref,
-                "provider": response.provider,
-                "plan": response.plan,
-                "model": response.model,
-                "tenant": tenant,
-            }
-        )
-    )
+    shown: dict[str, str | None] = {
+        "api_key_ref": response.api_key_ref,
+        "provider": response.provider,
+        "plan": response.plan,
+        "tenant": tenant,
+    }
+    if response.model is not None:
+        shown["model"] = response.model
+    click.echo(json.dumps(shown))
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
