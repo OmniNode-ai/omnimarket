@@ -66,7 +66,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_missing_receipt_not_armed -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn20866-gate-facts-pass-receipt-plus-green-clean-armed"
+  - id: "dod-omn20866-gate-facts-pass-receipt-armed"
     description: "A PASS lab proof for the head plus a green, clean head reaches READY with an enforce ARM_AUTO_MERGE request at that head, then ARMED. The test file is added by this pull request; it fails on the merge base."
     source: "manual"
     checks:
@@ -74,7 +74,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_pass_receipt_plus_green_clean_armed -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn20866-gate-facts-projection-unreadable-fails-closed"
+  - id: "dod-omn20866-gate-facts-unreadable-fails-closed"
     description: "A gate-fact projection that cannot be read is UNKNOWN and withholds the arm: no request is emitted and the transition names ledger_holds_unknown. The test file is added by this pull request; it fails on the merge base."
     source: "manual"
     checks:
