@@ -45,3 +45,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k dependency_repin"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20917-deploy-probe"
+    description: "Deploy probe. The replay handler at the checked-out commit carries the class this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerOccReplay'"
+        cwd: "${OMNI_HOME}/omnimarket"
