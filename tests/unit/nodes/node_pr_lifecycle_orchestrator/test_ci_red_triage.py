@@ -371,6 +371,10 @@ def test_gh_reader_newest_checks_and_get_only(monkeypatch: pytest.MonkeyPatch) -
     def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         calls.append(args)
         assert kwargs["timeout"] == 20
+        if args[0:3] == ["gh", "api", "graphql"]:
+            assert args[3] == "-f"
+            assert args[4].startswith("query=query { ")
+            return subprocess.CompletedProcess(args, 0, json.dumps({"data": {}}))
         assert args[0:4] == ["gh", "api", "--method", "GET"]
         runs = [
             {
@@ -407,6 +411,100 @@ def test_gh_reader_newest_checks_and_get_only(monkeypatch: pytest.MonkeyPatch) -
         calls[1][-1]
         == "repos/OmniNode-ai/omniclaude/commits/main/check-runs?per_page=100"
     )
+    # The annotation read is a GraphQL query, never a mutation; a PR absent from it is unread.
+    assert calls[2][0:3] == ["gh", "api", "graphql"]
+    assert "mutation" not in calls[2][4]
+    assert len(calls) == 3
+    assert facts.annotations_read is False
+
+
+def graphql_node(head: str, annotations: dict[str, str]) -> dict[str, Any]:
+    contexts = [
+        {
+            "name": name,
+            "conclusion": "FAILURE",
+            "annotations": {
+                "nodes": [{"annotationLevel": "FAILURE", "message": text}]
+                if text
+                else []
+            },
+        }
+        for name, text in annotations.items()
+    ]
+    return {
+        "number": 0,
+        "headRefOid": head,
+        "statusCheckRollup": {
+            "nodes": [
+                {"commit": {"statusCheckRollup": {"contexts": {"nodes": contexts}}}}
+            ]
+        },
+    }
+
+
+def test_gh_reader_reads_annotations_of_pr_and_armed_peers_at_their_heads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peers = tuple(
+        ModelCiRedPeer(
+            pr_number=n, head_sha=f"head-{n}", armed=n != 9, red_contexts=(CHECK,)
+        )
+        for n in range(3, 10)
+    )
+    ev = event(3000).model_copy(update={"peers": peers})
+    queries: list[str] = []
+
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if args[0:3] != ["gh", "api", "graphql"]:
+            return subprocess.CompletedProcess(args, 0, json.dumps({"check_runs": []}))
+        query = args[4]
+        queries.append(query)
+        numbers = [
+            int(part.split(")")[0]) for part in query.split("pullRequest(number: ")[1:]
+        ]
+        data = {}
+        for i, number in enumerate(numbers):
+            # PR 8 moved to a new head since the event: its read is stale, so unread.
+            head = "moved" if number == 8 else f"head-{number}"
+            data[f"a{i}"] = {
+                "pullRequest": graphql_node(
+                    head, {CHECK: f"boom {number}", "other": ""}
+                )
+            }
+        return subprocess.CompletedProcess(args, 0, json.dumps({"data": data}))
+
+    monkeypatch.setattr(subprocess, "run", run)
+    facts = GhCiRedFactsReader().read(ev)
+    assert facts.annotations_read is True
+    assert facts.annotations == {CHECK: "boom 3000", "other": ""}
+    assert sorted(facts.peer_annotations) == [3, 4, 5, 6, 7]
+    assert facts.peer_annotations[4] == {CHECK: "boom 4", "other": ""}
+    # Seven PRs (the unarmed peer 9 is never read) in chunks of six.
+    assert len(queries) == 2
+    assert "pullRequest(number: 9)" not in "".join(queries)
+    assert facts.base_read is True
+
+
+def test_gh_reader_failed_annotation_read_keeps_check_facts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if args[0:3] == ["gh", "api", "graphql"]:
+            raise subprocess.TimeoutExpired(args, 20)
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            json.dumps(
+                {"check_runs": [{"id": 1, "name": CHECK, "conclusion": "failure"}]}
+            ),
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    facts = GhCiRedFactsReader().read(event())
+    assert facts.check_conclusions == {CHECK: "failure"}
+    assert facts.base_read is True
+    assert facts.annotations_read is False
+    assert facts.annotations == {}
 
 
 def test_gh_reader_any_error_discards_partial_facts(
