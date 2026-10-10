@@ -259,6 +259,13 @@ def handler_cancel_bound_s(task_types: Iterable[str] | None = None) -> int:
 
     The bound is the largest over the task classes being waited on (the whole
     integration corpus by default), because a wave shares one deadline.
+
+    The runner's deadline counts from publish and this bound counts from
+    pickup, so the projection margin added to it also has to absorb the
+    publish-to-pickup latency, not only projection lag. On the three runs above
+    the row arrived 0.4s to 8.5s past the 300s bound, well inside the 60s
+    margin; a pickup later than the margin would still score a case as missing
+    its row.
     """
     from omnimarket.inference.task_class_authority import (
         resolve_task_class_execution_budget,
