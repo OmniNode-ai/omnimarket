@@ -12,6 +12,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: the scoreboard runner step carries if: always() and the artifact upload uses if-no-files-found: error -- falsifier: uv run pytest tests/test_delegation_nightly_placement.py -q in omnimarket fails at the merge base"
+  - id: "req-runner-deadline-outlives-handler-cancel"
+    statement: "The nightly runner keeps waiting for a case's row until after the delegate-skill handler has committed its budget terminal."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: the Layer-2 runner's per-case deadline is at least the task class's ceiling plus its terminal delivery margin plus the projection margin, for every task class in the integration corpus -- falsifier: uv run pytest tests/delegation_golden/test_runner_corpus_pacing.py::TestPerCaseDeadlineReadsTheBoundThatBinds::test_deadline_outlives_the_handler_budget_terminal -q fails when the runner's deadline is the 240s handler execution budget plus the projection margin"
 evidence_requirements:
   - kind: "tests"
     description: "Placement regression for the nightly scoreboard step and its upload."
@@ -29,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_delegation_nightly_placement.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn18349-ac5-runner-deadline-outlives-handler-cancel"
+    description: "AC5 deadline regression: for every task class in the integration corpus, the runner's per-case deadline is at least the handler's cancel bound after pickup plus the projection margin, with the bound read from the task-class authority and not from the runner."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/delegation_golden/test_runner_corpus_pacing.py::TestPerCaseDeadlineReadsTheBoundThatBinds::test_deadline_outlives_the_handler_budget_terminal -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
