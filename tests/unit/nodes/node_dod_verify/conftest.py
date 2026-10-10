@@ -25,6 +25,12 @@ from omnimarket.nodes.node_dod_verify.handlers import (
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
 )
+from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    ModelRepoContractRead,
+)
+from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+    EvidenceCollector,
+)
 
 
 class EmptyLocalSource(DodEvidenceLocalSource):
@@ -54,6 +60,14 @@ class EmptyLocalSource(DodEvidenceLocalSource):
     ) -> tuple[list[dict[str, object]] | None, str]:
         return None, "empty local source"
 
+    def contract_repositories(self, ticket_id: str) -> list[str] | None:
+        return []
+
+    def repo_contract_at(
+        self, repo: str, sha: str, ticket_id: str
+    ) -> ModelRepoContractRead | None:
+        return None
+
 
 @pytest.fixture(autouse=True)
 def _no_host_local_source(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,3 +76,11 @@ def _no_host_local_source(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(hd_mod, "_REQUIRED_CONTEXTS_CACHE", {}, raising=False)
     monkeypatch.setattr(hd_mod, "_MERGED_CHECKS_GREEN_CACHE", {}, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_durable_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-20886: the DurableEvidenceGate's probes read Linear, GitHub and the
+    host's OCC clone; a suite that does not test the gate runs none of them.
+    The repo-first suite restores the real method and injects its probes."""
+    monkeypatch.setattr(EvidenceCollector, "run_durable_gate", lambda _self: None)

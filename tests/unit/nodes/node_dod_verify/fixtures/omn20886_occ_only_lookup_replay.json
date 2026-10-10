@@ -1,0 +1,34 @@
+{
+  "base_src_commit": "0c295b83d",
+  "note": "Recorded by running each world through EvidenceCollector.collect with no contract path, with src/ at base_src_commit, before node_dod_verify read product repositories. The test replays the same worlds at head and requires the same results and contract subject.",
+  "cases": {
+    "product_prs_without_contract": {
+      "results": [
+        [
+          "dod-occ",
+          "verified",
+          "OK (<ms>): "
+        ]
+      ],
+      "subject": [
+        "unbound",
+        null,
+        "contracts/OMN-90203.yaml"
+      ]
+    },
+    "product_contract_without_repo_evidence_run": {
+      "results": [
+        [
+          "dod-occ",
+          "verified",
+          "OK (<ms>): "
+        ]
+      ],
+      "subject": [
+        "unbound",
+        null,
+        "contracts/OMN-90203.yaml"
+      ]
+    }
+  }
+}

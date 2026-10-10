@@ -11,9 +11,12 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  # OMN-20886: with no contract path the node reads the ticket's merged PRs,
+  # contracts and repo-evidence check runs (canonical clones first, then
+  # GitHub) and the ticket's Linear description with LINEAR_API_KEY.
+  requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: false
   side_effect_class: read_only
 dependencies:
