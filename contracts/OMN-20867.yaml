@@ -13,9 +13,9 @@ requirements:
     statement: |-
       The lab-fill plan fails loudly for an idle host it cannot read headroom for.
     acceptance:
-      - id: "AC-M2"
+      - id: "AC1"
         statement: |-
-          AC-M2: plan_lab_fill_headroom gives HEADROOM_UNKNOWN (terminal_failure_cause, routed to the declared failure terminal topic) for a host with idle slots and a missing, stale or future headroom reading, and a placement plan for a host with a fresh reading; verify_lab_fill_fanout counts only dispatch records of the request's tick and gives FANOUT_UNPROVEN for a claimed lane with no matching record.
+          AC1 (AC-M2): plan_lab_fill_headroom gives HEADROOM_UNKNOWN (terminal_failure_cause, routed to the declared failure terminal topic) for a host with idle slots and a missing, stale or future headroom reading, and a placement plan for a host with a fresh reading; verify_lab_fill_fanout counts only dispatch records of the request's tick and gives FANOUT_UNPROVEN for a claimed lane with no matching record.
 evidence_requirements:
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
@@ -32,12 +32,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute tests/gates/test_contract_publish_parity.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-M2"]
+    binds_ac: ["AC1"]
   - id: "dod-omn20867-headroom-unknown-cause"
     description: "The headroom plan handler emits the HEADROOM_UNKNOWN failure cause."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "rg -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
+        check_value: "grep -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-M2"]
+    binds_ac: ["AC1"]
