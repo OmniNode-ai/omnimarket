@@ -1,8 +1,8 @@
 {
-  "scenario": "arm_auto_merge_200",
+  "scenario": "arm_auto_merge_already_armed",
   "operation": "arm_auto_merge",
   "provenance": "documented",
-  "provenance_note": "The first exchange, the landing policy read, is a real read-only GraphQL call recorded 2026-09-27T06:58Z with gh api -i graphql against an open, non-draft PR (auto-merge allowed, no merge queue on dev, already armed SQUASH); headers are the recorded ones. The mutation response is documented, not recorded: recording it would need a mutating call. OMN-20866 edited the recorded read's autoMergeRequest to null, so this scenario covers an unarmed PR; arm_auto_merge_already_armed keeps the read as recorded.",
+  "provenance_note": "Operation arm_auto_merge, so marked documented; its one exchange is the real read-only GraphQL landing policy read recorded 2026-09-27T06:58Z with gh api -i graphql against an open, non-draft PR already armed SQUASH (the read arm_auto_merge_200 kept before OMN-20866 edited it). The arm is already in place, so the effect sends no mutation (OMN-20866).",
   "recorded_at": null,
   "command": {
     "repository": "OmniNode-ai/omnimarket",
@@ -59,42 +59,9 @@
                 "labels": {
                   "nodes": []
                 },
-                "autoMergeRequest": null
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "POST",
-        "path": "/graphql",
-        "body": {
-          "query": "mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head}) { pullRequest { number } } }",
-          "variables": {
-            "id": "PR_kwDOR6jjtc8AAAABFTdWmA",
-            "method": "SQUASH",
-            "head": "8635161156cf090a13af1a08ee53bdf434baefbf"
-          }
-        },
-        "if_none_match": null
-      },
-      "response": {
-        "status": 200,
-        "headers": {
-          "content-type": "application/json; charset=utf-8",
-          "x-ratelimit-limit": "5000",
-          "x-ratelimit-remaining": "4771",
-          "x-ratelimit-used": "229",
-          "x-ratelimit-reset": "1790465451",
-          "x-ratelimit-resource": "graphql"
-        },
-        "body": {
-          "data": {
-            "enablePullRequestAutoMerge": {
-              "pullRequest": {
-                "number": 2984
+                "autoMergeRequest": {
+                  "mergeMethod": "SQUASH"
+                }
               }
             }
           }

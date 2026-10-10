@@ -43,6 +43,11 @@ def _require_bool(mapping: object, key: str, context: str) -> bool:
     return value
 
 
+def _optional_str(mapping: dict[str, object], key: str) -> str | None:
+    value = mapping.get(key)
+    return value if isinstance(value, str) and value else None
+
+
 def _head_sha(value: str, context: str) -> str:
     if not _FULL_SHA.match(value):
         raise GithubPrStateParseError(f"{context} head is not a full sha")
@@ -87,6 +92,13 @@ class ModelGithubPrStateFact(BaseModel):
         default=None,
         description="GraphQL read only: the repository allows auto-merge.",
     )
+    mergeable_state: str | None = Field(
+        default=None,
+        description=(
+            "REST read only: GitHub's mergeable_state (clean, blocked, behind, "
+            "dirty, unstable, has_hooks, draft or unknown), as reported (OMN-20866)."
+        ),
+    )
 
     @classmethod
     def from_rest_pull(cls, body: dict[str, object] | None) -> ModelGithubPrStateFact:
@@ -121,6 +133,7 @@ class ModelGithubPrStateFact(BaseModel):
             merged=_require_bool(body, "merged", ctx),
             auto_merge_armed=isinstance(auto_merge, dict),
             auto_merge_method=method,
+            mergeable_state=_optional_str(body, "mergeable_state"),
         )
 
     @classmethod
