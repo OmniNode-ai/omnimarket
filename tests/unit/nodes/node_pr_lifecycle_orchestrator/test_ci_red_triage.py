@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -91,7 +92,12 @@ def event(
 
 
 def claims(database: InmemoryDatabaseAdapter | None = None) -> ProjectionCiRedClaims:
-    return ProjectionCiRedClaims(database or InmemoryDatabaseAdapter())
+    # A restart here happens a minute after the reds were observed, inside every
+    # claim's lease (test_claim_lease_terminal_refused.py covers its expiry).
+    return ProjectionCiRedClaims(
+        database or InmemoryDatabaseAdapter(),
+        now=lambda: datetime(2026, 10, 8, 10, 1, tzinfo=UTC),
+    )
 
 
 def project(database: InmemoryDatabaseAdapter, outputs: list[Any]) -> None:

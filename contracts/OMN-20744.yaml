@@ -28,6 +28,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: the reducer projects owner claim rows."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_state_reducer/test_ci_red_projection.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC-M6 (ticket comment): an owner claim whose TERMINAL is refused stops owning its PR at the contract-declared lease TTL, a live claim inside its TTL still owns it, and the ledger host emits a typed TERMINAL_REFUSED event."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_claim_lease_terminal_refused.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
