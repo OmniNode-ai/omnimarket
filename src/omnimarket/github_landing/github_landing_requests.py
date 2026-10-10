@@ -7,19 +7,28 @@ node_pr_landing_github_effect, node_ci_rerun_effect,
 node_merge_sweep_auto_merge_arm_effect and node_pr_lifecycle_fix_effect's
 auto-rebase send. Each builder returns a :class:`ModelGithubHttpRequest`; none
 of them performs I/O or touches a credential.
+
+The source-control operations (OMN-20912) build here too: the Actions, PR-text
+and release reads of node_github_repo_gateway_effect, and :func:`next_page_request`,
+which follows a list response's ``Link: rel="next"`` so a caller never learns
+GitHub's paging.
 """
 
 from __future__ import annotations
 
 import re
+import urllib.parse
 from typing import Literal
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.github_landing.model_github_http_exchange import (
     GITHUB_GRAPHQL_PATH,
     ModelGithubHttpRequest,
+    ModelGithubHttpResponse,
 )
 
 _REPO_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$")
+_LINK_NEXT = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
 
 # Page size of every list read. A page shorter than this is the last page.
 LIST_PAGE_SIZE = 100
@@ -136,7 +145,102 @@ def run_jobs_request(
     )
 
 
+def _query(params: dict[str, str | int | None]) -> str:
+    kept = {k: str(v) for k, v in params.items() if v is not None}
+    return urllib.parse.urlencode(kept)
+
+
+def workflow_runs_request(
+    repository: str,
+    *,
+    per_page: int,
+    workflow: str | None = None,
+    branch: str | None = None,
+    head_sha: str | None = None,
+    event: str | None = None,
+    status: str | None = None,
+) -> ModelGithubHttpRequest:
+    """GET a repo's workflow runs, or one workflow's, newest first (OMN-20912)."""
+    base = _repo_path(repository)
+    if workflow is not None:
+        base = f"{base}/actions/workflows/{urllib.parse.quote(workflow, safe='')}/runs"
+    else:
+        base = f"{base}/actions/runs"
+    query = _query(
+        {
+            "branch": branch,
+            "head_sha": head_sha,
+            "event": event,
+            "status": status,
+            "per_page": per_page,
+        }
+    )
+    return ModelGithubHttpRequest(method="GET", path=f"{base}?{query}")
+
+
+def job_log_request(repository: str, job_id: int) -> ModelGithubHttpRequest:
+    """GET one job's plain-text log (GitHub redirects to a signed URL)."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/actions/jobs/{job_id}/logs"
+    )
+
+
+def run_artifacts_request(
+    repository: str, run_id: int, *, per_page: int
+) -> ModelGithubHttpRequest:
+    """GET the artifacts of one workflow run."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/actions/runs/{run_id}/artifacts?per_page={per_page}",
+    )
+
+
+def artifact_request(repository: str, artifact_id: int) -> ModelGithubHttpRequest:
+    """GET one artifact: its run, size and expiry."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/actions/artifacts/{artifact_id}"
+    )
+
+
+def artifact_archive_request(
+    repository: str, artifact_id: int
+) -> ModelGithubHttpRequest:
+    """GET one artifact's zip archive (GitHub redirects to a signed URL)."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/actions/artifacts/{artifact_id}/zip",
+    )
+
+
 # --- REST: pull requests and checks ------------------------------------------
+
+
+def pull_requests_request(
+    repository: str, *, state: Literal["open", "closed", "all"], per_page: int
+) -> ModelGithubHttpRequest:
+    """GET a repo's pull requests in one state, newest first."""
+    query = _query({"state": state, "per_page": per_page})
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/pulls?{query}"
+    )
+
+
+def compare_request(repository: str, base: str, head: str) -> ModelGithubHttpRequest:
+    """GET the comparison of two refs: file counts, additions, deletions, patches."""
+    spec = f"{urllib.parse.quote(base, safe='')}...{urllib.parse.quote(head, safe='')}"
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/compare/{spec}"
+    )
+
+
+def issue_comments_request(
+    repository: str, number: int, *, per_page: int
+) -> ModelGithubHttpRequest:
+    """GET the conversation comments of a PR or issue, oldest first."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/issues/{number}/comments?per_page={per_page}",
+    )
 
 
 def update_branch_request(
@@ -188,6 +292,127 @@ def branch_rules_request(repository: str, branch: str) -> ModelGithubHttpRequest
         method="GET",
         path=f"{_repo_path(repository)}/rules/branches/{branch}?per_page={LIST_PAGE_SIZE}",
     )
+
+
+# --- REST: releases and tags (OMN-20912) -------------------------------------
+
+
+def releases_request(repository: str, *, per_page: int) -> ModelGithubHttpRequest:
+    """GET a repo's releases, newest first."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/releases?per_page={per_page}"
+    )
+
+
+def tags_request(repository: str, *, per_page: int) -> ModelGithubHttpRequest:
+    """GET a repo's tags."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/tags?per_page={per_page}"
+    )
+
+
+# --- REST + GraphQL: PR authoring writes (OMN-20912) -------------------------
+
+MARK_READY_MUTATION = (
+    "mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id})"
+    " { pullRequest { number isDraft } } }"
+)
+CONVERT_TO_DRAFT_MUTATION = (
+    "mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id})"
+    " { pullRequest { number isDraft } } }"
+)
+
+
+def create_pull_request_request(
+    repository: str, *, title: str, head: str, base: str, body: str, draft: bool
+) -> ModelGithubHttpRequest:
+    """POST a new pull request."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=f"{_repo_path(repository)}/pulls",
+        body={"title": title, "head": head, "base": base, "body": body, "draft": draft},
+    )
+
+
+def open_pulls_for_head_request(repository: str, head: str) -> ModelGithubHttpRequest:
+    """GET the open pull requests whose head is ``owner:head`` (at most one exists)."""
+    owner, _ = split_repository(repository)
+    query = _query({"state": "open", "head": f"{owner}:{head}", "per_page": 5})
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/pulls?{query}"
+    )
+
+
+def edit_pull_request_request(
+    repository: str, pr_number: int, fields: dict[str, object]
+) -> ModelGithubHttpRequest:
+    """PATCH a pull request's title, body, base or state."""
+    if not fields:
+        raise GithubLandingRequestError("a pull request edit needs at least one field")
+    return ModelGithubHttpRequest(
+        method="PATCH",
+        path=f"{_repo_path(repository)}/pulls/{pr_number}",
+        body=dict(fields),
+    )
+
+
+def create_issue_comment_request(
+    repository: str, number: int, body: str
+) -> ModelGithubHttpRequest:
+    """POST a conversation comment on a pull request or issue."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=f"{_repo_path(repository)}/issues/{number}/comments",
+        body={"body": body},
+    )
+
+
+def workflow_dispatch_request(
+    repository: str, workflow: str, ref: str, inputs: dict[str, str]
+) -> ModelGithubHttpRequest:
+    """POST a workflow_dispatch event for one workflow at one ref (204 on success)."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=(
+            f"{_repo_path(repository)}/actions/workflows/"
+            f"{urllib.parse.quote(workflow, safe='')}/dispatches"
+        ),
+        body={"ref": ref, "inputs": dict(inputs)},
+    )
+
+
+def mark_ready_request(pr_node_id: str) -> ModelGithubHttpRequest:
+    """Flip a draft pull request to ready for review."""
+    return _graphql(MARK_READY_MUTATION, {"id": pr_node_id})
+
+
+def convert_to_draft_request(pr_node_id: str) -> ModelGithubHttpRequest:
+    """Turn a ready pull request back into a draft."""
+    return _graphql(CONVERT_TO_DRAFT_MUTATION, {"id": pr_node_id})
+
+
+# --- REST: paging ------------------------------------------------------------
+
+
+def next_page_request(
+    response: ModelGithubHttpResponse,
+) -> ModelGithubHttpRequest | None:
+    """The GET of the next page a list response names in ``Link``, or None.
+
+    Only a link back to the REST root is followed; a link to any other host is
+    refused rather than sent with the credential.
+    """
+    link = response.header("link")
+    if not link:
+        return None
+    match = _LINK_NEXT.search(link)
+    if match is None:
+        return None
+    root = GITHUB_REST_URL.rstrip("/")
+    url = match.group(1)
+    if not url.startswith(f"{root}/"):
+        raise GithubLandingRequestError(f"next-page link leaves the API root: {url}")
+    return ModelGithubHttpRequest(method="GET", path=url[len(root) :])
 
 
 # --- REST: git data (node_ci_rerun_effect's empty-commit re-trigger) ----------
@@ -276,6 +501,7 @@ def dequeue_request(pr_node_id: str) -> ModelGithubHttpRequest:
 
 
 __all__: list[str] = [
+    "CONVERT_TO_DRAFT_MUTATION",
     "DEQUEUE_MUTATION",
     "DISABLE_AUTO_MERGE_MUTATION",
     "ENABLE_AUTO_MERGE_AT_HEAD_MUTATION",
@@ -283,26 +509,45 @@ __all__: list[str] = [
     "ENQUEUE_AT_HEAD_MUTATION",
     "LANDING_POLICY_QUERY",
     "LIST_PAGE_SIZE",
+    "MARK_READY_MUTATION",
     "MERGE_AT_HEAD_MUTATION",
     "GithubLandingRequestError",
     "MergeMethod",
+    "artifact_archive_request",
+    "artifact_request",
     "branch_request",
     "branch_rules_request",
+    "compare_request",
+    "convert_to_draft_request",
     "create_commit_request",
+    "create_issue_comment_request",
+    "create_pull_request_request",
     "dequeue_request",
     "disable_auto_merge_request",
+    "edit_pull_request_request",
     "enable_auto_merge_request",
     "enqueue_request",
     "fast_forward_ref_request",
     "git_commit_request",
     "git_ref_request",
     "head_check_runs_request",
+    "issue_comments_request",
+    "job_log_request",
     "landing_policy_request",
+    "mark_ready_request",
     "merge_at_head_request",
+    "next_page_request",
+    "open_pulls_for_head_request",
     "pull_request_request",
+    "pull_requests_request",
+    "releases_request",
     "rerun_failed_jobs_request",
+    "run_artifacts_request",
     "run_jobs_request",
     "split_repository",
+    "tags_request",
     "update_branch_request",
+    "workflow_dispatch_request",
     "workflow_run_request",
+    "workflow_runs_request",
 ]

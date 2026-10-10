@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Seam models of node_pr_landing_github_effect (OMN-19826)."""
 
+from omnimarket.models.model_github_quota_floor import (
+    ModelGithubQuotaFloor,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_failure_reason import (
     EnumPrLandingGithubFailureReason,
 )
@@ -20,9 +23,6 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_check_ru
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
     GithubPrStateParseError,
     ModelGithubPrStateFact,
-)
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_floor import (
-    ModelGithubQuotaFloor,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_reading import (
     ModelGithubQuotaHeadersMissingError,

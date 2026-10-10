@@ -29,14 +29,14 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.models.pr_claim.model_pr_claim_registry_request import (
+    require_valid_pr_key,
+)
 from omnimarket.nodes.node_pr_claim_registry_effect.models import (
     EnumPrClaimOperation,
     ModelPrClaim,
     ModelPrClaimRegistryRequest,
     ModelPrClaimRegistryResult,
-)
-from omnimarket.nodes.node_pr_claim_registry_effect.models.model_pr_claim_registry_request import (
-    require_valid_pr_key,
 )
 
 HEARTBEAT_STALE_MINUTES = 30
