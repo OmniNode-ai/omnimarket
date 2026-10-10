@@ -17,6 +17,9 @@ assigns to the orchestrator:
   with every arm or enqueue carrying its expected head (the intent's head) and
   passed through node_pr_arm_gate_compute before it is queued. A withheld arm is
   never queued, so the row's ``armed`` flag is cleared with it;
+* a PR GitHub reports armed (auto-merge or merge queue) and dirty gets one
+  conflict request per (head, base head) (OMN-20750, AC-M9), never an arm or
+  enqueue (the arm gate already withholds on DIRTY);
 * the completion bound per state entry (R2a, R2b): applied on the tick, tagged
   (episode, state_entry_generation), never in PARKED, once per entry;
 * the events: one transitioned per transition with the orchestrator-owned
@@ -59,6 +62,9 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
 )
+from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
+    ModelGithubPrStateFact,
+)
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
@@ -97,6 +103,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_agent
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_conflict_command import (
+    ModelPrLandingConflictCommand,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
     ModelPrLandingAutobindPrompt,
     ModelPrLandingCompanionOutcomeIngress,
@@ -126,6 +135,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_trans
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
     ModelPrLandingAgentNeededKey,
     ModelPrLandingCheckRunRef,
+    ModelPrLandingConflictKey,
     ModelPrLandingInFlight,
     ModelPrLandingWorkflowRow,
 )
@@ -143,6 +153,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     call_reducer,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.snapshot import (
+    is_held,
     snapshot_observations,
 )
 
@@ -185,6 +196,8 @@ _READ_OPERATIONS = frozenset(
 )
 # GitHub mergeable_state values under which a green head is not yet ready.
 _MERGE_STATES_NOT_SETTLED = frozenset({"unknown", "blocked"})
+# GitHub's mergeable_state for a PR that conflicts with its base (OMN-20750).
+_MERGE_STATE_CONFLICTED = "dirty"
 _OP_BY_COMPANION_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingCompanionOp] = {
     EnumPrLandingIntentKind.COMPANION_DERIVE: EnumPrLandingCompanionOp.DERIVE,
     EnumPrLandingIntentKind.COMPANION_REGENERATE: EnumPrLandingCompanionOp.REGENERATE,
@@ -543,6 +556,55 @@ class _Leg:
                 op=op,
                 dry_run=self.config.companion_dry_run(intent.repository),
                 requested_at=at,
+            )
+        )
+
+    def conflict_request(self, fact: ModelGithubPrStateFact) -> None:
+        """Request the fix effect's conflict route with update_branch's mode.
+
+        The route runs update-branch first. The contract keeps it dry_run in
+        every repository while the landing controller owns conflict work
+        (one owner per class of PR action, plan slice S8).
+        """
+        landing = self.row.landing
+        if landing is None:
+            return
+        if landing.state in _TERMINAL or landing.state is EnumPrLandingState.PARKED:
+            return
+        if (fact.mergeable_state or "").lower() != _MERGE_STATE_CONFLICTED:
+            return
+        if fact.state != "open" or fact.merged:
+            return
+        armed = (
+            fact.auto_merge_armed
+            or bool(fact.in_merge_queue)
+            or landing.armed is not None
+        )
+        if not armed:
+            return
+        if fact.draft or landing.draft or landing.held or is_held(fact):
+            return
+        key = ModelPrLandingConflictKey(head_sha=fact.head_sha, base_sha=fact.base_sha)
+        if key in self.row.conflict_requested:
+            return
+        self.row = self.row.model_copy(
+            update={"conflict_requested": (*self.row.conflict_requested, key)}
+        )
+        self.emitted.append(
+            ModelPrLandingConflictCommand(
+                correlation_id=uuid5(
+                    PR_LANDING_NAMESPACE,
+                    f"{self.row.landing_key}|conflict|{fact.head_sha}|{fact.base_sha or '-'}",
+                ),
+                pr_number=self.row.pr_number,
+                repo=self.row.repository,
+                block_reason=EnumPrBlockReason.CONFLICT,
+                ticket_id=landing.ticket_ids[0] if landing.ticket_ids else None,
+                dry_run=self.config.mutation_mode(
+                    self.row.repository, EnumPrLandingGithubOperation.UPDATE_BRANCH
+                )
+                is EnumPrLandingGithubMode.DRY_RUN,
+                requested_at=self.now,
             )
         )
 
@@ -1076,6 +1138,7 @@ async def _apply_snapshot(
     )
     for observation in observations:
         await leg.apply_and_evaluate(observation)
+    leg.conflict_request(fact)
 
 
 async def _apply_head_checks(
