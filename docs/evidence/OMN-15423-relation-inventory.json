@@ -1550,7 +1550,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
@@ -1560,6 +1561,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
       ],
       "current_schema": [
@@ -1589,7 +1591,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -5115,7 +5118,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
@@ -5131,6 +5135,7 @@
         "pk_lab_job_state"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
       ],
       "current_schema": [
@@ -5170,16 +5175,19 @@
       "partitioning": [],
       "producer": "node_projection_lab_job",
       "readers": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql"
@@ -5195,6 +5203,7 @@
         "pk_lab_job_transitions"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_lab_job/contract.yaml"
       ],
       "current_schema": [
@@ -5230,11 +5239,13 @@
       "partitioning": [],
       "producer": "node_projection_lab_job",
       "readers": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_lab_job"
+        "node_projection_lab_job",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

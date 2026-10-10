@@ -248,6 +248,22 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
       access: read_write
       role: pr_landing_transitions
+    # OMN-20604 (plan step M2 of the lab job supervisor): the two read models
+    # of node_projection_lab_job, one row per job_id and one append-only row
+    # per (job_id, seq). Declared here for the same OMN-15361 SQL gate reason
+    # as the PR landing read models above. Created directly in omninode_internal.
+    - name: lab_job_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql
+      access: read_write
+      role: lab_job_state
+    - name: lab_job_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql
+      access: read_write
+      role: lab_job_transitions
     # OMN-19513: the append-only ledger rows and materialized entity state
     # owned by node_projection_work_ledger. The OMN-15361 SQL gate resolves
     # ownership from this manifest separately from the node contract db_io.
@@ -1198,6 +1214,16 @@ database_objects:
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   - name: pr_landing_transitions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-20604: the sequence behind lab_job_state.projection_cursor, named by
+  # a GRANT in 0001_grant_omninode_runtime_lab_job.sql and so an application
+  # target in its own right. lab_job_transitions carries no BIGSERIAL.
+  - name: lab_job_state_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
