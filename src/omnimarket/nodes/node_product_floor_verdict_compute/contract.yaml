@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_product_floor_verdict_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B decisions of the product-floor alarm; reads no files, runs no process, has no clock;
+  the git scan, file reads, ledger append, alert delivery and episode state stay with the caller.
+  Behaviour-preserving product-rate, waiting and controller decisions and summary/status formatting.
+  A repo with clones but neither a scan nor a scan error is UNKNOWN with
+  "cannot count <repo>: no scan supplied". Controller silence uses the caller's threshold,
+  defaulting to the old 30 minutes. Only positive floors count; repositories sort by name.
+input_model:
+  name: ModelProductFloorVerdictRequest
+  module: omnimarket.nodes.node_product_floor_verdict_compute.models.model_product_floor_verdict
+output_model:
+  name: ModelProductFloorVerdictResult
+  module: omnimarket.nodes.node_product_floor_verdict_compute.models.model_product_floor_verdict
+handler:
+  module: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_product_floor_verdict
+  class: HandlerProductFloorVerdict
+  input_model: omnimarket.nodes.node_product_floor_verdict_compute.models.model_product_floor_verdict.ModelProductFloorVerdictRequest
+  output_model: omnimarket.nodes.node_product_floor_verdict_compute.models.model_product_floor_verdict.ModelProductFloorVerdictResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_product_floor_verdict:HandlerProductFloorVerdict
+  handlers:
+    - operation: decide_product_floor_verdict
+      handler:
+        name: HandlerProductFloorVerdict
+        module: omnimarket.nodes.node_product_floor_verdict_compute.handlers.handler_product_floor_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: "Caller UTC stamp parsed exactly like queue_status.parse_stamp."}
+  window_hours: {type: float, required: false, default: 2, description: Positive finite product-rate window.}
+  max_input_age_minutes: {type: float, required: false, default: 15, description: Positive finite watcher and clone-sync maximum age.}
+  controller_ticks: {type: int, required: false, default: 3, description: Positive requested tail length.}
+  controller_silent_after_minutes: {type: float, required: false, default: 30, description: Controller silence breach threshold.}
+  floors: {type: object, required: false, description: "Repo to floor; exactly one of floors or floors_unknown."}
+  floors_unknown: {type: str, required: false, description: Caller ScorecardUnknown text.}
+  watcher: {type: object, required: false, description: Parsed watcher state JSON object.}
+  watcher_unavailable: {type: str, required: false, description: Caller watcher read or parse error text.}
+  clone_sync: {type: object, required: false, description: "Caller last_run stamp, note and repo to clone paths."}
+  clone_sync_unavailable: {type: str, required: false, description: Caller clone-sync read error text.}
+  scans: {type: object, required: false, description: "Repo to landed/count/docs/last scan facts."}
+  scan_errors: {type: object, required: false, description: Repo to failed scan error text.}
+  scan_notes: {type: list, required: false, description: Notes accumulated by caller git scans.}
+  controller_lines: {type: list, required: false, description: "Unparsed last nonblank ticks.jsonl lines, at most controller_ticks."}
+  controller_unavailable: {type: str, required: false, description: Caller controller file read error text.}
+  row_lane: {type: str, required: true, description: Caller lane cell.}
+  row_ticket: {type: str, required: true, description: Caller ticket cell.}
+outputs:
+  ts: {type: str}
+  per_repo: {type: object}
+  waiting: {type: object}
+  breaches: {type: object}
+  unknowns: {type: object}
+  controller: {type: object}
+  notes: {type: list}
+  verdict: {type: str, enum: [BREACH, UNKNOWN, OK]}
+  summary_lines: {type: list}
+  status_row: {type: str}
+  controller_cell: {type: str}
+terminal_event: onex.evt.omnimarket.product-floor-verdict-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.product-floor-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.product-floor-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.product-floor-verdict-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.product-floor-verdict-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Product-floor alarm verdict decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-18008]
