@@ -9,6 +9,7 @@ from .handler_lab_fill_fallback_plan import HandlerLabFillFallbackPlan
 from .handler_lab_fill_lane_render import HandlerLabFillLaneRender
 from .handler_lab_fill_ownership import HandlerLabFillOwnership
 from .handler_lab_fill_placement import HandlerLabFillPlacement
+from .handler_lab_fill_scheduled_fire import HandlerLabFillScheduledFire
 from .handler_lab_fill_status import HandlerLabFillStatus
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "HandlerLabFillLaneRender",
     "HandlerLabFillOwnership",
     "HandlerLabFillPlacement",
+    "HandlerLabFillScheduledFire",
     "HandlerLabFillStatus",
 ]
