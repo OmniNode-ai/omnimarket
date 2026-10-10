@@ -144,8 +144,8 @@ jobs:
           repositories: ${{ steps.ci-overlay.outputs.name }}
           permission-contents: read
 
-      # reusable-checkout-ref-ok: hostile-reviewer OMN-20923 the CI overlay is
-      # data read at its default branch and validated by the resolver.
+      # The CI overlay is data read at its default branch and validated by the
+      # resolver (OMN-20923).
       - name: Fetch the CI overlay
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
