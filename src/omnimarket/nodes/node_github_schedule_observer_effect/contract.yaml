@@ -1,0 +1,116 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - GitHub schedule observer (OMN-20803)
+#
+# The GitHub half of the automation-liveness observers. Hourly it derives each
+# scheduled workflow and its cron from the clones (after checking each clone's
+# head against its remote default branch), reads the scheduled runs from a
+# persisted per-repository cursor, the workflow states once a day, the closed
+# pull requests (to open the expectation of a runtime-affecting merge whose bus
+# publication was lost) and the external dead-man's last completed run, and
+# publishes run, verdict and heartbeat events of the automation-liveness seam
+# (omnimarket.models.liveness, OMN-20793). A source it cannot read is reported
+# UNOBSERVABLE, never as zero runs.
+name: node_github_schedule_observer_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Hourly GitHub scheduled-workflow observer. Read-only against GitHub, through
+  the shared landing transport (omnimarket.github_landing), with every
+  response's x-ratelimit-* headers read and a call refused, with no request
+  made, once the last reading for its resource is under the declared floor.
+  Publishes one run-observed event per scheduled run (started when first seen
+  unfinished, finished once it completes, including a completion that lands
+  after the cursor moved), a MISSED verdict for a disabled scheduled workflow,
+  an UNOBSERVABLE verdict for a stale clone, an inaccessible repository, an
+  exhausted budget or a truncated listing, an UNDECLARED verdict for a
+  scheduled workflow with no overlay entry, a started run for each
+  runtime-affecting merge whose trigger the bus did not carry, the external
+  dead-man's last completed run and the observer's own heartbeat.
+
+input_model:
+  name: ModelGithubScheduleObserverRequest
+  module: omnimarket.nodes.node_github_schedule_observer_effect.models.model_github_schedule_observer_request
+
+operations:
+  - name: observe_schedule
+    description: "One hourly tick over the requested repositories."
+    transport: rest
+
+quota_floor:
+  # Quota is read only from response headers (x-ratelimit-*), never from the
+  # rate_limit endpoint. A read whose resource's last remaining count is under
+  # its floor makes no call and reports READ_INCOMPLETE; an undeclared resource
+  # is refused too (fail closed). The same floor node_pr_landing_github_effect
+  # declares for the core resource.
+  source: response_headers
+  min_remaining:
+    core: 500
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+
+runtime_profiles:
+  - main
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for read-only workflow-run and pull-request reads."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.github-schedule-observer-tick-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.automation-run-observed.v1
+    - onex.evt.omnimarket.automation-heartbeat.v1
+    - onex.evt.omnimarket.automation-liveness-verdict.v1
+
+published_events:
+  - event_type: "ModelAutomationRunObserved"
+    topic: onex.evt.omnimarket.automation-run-observed.v1
+    description: "One scheduled run's start or finish, or the start of a reconciled merge's expectation."
+  - event_type: "ModelAutomationHeartbeat"
+    topic: onex.evt.omnimarket.automation-heartbeat.v1
+    description: "The observer's own progress, one per tick."
+  - event_type: "ModelAutomationLivenessVerdictEvent"
+    topic: onex.evt.omnimarket.automation-liveness-verdict.v1
+    description: "MISSED for a disabled workflow, UNOBSERVABLE for an unreadable source, UNDECLARED for a scheduled workflow with no entry."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "observe_schedule"
+      message_category: "command"
+      handler:
+        name: "HandlerGithubScheduleObserver"
+        module: "omnimarket.nodes.node_github_schedule_observer_effect.handlers.handler_github_schedule_observer"
+      event_model:
+        name: "ModelGithubScheduleObserverRequest"
+        module: "omnimarket.nodes.node_github_schedule_observer_effect.models.model_github_schedule_observer_request"
+      topic: onex.cmd.omnimarket.github-schedule-observer-tick-requested.v1
+      description: "One hourly tick; answered by the events it observed."
+
+runtime_dispatch:
+  # The runtime tick is this node's producer.
+  command_topic: onex.cmd.omnimarket.github-schedule-observer-tick-requested.v1
+
+# The projection and the watchdog that consume these are other nodes of the
+# automation-liveness plan; until they land the topics leave the node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.automation-run-observed.v1
+  - onex.evt.omnimarket.automation-heartbeat.v1
+  - onex.evt.omnimarket.automation-liveness-verdict.v1
+
+metadata:
+  transport_type: kafka

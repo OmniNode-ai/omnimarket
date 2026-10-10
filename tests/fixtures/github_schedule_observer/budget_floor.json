@@ -1,0 +1,30 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/actions/workflows?per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "120",
+   "x-ratelimit-used": "4880",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "total_count": 2,
+   "workflows": [
+    {
+     "id": 11,
+     "name": "chain-canary",
+     "path": ".github/workflows/chain-canary.yml",
+     "state": "active"
+    },
+    {
+     "id": 12,
+     "name": "other-job",
+     "path": ".github/workflows/other-job.yml",
+     "state": "active"
+    }
+   ]
+  }
+ }
+]

@@ -1,0 +1,17 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/actions/runs?event=schedule&created=%3E%3D2026-10-09T04:00:00Z&per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "total_count": 0,
+   "workflow_runs": []
+  }
+ }
+]
