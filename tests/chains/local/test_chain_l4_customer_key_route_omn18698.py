@@ -86,7 +86,11 @@ async def test_golden_chain_customer_key_routes_and_pays(
         house_openrouter_rung(monkeypatch)
 
         customer_ref = register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
         correlation_id = uuid4()
 

@@ -89,6 +89,7 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
@@ -209,8 +210,64 @@ def _resolve_plan(
     )
 
 
+def _ask_model(provider: str) -> str:
+    """The model the customer names at a terminal; a script is refused (OMN-20844).
+
+    Called only for a provider whose catalogue row says the customer chooses
+    the model and when no ``--model`` was given. Nothing is picked for them.
+    """
+    if not _stdin_is_tty():
+        raise click.ClickException(
+            f"{model_not_chosen_message(provider)} Nothing was stored."
+        )
+    label = _MODEL_LABELS.get(provider, provider)
+    answer = str(
+        click.prompt(
+            f"Which {label} model should your key run? Paste its id from "
+            f"{label}'s model page",
+            type=str,
+        )
+    ).strip()
+    if not answer:
+        raise click.ClickException(
+            f"{model_not_chosen_message(provider)} Nothing was stored."
+        )
+    return answer
+
+
+def _check_chosen_model(
+    provider: str, plan: str | None, value: str, chosen: str
+) -> str:
+    """Check the customer's model against their key's own list (OMN-20844).
+
+    A model the list does not name, or a key the provider refuses, is refused
+    and nothing is stored. A list that cannot be read stores the model as
+    chosen, unchecked, and says so.
+    """
+    backend = resolve_byok_provider_backend(provider, plan=plan)
+    if backend is None:
+        return chosen
+    click.echo(f"Checking that {provider} lists {chosen} for your key.")
+    discovery = discover_byok_model_sync(backend, value, chosen=chosen)
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise click.ClickException(f"{refusal} Nothing was stored.")
+    if discovery.model is None:
+        click.echo(
+            f"Model: {chosen} (your choice; {provider}'s model list could not be "
+            "read just now, so it could not be checked)."
+        )
+        return chosen
+    click.echo(f"Model: {chosen} (your choice, listed for your key).")
+    return chosen
+
+
 def _resolve_model(
-    provider: str, plan: str | None, value: str, known: str | None
+    provider: str,
+    plan: str | None,
+    value: str,
+    known: str | None,
+    chosen: str | None = None,
 ) -> str | None:
     """The model this key's route will run, decided BEFORE anything is stored.
 
@@ -221,11 +278,21 @@ def _resolve_model(
     names no preferred model, is refused here with the provider's words and
     nothing is stored. A list that cannot be read stores no model, and the
     first delegation resolves it instead.
+
+    OMN-20844. ``chosen`` is the model the customer named with ``--model``; it
+    is checked against the key's list and stored as named. For a provider whose
+    catalogue row says the customer chooses the model, no ``--model`` means the
+    customer is asked at a terminal and a script is refused: the preference is
+    never used to pick one for them.
     """
+    backend = resolve_byok_provider_backend(provider, plan=plan)
+    if chosen is None and backend is not None and backend.customer_chooses_model:
+        chosen = _ask_model(provider)
+    if chosen is not None:
+        return _check_chosen_model(provider, plan, value, chosen)
     if known is not None:
         click.echo(f"Model: {known} (the best match your key's model list offers).")
         return known
-    backend = resolve_byok_provider_backend(provider, plan=plan)
     if backend is None:
         return None
     click.echo(f"Asking {provider} which models your key can use.")
@@ -312,8 +379,18 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
 @click.option("--tenant", required=True, help="Tenant that owns this provider key.")
 @click.option("--name", default=None, help="Credential label; defaults to PROVIDER.")
 @click.option("--plan", default=None, help="Provider product; omit to detect the plan.")
+@click.option(
+    "--model",
+    "model_option",
+    default=None,
+    help="The model this key runs, checked against the provider's list for it.",
+)
 def register_tenant_key(
-    provider: str, tenant: str, name: str | None, plan: str | None
+    provider: str,
+    tenant: str,
+    name: str | None,
+    plan: str | None,
+    model_option: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
@@ -327,6 +404,7 @@ def register_tenant_key(
             provider=provider,
             key_value=SecretStr(value),
             plan=plan,
+            model=model_option,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -349,16 +427,15 @@ def register_tenant_key(
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(
-        json.dumps(
-            {
-                "api_key_ref": response.api_key_ref,
-                "provider": response.provider,
-                "plan": response.plan,
-                "tenant": tenant,
-            }
-        )
-    )
+    shown: dict[str, str | None] = {
+        "api_key_ref": response.api_key_ref,
+        "provider": response.provider,
+        "plan": response.plan,
+        "tenant": tenant,
+    }
+    if response.model is not None:
+        shown["model"] = response.model
+    click.echo(json.dumps(shown))
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
@@ -559,7 +636,19 @@ def _fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> No
         "Coding Plan) is refused, never stored."
     ),
 )
-def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
+@click.option(
+    "--model",
+    "model_option",
+    default=None,
+    help=(
+        "The model this provider key runs, checked against the provider's list "
+        "for the key. Required for a provider where you choose the model "
+        "(openrouter): without it a terminal is asked and a script is refused."
+    ),
+)
+def set_secret(
+    secret_ref: str, force: bool, plan_option: str | None, model_option: str | None
+) -> None:
     """Store the value for SECRET_REF, read from stdin.
 
     The value is never taken from an argument. Pipe it in
@@ -587,11 +676,22 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
             "read from a command-line argument."
         )
 
-    store_secret_value(secret_ref, value, force=force, plan_option=plan_option)
+    store_secret_value(
+        secret_ref,
+        value,
+        force=force,
+        plan_option=plan_option,
+        model_option=model_option,
+    )
 
 
 def store_secret_value(
-    secret_ref: str, value: str, *, force: bool, plan_option: str | None = None
+    secret_ref: str,
+    value: str,
+    *,
+    force: bool,
+    plan_option: str | None = None,
+    model_option: str | None = None,
 ) -> None:
     """Store ``value`` under ``secret_ref`` and register a provider key's route.
 
@@ -603,8 +703,13 @@ def store_secret_value(
     store = LocalByokCredentialStore()
     provider = _offered_provider(secret_ref)
     plan, detected_model = _resolve_plan(provider, value, plan_option)
+    if provider is None and model_option is not None:
+        raise click.ClickException(
+            "--model applies to a provider key the catalogue offers; this "
+            "reference names none. Nothing was stored."
+        )
     model = (
-        _resolve_model(provider, plan, value, detected_model)
+        _resolve_model(provider, plan, value, detected_model, model_option)
         if provider is not None
         else None
     )
@@ -767,20 +872,40 @@ models_group = click.Group(
 
 @models_group.command("add")
 @click.argument("provider", type=_model_choice)
+@click.option(
+    "--model",
+    "model_option",
+    default=None,
+    help=(
+        "The model your key runs, checked against the provider's list for it. "
+        "For OpenRouter you choose it: without --model a terminal is asked and "
+        "a script is refused."
+    ),
+)
 @_model_json
-def add_model(provider: str, as_json: bool) -> None:
+def add_model(provider: str, model_option: str | None, as_json: bool) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
     The key is read from stdin when piped, or asked for at a hidden prompt.
-    A key already stored for PROVIDER is replaced.
+    A key already stored for PROVIDER is replaced. The test passes only when it
+    answers on the model stored for the key.
     """
     name = provider.lower()
     handler = _model_handler()
     if name == "ollama":
         if not handler.is_set_up("ollama"):
             raise click.ClickException(_OLLAMA_HOW)
+        if model_option is not None:
+            raise click.ClickException(
+                f"--model does not apply to Ollama. {_OLLAMA_HOW}"
+            )
     else:
-        store_secret_value(f"llm.{name}.api_key", _read_model_key(name), force=True)
+        store_secret_value(
+            f"llm.{name}.api_key",
+            _read_model_key(name),
+            force=True,
+            model_option=model_option,
+        )
     request = ModelModelSetupRequest(operation="test", provider=name)
     (result,) = handler.handle(request).tests
     _show_model_test(result, as_json)
