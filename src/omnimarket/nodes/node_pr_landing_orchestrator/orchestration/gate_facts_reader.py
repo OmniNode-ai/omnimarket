@@ -60,7 +60,7 @@ ConnectGateFacts = Callable[[str], Awaitable[ProtocolGateFactsConnection]]
 async def _asyncpg_connect(dsn: str) -> ProtocolGateFactsConnection:
     import asyncpg
 
-    connection: ProtocolGateFactsConnection = await asyncpg.connect(
+    connection: ProtocolGateFactsConnection = await asyncpg.connect(  # no-contract-check: read-only projection read, injectable seam
         dsn, timeout=10, command_timeout=10
     )
     return connection
