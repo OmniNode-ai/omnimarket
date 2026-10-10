@@ -74,10 +74,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_cal
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
+    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -903,6 +905,22 @@ class HandlerInferenceIntent:
             return self._call_llm(
                 intent, call_id, api_key=api_key, credential_source=credential_source
             )
+        if byok.customer_chooses_model:
+            # OMN-20844: the customer chooses this provider's model. A credential
+            # with none is refused rather than given a catalogue pick, and a
+            # model the customer named is called once and never swapped.
+            if intent.model == BYOK_MODEL_UNRESOLVED:
+                raise ProviderRefusalError(
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            if not catalogue_prefers_model(byok, intent.model):
+                return self._call_llm(
+                    intent,
+                    call_id,
+                    api_key=api_key,
+                    credential_source=credential_source,
+                )
         if intent.model == BYOK_MODEL_UNRESOLVED:
             intent = _re_aim_intent(intent, byok, api_key, exclude=())
         try:

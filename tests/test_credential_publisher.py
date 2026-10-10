@@ -49,6 +49,8 @@ def _make_request(**overrides: object) -> ModelInferenceCredentialCreateRequest:
         "name": "my-openrouter-key",
         "provider": "openrouter",
         "key_value": _SECRET_VALUE,
+        # OMN-20844: the customer chooses the OpenRouter model their key runs.
+        "model": "openai/gpt-5-nano",
     }
     fields.update(overrides)
     return ModelInferenceCredentialCreateRequest(**fields)

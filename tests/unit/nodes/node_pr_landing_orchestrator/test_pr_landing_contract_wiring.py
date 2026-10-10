@@ -79,9 +79,12 @@ _ORCHESTRATOR_SUBSCRIBES = {
     topics.PR_LANDING_COMPANION_OUTCOME_TOPIC_V1: "ModelPrLandingCompanionOutcomeIngress",
     topics.PR_LANDING_GITHUB_COMPLETED_TOPIC_V1: "ModelPrLandingGithubCompletedIngress",
     topics.PR_LANDING_GITHUB_FAILED_TOPIC_V1: "ModelPrLandingGithubFailedIngress",
+    # OMN-20866: the PR watcher's observations prompt the canary repositories.
+    topics.PR_STATE_OBSERVED_TOPIC_V1: "ModelPrLandingObservedPrompt",
 }
 _ORCHESTRATOR_PUBLISHES = {
     topics.OCC_AUTOBIND_COMMAND_TOPIC_V1,
+    topics.PR_LIFECYCLE_FIX_START_COMMAND_TOPIC_V1,
     topics.PR_LANDING_GITHUB_REQUESTED_TOPIC_V1,
     *_OWNED_EVENTS,
 }
@@ -153,6 +156,7 @@ class TestTheOrchestratorDeclaresItsWiring:
             "PrLandingClosed": topics.PR_LANDING_CLOSED_TOPIC_V1,
             "PrLandingGithubRequest": topics.PR_LANDING_GITHUB_REQUESTED_TOPIC_V1,
             "PrLifecycleFixCommand": topics.OCC_AUTOBIND_COMMAND_TOPIC_V1,
+            "PrLandingConflictCommand": topics.PR_LIFECYCLE_FIX_START_COMMAND_TOPIC_V1,
         }
 
     def test_every_subscription_routes_to_the_one_handler(self) -> None:

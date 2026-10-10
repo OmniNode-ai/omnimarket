@@ -9,6 +9,8 @@ from typing import Literal
 from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
 
@@ -251,6 +253,15 @@ class ModelThroughputTickRequest(BaseModel):
         description="Lab-headroom facts; None skips the finding (and its `checked` entry).",
     )
 
+    pr_land: ModelLabFillPrLandFacts | None = Field(
+        default=None,
+        description=(
+            "Open PRs with their landing facts and hold source (OMN-20864): the lab-headroom FIX names "
+            "pr-land lanes for idle slots on parked, escalated or unowned-red PRs, by the rule lab-fill "
+            "selection runs; None leaves the FIX as it was."
+        ),
+    )
+
     park_max_hours: float = Field(
         default=2.0,
         ge=0,
@@ -328,4 +339,13 @@ class ModelThroughputTickResult(BaseModel):
     open_count: int | None = Field(
         default=None,
         description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
+    )
+    pr_land: ModelLabFillPrLandPlan | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The idle-slot pr-land fallback the lab-headroom FIX names (OMN-20864); None without PR-land "
+            "facts or with the lab's capacity unread, and then absent from the dump, so a caller that "
+            "sends no PR-land facts reads the result it read before."
+        ),
     )

@@ -298,6 +298,13 @@ class ModelByokProviderBackend(BaseModel):
     #: the best entry here that the provider lists for that key, resolved by
     #: :func:`select_byok_model` and stored with the credential.
     model_preference: tuple[ModelByokModelPreference, ...] = Field(min_length=1)
+    #: OMN-20844. ``true`` declares that the customer names the model their key
+    #: runs: registration takes the model they choose (checked against the
+    #: key's own list) and never picks one from ``model_preference`` for them,
+    #: and a call on a model the catalogue does not prefer is never re-aimed at
+    #: one it does. ``model_preference`` then only re-aims a model that was the
+    #: catalogue's own pick.
+    customer_chooses_model: bool = False
     #: OMN-18265. How many times a TRANSIENT provider failure on this
     #: customer-credentialed route may be re-issued to the same backend before
     #: the delegation terminalises. Required, not defaulted: a customer's chain
@@ -812,6 +819,18 @@ def byok_limit_counter_key(
     return (tenant_id, api_key_ref, backend.provider, backend.plan, model)
 
 
+def catalogue_prefers_model(backend: ModelByokProviderBackend, model: str) -> bool:
+    """Whether ``model`` matches one of ``backend``'s preference entries (OMN-20844).
+
+    A model that matches is one the catalogue could have picked; a model that
+    matches none was named by the customer and is never swapped for a pick.
+    """
+    return any(
+        preference.generation_of(model) is not None
+        for preference in backend.model_preference
+    )
+
+
 def select_byok_model(
     backend: ModelByokProviderBackend,
     available_model_ids: Iterable[str],
@@ -888,6 +907,7 @@ __all__: list[str] = [
     "byok_provider_plans",
     "byok_routable_plans",
     "catalogue_parity_gap",
+    "catalogue_prefers_model",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
     "load_byok_not_offered_providers",

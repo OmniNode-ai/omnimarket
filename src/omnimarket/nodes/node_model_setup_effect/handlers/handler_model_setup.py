@@ -34,6 +34,7 @@ import yaml
 
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
+    resolve_local_byok_credential_model,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -248,6 +249,18 @@ class HandlerModelSetup:
 
     # -- the test ----------------------------------------------------------
 
+    @staticmethod
+    def _chosen_model(provider: ModelProvider) -> str | None:
+        """The model the customer chose for ``provider``'s key, if its row asks them.
+
+        OMN-20844. ``None`` for a provider whose catalogue row picks the model
+        (the stored model there can move on a re-aim) and for no stored model.
+        """
+        row = resolve_byok_provider_backend(provider)
+        if row is None or not row.customer_chooses_model:
+            return None
+        return resolve_local_byok_credential_model(provider)
+
     def _test(self, provider: ModelProvider) -> ModelModelTestResult:
         now = datetime.now(UTC).isoformat(timespec="seconds")
         backend_id = self.backend_for(provider)
@@ -265,7 +278,25 @@ class HandlerModelSetup:
         exit_code, stdout, stderr = self._run_delegation(backend_id)
         receipt = _receipt(stderr)
         answered = receipt.get("backend_id")
+        chosen = self._chosen_model(provider)
+        answered_model = _text(receipt.get("model"))
         if (
+            exit_code == 0
+            and receipt.get("status") == "success"
+            and answered == backend_id
+            and chosen is not None
+            and answered_model != chosen
+        ):
+            # OMN-20844: the customer chose this model, so an answer on any
+            # other model is not a pass for their choice.
+            result = ModelModelTestResult(
+                provider=provider,
+                status="failed",
+                tested_at=now,
+                backend_id=backend_id,
+                reason=f"answered on {answered_model}, not your chosen model {chosen}",
+            )
+        elif (
             exit_code == 0
             and receipt.get("status") == "success"
             and answered == backend_id

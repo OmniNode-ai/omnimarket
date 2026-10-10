@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20749"
+title: "route PR stalls to node_pr_lifecycle_fix_effect"
+summary: "node_fixer_dispatcher routes RED, CONFLICTED and BEHIND PR stalls to onex.cmd.omnimarket.pr-lifecycle-fix-start.v1, which node_pr_lifecycle_fix_effect subscribes to, instead of three command topics no omnimarket contract subscribes to."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-fixer-dispatch-topics-have-subscribers"
+    statement: "Every command and publish topic node_fixer_dispatcher declares has a subscriber in an omnimarket node contract."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the dispatcher's routing.command_topics and publish_topics each have a subscribing contract -- falsifier: uv run pytest tests/test_fixer_dispatcher_topics_have_subscribers.py fails at the merge base, where ci-fix-start, conflict-hunk-start and rebase-start have no subscriber"
+  - id: "req-fixer-dispatch-routes-to-lifecycle-fix"
+    statement: "RED, CONFLICTED and BEHIND stalls route to node_pr_lifecycle_fix_effect with a block_reason hint of code_failure or conflict."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the golden-chain dispatcher tests route RED, CONFLICTED and BEHIND to node_pr_lifecycle_fix_effect -- falsifier: uv run pytest tests/test_golden_chain_fixer_dispatcher.py fails against the merge-base handler"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the dispatcher topic-subscriber tests pass at the PR head."
+    command: 'uv run pytest tests/test_fixer_dispatcher_topics_have_subscribers.py -q -p no:randomly'
+  - kind: "tests"
+    description: "AC2: the fixer dispatcher golden-chain tests pass at the PR head."
+    command: 'uv run pytest tests/test_golden_chain_fixer_dispatcher.py -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20749-topics-have-subscribers"
+    description: "AC1: the dispatcher topic-subscriber tests pass at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_fixer_dispatcher_topics_have_subscribers.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20749-golden-chain-routing"
+    description: "AC2: the fixer dispatcher golden-chain tests pass at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_golden_chain_fixer_dispatcher.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

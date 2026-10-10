@@ -27,7 +27,19 @@ Rules this handler enforces (knowledge-base#94, revision 1 of the plan):
 - **Run attempts (F7).** read_head_checks reads each failed copy's run
   attempt from its run's jobs list; rerun_runs reads back the attempt each
   re-run started.
-- **Never merges.** There is no merge call in this module.
+- **Required contexts (OMN-20866).** read_head_checks asked with a base branch
+  also reads that branch's required status contexts (classic protection and
+  the rulesets in force), so the classifier judges only what blocks a merge.
+- **An arm already in place holds (OMN-20866).** When the policy read shows
+  auto-merge already armed at the expected head, the arm completes without
+  sending the mutation again. An enqueue completes the same way when the PR
+  is already in the merge queue or armed to join it.
+- **A PR GitHub already reports mergeable is merged (OMN-20866).** GitHub
+  refuses to arm auto-merge on a PR whose merge state is clean, unstable or
+  has_hooks ("Pull request is in clean status"), so an arm whose policy read
+  shows one of those, with no arm in place, sends mergePullRequest with the
+  expected head instead. That is the only merge call in this module; it
+  passes every refusal an arm passes first.
 """
 
 from __future__ import annotations
@@ -37,9 +49,16 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from omnimarket.events.pr_landing_github.model_github_check_run_fact import (
+    required_contexts_from_branch_body,
+    required_contexts_from_rules_body,
+)
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
+    branch_request,
+    branch_rules_request,
     head_check_runs_request,
+    merge_at_head_request,
     run_jobs_request,
     workflow_run_request,
 )
@@ -83,6 +102,9 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _SECRET_NAME = "GITHUB_TOKEN"
 # A runaway pagination guard: 10 pages of 100 is far past any real head.
 _MAX_PAGES = 10
+# GitHub merge states in which the PR merges at once, so GitHub refuses to arm
+# auto-merge on it (the immediately mergeable states, OMN-20866).
+_MERGEABLE_NOW = frozenset({"clean", "has_hooks", "unstable"})
 
 Result = ModelPrLandingGithubCompleted | ModelPrLandingGithubFailed
 
@@ -193,6 +215,7 @@ class _Exchange:
         not_modified: bool = False,
         etag: str | None = None,
         check_runs: tuple[ModelGithubCheckRunFact, ...] = (),
+        required_contexts: tuple[str, ...] | None = None,
         pr_state: ModelGithubPrStateFact | None = None,
         started_attempts: tuple[ModelGithubRunAttempt, ...] = (),
     ) -> ModelPrLandingGithubCompleted:
@@ -209,6 +232,7 @@ class _Exchange:
             not_modified=not_modified,
             etag=etag,
             check_runs=check_runs,
+            required_contexts=required_contexts,
             pr_state=pr_state,
             started_attempts=started_attempts,
             quota=self.quota,
@@ -388,7 +412,30 @@ class HandlerPrLandingGithubEffect:
             else f
             for f in facts
         )
-        return exchange.completed(etag=etag, check_runs=with_attempts)
+        required: tuple[str, ...] | None = None
+        if command.base_ref is not None:
+            required = await self._required_contexts(exchange, command.base_ref)
+        return exchange.completed(
+            etag=etag, check_runs=with_attempts, required_contexts=required
+        )
+
+    async def _required_contexts(
+        self, exchange: _Exchange, base_ref: str
+    ) -> tuple[str, ...]:
+        """The base branch's required status contexts: classic protection plus rulesets."""
+        repository = exchange.command.repository
+        branch = await exchange.send(branch_request(repository, base_ref))
+        rules = await exchange.send(branch_rules_request(repository, base_ref))
+        try:
+            contexts = required_contexts_from_branch_body(branch.body)
+            contexts |= required_contexts_from_rules_body(rules.body)
+        except ValueError as exc:
+            raise exchange.failed(
+                EnumPrLandingGithubFailureReason.VALIDATION_FAILED,
+                f"unreadable required contexts of {base_ref}: {exc}",
+                http_status=rules.status,
+            ) from None
+        return tuple(sorted(contexts))
 
     def _check_runs(
         self, exchange: _Exchange, response: ModelGithubHttpResponse
@@ -440,6 +487,29 @@ class HandlerPrLandingGithubEffect:
         if refusal is not None:
             reason, detail = refusal
             raise exchange.failed(reason, detail, pr_state=state)
+        if (
+            command.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE
+            and state.auto_merge_armed
+        ):
+            # Already armed at the expected head (another arm path placed it):
+            # the arm holds, so the mutation is not sent again (OMN-20866).
+            return exchange.completed(pr_state=state)
+        if command.operation is EnumPrLandingGithubOperation.ENQUEUE and (
+            state.in_merge_queue or state.auto_merge_armed
+        ):
+            # Already queued, or armed so GitHub queues it when its required
+            # checks pass (auto-merge.yml's path): the enqueue holds, so the
+            # mutation is not sent again (OMN-20866).
+            return exchange.completed(pr_state=state)
+        if (
+            command.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE
+            and state.mergeable_state in _MERGEABLE_NOW
+        ):
+            # GitHub refuses to arm a PR it would merge now: merge it at the
+            # expected head instead of leaving it green and unarmed (OMN-20866).
+            mutation = merge_at_head_request(
+                state.pr_node_id, command.merge_method, command.required_head_sha()
+            )
         await exchange.send(mutation)
         return exchange.completed(pr_state=state)
 
