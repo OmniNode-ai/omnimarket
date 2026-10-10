@@ -66,6 +66,45 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-fire-fresh-readings-one-plan"
+    description: "A lab-fill fire with fresh readings publishes one headroom plan naming the idle hosts. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_fresh_readings_publishes_one_plan_naming_the_idle_hosts -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-stale-reading-headroom-unknown"
+    description: "A lab-fill fire with a stale reading for a host with an idle slot fails HEADROOM_UNKNOWN on the failure topic. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_a_stale_reading_fails_headroom_unknown_on_the_failure_topic -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-no-reading-headroom-unknown"
+    description: "A lab-fill fire with no reading at all fails HEADROOM_UNKNOWN. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_fire_with_no_reading_at_all_fails_headroom_unknown -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-replay-publishes-nothing-new"
+    description: "A replayed fire with the same fire_id publishes nothing new, so a fire has one plan request. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py::test_replayed_fire_with_the_same_fire_id_publishes_nothing_new -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-deploy-one-fire-plan-per-fire-id"
+    description: "Deploy probe on the lab dev lane once the deploy agent rolls this change: the dev lane runtime has published at least one onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1 and no fire_id appears on it twice. Run with KAFKA_BOOTSTRAP_SERVERS set to the dev lane broker (bus-local); it exits nonzero on a runtime that predates this change, which publishes none to that topic. Hosted CI has no dev broker, so only the local Done gate runs it."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "kcat -C -b \"${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}\" -t onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1 -o -200 -e -q | grep -Eo '\"fire_id\": ?\"[^\"]+\"' | sort | uniq -c | awk '$1 > 1 {dup = 1} END {exit !(NR > 0 && !dup)}'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20867-runtime-tick-schedule"
     description: "Runtime tick schedule tests pass at the PR head, including real contract wiring and terminal-topic readback."
     source: "manual"
