@@ -7,12 +7,11 @@ PR-state observations do not carry annotations, so this cause key is check-level
 Shared facts and results live in omnimarket.models so readers never import private node models.
 """
 
-import hashlib
-
 from omnimarket.models.ci_red_triage import (
     EnumCiRedClass,
     ModelCiRedClassification,
     ModelCiRedFacts,
+    ci_red_cause_key,
     ci_red_repo_slug,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
@@ -85,9 +84,7 @@ def classify_ci_red(facts: ModelCiRedFacts) -> ModelCiRedClassification:
                 check = best
                 members = clusters[best]
                 red_class = EnumCiRedClass.SHARED_CAUSE
-                cause_key = (
-                    f"cause:{slug}:{hashlib.sha256(check.encode()).hexdigest()[:12]}"
-                )
+                cause_key = ci_red_cause_key(slug, check)
                 owner_key = cause_key
                 reason = "check-level cause reaches cluster_min_members"
             else:
