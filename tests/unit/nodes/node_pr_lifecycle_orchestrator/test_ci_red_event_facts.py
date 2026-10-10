@@ -82,6 +82,7 @@ async def test_runner_class_is_decided_from_the_event_conclusions() -> None:
     assert decision.action == EnumCiRedAction.RERUN_FAILED
     assert "head conclusions" not in decision.evidence
     assert "base checks" not in decision.evidence
+    assert "unread=annotations" in decision.evidence
     assert reads == 0
 
 

@@ -22,32 +22,58 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
   - operation: plan_merge_sweep_lanes
+    topic: onex.cmd.omnimarket.merge-sweep-plan-requested.v1
     handler:
       name: HandlerMergeSweepPlan
       module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_plan
     input_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepPlanRequest
     output_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepPlanResult
   - operation: decide_merge_sweep_lane_retry
+    topic: onex.cmd.omnimarket.merge-sweep-plan-requested.v1
     handler:
       name: HandlerMergeSweepRetry
       module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_retry
     input_model: omnimarket.models.merge_sweep.model_merge_sweep_retry.ModelMergeSweepRetryRequest
     output_model: omnimarket.models.merge_sweep.model_merge_sweep_retry.ModelMergeSweepRetryResult
   - operation: render_merge_sweep_lane_brief
+    topic: onex.cmd.omnimarket.merge-sweep-plan-requested.v1
     handler:
       name: HandlerMergeSweepBrief
       module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_brief
     input_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepBriefRequest
     output_model: omnimarket.models.merge_sweep.model_merge_sweep_plan.ModelMergeSweepBrief
+  # OMN-20867: the schedule's entry. The tick that opens a config.merge_sweep_plan.schedule window
+  # returns that window's fire (ModelScheduledFire) on the terminal topic; every other tick
+  # returns nothing. Stateless, so the compute stays pure.
+  - operation: merge_sweep.scheduled_fire
+    topic: onex.intent.platform.runtime-tick.v1
+    handler:
+      name: HandlerMergeSweepScheduledFire
+      module: omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_scheduled_fire
+    event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+    event_type: platform.runtime-tick
+    output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   side_effects: []
   runtime_profiles: [main]
+config:
+  merge_sweep_plan:
+    # OMN-20867: the tick's cadence, the launchd merge-sweep agent's (StartInterval 300 s).
+    schedule:
+      workflow: merge-sweep
+      interval_seconds: 300
+      offset_seconds: 0
+# OMN-20867: the runtime tick is the only schedule the runtime dispatches.
+input_subscriptions:
+- topic: onex.intent.platform.runtime-tick.v1
+  operation: merge_sweep.scheduled_fire
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.merge-sweep-plan-requested.v1
+  - onex.intent.platform.runtime-tick.v1
   publish_topics:
   - onex.evt.omnimarket.merge-sweep-planned.v1
 terminal_event: onex.evt.omnimarket.merge-sweep-planned.v1
