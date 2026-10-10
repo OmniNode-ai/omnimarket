@@ -104,6 +104,17 @@ handler_routing:
     event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
     event_type: platform.runtime-tick
     output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
+  # OMN-20867: a lab-fill fire's plan. node_lab_fill_orchestrator sends the fire with the
+  # newest capacity reading of every pool host on this route's own topic; the result is
+  # the headroom plan keyed by the fire_id, published on the decided terminal, or on the
+  # failure terminal when a host's headroom is unknown (terminal_failure_cause).
+  - operation: plan_lab_fill_fire
+    topic: onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
+    handler:
+      name: HandlerLabFillFirePlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fire_plan
+    event_model: omnimarket.models.model_lab_fill_fire_headroom.ModelLabFillFireHeadroomRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -118,6 +129,7 @@ event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.lab-fill-plan-requested.v1
   - onex.intent.platform.runtime-tick.v1
+  - onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
   publish_topics:
   - onex.evt.omnimarket.lab-fill-plan-decided.v1
   - onex.evt.omnimarket.lab-fill-plan-failed.v1
