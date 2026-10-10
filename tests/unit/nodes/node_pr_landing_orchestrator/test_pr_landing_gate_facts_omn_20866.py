@@ -19,6 +19,7 @@ head stays CHECKS_PENDING so the next poll reads it again.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -61,6 +62,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.contract_config
     PrLandingContractConfigError,
     gate_facts_from_block,
     load_contract_config,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
+    _Leg,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.gate_facts import (
     decide_gate,
@@ -657,3 +661,66 @@ def test_config_a_hand_built_config_reads_no_gate_facts() -> None:
     """Only the contract turns the gate on; a test's own config has it off."""
     config = replace(load_contract_config(), gate_facts=None)
     assert config.gate_facts is None
+
+
+def test_decision_a_projection_exactly_at_its_bound_is_fresh() -> None:
+    decision = _decide(
+        _facts(
+            ledger_newest_projected_at=NOW - timedelta(minutes=60),
+            lab_passes=(_receipt("a" * 40),),
+        )
+    )
+    assert decision.withheld is None
+
+
+def test_decision_a_projection_one_second_past_its_bound_is_unknown() -> None:
+    decision = _decide(
+        _facts(
+            ledger_newest_projected_at=NOW - timedelta(minutes=60, seconds=1),
+            lab_passes=(_receipt("a" * 40),),
+        )
+    )
+    assert decision.withheld is EnumPrLandingWithheldReason.LEDGER_HOLDS_UNKNOWN
+
+
+async def test_reader_redacts_the_password_when_the_error_names_only_the_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_contract_config().gate_facts
+    assert config is not None
+    monkeypatch.setenv(config.dsn_env, _DSN)
+
+    async def connect(_: str) -> _FakeConnection:
+        raise OSError(f"auth failed using {_PASSWORD}")
+
+    facts = await ProjectionGateFactsReader(config, connect=connect).read(
+        "OmniNode-ai/omnibase_infra", 4807, "a" * 40, NOW
+    )
+    assert facts.holds_state is EnumPrLandingFactState.UNKNOWN
+    assert facts.unknown_detail is not None
+    assert _PASSWORD not in facts.unknown_detail
+    assert facts.unknown_detail.startswith("OSError:")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("hold_state_relation", "x; DROP TABLE y"),
+        ("ledger_rows_relation", "x; DROP TABLE y"),
+        ("lab_proof_receipts_relation", "x; DROP TABLE y"),
+        ("dsn_env", "lower-case"),
+    ],
+)
+def test_config_a_hand_built_gate_facts_config_refuses_a_bad_relation(
+    field: str, value: str
+) -> None:
+    config = load_contract_config().gate_facts
+    assert config is not None
+    with pytest.raises(ValueError, match=field):
+        replace(config, **{field: value})
+
+
+def test_a_withheld_reason_rides_only_the_observation_it_was_read_for() -> None:
+    assert "withheld_reason" in inspect.signature(_Leg.apply).parameters
+    assert "withheld_reason" in inspect.signature(_Leg.apply_and_evaluate).parameters
+    assert "withheld_reason" not in inspect.getsource(_Leg.__init__)

@@ -24,6 +24,7 @@ import os
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from omnimarket.models.landing_ledger_row import (
     ModelLandingLedgerRow,
@@ -70,6 +71,13 @@ def _redacted(exc: BaseException, dsn: str | None) -> str:
     message = str(exc)
     if dsn:
         message = message.replace(dsn, "[redacted]")
+        try:
+            password = urlsplit(dsn).password
+        except ValueError:
+            pass
+        else:
+            if password:
+                message = message.replace(password, "[redacted]")
     if "postgres://" in message or "postgresql://" in message or "password=" in message:
         message = "database connection or query failed (details redacted)"
     return f"{type(exc).__name__}: {message}"
@@ -151,7 +159,7 @@ class ProjectionGateFactsReader:
         now: datetime,
     ) -> ModelPrLandingGateFacts:
         config = self._config
-        # The relation names come from the contract and are refused at load
+        # The relation names are refused when PrLandingGateFactsConfig is built
         # unless they are schema.table identifiers; values are bound.
         repo = repository.split("/", 1)[1] if "/" in repository else repository
         # Every open HOLD entity: few dozen rows; the scope is decided in
