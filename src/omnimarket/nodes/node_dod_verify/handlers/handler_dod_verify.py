@@ -40,6 +40,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
+from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumDurableEvidenceCheck,
+    ModelDurableEvidenceGateRun,
+)
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     _ALLOW_STALE_OCC_REF_ENV,
     _GIT_OP_TIMEOUT_ENV,
@@ -51,6 +55,42 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# OMN-20886: the gate checks the dod_verify skill names as its pre-Done checks.
+# The gate's released, repair-to-ratchet and done-class checks read the
+# ticket's labels and decide the Linear transition itself; they are evaluated
+# but are not checks of this verdict.
+DURABLE_GATE_VERDICT_CHECKS: tuple[EnumDurableEvidenceCheck, ...] = (
+    EnumDurableEvidenceCheck.RECEIPT_TRACKED,
+    EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+    EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
+)
+
+
+def durable_gate_check_results(
+    gate_run: ModelDurableEvidenceGateRun,
+) -> list[ModelEvidenceCheckResult]:
+    """The gate's verdict checks as evidence results, in the gate's order."""
+    results: list[ModelEvidenceCheckResult] = []
+    for check in gate_run.result.checks:
+        if check.check not in DURABLE_GATE_VERDICT_CHECKS:
+            continue
+        message = check.message
+        if not check.passed and gate_run.ticket_read_detail:
+            message = f"{message} (ticket unreadable: {gate_run.ticket_read_detail})"
+        results.append(
+            ModelEvidenceCheckResult(
+                evidence_id=f"durable_gate::{check.check.value}",
+                description=f"DurableEvidenceGate {check.check.value}",
+                status=(
+                    EnumEvidenceCheckStatus.VERIFIED
+                    if check.passed
+                    else EnumEvidenceCheckStatus.FAILED
+                ),
+                message=message,
+            )
+        )
+    return results
 
 
 class HandlerDodVerify:
@@ -187,6 +227,17 @@ class HandlerDodVerify:
             # OMN-17796: read the same way, for the same reason.
             occ_ref_failure_cause = collector.occ_ref_failure_cause
             occ_ref_failure_code = collector.occ_ref_failure_code
+            # OMN-20886: the DurableEvidenceGate runs on the auto-resolved
+            # path, so its three pre-Done checks are checks of this verdict.
+            # ``getattr`` for the same stub seam as above: a stub that never
+            # resolved a contract runs no gate.
+            run_durable_gate = getattr(collector, "run_durable_gate", None)
+            gate_run = run_durable_gate() if callable(run_durable_gate) else None
+            if isinstance(gate_run, ModelDurableEvidenceGateRun):
+                evidence_results = [
+                    *evidence_results,
+                    *durable_gate_check_results(gate_run),
+                ]
 
         checks = evidence_results
         executable_checks = [r for r in checks if not r.is_disposition]

@@ -21,7 +21,10 @@ This source answers, without GitHub:
   one commit on the base branch whose subject ends ``(#<n>)``;
 * the merged PRs whose title or branch names a ticket, from both;
 * the newest copy of every check-run name at a PR's exact head, from the
-  watcher's last read of that head.
+  watcher's last read of that head;
+* the product repositories whose default branch has ever carried a ticket's
+  ``contracts/<TICKET>.yaml``, and that contract at a fixed commit, from the
+  clones (OMN-20886).
 
 Every method returns ``None`` when the local sources do not hold the fact, and
 the caller then reads GitHub as before, so a fact no local source holds keeps
@@ -45,8 +48,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
+import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
+)
+
+from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumRepoContractReadStatus,
+    ModelRepoContractRead,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +75,9 @@ _GIT_STATUS_TO_GITHUB: Final[dict[str, str]] = {
     "C": "copied",
     "T": "changed",
 }
+
+# OMN-20886: the evidence-governance repository is never a product repository.
+_GOVERNANCE_REPO_NAME: Final[str] = "onex_change_control"
 
 # The parsed watcher file, keyed by (path, mtime): one parse per process.
 _STATE_CACHE: dict[tuple[str, float], dict[str, Any]] = {}
@@ -408,6 +420,61 @@ class DodEvidenceLocalSource:
             self.local_reads += 1
         return [found[n] for n in sorted(found, reverse=True)]
 
+    # ------------------------------------------------------------ contracts
+
+    def contract_repositories(self, ticket_id: str) -> list[str] | None:
+        """``owner/name`` of every product clone whose default branch has ever
+        carried ``contracts/<ticket_id>.yaml`` (OMN-20886), sorted.
+
+        ``None`` when ``$OMNI_HOME`` is unset, so the caller can tell "no
+        repository carries it" from "no clone could be asked".
+        """
+        registry_root = os.environ.get("OMNI_HOME")
+        if not registry_root or not Path(registry_root).is_dir():
+            return None
+        rel = f"contracts/{ticket_id}.yaml"
+        found: list[str] = []
+        for clone in sorted(Path(registry_root).iterdir()):
+            if clone.name == _GOVERNANCE_REPO_NAME or not (clone / ".git").exists():
+                continue
+            repo = self.cwd_repo(clone)
+            if repo is None or canonical_clone(repo) != clone:
+                continue
+            branch = self._default_branch(repo)
+            ref = self._clone_ref(clone, branch) if branch else None
+            if ref is None:
+                continue
+            rc, out = _git(clone, "log", "-1", "--format=%H", ref, "--", rel)
+            if rc == 0 and out.strip():
+                found.append(repo)
+        return found
+
+    def repo_contract_at(
+        self, repo: str, sha: str, ticket_id: str
+    ) -> ModelRepoContractRead | None:
+        """``contracts/<ticket_id>.yaml`` of ``repo`` at commit ``sha``.
+
+        ``None`` when the clone does not hold the commit (the caller then reads
+        GitHub); ``ABSENT`` when the commit holds no such file; ``ERROR`` when
+        the file is not a YAML mapping.
+        """
+        clone = canonical_clone(repo)
+        if clone is None or not sha:
+            return None
+        rc, _ = _git(clone, "cat-file", "-e", f"{sha}^{{commit}}")
+        if rc != 0:
+            return None
+        rel = f"contracts/{ticket_id}.yaml"
+        rc, _ = _git(clone, "cat-file", "-e", f"{sha}:{rel}")
+        if rc != 0:
+            self.local_reads += 1
+            return ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
+        rc, text = _git(clone, "show", f"{sha}:{rel}")
+        if rc != 0:
+            return None
+        self.local_reads += 1
+        return parse_repo_contract(text)
+
     def cwd_repo(self, cwd: Path | None = None) -> str | None:
         """``owner/name`` of the working directory's ``origin`` remote."""
         rc, out = _git(cwd or Path.cwd(), "config", "--get", "remote.origin.url")
@@ -500,10 +567,30 @@ class DodEvidenceLocalSource:
         return out, f"pr-watcher read_at={ci.get('read_at')}"
 
 
+def parse_repo_contract(text: str) -> ModelRepoContractRead:
+    """A contract file's text as a read: FOUND for a mapping, else ERROR."""
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        return ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.ERROR, error=f"YAML parse error: {exc}"
+        )
+    if not isinstance(parsed, dict):
+        return ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.ERROR,
+            error="contract root is not a mapping",
+        )
+    return ModelRepoContractRead(
+        status=EnumRepoContractReadStatus.FOUND,
+        contract={str(key): value for key, value in parsed.items()},
+    )
+
+
 __all__ = [
     "WATCHER_MAX_AGE",
     "WATCHER_STATE_ENV",
     "DodEvidenceLocalSource",
     "canonical_clone",
+    "parse_repo_contract",
     "watcher_state_path",
 ]

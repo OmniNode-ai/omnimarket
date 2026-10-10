@@ -90,6 +90,7 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelCitedMergeCommit,
     ModelDurableEvidenceCheckResult,
     ModelDurableEvidenceGateResult,
+    ModelEngagedRepoContract,
     ModelRepoContractRead,
     ModelRepoEvidenceCheckRun,
     ModelRepoEvidenceVerdict,
@@ -416,34 +417,32 @@ def _contract_bindings(contract: dict[str, object]) -> dict[str, list[str]]:
     return bindings
 
 
-def evaluate_repo_evidence(
+def resolve_repo_contracts(
     ticket_id: str,
-    ticket_description: str,
     merged_prs: tuple[ModelTicketMergedPr, ...],
     *,
     read_repo_contract: RepoContractReader,
     read_repo_check_runs: RepoEvidenceCheckRunsReader,
-) -> ModelRepoEvidenceVerdict:
-    """Decide a ticket from the product repositories its PRs merged into.
+) -> ModelRepoEvidenceVerdict | tuple[ModelEngagedRepoContract, ...]:
+    """The product-repository contracts that govern a ticket, per repository.
 
-    The resolution order of the omniclaude Done gate, all I/O through the two
-    readers:
+    Steps 1 to 3 of :func:`evaluate_repo_evidence`, shared with
+    ``node_dod_verify``'s contract lookup (OMN-20886) so the node and the gate
+    resolve one ticket to the same contracts:
 
     1. Read ``contracts/<ticket>.yaml`` at every merged PR's merge commit. No PR
-       carrying one leaves the ticket NOT_ENGAGED (OCC decides); an unreadable
-       or malformed contract REFUSES.
+       carrying one is NOT_ENGAGED; an unreadable or malformed contract is
+       REFUSED.
     2. Within one repository, only the newest merged contract-carrying PR
-       decides, because its check re-verifies the whole contract. A PR without
-       a merge time is never treated as superseded.
+       decides. A PR without a merge time is never treated as superseded.
     3. A deciding PR with no ``repo-evidence / dod-verify`` run on its head has
        not adopted the repo path; when no deciding PR has one, NOT_ENGAGED.
-       Unreadable check runs REFUSE.
-    4. The newest run on each engaged head must be a completed success, and the
-       contract at that head must equal the merged one, or REFUSED.
-    5. Every labelled acceptance criterion of the ticket description must be
-       bound by some engaged contract, or REFUSED. A description with no
-       criterion, or an unlabelled one, REFUSES: there is nothing to bind.
+       Unreadable check runs are REFUSED.
+
+    Returns the engaged contracts, one per deciding PR, or the verdict that
+    stops resolution there.
     """
+
     candidates = {(pr.repo, pr.pr_number): pr for pr in merged_prs}
     if not candidates:
         return ModelRepoEvidenceVerdict(
@@ -478,9 +477,7 @@ def evaluate_repo_evidence(
         if not pr.merged_at or pr.merged_at == newest[pr.repo]
     ]
 
-    engaged: list[
-        tuple[ModelTicketMergedPr, dict[str, object], list[ModelRepoEvidenceCheckRun]]
-    ] = []
+    engaged: list[ModelEngagedRepoContract] = []
     skipped: list[str] = []
     for pr, contract in contracts:
         source = f"{pr.repo}#{pr.pr_number}"
@@ -505,16 +502,58 @@ def evaluate_repo_evidence(
                 f"{REPO_EVIDENCE_CHECK_NAME} run on head {pr.head_sha[:12]}"
             )
             continue
-        engaged.append((pr, contract, kept))
+        engaged.append(
+            ModelEngagedRepoContract(pr=pr, contract=contract, check_runs=tuple(kept))
+        )
     if not engaged:
         return ModelRepoEvidenceVerdict(
             outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED, detail="; ".join(skipped)
         )
+    return tuple(engaged)
+
+
+def evaluate_repo_evidence(
+    ticket_id: str,
+    ticket_description: str,
+    merged_prs: tuple[ModelTicketMergedPr, ...],
+    *,
+    read_repo_contract: RepoContractReader,
+    read_repo_check_runs: RepoEvidenceCheckRunsReader,
+) -> ModelRepoEvidenceVerdict:
+    """Decide a ticket from the product repositories its PRs merged into.
+
+    The resolution order of the omniclaude Done gate, all I/O through the two
+    readers:
+
+    1. Read ``contracts/<ticket>.yaml`` at every merged PR's merge commit. No PR
+       carrying one leaves the ticket NOT_ENGAGED (OCC decides); an unreadable
+       or malformed contract REFUSES.
+    2. Within one repository, only the newest merged contract-carrying PR
+       decides, because its check re-verifies the whole contract. A PR without
+       a merge time is never treated as superseded.
+    3. A deciding PR with no ``repo-evidence / dod-verify`` run on its head has
+       not adopted the repo path; when no deciding PR has one, NOT_ENGAGED.
+       Unreadable check runs REFUSE.
+    4. The newest run on each engaged head must be a completed success, and the
+       contract at that head must equal the merged one, or REFUSED.
+    5. Every labelled acceptance criterion of the ticket description must be
+       bound by some engaged contract, or REFUSED. A description with no
+       criterion, or an unlabelled one, REFUSES: there is nothing to bind.
+    """
+    resolved = resolve_repo_contracts(
+        ticket_id,
+        merged_prs,
+        read_repo_contract=read_repo_contract,
+        read_repo_check_runs=read_repo_check_runs,
+    )
+    if isinstance(resolved, ModelRepoEvidenceVerdict):
+        return resolved
 
     bindings: dict[str, list[str]] = {}
     governing: list[dict[str, object]] = []
     sources: list[str] = []
-    for pr, contract, kept in engaged:
+    for engaged in resolved:
+        pr, contract, kept = engaged.pr, engaged.contract, engaged.check_runs
         source = f"{pr.repo}#{pr.pr_number}"
         context = f"{source} at head {pr.head_sha} and merge {pr.merge_commit_sha}"
         # Check-run ids only grow, so the newest copy is the highest id: a rerun
@@ -1683,4 +1722,5 @@ __all__: list[str] = [
     "extract_contract_check_keys",
     "extract_receipt_merge_commits",
     "parse_pr_url",
+    "resolve_repo_contracts",
 ]

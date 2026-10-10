@@ -67,6 +67,7 @@ from omnimarket.delegated_test_loop.must_fail_models import (
     ModelPrDiffFacts,
 )
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_execution_audience import (
     EnumDodVerifyExecutionAudience,
 )
@@ -76,6 +77,9 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
     pypi_release_files,
+)
+from omnimarket.nodes.node_dod_verify.handlers.handler_durable_evidence_gate_effect import (
+    HandlerDurableEvidenceGateEffect,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
@@ -98,6 +102,16 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelProductClonePin,
     ModelProductClonePinSet,
     ModelProductCloneResolution,
+)
+from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    EnumRepoContractReadStatus,
+    EnumRepoEvidenceOutcome,
+    ModelDurableEvidenceGateRun,
+    ModelDurableEvidenceGateRunCommand,
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelRepoEvidenceVerdict,
+    ModelTicketMergedPr,
 )
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
@@ -122,6 +136,8 @@ from omnimarket.nodes.node_dod_verify.services.contract_subject import (
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
+    default_contract_path,
+    resolve_repo_contracts,
 )
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
@@ -353,6 +369,52 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 # with no second table.
 _OCC_REF_REFRESH_FAILED_CODE = "OCC_REF_REFRESH_FAILED"
 _OCC_WORKTREE_UNAVAILABLE_CODE = "OCC_WORKTREE_UNAVAILABLE"
+
+# OMN-20886: a ticket's product-repository contract could not be resolved (its
+# merged PRs, the contract at a merge commit, or the check runs were unreadable
+# or malformed). Refuses: an OCC copy does not govern such a ticket.
+_REPO_CONTRACT_UNRESOLVED_CODE = "REPO_CONTRACT_UNRESOLVED"
+
+
+def _repo_contract_subject(
+    repo: str, merge_sha: str, ticket_id: str
+) -> ModelDodContractSubject:
+    """The subject of a product contract read at ``merge_sha`` (OMN-20696)."""
+    try:
+        return ModelDodContractSubject(
+            source=EnumDodContractSource.PRODUCT_REPOSITORY,
+            repository=repo,
+            commit_sha=merge_sha,
+            repo_path=default_contract_path(ticket_id),
+        )
+    except ValueError:
+        return ModelDodContractSubject(
+            source=EnumDodContractSource.UNBOUND,
+            repository=repo,
+            commit_sha=None,
+            repo_path=default_contract_path(ticket_id),
+        )
+
+
+def _merge_acceptance_summaries(
+    summaries: list[ModelDodAcceptanceSummary],
+) -> ModelDodAcceptanceSummary | None:
+    """One summary over several governing contracts: counts add, lists join."""
+    if not summaries:
+        return None
+    return ModelDodAcceptanceSummary(
+        declared_falsifier_count=sum(x.declared_falsifier_count for x in summaries),
+        runnable_count=sum(x.runnable_count for x in summaries),
+        unrunnable_labels=tuple(v for x in summaries for v in x.unrunnable_labels),
+        undeclared_runner=tuple(v for x in summaries for v in x.undeclared_runner),
+        derived_item_ids=tuple(v for x in summaries for v in x.derived_item_ids),
+        self_accepted_bindings=tuple(
+            v for x in summaries for v in x.self_accepted_bindings
+        ),
+        retired_bindings=tuple(v for x in summaries for v in x.retired_bindings),
+        refused_retirements=tuple(v for x in summaries for v in x.refused_retirements),
+        unbound_criteria=tuple(v for x in summaries for v in x.unbound_criteria),
+    )
 
 
 def _git_op_timeout_s() -> float:
@@ -2383,6 +2445,14 @@ class EvidenceCollector:
         self.acceptance_summary: ModelDodAcceptanceSummary | None = None
         # OMN-20696: subject of the contract loaded for the current verdict.
         self.contract_subject: ModelDodContractSubject | None = None
+        # OMN-20886: the last ticket contract _collect_impl loaded, the merged
+        # PRs of the repositories that carry the ticket's contract, and the
+        # DurableEvidenceGate inputs of an auto-resolved collect(). The gate
+        # inputs stay None for an explicit contract path, a goal-scoped run and
+        # a run that found no contract, none of which runs the gate.
+        self._last_contract: dict[str, Any] | None = None
+        self._repo_merged_prs: tuple[ModelTicketMergedPr, ...] = ()
+        self._durable_gate_inputs: ModelDurableEvidenceGateRunCommand | None = None
 
     @property
     def occ_governance_ref(self) -> str:
@@ -2434,8 +2504,18 @@ class EvidenceCollector:
         invisible and the run reported ``CONTRACT_MISSING``. Both classes now
         refuse by default, under the same named override.
         """
+        self._durable_gate_inputs = None
         if contract_path is not None:
             return self._collect_impl(ticket_id, contract_path, execution_audience)
+
+        # OMN-20886: the product repository first. A ticket whose merged PRs
+        # carry ``contracts/<ticket>.yaml`` in their own repository is governed
+        # by that contract, resolved by the DurableEvidenceGate's own resolver;
+        # onex_change_control is searched only when no product repository
+        # governs it, and then exactly as before.
+        repo_results = self._collect_repo_governed(ticket_id, execution_audience)
+        if repo_results is not None:
+            return repo_results
 
         created_worktree: Path | None = None
         try:
@@ -2653,6 +2733,7 @@ class EvidenceCollector:
                         ),
                     )
                 )
+            self._record_durable_gate_inputs(ticket_id)
             return results
         finally:
             self._occ_dev_root = None
@@ -2663,6 +2744,189 @@ class EvidenceCollector:
             self.release_occ_dev_snapshot()
             if created_worktree is not None:
                 self._remove_occ_dev_worktree(created_worktree)
+
+    def _github_lookup(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-20886: one read through the node's GitHub/local-source reader."""
+        return self._github_lookup_result(
+            HandlerDodEvidenceGithubEffect().handle(command)
+        )
+
+    def _read_repo_contract(
+        self, repo: str, ref: str, ticket_id: str
+    ) -> ModelRepoContractRead:
+        event = self._github_lookup(
+            ModelDodEvidenceGithubLookupCommand(
+                operation=EnumDodEvidenceGithubOperation.READ_REPO_CONTRACT,
+                repo=repo,
+                commit_sha=ref,
+                ticket_id=ticket_id,
+            )
+        )
+        if event.repo_contract is None:
+            return ModelRepoContractRead(
+                status=EnumRepoContractReadStatus.ERROR,
+                error=event.detail or "no contract read returned",
+            )
+        return event.repo_contract
+
+    def _read_repo_check_runs(
+        self, repo: str, sha: str
+    ) -> tuple[ModelRepoEvidenceCheckRun, ...] | None:
+        event = self._github_lookup(
+            ModelDodEvidenceGithubLookupCommand(
+                operation=EnumDodEvidenceGithubOperation.READ_REPO_EVIDENCE_CHECK_RUNS,
+                repo=repo,
+                commit_sha=sha,
+            )
+        )
+        return event.check_runs if event.resolved else None
+
+    def _collect_repo_governed(
+        self,
+        ticket_id: str,
+        execution_audience: EnumDodVerifyExecutionAudience,
+    ) -> list[ModelEvidenceCheckResult] | None:
+        """OMN-20886: verify the ticket against its product-repository contracts.
+
+        Returns ``None`` when no product repository governs the ticket (the
+        caller then resolves onex_change_control exactly as before). Otherwise
+        the results of every governing contract, one per repository, each read
+        at the merge commit of that repository's newest merged contract-carrying
+        PR by :func:`resolve_repo_contracts`, the DurableEvidenceGate's own
+        resolver. An unreadable or malformed product contract, or a repository
+        whose merged PRs cannot be read, refuses rather than falling back to an
+        OCC copy that does not govern the ticket.
+        """
+        self._repo_merged_prs = ()
+        if not os.environ.get("OMNI_HOME", "").strip():
+            return None
+        listed = self._github_lookup(
+            ModelDodEvidenceGithubLookupCommand(
+                operation=EnumDodEvidenceGithubOperation.LIST_CONTRACT_REPO_MERGED_PRS,
+                ticket_id=ticket_id,
+            )
+        )
+        if not listed.resolved:
+            return [self._repo_contract_refusal(ticket_id, listed.detail or "")]
+        self._repo_merged_prs = listed.merged_prs
+        resolved = resolve_repo_contracts(
+            ticket_id,
+            listed.merged_prs,
+            read_repo_contract=self._read_repo_contract,
+            read_repo_check_runs=self._read_repo_check_runs,
+        )
+        if isinstance(resolved, ModelRepoEvidenceVerdict):
+            if resolved.outcome is EnumRepoEvidenceOutcome.REFUSED:
+                return [self._repo_contract_refusal(ticket_id, resolved.detail)]
+            logger.info(
+                "No product repository governs %s (%s); resolving %s",
+                ticket_id,
+                resolved.detail,
+                self._occ_governance_ref,
+            )
+            return None
+
+        governing = sorted(resolved, key=lambda engaged: engaged.pr.repo)
+        multi = len(governing) > 1
+        results: list[ModelEvidenceCheckResult] = []
+        summaries: list[ModelDodAcceptanceSummary] = []
+        subjects: list[ModelDodContractSubject] = []
+        for engaged in governing:
+            pr = engaged.pr
+            logger.info(
+                "Resolved %s contract for %s from %s#%d at merge %s",
+                pr.repo,
+                ticket_id,
+                pr.repo,
+                pr.pr_number,
+                pr.merge_commit_sha,
+            )
+            item_results = self._collect_impl(
+                ticket_id,
+                None,
+                execution_audience,
+                loaded_contract=(
+                    dict(engaged.contract),
+                    _repo_contract_subject(pr.repo, pr.merge_commit_sha, ticket_id),
+                ),
+            )
+            if multi:
+                # Two contracts may reuse an item id; the repository keeps them
+                # apart in one verdict.
+                name = pr.repo.split("/", 1)[-1]
+                item_results = [
+                    result.model_copy(
+                        update={"evidence_id": f"{name}:{result.evidence_id}"}
+                    )
+                    for result in item_results
+                ]
+            results.extend(item_results)
+            if self.acceptance_summary is not None:
+                summaries.append(self.acceptance_summary)
+            if self.contract_subject is not None:
+                subjects.append(self.contract_subject)
+        if multi:
+            # One verdict row names one contract; a verdict over several names
+            # none rather than one of them.
+            self.contract_subject = ModelDodContractSubject(
+                source=EnumDodContractSource.UNBOUND,
+                repository=None,
+                commit_sha=None,
+                repo_path=default_contract_path(ticket_id),
+            )
+            self.acceptance_summary = _merge_acceptance_summaries(summaries)
+        elif subjects:
+            self.contract_subject = subjects[0]
+        self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
+            ticket_id=ticket_id,
+            contract=dict(governing[0].contract),
+            merged_prs=self._repo_merged_prs,
+            occ_repo_path=str(self._resolve_occ_root() or ""),
+            occ_governance_ref=self._occ_governance_ref,
+        )
+        return results
+
+    @staticmethod
+    def _repo_contract_refusal(ticket_id: str, detail: str) -> ModelEvidenceCheckResult:
+        return ModelEvidenceCheckResult(
+            evidence_id="contract",
+            description=f"Product-repository contract for {ticket_id} unresolved",
+            status=EnumEvidenceCheckStatus.FAILED,
+            message=(
+                f"{_REPO_CONTRACT_UNRESOLVED_CODE}: {detail} The ticket's product "
+                "repository could not be read, so onex_change_control is not "
+                "consulted in its place."
+            ),
+        )
+
+    def _record_durable_gate_inputs(self, ticket_id: str) -> None:
+        """OMN-20886: the gate inputs of an onex_change_control-resolved run."""
+        if self._last_contract is None:
+            return
+        self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
+            ticket_id=ticket_id,
+            contract=dict(self._last_contract),
+            merged_prs=self._repo_merged_prs,
+            occ_repo_path=str(self._resolve_occ_root() or ""),
+            occ_governance_ref=self._occ_governance_ref,
+        )
+
+    @staticmethod
+    def _make_durable_gate_effect() -> HandlerDurableEvidenceGateEffect:
+        """The gate's EFFECT handler. Override in tests to inject probes."""
+        return HandlerDurableEvidenceGateEffect()
+
+    def run_durable_gate(self) -> ModelDurableEvidenceGateRun | None:
+        """OMN-20886: evaluate the DurableEvidenceGate for the last collect().
+
+        ``None`` when that collect() resolved no contract on its own (an
+        explicit contract path, a goal-scoped run, no contract anywhere).
+        """
+        if self._durable_gate_inputs is None:
+            return None
+        return self._make_durable_gate_effect().handle(self._durable_gate_inputs)
 
     def _resolve_occ_root(self) -> Path | None:
         """Return the OCC repo root from the environment, or None."""
@@ -3251,6 +3515,7 @@ class EvidenceCollector:
         inline_items: tuple[ModelContractDodItem, ...] | None = None,
         goal_id: UUID | None = None,
         contract_schema_version: str | None = None,
+        loaded_contract: tuple[dict[str, Any], ModelDodContractSubject] | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
@@ -3263,8 +3528,13 @@ class EvidenceCollector:
         """
         self.acceptance_summary = None
         self.contract_subject = None
+        self._last_contract = None
         raw: dict[str, Any] | None
-        if inline_items is not None:
+        if loaded_contract is not None:
+            # OMN-20886: a product-repository contract read at a merge commit.
+            path = None
+            raw, self.contract_subject = loaded_contract
+        elif inline_items is not None:
             self.contract_subject = inline_goal_subject()
             path = None
             raw = {
@@ -3326,6 +3596,8 @@ class EvidenceCollector:
                 )
             ]
 
+        if inline_items is None:
+            self._last_contract = raw
         dod_items = raw.get("dod_evidence", [])
         if not isinstance(dod_items, list):
             return [
