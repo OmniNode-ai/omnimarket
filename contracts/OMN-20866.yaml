@@ -50,6 +50,46 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_leaves_shadow_omn_20866.py -q -k enforce"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20866-gate-facts-held-prs-skipped"
+    description: "A green, clean head whose PR has a ledger HOLD row in force is not armed: no GitHub request is emitted, the transition stays CHECKS_PENDING and names ledger_hold_in_force. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_held_prs_skipped -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20866-gate-facts-missing-receipt-not-armed"
+    description: "In a lab-proof repository a green head with no PASS lab proof for its exact head is not armed; the transition stays CHECKS_PENDING and names lab_pass_missing. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_missing_receipt_not_armed -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20866-gate-facts-pass-receipt-plus-green-clean-armed"
+    description: "A PASS lab proof for the head plus a green, clean head reaches READY with an enforce ARM_AUTO_MERGE request at that head, then ARMED. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_pass_receipt_plus_green_clean_armed -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20866-gate-facts-projection-unreadable-fails-closed"
+    description: "A gate-fact projection that cannot be read is UNKNOWN and withholds the arm: no request is emitted and the transition names ledger_holds_unknown. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_gate_facts_omn_20866.py::test_projection_unreadable_fails_closed -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20866-deploy-withheld-reason-on-transitions"
+    description: "Deploy probe on the lab dev lane once the deploy agent rolls this change: the landing orchestrator's transition events on the dev broker carry a withheld_reason naming a held or unproven head (ledger_hold_in_force, ledger_holds_unknown, lab_pass_missing or lab_pass_unknown). Run with KAFKA_BOOTSTRAP_SERVERS set to the dev lane broker (bus-local); it exits nonzero on a runtime that predates this change, which publishes no withheld_reason. Hosted CI has no dev broker, so only the local Done gate runs it."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "kcat -C -b \"${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}\" -t onex.evt.omnimarket.pr-landing-transitioned.v1 -o -500 -e -q | grep -Eq '\"withheld_reason\": ?\"(ledger_hold_in_force|ledger_holds_unknown|lab_pass_missing|lab_pass_unknown):'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20866-ac2-merge-at-head"
     description: "AC2 landing step: a green canary PR GitHub reports clean, with no auto-merge armed, is merged at its exact head instead of armed; real dev-lane PR-state records reach READY through the contract route."
     source: "manual"
