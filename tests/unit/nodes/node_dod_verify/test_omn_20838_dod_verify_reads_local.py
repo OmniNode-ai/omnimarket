@@ -336,3 +336,19 @@ def test_shallow_clone_does_not_answer_parents_or_ticket_search(
         )
         == []
     )
+
+
+def test_per_process_read_caches_stay_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A long-lived process reading many bases keeps at most the cap of entries,
+    and the newest read is the one kept."""
+    cache: dict[tuple[str, str], tuple[object, str, object, str]] = {}
+    monkeypatch.setattr(hd_mod, "_REQUIRED_CONTEXTS_CACHE", cache, raising=False)
+    monkeypatch.setattr(hd_mod, "_gh_json", lambda *_args: ({"contexts": []}, ""))
+    cap = hd_mod._READ_CACHE_MAX_ENTRIES
+    for n in range(cap + 5):
+        hd_mod._read_required_contexts(_REPO, f"base-{n}")
+    assert len(cache) == cap
+    assert (_REPO, f"base-{cap + 4}") in cache
+    assert (_REPO, "base-0") not in cache

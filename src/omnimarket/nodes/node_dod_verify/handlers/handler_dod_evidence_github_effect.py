@@ -128,6 +128,19 @@ _MERGED_CHECKS_GREEN_CACHE: dict[
     tuple[str, int], ModelDodEvidenceGithubLookupResultEvent
 ] = {}
 
+# OMN-20838: both per-process caches above hold at most this many entries; the
+# oldest entry is dropped first, so a long-lived process stays bounded.
+_READ_CACHE_MAX_ENTRIES = 256
+
+
+def _bounded_put[K, V](cache: dict[K, V], key: K, value: V) -> None:
+    """Store ``value`` under ``key``, dropping the oldest entries past the cap."""
+    cache.pop(key, None)
+    while len(cache) >= _READ_CACHE_MAX_ENTRIES:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
 # OMN-20838: listing pages of 100 instead of GitHub's default 30, for the
 # check-suite and check-run listings that remain GitHub reads when the PR
 # watcher's state cannot settle a head. Same rows, fewer calls.
@@ -451,7 +464,7 @@ def _read_required_contexts(
     )
     result = (classic, classic_detail, rules, rules_detail)
     if classic is not None or rules is not None:
-        _REQUIRED_CONTEXTS_CACHE[key] = result
+        _bounded_put(_REQUIRED_CONTEXTS_CACHE, key, result)
     return result
 
 
@@ -1002,7 +1015,7 @@ class HandlerDodEvidenceGithubEffect:
         self._checks_pr_merged = False
         result = self._fetch_pr_checks_green_uncached(command)
         if self._checks_pr_merged:
-            _MERGED_CHECKS_GREEN_CACHE[key] = result
+            _bounded_put(_MERGED_CHECKS_GREEN_CACHE, key, result)
         return result
 
     def _fetch_pr_checks_green_uncached(
