@@ -125,6 +125,14 @@ class ModelPrLandingWorkflowRow(BaseModel):
     head_checks_read_at: datetime | None = Field(default=None)
     pr_node_id: str | None = Field(default=None, min_length=1)
     base_ref: str | None = Field(default=None, min_length=1)
+    merge_state_status: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "GitHub's mergeable_state from the newest PR read, for the arm "
+            "gate's merge-state fact (OMN-20866)."
+        ),
+    )
     check_runs: tuple[ModelPrLandingCheckRunRef, ...] = Field(default=())
     bound_expired_for: tuple[int, int] | None = Field(
         default=None,
