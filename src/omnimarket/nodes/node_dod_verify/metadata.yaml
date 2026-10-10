@@ -1,6 +1,7 @@
 name: node_dod_verify
 version: "1.0.0"
 # OMN-20072: occ-difference is a standalone CLI comparison of same-head artifacts.
+# OMN-20858: the criteria check reads the live ticket from Linear (network, LINEAR_API_KEY).
 description: >-
   DoD evidence verification — contract-driven evidence checks and OCC retirement
   verdict difference classification via the occ-difference CLI mode
@@ -11,9 +12,9 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: false
   side_effect_class: read_only
 dependencies:

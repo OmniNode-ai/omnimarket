@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20858"
+title: "dod_verify refuses evidence bound to criteria the ticket no longer carries"
+summary: "node_dod_verify reads the live ticket's labelled criteria, hashes them with the change-control criterion hash, and compares them with the hashes its contract's bindings were accepted against. An edited, deleted, added or duplicate-label criterion refuses with CRITERIA_DRIFT naming it, the earlier PASS evidence bound to it stops counting, and the amendment the contract needs is emitted as one record. An unreadable ticket, and an edit made while the checks ran, refuse. The verdict carries the criteria revision, and the durable-evidence gate re-checks it at the Done transition."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dod-verify-criteria-drift"
+    statement: "dod_verify compares the live ticket's criteria with the hashes its contract was accepted against and refuses what moved."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: edited, deleted, added and duplicate-label criteria each refuse with `CRITERIA_DRIFT` naming the criterion (`uv run pytest -q -k \"criteria_drift_edited or criteria_drift_deleted or criteria_drift_added or criteria_drift_duplicate_label\"`)"
+      - id: "AC2"
+        statement: "AC2: prior PASS evidence for a changed binding no longer counts (`-k changed_binding_invalidates_prior_pass`)"
+      - id: "AC3"
+        statement: "AC3: an unreadable ticket, and an edit made during verification, refuse (`-k \"ticket_unavailable_refuses or mid_verification_edit_refuses\"`)"
+      - id: "AC4"
+        statement: "AC4: an unchanged ticket verifies as before (`-k criteria_unchanged_verifies`), using OMN-19267's recorded criteria as one fixture"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: each of the four drift kinds refuses with CRITERIA_DRIFT naming the criterion."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k \"criteria_drift_edited or criteria_drift_deleted or criteria_drift_added or criteria_drift_duplicate_label\""
+  - kind: "tests"
+    description: "AC2: a PASS bound to a changed criterion no longer counts."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k changed_binding_invalidates_prior_pass"
+  - kind: "tests"
+    description: "AC3: an unreadable ticket and a mid-verification edit refuse."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k \"ticket_unavailable_refuses or mid_verification_edit_refuses\""
+  - kind: "tests"
+    description: "AC4: an unchanged ticket verifies as before, OMN-19267's recorded criteria as one fixture."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k criteria_unchanged_verifies"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20858-ac1-criteria-drift-kinds"
+    description: "AC1: an edited, deleted, added and duplicate-label criterion each refuse with CRITERIA_DRIFT naming the criterion. Fails with the criteria check removed from the collector."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k \"criteria_drift_edited or criteria_drift_deleted or criteria_drift_added or criteria_drift_duplicate_label\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20858-ac2-changed-binding-invalidates-pass"
+    description: "AC2: a check that passed and binds a changed criterion is recorded skipped with the drift, and the verified and behaviour-proving counts drop. Fails with the criteria check removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k changed_binding_invalidates_prior_pass"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20858-ac3-unreadable-and-mid-edit-refuse"
+    description: "AC3: a ticket that cannot be read is unresolved with the typed cause ticket_unavailable, and an edit between the read before the checks and the read after them refuses with CRITERIA_DRIFT. Fails with the criteria check removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k \"ticket_unavailable_refuses or mid_verification_edit_refuses\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20858-ac4-unchanged-ticket-verifies"
+    description: "AC4: a ticket whose criteria did not move verifies exactly as before, including with OMN-19267's recorded criteria served as the ticket. Fails with the criteria check removed, because the verdict then carries no criteria revision."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k criteria_unchanged_verifies"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

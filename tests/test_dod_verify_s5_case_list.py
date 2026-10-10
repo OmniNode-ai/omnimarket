@@ -51,6 +51,9 @@ from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
     load_new_verdict,
 )
 from tests.unit.nodes.node_dod_verify.omn_19428_occ_tree import occ_tree
+from tests.unit.nodes.node_dod_verify.omn_20858_ticket_reader import (
+    ticket_matching_contract,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -144,7 +147,10 @@ def _verify(
 
     path = occ_tree(tmp_path) / "contracts" / f"{_TICKET}.yaml"
     path.write_text(contract_text, encoding="utf-8")
-    state = HandlerDodVerify()._handle_typed(
+    # OMN-20858: the ticket is unchanged since the contract was accepted.
+    state = HandlerDodVerify(
+        ticket_reader=ticket_matching_contract(path)
+    )._handle_typed(
         ModelDodVerifyStartCommand(
             correlation_id=uuid.uuid4(),
             ticket_id=_TICKET,

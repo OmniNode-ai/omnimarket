@@ -367,6 +367,13 @@ def _isolate_unit_env(
     # Clear a lane shell's single-tenant fallback (OMN-17427, item 3 above).
     monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
 
+    # No test reads a live Linear ticket (OMN-20858). The dod_verify criteria
+    # check reads the ticket through an injected reader; a collector built
+    # without one falls back to the Linear effect, which without a credential
+    # answers "unavailable" at once instead of sending a lane's key over the
+    # network. Tests of the effect set a fake key in their body.
+    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+
     # Redirect node-generation-consumer replay state to an isolated tmp dir.
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
     monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)

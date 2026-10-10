@@ -21,6 +21,9 @@ from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
@@ -39,6 +42,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumOccRefRefreshOutcome,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
+)
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
+    ProtocolDodTicketCriteriaReader,
+    invalidate_drifted_results,
 )
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     _ALLOW_STALE_OCC_REF_ENV,
@@ -60,6 +67,13 @@ class HandlerDodVerify:
     When ``evidence_results`` is None, loads the ticket contract and runs
     evidence checks via EvidenceCollector.
     """
+
+    def __init__(
+        self, *, ticket_reader: ProtocolDodTicketCriteriaReader | None = None
+    ) -> None:
+        """``ticket_reader`` reads the live ticket for the criteria-drift check
+        (OMN-20858); None means the Linear effect."""
+        self._ticket_reader = ticket_reader
 
     def handle(
         self,
@@ -89,14 +103,13 @@ class HandlerDodVerify:
         state = self._handle_typed(command)
         return state.model_dump(mode="json")
 
-    @staticmethod
-    def _make_collector() -> EvidenceCollector:
+    def _make_collector(self) -> EvidenceCollector:
         """Create an EvidenceCollector instance. Override in tests to mock."""
         from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
             EvidenceCollector,
         )
 
-        return EvidenceCollector()
+        return EvidenceCollector(ticket_reader=self._ticket_reader)
 
     def _handle_typed(
         self,
@@ -135,6 +148,11 @@ class HandlerDodVerify:
         # ``evidence_results`` path and on a goal-scoped run, neither of which
         # loads a ticket contract, so "not measured" is never "no checks".
         acceptance_summary: ModelDodAcceptanceSummary | None = None
+        # OMN-20858: what the criteria-drift check established. None on the
+        # caller-supplied path, a goal-scoped run, a collector that never
+        # measured it, and a contract recording no criteria, so "not measured"
+        # is never "no drift".
+        criteria_check: ModelCriteriaCheck | None = None
         execution_audience = command.execution_audience
         if execution_audience is None and evidence_results is None:
             evidence_results = [
@@ -187,8 +205,19 @@ class HandlerDodVerify:
             # OMN-17796: read the same way, for the same reason.
             occ_ref_failure_cause = collector.occ_ref_failure_cause
             occ_ref_failure_code = collector.occ_ref_failure_code
+            # OMN-20858: the second ticket read, taken after the checks ran. A
+            # stub collector that never measured it, or one that hands back
+            # anything but the typed check, reads as "not measured".
+            finish_criteria = getattr(collector, "finish_criteria_check", None)
+            finished = finish_criteria() if callable(finish_criteria) else None
+            criteria_check = (
+                finished if isinstance(finished, ModelCriteriaCheck) else None
+            )
 
-        checks = evidence_results
+        # OMN-20858: a pass that rests on a criterion the ticket no longer carries
+        # in the text it was accepted against stops counting before anything is
+        # tallied, so no count below can include it.
+        checks = invalidate_drifted_results(evidence_results, criteria_check)
         executable_checks = [r for r in checks if not r.is_disposition]
 
         verified = sum(
@@ -318,6 +347,14 @@ class HandlerDodVerify:
             # stricter than the arm it replaces, not a relaxation of it.
             overall = EnumDodVerifyStatus.UNRESOLVED
             unresolved_cause = occ_ref_failure_cause
+        elif criteria_check is not None and criteria_check.unavailable_reason:
+            # OMN-20858. The contract is pinned to criteria, and the live ticket
+            # that says whether those pins still hold could not be read. An
+            # unreadable ticket is never an unchanged one: nothing the run
+            # verified can be attributed to the criteria the ticket carries
+            # today, so it is run-wide and antecedent like the OCC ref above.
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE
         elif lookup_failure_cause is not None and verified == 0:
             # OMN-17022 (off-rails A15). The run could not resolve the PR or
             # repo binding its checks are written against, and NOTHING verified.
@@ -487,6 +524,17 @@ class HandlerDodVerify:
             overall = EnumDodVerifyStatus.SKIPPED
             unbound_demotion = True
 
+        # OMN-20858: the live criteria are not the ones the contract was accepted
+        # against. Only ever DOWNGRADES a VERIFIED or SKIPPED verdict to the
+        # refusal; a verdict that already failed or could not be resolved keeps
+        # its status and gains the drift in its message.
+        criteria_drift_refused = criteria_check is not None and criteria_check.refused
+        if criteria_drift_refused and overall in (
+            EnumDodVerifyStatus.VERIFIED,
+            EnumDodVerifyStatus.SKIPPED,
+        ):
+            overall = EnumDodVerifyStatus.SKIPPED
+
         error_message: str | None = None
         if occ_ref_failure_cause is not None:
             # OMN-17796: its own remedy text, because OMN-17022's below is the
@@ -509,6 +557,16 @@ class HandlerDodVerify:
                 "main-tracking working tree instead, and marks every result "
                 "un-attributable."
             )
+        elif unresolved_cause is EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE:
+            error_message = (
+                f"VERIFICATION_UNRESOLVED: {unresolved_cause.value} — the live "
+                f"ticket {command.ticket_id} could not be read "
+                f"({criteria_check.unavailable_reason if criteria_check else ''}), "
+                "so the criteria its contract was accepted against cannot be "
+                "compared with the criteria it carries now. This is a fact about "
+                "the verifier's reach to the ticket, not a verdict about the work: "
+                "no check verified under this run counts."
+            )
         elif unresolved_cause is not None:
             # OMN-17022: a distinct, machine-checkable reason code, sitting
             # alongside CONTRACT_MISSING / NO_PROBATIVE_EVIDENCE /
@@ -525,6 +583,12 @@ class HandlerDodVerify:
                 "owner/repo in the evidence item id per the autobind naming "
                 "convention."
             )
+        elif (
+            criteria_drift_refused
+            and criteria_check is not None
+            and overall == EnumDodVerifyStatus.SKIPPED
+        ):
+            error_message = criteria_check.message(command.ticket_id)
         elif unproven_falsifier_ids:
             error_message = (
                 f"AC_FALSIFIER_NOT_VERIFIED: {len(unproven_falsifier_ids)} of "
@@ -664,6 +728,17 @@ class HandlerDodVerify:
             ]
             error_message = "EVIDENCE_CHECK_FAILED: " + " | ".join(failures)
 
+        if (
+            criteria_drift_refused
+            and criteria_check is not None
+            and overall in (EnumDodVerifyStatus.FAILED, EnumDodVerifyStatus.UNRESOLVED)
+        ):
+            error_message = (
+                f"{criteria_check.message(command.ticket_id)} | {error_message}"
+                if error_message
+                else criteria_check.message(command.ticket_id)
+            )
+
         state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
@@ -721,6 +796,11 @@ class HandlerDodVerify:
             acceptance_unbound_criteria=(
                 acceptance_summary.unbound_criteria if acceptance_summary else ()
             ),
+            criteria_revision=(
+                criteria_check.criteria_revision if criteria_check else None
+            ),
+            criteria_drift=criteria_check.drift if criteria_check else (),
+            criteria_amendment=(criteria_check.amendment if criteria_check else None),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -793,6 +873,9 @@ class HandlerDodVerify:
                 state.acceptance_runnable_falsifier_count
             ),
             acceptance_unrunnable_labels=state.acceptance_unrunnable_labels,
+            criteria_revision=state.criteria_revision,
+            criteria_drift=state.criteria_drift,
+            criteria_amendment=state.criteria_amendment,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,
         )

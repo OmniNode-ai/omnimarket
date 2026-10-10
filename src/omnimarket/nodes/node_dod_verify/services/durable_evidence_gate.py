@@ -99,6 +99,7 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
 )
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import criteria_revision
 from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     evaluate_receipt_bound,
     is_receipt_bound_contract,
@@ -1013,6 +1014,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run the gate against the canonical platform layout for ``ticket_id``.
 
@@ -1040,9 +1042,78 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
 
     def evaluate(
+        self,
+        *,
+        ticket_id: str,
+        contract: dict[str, object],
+        receipt_dir: str,
+        contract_rel_path: str,
+        ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
+    ) -> ModelDurableEvidenceGateResult:
+        """Run the durable-evidence checks, then re-check the verdict's criteria revision.
+
+        ``verdict_criteria_revision`` is the ``criteria_revision`` the dod_verify
+        verdict carried (OMN-20858). When given, the live ``ticket_description``
+        must still have that revision: a criterion edited, deleted or added after
+        the verdict was computed makes the verdict stale, and the Done transition
+        refuses it. An empty description cannot be compared and refuses too, never
+        passing as unchanged. Omitted, the gate behaves exactly as before.
+        """
+        result = self._evaluate_durable(
+            ticket_id=ticket_id,
+            contract=contract,
+            receipt_dir=receipt_dir,
+            contract_rel_path=contract_rel_path,
+            ticket_labels=ticket_labels,
+            merged_prs=merged_prs,
+            ticket_description=ticket_description,
+        )
+        if verdict_criteria_revision is None:
+            return result
+        live_revision = (
+            criteria_revision(ticket_description) if ticket_description else None
+        )
+        current = live_revision == verdict_criteria_revision
+        if current:
+            message = (
+                f"The verdict's criteria revision {verdict_criteria_revision[:12]} "
+                f"is still the live revision of {ticket_id}."
+            )
+        elif live_revision is None:
+            message = (
+                f"CRITERIA_DRIFT: the verdict for {ticket_id} was computed against "
+                f"criteria revision {verdict_criteria_revision[:12]}, and the live "
+                "ticket description was not supplied, so the revision cannot be "
+                "re-checked. A revision that cannot be re-checked is not current; "
+                "re-run dod_verify against the ticket."
+            )
+        else:
+            message = (
+                f"CRITERIA_DRIFT: the verdict for {ticket_id} was computed against "
+                f"criteria revision {verdict_criteria_revision[:12]} and the live "
+                f"ticket is at {live_revision[:12]}: a criterion was edited, "
+                "deleted or added since. Re-run dod_verify, and amend and "
+                "re-accept the contract bindings it names."
+            )
+        check = ModelDurableEvidenceCheckResult(
+            check=EnumDurableEvidenceCheck.CRITERIA_REVISION_CURRENT,
+            passed=current,
+            message=message,
+        )
+        return ModelDurableEvidenceGateResult(
+            ticket_id=result.ticket_id,
+            status=(result.status if current else EnumDurableEvidenceStatus.FAIL),
+            checks=[*result.checks, check],
+        )
+
+    def _evaluate_durable(
         self,
         *,
         ticket_id: str,
@@ -1636,6 +1707,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate` and raise on failure.
 
@@ -1650,6 +1722,7 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -1663,6 +1736,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate_default` and raise on failure.
 
@@ -1677,6 +1751,7 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)

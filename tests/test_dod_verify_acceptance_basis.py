@@ -37,7 +37,13 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelDodVerifyState,
 )
 from omnimarket.nodes.node_dod_verify.services import evidence_collector
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
+    ProtocolDodTicketCriteriaReader,
+)
 from tests.unit.nodes.node_dod_verify.omn_19428_occ_tree import occ_tree
+from tests.unit.nodes.node_dod_verify.omn_20858_ticket_reader import (
+    ticket_matching_contract,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -113,6 +119,7 @@ def _run(
     failing: frozenset[str] = frozenset(),
     behavior_extra: bool = False,
     setup: Callable[[Path], None] | None = None,
+    ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
 ) -> ModelDodVerifyState:
     omni_home = tmp_path / "omni_home"
     (omni_home / "omnimarket" / "tests").mkdir(parents=True)
@@ -162,7 +169,10 @@ def _run(
         execution_audience="hosted",
         requested_at=datetime.now(tz=UTC),
     )
-    state = HandlerDodVerify()._handle_typed(command)
+    # OMN-20858: unless the caller records its own ticket, the ticket is
+    # unchanged since the contract was accepted.
+    reader = ticket_reader or ticket_matching_contract(path)
+    state = HandlerDodVerify(ticket_reader=reader)._handle_typed(command)
     assert isinstance(state, ModelDodVerifyState)
     state_executed = executed
     assert state_executed is executed

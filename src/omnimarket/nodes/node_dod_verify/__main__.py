@@ -176,6 +176,14 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         ),
         "acceptance_retired_bindings": list(state.acceptance_retired_bindings),
         "acceptance_refused_retirements": list(state.acceptance_refused_retirements),
+        # OMN-20858: the revision of the ticket's criteria this verdict was
+        # computed against, so the Done transition can re-check it, and the
+        # criteria that drifted from the contract (null/empty: none, or the
+        # contract records no criteria to compare).
+        "criteria_revision": state.criteria_revision,
+        "criteria_drift": [
+            drift.model_dump(mode="json") for drift in state.criteria_drift
+        ],
     }
 
     def render(kept: int) -> str:
