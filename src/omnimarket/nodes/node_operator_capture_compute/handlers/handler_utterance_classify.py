@@ -250,7 +250,8 @@ def subject_terms(text: str, limit: int = 6) -> tuple[str, ...]:
 
 
 _LEAD = re.compile(
-    r"^\s*(?:(?:also|and|then|so|oh|ok|okay|plus|but|now|next)\b[,\s]*)+", re.IGNORECASE
+    r"^\s*(?:(?:also|again|and|then|so|oh|ok|okay|plus|but|now|next|well)\b[,\s]*)+",
+    re.IGNORECASE,
 )
 
 

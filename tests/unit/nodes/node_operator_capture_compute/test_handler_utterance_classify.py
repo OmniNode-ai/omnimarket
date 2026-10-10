@@ -229,3 +229,7 @@ def test_heuristic_kinds(sentence: str, kind: EnumUtteranceKind) -> None:
 def test_prompt_carries_the_message_verbatim() -> None:
     text = 'line one\nline "two" | three'
     assert build_classify_prompt(text).endswith(f"MESSAGE:\n{text}\n")
+
+
+def test_a_leading_again_does_not_hide_a_status_question() -> None:
+    assert heuristic_kind("Again, why are we polling GitHub?") is K.STATUS_QUESTION
