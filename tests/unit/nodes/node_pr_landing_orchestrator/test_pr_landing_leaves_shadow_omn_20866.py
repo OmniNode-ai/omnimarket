@@ -222,9 +222,10 @@ def test_config_the_contract_declares_the_canary() -> None:
         EnumPrLandingGithubOperation.UPDATE_BRANCH,
         EnumPrLandingGithubOperation.DISARM,
     }
-    assert config.queue_repos == frozenset()
-    assert config.observed_prompt_repos == {CANARY}
-    assert config.review_threads_not_required_repos == {CANARY}
+    # The other M4 repositories' entries: test_pr_landing_m4_repositories_omn_20866.
+    assert CANARY not in config.queue_repos
+    assert CANARY in config.observed_prompt_repos
+    assert CANARY in config.review_threads_not_required_repos
     assert config.arm_policy.action_mode is EnumArmActionMode.ENFORCE
     assert config.arm_policy.kill_switch is False
 
