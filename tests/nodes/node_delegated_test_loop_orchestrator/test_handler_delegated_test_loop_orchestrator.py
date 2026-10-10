@@ -10,6 +10,7 @@ from typing import Literal
 
 import pytest
 from omnibase_core.nodes.node_orchestrator import NodeOrchestrator
+from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.loop_ports import DelegatedTestLoopPorts
 from omnimarket.nodes.node_delegated_test_loop_orchestrator import (
@@ -25,6 +26,7 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.replay impo
 )
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop import (
     MAX_RESULT_BYTES,
+    MAX_TEST_PATH_CHARS,
     EnumLoopStatus,
     ModelControlVerdict,
     ModelDelegatedTestLoopRequest,
@@ -397,14 +399,29 @@ def test_oversized_diagnostics_are_compact_and_retained_in_the_receipt(
     assert replay_loop_receipt(ports.written[CORRELATION]) is result.status
 
 
-def test_oversized_metadata_is_refused_after_the_receipt_is_written() -> None:
-    ports = FakePorts({"fixed": ["passed"], "prefix": ["failed_call"]})
-    path = "tests/" + "x" * MAX_RESULT_BYTES + ".py"
-    with pytest.raises(ValueError, match="metadata exceeds the compact byte budget"):
-        _run(ports, test_path=path)
-    receipt = ports.written[CORRELATION]
-    assert receipt["result"]["test_path"] == path
-    assert receipt["delegate_run_ids"] == ["run-1"]
+def test_the_longest_allowed_test_path_still_compacts_under_budget() -> None:
+    class LargeDigestPorts(FakePorts):
+        def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
+            return _digest(
+                "failed_call",
+                "fp" + receipt.receipt_id,
+                message="m" * 500,
+                exception_type="E" * 4000,
+                top_frame="t" * 4000,
+            )
+
+    ports = LargeDigestPorts({"fixed": ["failed_call"] * 3})
+    path = "tests/" + "x" * (MAX_TEST_PATH_CHARS - len("tests/.py")) + ".py"
+    assert len(path) == MAX_TEST_PATH_CHARS
+    result = _run(ports, test_path=path)
+    assert result.test_path == path
+    assert result_json_bytes(result) < MAX_RESULT_BYTES
+
+
+def test_a_test_path_beyond_the_cap_is_refused_at_the_request() -> None:
+    path = "tests/" + "x" * MAX_TEST_PATH_CHARS + ".py"
+    with pytest.raises(ValidationError):
+        _request(test_path=path)
 
 
 def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status(
