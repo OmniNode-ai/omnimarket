@@ -1,0 +1,74 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-20886
+title: node_dod_verify resolves a ticket's contract from the product repository first and runs the DurableEvidenceGate on its path
+summary: With no contract path, node_dod_verify resolves contracts/<ticket>.yaml from the product repositories the ticket's PRs merged into, with the DurableEvidenceGate's own resolver (newest merged contract-carrying PR per repository, adopted by a repo-evidence / dod-verify run), and falls back to onex_change_control exactly as before only when no product repository governs the ticket. On that path the handler runs the DurableEvidenceGate, whose receipt_tracked, contract_cites_merge_commit and contract_on_occ_main checks become checks of the verdict.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-dod-verify-repo-first
+  statement: node_dod_verify must resolve a ticket's contract from its product repositories before onex_change_control, and run the DurableEvidenceGate on that path, refusing missing, unbound or red repo evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: With no contract path, node_dod_verify resolves a ticket whose contract is only in one product repository to that repository''s contract at the merge commit of its newest merged contract-carrying PR -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k single_repo'
+  - id: AC2
+    statement: 'AC2: A ticket with contracts in two product repositories resolves per repository, the newest merged contract-carrying PR of each repository deciding, and the evidence of every governing contract runs -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k two_repos'
+  - id: AC3
+    statement: 'AC3: A ticket whose contract is only in onex_change_control resolves exactly as before, and a ticket with no contract anywhere still refuses -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k "occ_only or no_contract"'
+  - id: AC4
+    statement: 'AC4: On that path the handler constructs and runs the DurableEvidenceGate, its three named checks are verdict checks, and missing, unbound or red repo evidence refuses -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k gate'
+evidence_requirements:
+- kind: tests
+  description: A ticket whose contract is only in one product repository resolves, with no contract path, to the contract at the merge commit of the newest merged contract-carrying PR; a malformed product contract refuses.
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k single_repo
+- kind: tests
+  description: Contracts in two product repositories resolve per repository, the newest merged contract-carrying PR with a repo-evidence run deciding each, and both contracts' evidence runs; a repository whose deciding PR has no repo-evidence run does not govern.
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k two_repos
+- kind: tests
+  description: Two onex_change_control-only worlds replay to the results recorded with src/ at 0c295b83d, and a ticket with no contract anywhere is not verified.
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k "occ_only or no_contract"
+- kind: tests
+  description: 'The handler runs the DurableEvidenceGate on the auto-resolved path: its three named checks are verdict checks, a bound contract with a green run passes them, and an unbound criterion, a red run or unreadable check runs refuse.'
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k gate
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-repo-first-single-repo
+  description: A ticket whose contract is only in one product repository resolves, with no contract path, to the contract at the merge commit of the newest merged contract-carrying PR; a malformed product contract refuses.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k single_repo
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-repo-first-two-repos
+  description: Contracts in two product repositories resolve per repository, the newest merged contract-carrying PR with a repo-evidence run deciding each, and both contracts' evidence runs; a repository whose deciding PR has no repo-evidence run does not govern.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k two_repos
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-repo-first-occ-only-and-no-contract
+  description: Two onex_change_control-only worlds replay to the results recorded with src/ at 0c295b83d, and a ticket with no contract anywhere is not verified.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k "occ_only or no_contract"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-repo-first-durable-gate
+  description: 'The handler runs the DurableEvidenceGate on the auto-resolved path: its three named checks are verdict checks, a bound contract with a green run passes them, and an unbound criterion, a red run or unreadable check runs refuse.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -k gate
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4

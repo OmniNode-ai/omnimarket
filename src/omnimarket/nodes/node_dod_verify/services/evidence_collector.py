@@ -76,10 +76,8 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
-    pypi_release_files,
-)
-from omnimarket.nodes.node_dod_verify.handlers.handler_durable_evidence_gate_effect import (
     HandlerDurableEvidenceGateEffect,
+    pypi_release_files,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,

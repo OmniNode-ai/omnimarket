@@ -31,11 +31,11 @@ from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_execution_audience import (
     EnumDodVerifyExecutionAudience,
 )
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
+    HandlerDurableEvidenceGateEffect,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
-)
-from omnimarket.nodes.node_dod_verify.handlers.handler_durable_evidence_gate_effect import (
-    HandlerDurableEvidenceGateEffect,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
