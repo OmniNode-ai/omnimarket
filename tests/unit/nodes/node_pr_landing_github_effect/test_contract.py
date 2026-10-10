@@ -109,7 +109,8 @@ def test_topics_are_registered_in_the_topic_registry() -> None:
 
 
 def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
-    """The orchestrator sends the request and consumes both results; nobody else."""
+    """The orchestrator sends the request and consumes both results; the PR lifecycle
+    orchestrator also sends it, for a runner-class red's one rerun."""
     claims: dict[tuple[str, str], list[str]] = {}
     for path in sorted(_NODES.glob("*/contract.yaml")):
         bus = _load(path).get("event_bus") or {}
@@ -119,8 +120,9 @@ def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
                     claims.setdefault((topic, key), []).append(path.parent.name)
     effect = "node_pr_landing_github_effect"
     orchestrator = "node_pr_landing_orchestrator"
+    lifecycle = "node_pr_lifecycle_orchestrator"
     assert claims == {
-        (_REQUESTED, "publish_topics"): [orchestrator],
+        (_REQUESTED, "publish_topics"): [orchestrator, lifecycle],
         (_REQUESTED, "subscribe_topics"): [effect],
         (_COMPLETED, "publish_topics"): [effect],
         (_COMPLETED, "subscribe_topics"): [orchestrator],

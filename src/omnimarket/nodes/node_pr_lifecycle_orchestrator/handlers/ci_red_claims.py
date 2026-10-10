@@ -9,16 +9,22 @@ owner's correlation id. Reading those rows by exact key is what lets the triage
 handler recognise a decided head, a claimed owner and a member absorbed into a
 claimed cause after a runtime restart. This reader never writes: the reducer is
 the projection's one writer.
+
+An owner claim is a lease: a row owns only before its next_check_at, which the
+reducer stamps from the TTL its contract declares. An expired claim (its owner
+never closed, as a lane whose TERMINAL the ledger refused) owns nothing.
 """
 
 from __future__ import annotations
 
 import os
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from typing import Protocol
 
 from omnimarket.models.ci_red_triage import (
+    ci_red_claim_holds,
     ci_red_decision_correlation_id,
     ci_red_owner_correlation_id,
 )
@@ -41,8 +47,14 @@ class ProtocolCiRedClaims(Protocol):
 class ProjectionCiRedClaims:
     """Exact-key reads of the ledger projection; every read failure raises."""
 
-    def __init__(self, database: ProtocolProjectionDatabaseSync) -> None:
+    def __init__(
+        self,
+        database: ProtocolProjectionDatabaseSync,
+        *,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self._database = database
+        self._now = now
         self._lock = threading.Lock()
 
     def _rows(self, filters: dict[str, object]) -> list[dict[str, object]]:
@@ -52,20 +64,29 @@ class ProjectionCiRedClaims:
         except Exception as exc:
             raise CiRedClaimsUnreadError(type(exc).__name__) from None
 
+    def _held(self, filters: dict[str, object]) -> bool:
+        """True when a claim row matching ``filters`` is inside its lease."""
+        now = self._now()
+        try:
+            return any(
+                ci_red_claim_holds(row.get("next_check_at"), now)
+                for row in self._rows(filters)
+            )
+        except ValueError as exc:
+            raise CiRedClaimsUnreadError(f"claim lease unread: {exc}") from None
+
     def decided(self, decision_key: str) -> bool:
         sweep_id = str(ci_red_decision_correlation_id(decision_key))
         return bool(self._rows({"sweep_id": sweep_id}))
 
     def owned(self, owner_key: str) -> bool:
-        return bool(
-            self._rows({"sweep_id": str(ci_red_owner_correlation_id(owner_key))})
-        )
+        return self._held({"sweep_id": str(ci_red_owner_correlation_id(owner_key))})
 
     def absorbing_cause(self, pr_number: int, cause_keys: Iterable[str]) -> str | None:
         """The claimed cause that covers this PR, trying the given cause keys in order."""
         for cause_key in cause_keys:
             sweep_id = str(ci_red_owner_correlation_id(cause_key))
-            if self._rows({"sweep_id": sweep_id, "pr_number": pr_number}):
+            if self._held({"sweep_id": sweep_id, "pr_number": pr_number}):
                 return cause_key
         return None
 
