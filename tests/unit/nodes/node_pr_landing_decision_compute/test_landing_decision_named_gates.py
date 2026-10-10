@@ -16,11 +16,15 @@ gate. Selectors (one ``-k`` each):
   names the lease (or the lab gate) that holds the merge;
 * ``fleet``: fifteen green, CLEAN, unarmed PRs each get a merge or one named
   skip, and a decision missing one is reported as a gap.
+* ``generated``: two thousand seeded random fleets (leases, records, a companion,
+  the token, observe-only, drain and fixer holds, parents, gates) raise no coverage
+  gap, and every skip reason, a merge and a released gate occur among them.
 """
 
 from __future__ import annotations
 
 import json
+import random
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -366,3 +370,144 @@ def test_fleet_a_gap_fails_the_tick_with_no_decision(
         assert str(raised.value).endswith(
             "acme/app#10, acme/app#11, acme/app#8, acme/app#9, acme/lib#12, acme/run#15"
         )
+
+
+# ------------------------------------------------------------------- generated fleets
+def _generated_fleet(rng: random.Random) -> dict[str, Any]:
+    suspensions = ["hold", "do_not_land", "draft", "owned", "gate"]
+    gate_reasons = [r.value for r in EnumLandingGateReason]
+    repos = ["acme/app", "acme/lib", "acme/run"]
+    prs: list[dict[str, Any]] = []
+    n = rng.randint(1, 8)
+    for i in range(1, n + 1):
+        repo = rng.choice(repos)
+        key = f"{repo}#{i}"
+        pr: dict[str, Any] = {
+            "pr": key,
+            "head_sha": f"{i:040x}",
+            "state": "open",
+            "created_at": (OBSERVED - timedelta(days=1, minutes=-i)).isoformat(),
+        }
+        pr["ci"] = rng.choice(["green", "green", "green", "pending", "red"])
+        if pr["ci"] == "red":
+            pr["red_class"] = rng.choice(
+                [
+                    "cascade",
+                    "replay",
+                    "cancelled_producer",
+                    "runner_saturation",
+                    "product",
+                ]
+            )
+        pr["merge_state"] = rng.choice(
+            ["clean", "clean", "clean", "behind", "blocked", "conflicting"]
+        )
+        selected_suspensions = rng.sample(suspensions, rng.choice([0, 0, 0, 1, 2]))
+        if selected_suspensions:
+            pr["suspensions"] = selected_suspensions
+        if "gate" in selected_suspensions:
+            pr["gate_reasons"] = rng.sample(gate_reasons, rng.randint(1, 2))
+            if rng.random() < 0.7:
+                pr["gate_since"] = (
+                    OBSERVED - timedelta(seconds=rng.choice([100, 700, 5000]))
+                ).isoformat()
+        if rng.random() < 0.15:
+            pr["collaborator"] = True
+        if rng.random() < 0.4:
+            pr["runtime"] = True
+        prs.append(pr)
+
+    keys = [pr["pr"] for pr in prs]
+    for pr in prs:
+        if rng.random() < 0.2:
+            parent = rng.choice([*keys, "acme/app#99"])
+            if parent != pr["pr"]:
+                pr["parents"] = [parent]
+                if rng.random() < 0.7:
+                    pr["open_parents"] = [parent]
+
+    state: dict[str, Any] = {"last_tick": 1}
+    if rng.random() < 0.5:
+        state["token_holder"] = rng.choice([*keys, "acme/run#77"])
+    if rng.random() < 0.2:
+        state["observe_only_repos"] = [rng.choice(repos)]
+    leases: list[dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
+    for j, pr in enumerate(prs):
+        if rng.random() < 0.25:
+            leases.append(
+                {
+                    "pr": pr["pr"],
+                    "lease_id": j + 1,
+                    "brief_class": "behind",
+                    "engine": "claude_sonnet",
+                    "dispatched_at": (OBSERVED - timedelta(minutes=10)).isoformat(),
+                    "deadline_at": (
+                        OBSERVED + timedelta(minutes=rng.choice([-5, 50]))
+                    ).isoformat(),
+                    "dispatch_head": pr["head_sha"],
+                    "seen_heads": [pr["head_sha"]],
+                    "last_seen_head": pr["head_sha"],
+                }
+            )
+        if rng.random() < 0.3:
+            record: dict[str, Any] = {"pr": pr["pr"]}
+            if rng.random() < 0.5:
+                record["awaiting_head"] = pr["head_sha"]
+            if rng.random() < 0.3:
+                record["parked_head"] = pr["head_sha"]
+            records.append(record)
+    if leases:
+        state["leases"] = leases
+        state["next_lease_id"] = len(prs) + 5
+    if records:
+        state["records"] = records
+
+    companions: list[dict[str, Any]] = []
+    if rng.random() < 0.4:
+        companions.append(
+            {
+                "pr": "acme/occ#500",
+                "head_sha": f"{500:040x}",
+                "state": "open",
+                "ci": rng.choice(["green", "red", "pending"]),
+                "members": [
+                    {"pr": member["pr"], "head_sha": member["head_sha"]}
+                    for member in rng.sample(prs, min(len(prs), rng.randint(1, 2)))
+                ],
+            }
+        )
+    facts: dict[str, Any] = {
+        "tick": 2,
+        "observed_at": OBSERVED.isoformat(),
+        "prs": prs,
+        "state": state,
+        "companions": companions,
+    }
+    if rng.random() < 0.2:
+        facts["drain_requested"] = [rng.choice(repos)]
+    if rng.random() < 0.2:
+        facts["fixer_hold"] = [rng.choice([*repos, "all"])]
+    return facts
+
+
+@pytest.mark.unit
+def test_generated_fleets_never_leave_a_green_clean_pr_unnamed() -> None:
+    """Seeded fleets cover every skip reason, merges and released gates without a gap."""
+    rng = random.Random(20865)
+    seen_reasons: set[EnumLandingLandSkipReason] = set()
+    merge_seen = False
+    released_gate_seen = False
+    for _ in range(2000):
+        facts = ModelLandingFacts.model_validate(_generated_fleet(rng))
+        decision = decide_landing(facts)
+        assert land_coverage_gaps(facts, decision) == ()
+        seen_reasons.update(skip.reason for skip in decision.land_skips)
+        merge_seen |= any(
+            action.kind is EnumLandingActionKind.MERGE
+            for action in (*decision.actions, *decision.observed_actions)
+        )
+        released_gate_seen |= any(gate.released for gate in decision.gates)
+    assert seen_reasons == set(EnumLandingLandSkipReason)
+    assert merge_seen
+    assert released_gate_seen

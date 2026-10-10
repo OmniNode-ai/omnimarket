@@ -64,6 +64,7 @@ performed; no worker is dispatched in a draining repo.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -1678,10 +1679,10 @@ def _effective_suspensions(t: _Tick) -> None:
             t.suspensions[p.pr] = p.suspensions
 
 
-def _merged_heads(decision: ModelLandingDecision) -> set[tuple[str, str | None]]:
+def _merged_heads(actions: Iterable[ModelLandingAction]) -> set[tuple[str, str | None]]:
     return {
         (a.subject, a.head_sha)
-        for a in (*decision.actions, *decision.observed_actions)
+        for a in actions
         if a.kind is EnumLandingActionKind.MERGE
     }
 
@@ -1689,8 +1690,14 @@ def _merged_heads(decision: ModelLandingDecision) -> set[tuple[str, str | None]]
 def land_coverage_gaps(
     facts: ModelLandingFacts, decision: ModelLandingDecision
 ) -> tuple[str, ...]:
-    """The open, green, CLEAN PRs with neither a merge on their head nor a named skip."""
-    merged = _merged_heads(decision)
+    """The open, green, CLEAN PRs with neither a merge on their head nor a named skip.
+
+    Every path of ``_product_pr`` that does not merge an open, green, CLEAN PR
+    records a named skip (a suspension or collaborator, a lease, an open parent,
+    a companion, the token), so a gap is a defect in this module, not a fleet
+    state the caller can produce.
+    """
+    merged = _merged_heads((*decision.actions, *decision.observed_actions))
     skipped = {(s.pr, s.head_sha) for s in decision.land_skips}
     return tuple(
         sorted(
@@ -1840,11 +1847,7 @@ def _decision(t: _Tick) -> ModelLandingDecision:
 
 
 def _land_skips(t: _Tick) -> tuple[ModelLandingLandSkip, ...]:
-    merged = {
-        (a.subject, a.head_sha)
-        for a in (*t.actions, *t.observed)
-        if a.kind is EnumLandingActionKind.MERGE
-    }
+    merged = _merged_heads((*t.actions, *t.observed))
     rows: list[ModelLandingLandSkip] = []
     for pr in sorted(t.skips):
         p = t.prs[pr]
