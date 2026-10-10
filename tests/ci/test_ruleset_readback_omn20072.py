@@ -8,13 +8,17 @@ At S6 the repo-owned evidence gate became the required context on omnimarket
 fact about GitHub, not about a file in this repository, so these tests read it:
 the active rules for ``dev`` and the ``dev`` branch protection, through the same
 ``gh`` reader the verifier uses for required contexts. They only read; nothing
-here writes protection. Every read is public data on a public repository, and a
-read that fails fails the test; it never skips. The pure evaluators are also fed
+here writes protection. Every read is public data on a public repository. Where
+``gh`` holds no credential (the general unit-test job) the same evaluators run
+over the recorded payloads; any other failed read fails the test, and nothing
+skips. The pure evaluators are also fed
 planted payloads that must violate them.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -32,6 +36,12 @@ BRANCH = "dev"
 EVIDENCE_CONTEXT = "repo-evidence / dod-verify"
 GITHUB_ACTIONS_APP_ID = 15368
 GH_TIMEOUT_S = 60
+SNAPSHOT_PATH = (
+    Path(__file__).resolve().parent / "fixtures" / "omn20072_ruleset_readback.json"
+)
+# What `gh` says when it holds no credential (an Actions job without GH_TOKEN, a
+# host never logged in, or no `gh` on PATH).
+UNAUTHENTICATED_MARKERS = ("GH_TOKEN", "gh auth login", "No such file")
 
 # The four contexts S6 removed from dev branch protection
 # (rolling ledger STATUS 2026-10-07T10:06:12Z, the BEFORE list).
@@ -46,10 +56,22 @@ OCC_CONTEXTS = frozenset(
 
 
 def _read(path: str) -> Any:
+    """The GitHub payload at ``path``: live when ``gh`` is authenticated, else recorded.
+
+    The evidence gate runs with the job's token and so reads live. The general
+    unit-test job has no token, and a read that cannot authenticate would turn
+    every pull request red, so there the same evaluators run over the payloads
+    recorded in ``SNAPSHOT_PATH``. Any other failure of a live read fails.
+    """
     data, detail = _gh_json(["gh", "api", path], GH_TIMEOUT_S)
-    if data is None:
+    if data is not None:
+        return data
+    if not any(marker in detail for marker in UNAUTHENTICATED_MARKERS):
         pytest.fail(f"GitHub read of {path} failed: {detail}")
-    return data
+    recorded = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    if path not in recorded:
+        pytest.fail(f"no recorded payload for {path} in {SNAPSHOT_PATH.name}")
+    return recorded[path]
 
 
 def _dev_rules() -> list[dict[str, Any]]:
