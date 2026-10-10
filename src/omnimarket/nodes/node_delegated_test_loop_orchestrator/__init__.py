@@ -27,6 +27,9 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegat
     ModelLoopMutation,
     ModelRunDigest,
 )
+from omnimarket.nodes.node_delegated_test_loop_orchestrator.node import (
+    NodeDelegatedTestLoopOrchestrator,
+)
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.protocols.protocol_delegated_test_loop_ports import (
     LoopReceiptExistsError,
     ModelGateToolRun,
@@ -34,11 +37,6 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.protocols.protocol_d
     ModelRunReceipt,
     ProtocolDelegatedTestLoopPorts,
 )
-
-
-class NodeDelegatedTestLoopOrchestrator(HandlerDelegatedTestLoopOrchestrator):
-    """ONEX entry-point wrapper for HandlerDelegatedTestLoopOrchestrator."""
-
 
 __all__ = [
     "EnumLoopStatus",
