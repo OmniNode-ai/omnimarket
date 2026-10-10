@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20748"
+title: "S6: The bus path acts on red, one class at a time, runner first"
+summary: "node_pr_lifecycle_orchestrator's ci_red_triage.act is one flag per red class: runner true, pr_own false, shared_cause false, dev_head false. For a runner red the bus path publishes one rerun_runs request per head to node_pr_landing_github_effect and records the owner claim; every other class stays record-only. The controller half of the pinned pair is a separate pull request. AC1 is read live on the dev lane after the deploy agent rolls it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "For each flipped class, the bus path acts and the controller does not."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: for each flipped class, the bus path acts and the controller does not -- falsifier: one red of that class handled twice in a day"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1, bus half: the runner class publishes one rerun_runs request per head with an owner claim, the other classes stay record-only, and a replayed record, a second red at the head or a restart never reruns the same head and cause twice."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20748-ac1-runner-class-acts-once-per-head"
+    description: "AC1, bus half: the runner class acts on the bus (one rerun_runs request per head, owner claim written), pr_own, shared_cause and dev_head stay record-only, and the same head and cause is never rerun twice. The file fails to collect on the merge base, where ci_red_act_flags does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20748-deploy-probe"
+    description: "Deploy probe. The handler at the checked-out commit defines ci_red_act_flags, the per-class act reader this change introduces; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is the action_applied field of onex.evt.omnimarket.ci-red-triage-decided.v1 records for class runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def ci_red_act_flags'"
+        cwd: "${OMNI_HOME}/omnimarket"
