@@ -300,6 +300,7 @@ node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
+node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
 node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
