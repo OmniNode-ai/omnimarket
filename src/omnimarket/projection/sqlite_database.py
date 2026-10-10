@@ -295,6 +295,7 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     counterfactual_usd TEXT,
     savings_usd TEXT,
     savings_per_measured_run_usd TEXT,
+    savings_pct_of_counterfactual TEXT,
     compression_ratio TEXT,
     cache_hit_rate TEXT,
     runs_cache_answered INTEGER,
@@ -418,6 +419,13 @@ _METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("compression_ratio", "TEXT"),
     ("cache_hit_rate", "TEXT"),
     ("runs_cache_answered", "INTEGER"),
+)
+# OMN-20008: metering_summary's savings share of the baseline, the counterpart
+# of migration 0004. Its own step, not a fourth entry above: a store that has
+# already recorded the OMN-20226 step would never run that step again.
+_METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
+_METERING_SUMMARY_SAVINGS_PCT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("savings_pct_of_counterfactual", "TEXT"),
 )
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
@@ -631,6 +639,14 @@ class SqliteDatabaseAdapter:
                     "added the metering-summary compression and cache columns",
                 )
             )
+        if not cls._store_step_recorded(conn, _METERING_SUMMARY_SAVINGS_PCT_STEP):
+            pending.append(
+                (
+                    _METERING_SUMMARY_SAVINGS_PCT_STEP,
+                    cls._add_metering_summary_savings_pct_column,
+                    "added the metering-summary savings share column",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -696,8 +712,21 @@ class SqliteDatabaseAdapter:
         store, whose table already has them, and two first opens that race both
         add nothing twice.
         """
+        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_ADDED_COLUMNS)
+
+    @classmethod
+    def _add_metering_summary_savings_pct_column(cls, conn: sqlite3.Connection) -> None:
+        """OMN-20008: give a store written before it metering_summary's
+        savings_pct_of_counterfactual column, run once per store as a store step."""
+        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_SAVINGS_PCT_COLUMNS)
+
+    @classmethod
+    def _add_metering_summary_columns(
+        cls, conn: sqlite3.Connection, columns: tuple[tuple[str, str], ...]
+    ) -> None:
+        """Add each column metering_summary lacks, nullable with no default."""
         existing = cls._existing_columns(conn, "metering_summary")
-        for column, declaration in _METERING_SUMMARY_ADDED_COLUMNS:
+        for column, declaration in columns:
             if column not in existing:
                 conn.execute(
                     f"ALTER TABLE metering_summary ADD COLUMN {column} {declaration}"

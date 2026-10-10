@@ -98,6 +98,7 @@ projection_api:
         - counterfactual_usd
         - savings_usd
         - savings_per_measured_run_usd
+        - savings_pct_of_counterfactual
         - compression_ratio
         - cache_hit_rate
         - runs_cache_answered
