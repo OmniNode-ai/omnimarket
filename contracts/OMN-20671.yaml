@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20671"
+title: "The architecture handshake policy gate's decisions run as an omnimarket compute node"
+summary: "node_handshake_policy_gate_compute ports the pure decisions of omnibase_core architecture-handshakes/check-policy-gate.sh (repo list, branch and endpoints, read classification with retry and backoff, report, verdict and exit code) as a contract-declared COMPUTE node dispatched over the bus, with parity against cases captured from the script itself. The GitHub reads, repointing the workflow and deleting the script are separate changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-policy-gate-decision-node"
+    statement: |-
+      The policy gate's deterministic decisions run in node_handshake_policy_gate_compute and match the retired script's captured behaviour.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Replaying 24 captured scenarios of the retired script through the node reproduces its stdout, stderr, exit code, endpoints read and sleeps asked for -- falsifier: tests/nodes/node_handshake_policy_gate_compute/test_golden_chain_handshake_policy_gate_compute.py::test_old_script_parity against tests/fixtures/handshake_policy_gate_parity.json, which fails on any differing scenario
+      - id: "AC2"
+        statement: |-
+          AC2: The node is dispatched through its contract on the RuntimeLocal in-memory bus and an invalid request is refused with no result -- falsifier: tests/nodes/node_handshake_policy_gate_compute/test_golden_chain_handshake_policy_gate_compute.py
+  - id: "req-policy-gate-read-effect"
+    statement: |-
+      The policy gate's GitHub reads, retries and printed report run in node_handshake_policy_gate_effect, which asks the compute node for every decision and matches the retired script's captured behaviour.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: Replaying the 24 captured scenarios through the effect handler and through its command line reproduces the retired script's stdout, stderr, exit code, endpoints read and sleeps taken -- falsifier: tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py::test_handler_reproduces_the_old_script and ::test_cli_reproduces_the_old_script, which fail on any differing scenario
+      - id: "AC4"
+        statement: |-
+          AC4: The effect is dispatched through its contract on the RuntimeLocal in-memory bus and a request that fails validation produces no result -- falsifier: tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py::test_golden_chain_over_the_bus and ::test_error_chain_over_the_bus_fails_without_a_result
+evidence_requirements:
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for the handshake policy gate compute node."
+    command: "uv run pytest tests/nodes/node_handshake_policy_gate_compute -q -p no:randomly"
+  - kind: "tests"
+    description: "Parity, golden-chain and error-chain tests for the handshake policy gate effect node."
+    command: "uv run pytest tests/nodes/node_handshake_policy_gate_effect -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20671-policy-gate-decision"
+    description: "node_handshake_policy_gate_compute matches the retired script and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_handshake_policy_gate_compute/test_golden_chain_handshake_policy_gate_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20671-policy-gate-read-effect"
+    description: "node_handshake_policy_gate_effect matches the retired script on the captured cases and runs over the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_handshake_policy_gate_effect/test_golden_chain_handshake_policy_gate_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]

@@ -23,12 +23,12 @@ handler_routing:
         name: HandlerLaneLivenessDropAlert
         module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
       handler_module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
-      event_model: omnimarket.models.model_lane_liveness.ModelLaneLivenessReport
+      event_model: omnimarket.models.liveness.model_lane_liveness.ModelLaneLivenessReport
 
 handler:
   module: omnimarket.nodes.node_lane_liveness_drop_alert_effect.handlers.handler_lane_liveness_drop_alert
   class: HandlerLaneLivenessDropAlert
-  input_model: omnimarket.models.model_lane_liveness.ModelLaneLivenessReport
+  input_model: omnimarket.models.liveness.model_lane_liveness.ModelLaneLivenessReport
 
 descriptor:
   node_archetype: effect

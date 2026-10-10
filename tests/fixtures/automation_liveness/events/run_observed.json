@@ -1,0 +1,18 @@
+{
+  "process_id": "host-a/example-interval-job",
+  "host": "host-a",
+  "run_id": "example-interval-job:2026-10-09T02:10:00Z",
+  "phase": "finished",
+  "started_at": "2026-10-09T02:10:00Z",
+  "finished_at": "2026-10-09T02:10:42Z",
+  "outcome": "ok",
+  "exit_code": 0,
+  "did_work_count": 0,
+  "demand_count": 4,
+  "unseen_runs": 0,
+  "work_unit": null,
+  "evidence_ref": "example-state/interval-job/fire-receipts.jsonl#L1",
+  "emitter": "observer",
+  "observed_at": "2026-10-09T02:11:00Z",
+  "contract_digest": "e75884c5dd000dfa9ffebc48814c526ef87ebb7411ad16a26f85726d881cb179"
+}

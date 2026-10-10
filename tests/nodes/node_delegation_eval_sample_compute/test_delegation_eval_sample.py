@@ -7,9 +7,18 @@ import importlib
 import json
 from collections import Counter
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.runtime.runtime_dispatch import RuntimeDispatch
+from omnibase_core.runtime.transport.runtime_in_memory_broker import InMemoryBroker
+from omnibase_core.runtime.transport.runtime_in_memory_transport import (
+    InMemoryTransport,
+)
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routing_map
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegation_eval_sample_compute.handlers import (
@@ -142,6 +151,129 @@ def test_same_seed_same_manifest() -> None:
             sampler.HandlerDelegationEvalSample().handle(changed).manifest_id
             != first.manifest_id
         )
+
+
+def test_same_seed_same_manifest_with_reordered_quotas() -> None:
+    request = _request(_candidates(130))
+    reordered = request.model_copy(
+        update={
+            "sampling": request.sampling.model_copy(
+                update={"quotas": tuple(reversed(request.sampling.quotas))}
+            )
+        }
+    )
+    handler = sampler.HandlerDelegationEvalSample()
+    first = handler.handle(request)
+    second = handler.handle(reordered)
+    assert first.items == second.items
+    assert first.manifest_id == second.manifest_id
+    assert first.model_dump_json() == second.model_dump_json()
+
+
+async def test_same_seed_same_manifest_published_by_runtime() -> None:
+    contract_path = (
+        Path(__file__).parents[3]
+        / "src/omnimarket/nodes/node_delegation_eval_sample_compute/contract.yaml"
+    )
+    discovered = discover_contracts_from_paths([contract_path])
+    assert not discovered.errors, discovered.errors
+    (contract,) = discovered.contracts
+    assert contract.event_bus is not None
+    (command_topic,) = contract.event_bus.subscribe_topics
+    (result_topic,) = contract.event_bus.publish_topics
+    routes = build_routing_map(
+        [contract],
+        frozenset({command_topic}),
+        handler_resolver=lambda _ref: sampler.HandlerDelegationEvalSample(),
+    )
+    broker = InMemoryBroker(num_partitions=1)
+    transport = InMemoryTransport(
+        broker=broker, group="delegation-eval-sample-test", topics=[command_topic]
+    )
+    runtime = RuntimeDispatch(
+        consumer=transport, producer=transport, routing_map=routes, max_retries=0
+    )
+    candidates = _candidates(130) + _candidates(2, holdout=True)
+    imported_keys = tuple(map(_key, candidates[-3:]))
+    request = _request(candidates, imported_keys)
+    reordered = request.model_copy(
+        update={
+            "candidates": tuple(reversed(candidates)),
+            "imported_keys": tuple(reversed(imported_keys)),
+            "sampling": request.sampling.model_copy(
+                update={"quotas": tuple(reversed(request.sampling.quotas))}
+            ),
+        }
+    )
+    correlation_ids = [uuid4(), uuid4()]
+    for draw, correlation_id in zip((request, reordered), correlation_ids, strict=True):
+        envelope = ModelEventEnvelope(
+            envelope_id=uuid4(),
+            payload=draw.model_dump(mode="json"),
+            correlation_id=correlation_id,
+            event_type=command_topic,
+        )
+        await transport.send(
+            command_topic,
+            key=b"sample",
+            value=envelope.model_dump_json().encode(),
+            headers={},
+        )
+    assert await runtime.drain() == 2
+    results = [
+        ModelEventEnvelope[object].model_validate_json(record.value)
+        for record in broker.records(result_topic, 0)
+    ]
+    assert len(results) == 2
+    assert [result.correlation_id for result in results] == correlation_ids
+    expected = json.loads(
+        sampler.HandlerDelegationEvalSample().handle(request).model_dump_json()
+    )
+    assert results[0].payload == results[1].payload == expected
+    assert expected["excluded_holdout_bucket"] == 2
+    assert len(expected["items"]) == 100
+
+
+@pytest.mark.parametrize("count", [3, 110])
+def test_same_seed_same_manifest_with_colliding_stratum_labels(count: int) -> None:
+    # Both classes display as code_generation/accepted/refused, but they have
+    # different gate outcomes and must retain their own quotas and shortfalls.
+    rows = _candidates(count)
+    candidates = tuple(
+        row.model_copy(
+            update={"task_class": "code_generation", "deciding_path": "refused"}
+        )
+        for row in rows
+    ) + tuple(
+        row.model_copy(
+            update={
+                "task_class": "code_generation/accepted",
+                "gate_outcome": EnumDelegationEvalGateOutcome.REFUSED,
+                "attempt_index": 1,
+            }
+        )
+        for row in rows
+    )
+    handler = sampler.HandlerDelegationEvalSample()
+    request = _request(candidates)
+    first = handler.handle(request)
+    second = handler.handle(
+        request.model_copy(update={"candidates": tuple(reversed(candidates))})
+    )
+
+    assert first.model_dump_json() == second.model_dump_json()
+    assert Counter(item.task_class for item in first.items) == {
+        "code_generation": min(count, 100),
+        "code_generation/accepted": min(count, 60),
+    }
+    if count == 3:
+        assert {item.key for item in first.items} == set(map(_key, candidates))
+        assert [(row.quota, row.available, row.taken) for row in first.shortfalls] == [
+            (100, 3, 3),
+            (60, 3, 3),
+        ]
+    else:
+        assert first.shortfalls == ()
 
 
 def test_holdout_bucket_never_drawn() -> None:

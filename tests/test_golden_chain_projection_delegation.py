@@ -25,6 +25,7 @@ class TestDelegationProjection:
     def test_project_single_event(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-001",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -42,6 +43,7 @@ class TestDelegationProjection:
         db = InmemoryDatabaseAdapter()
         HANDLER.project(
             ModelTaskDelegatedEvent(
+                tenant_id="omninode",
                 correlation_id="corr-001",
                 task_type="refactor",
                 delegated_to="agent-a",
@@ -50,6 +52,7 @@ class TestDelegationProjection:
         )
         HANDLER.project(
             ModelTaskDelegatedEvent(
+                tenant_id="omninode",
                 correlation_id="corr-001",
                 task_type="test-generation",
                 delegated_to="agent-b",
@@ -65,6 +68,7 @@ class TestDelegationProjection:
         db = InmemoryDatabaseAdapter()
         events = [
             ModelTaskDelegatedEvent(
+                tenant_id="omninode",
                 correlation_id=f"corr-{i:03d}",
                 task_type="code-review",
                 delegated_to=f"agent-{i}",
@@ -77,6 +81,7 @@ class TestDelegationProjection:
     def test_llm_call_id_projected(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-llm",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -90,6 +95,7 @@ class TestDelegationProjection:
     def test_llm_call_id_defaults_empty(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-no-llm",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -102,6 +108,7 @@ class TestDelegationProjection:
     def test_shadow_delegation(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-shadow",
             task_type="code-review",
             delegated_to="shadow-agent",
@@ -214,6 +221,7 @@ class TestDelegationProjection:
     def test_sync_handler_projects_delegate_skill_terminal_event(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "delegate-skill-completed",
             "status": "completed",
@@ -258,6 +266,7 @@ class TestDelegationProjection:
         db = InmemoryDatabaseAdapter()
         correlation_id = "4ae8556b-af7c-4e85-a7f5-9388d60cebb5"
         terminal_payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "delegate-skill-completed",
             "status": "completed",
@@ -283,6 +292,7 @@ class TestDelegationProjection:
             "pricing_manifest_version": 1,
         }
         sparse_compat_payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "task-delegated",
             "correlation_id": correlation_id,
@@ -308,6 +318,7 @@ class TestDelegationProjection:
     def test_sync_handler_projects_canonical_delegation_terminal_event(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
             "correlation_id": "corr-canonical-terminal",
@@ -360,6 +371,7 @@ class TestDelegationProjection:
         """
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
             "correlation_id": "corr-tier-local",
@@ -393,6 +405,7 @@ class TestDelegationProjection:
         still resolves the serving tier from the metered escalation winner."""
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "onex.evt.omnibase-infra.delegation-failed.v1",
             "correlation_id": "corr-tier-fallback",
@@ -443,6 +456,7 @@ class TestDelegationProjection:
     def test_task_delegated_labels_project_quality_bar_evidence(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "correlation_id": "corr-quality-bar-labels",
             "task_type": "test",
@@ -482,6 +496,7 @@ class TestDelegationProjection:
         """
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "delegate-skill-completed",
             "status": "completed",
@@ -546,6 +561,7 @@ class TestDelegationProjection:
         adapter = SqliteDatabaseAdapter(db_path)
         terminal = ModelDelegateSkillTerminalProjection.from_payload(
             {
+                "tenant_id": "omninode",
                 "status": "completed",
                 "correlation_id": "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80",
                 "task_type": "code_generation",
@@ -705,6 +721,7 @@ class TestPromptResponseText:
     def test_prompt_and_response_text_written_to_row(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-prompt-response",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -720,6 +737,7 @@ class TestPromptResponseText:
     def test_context_pack_hash_written_to_row(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-context-pack",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -733,6 +751,7 @@ class TestPromptResponseText:
     def test_prompt_response_text_default_none(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-no-text",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -747,6 +766,7 @@ class TestPromptResponseText:
     def test_prompt_response_text_via_handle_protocol(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-handle-text",
             "task_type": "summarize",
             "delegated_to": "agent-beta",
@@ -769,6 +789,7 @@ class TestCostFields:
     def test_cost_fields_written_to_row(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-costs",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -784,6 +805,7 @@ class TestCostFields:
     def test_cost_fields_via_handle_protocol(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-costs-handle",
             "task_type": "summarize",
             "delegated_to": "agent-beta",
@@ -804,6 +826,7 @@ class TestPricingManifestVersion:
     def test_pricing_version_written_to_row(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-pricing-v",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -817,6 +840,7 @@ class TestPricingManifestVersion:
     def test_pricing_version_defaults_to_zero(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-pricing-default",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -829,6 +853,7 @@ class TestPricingManifestVersion:
     def test_pricing_version_via_handle_protocol(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-pricing-handle",
             "task_type": "summarize",
             "delegated_to": "agent-beta",
@@ -844,6 +869,7 @@ class TestPricingManifestVersion:
         """Events emitted before OMN-10949 (no pricing_manifest_version) default to 0."""
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-legacy",
             "task_type": "code-review",
             "delegated_to": "agent-gamma",
@@ -865,6 +891,7 @@ class TestComplianceCounters:
     def test_event_carries_compliance_counters_to_row(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-compliance",
             task_type="code-review",
             delegated_to="agent-alpha",
@@ -880,6 +907,7 @@ class TestComplianceCounters:
     def test_compliance_counters_default_when_event_omits_them(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
+            tenant_id="omninode",
             correlation_id="corr-defaults",
             task_type="code-review",
             delegated_to="agent-beta",
@@ -896,6 +924,7 @@ class TestComplianceCounters:
         # threads the compliance fields end-to-end (dict -> model -> row).
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-protocol",
             "task_type": "summarize",
             "delegated_to": "agent-gamma",
@@ -943,6 +972,7 @@ class TestTerminalEventEmission:
         runner, published = self._make_inmemory_runner()
         topic = runner.subscribe_topics[0]
         data = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-terminal-001",
             "task_type": "code-review",
             "delegated_to": "agent-alpha",
@@ -970,6 +1000,7 @@ class TestTerminalEventEmission:
         runner, published = self._make_inmemory_runner()
         topic = runner.subscribe_topics[0]
         data = {
+            "tenant_id": "omninode",
             "correlation_id": "corr-source-topic",
             "task_type": "refactor",
             "delegated_to": "agent-beta",
@@ -1004,6 +1035,7 @@ class TestTerminalEventEmission:
 
             topic = runner.subscribe_topics[0]
             data = {
+                "tenant_id": "omninode",
                 "correlation_id": "corr-no-publish",
                 "task_type": "code-review",
                 "delegated_to": "agent-gamma",
@@ -1044,6 +1076,7 @@ class TestZeroTokenZeroCostTerminal:
         self, correlation_id: str
     ) -> dict[str, object]:
         return {
+            "tenant_id": "omninode",
             "_event_type": "delegate-skill-completed",
             "status": "completed",
             "correlation_id": correlation_id,
@@ -1091,6 +1124,7 @@ class TestZeroTokenZeroCostTerminal:
     def test_real_token_terminal_event_accepted(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "delegate-skill-completed",
             "status": "completed",
@@ -1122,6 +1156,7 @@ class TestZeroTokenZeroCostTerminal:
         """Events with cost data but zero tokens are real (cost-only tracking)."""
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "_db": db,
             "_event_type": "delegate-skill-completed",
             "status": "completed",
@@ -1163,6 +1198,7 @@ class TestNoBackfillMaterialization:
     def _fresh_terminal_payload(self) -> dict[str, object]:
         """A fresh, never-before-seen terminal delegation event."""
         return {
+            "tenant_id": "omninode",
             "_event_type": "delegate-skill-completed",
             "status": "completed",
             "correlation_id": self._CORR,
@@ -1310,6 +1346,7 @@ class TestResponseTextTimeoutOnPass:
 
     def _canonical_pass_payload(self) -> dict[str, object]:
         return {
+            "tenant_id": "omninode",
             "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
             "correlation_id": self._CORR,
             "task_type": "test",
@@ -1333,6 +1370,7 @@ class TestResponseTextTimeoutOnPass:
         even though the delegation orchestrator already produced a PASS.
         """
         return {
+            "tenant_id": "omninode",
             "_event_type": "delegate-skill-completed",
             "status": "timeout",
             "correlation_id": self._CORR,
@@ -1371,6 +1409,7 @@ class TestResponseTextTimeoutOnPass:
         # Build a PASS terminal where response is empty but error_message is set
         # (edge case: could happen if a success comes through with a warning message).
         payload: dict[str, object] = {
+            "tenant_id": "omninode",
             "status": "completed",
             "correlation_id": self._CORR,
             "task_type": "test",

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_manifest_fetch_effect
+version: "0.1.0"
+description: Fetch the ONEX runtime manifest with typed failure outcomes
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_manifest_fetch_effect: omnimarket.nodes.node_manifest_fetch_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - httpx>=0.27.0
+  - pydantic>=2.12.5
+license: MIT
+authors: [OmniNode Team]
+tags: [effect, manifest, introspection, runtime]
+pack: observability
+display_name: Manifest Fetch Effect
+node_role: effect

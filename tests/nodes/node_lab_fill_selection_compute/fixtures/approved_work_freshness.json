@@ -1,0 +1,73 @@
+{
+  "checked_at": "2026-10-07T08:40:00Z",
+  "rows": [
+    {
+      "id": "row-1",
+      "ticket": "OMN-1",
+      "repo": "repo_a",
+      "remaining": "old remainder"
+    },
+    {
+      "id": "row-2",
+      "ticket": "OMN-2",
+      "repo": "repo_a",
+      "remaining": "old remainder"
+    },
+    {
+      "id": "row-3",
+      "ticket": "OMN-3",
+      "repo": "repo_a",
+      "done": true,
+      "done_basis": "acceptance-on-main",
+      "done_evidence": "old"
+    }
+  ],
+  "facts": [
+    {
+      "ticket": "OMN-1",
+      "linear_state_name": "Done",
+      "linear_state_type": "completed",
+      "acceptance_status": "",
+      "remaining": "",
+      "evidence": [
+        {
+          "pr": "repo_a#1",
+          "commit": "1111111111111111111111111111111111111111"
+        }
+      ]
+    },
+    {
+      "ticket": "OMN-2",
+      "linear_state_name": "In Progress",
+      "linear_state_type": "started",
+      "acceptance_status": "pass",
+      "remaining": "",
+      "evidence": [
+        {
+          "pr": "repo_a#2",
+          "commit": "2222222222222222222222222222222222222222"
+        }
+      ]
+    },
+    {
+      "ticket": "OMN-3",
+      "linear_state_name": "In Progress",
+      "linear_state_type": "started",
+      "acceptance_status": "partial",
+      "remaining": "Finish the remaining check",
+      "evidence": [
+        {
+          "pr": "repo_a#3",
+          "commit": "3333333333333333333333333333333333333333"
+        }
+      ]
+    }
+  ],
+  "expected_done": [
+    "OMN-1",
+    "OMN-2"
+  ],
+  "expected_open_with_remaining": [
+    "OMN-3"
+  ]
+}

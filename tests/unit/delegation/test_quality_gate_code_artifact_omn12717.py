@@ -25,6 +25,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models import (
     ModelQualityGateInput,
+    ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     resolve_task_class_dod_checks,
@@ -277,3 +278,103 @@ def test_grounded_prompt_keeps_the_stronger_name_resolution_check() -> None:
     assert not result.passed
     assert "names_resolve" not in result.skipped_checks
     assert any("missing_helper" in reason for reason in result.failure_reasons)
+
+
+def _test_artifact_verdict(content: str) -> ModelQualityGateResult:
+    deterministic, heuristic = resolve_task_class_dod_checks(
+        "test", prompt="Write runnable pytest unit tests for normalize_status."
+    )
+    return delta(
+        ModelQualityGateInput(
+            correlation_id=_CORRELATION_ID,
+            task_type="test",
+            llm_response_content=content,
+            dod_deterministic=deterministic,
+            dod_heuristic=heuristic,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "",
+        "def helper():\n    return True",
+        "def helper():\n    def test_nested():\n        assert True",
+        "class Helper:\n    def test_hidden(self):\n        assert True",
+        "class TestHidden:\n    def __init__(self):\n        pass\n"
+        "    def test_hidden(self):\n        assert True",
+        'DESCRIPTION = "def test_in_a_string(): assert True"',
+    ],
+)
+def test_test_generation_refuses_marked_modules_without_collectable_tests(
+    body: str,
+) -> None:
+    result = _test_artifact_verdict(
+        "import pytest\npytestmark = pytest.mark.unit\n" + body
+    )
+    assert not result.passed
+    assert any("pytest_tests_present" in reason for reason in result.failure_reasons)
+    assert result.fail_category == "fail_deterministic"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def test_normalize():\n    assert ' READY '.strip().lower() == 'ready'",
+        "class TestNormalize:\n    def test_ready(self):\n"
+        "        assert ' READY '.strip().lower() == 'ready'",
+        "@pytest.mark.unit\ndef test_ready():\n    assert True",
+    ],
+)
+@pytest.mark.parametrize("fenced", [False, True])
+def test_test_generation_accepts_collectable_unit_tests(
+    body: str, fenced: bool
+) -> None:
+    content = "import pytest\npytestmark = pytest.mark.unit\n" + body
+    if fenced:
+        content = "```python\n" + content + "\n```"
+    result = _test_artifact_verdict(content)
+    assert result.passed, result.failure_reasons
+
+
+def test_test_contract_requires_pytest_test_artifact() -> None:
+    deterministic, _ = resolve_task_class_dod_checks(
+        "test", prompt="Write runnable pytest unit tests."
+    )
+    assert "pytest_tests_present" in deterministic
+
+
+@pytest.mark.parametrize("task_type", ["test", "code_generation"])
+def test_empty_final_content_is_refused_for_artifact_routes(task_type: str) -> None:
+    deterministic, heuristic = resolve_task_class_dod_checks(task_type)
+    result = delta(
+        ModelQualityGateInput(
+            correlation_id=_CORRELATION_ID,
+            task_type=task_type,
+            llm_response_content="",
+            dod_deterministic=deterministic,
+            dod_heuristic=heuristic,
+        )
+    )
+    assert not result.passed
+
+
+@pytest.mark.parametrize("task_type", ["test", "code_generation"])
+def test_length_vetoes_even_syntactically_complete_artifacts(task_type: str) -> None:
+    deterministic, heuristic = resolve_task_class_dod_checks(task_type)
+    result = delta(
+        ModelQualityGateInput(
+            correlation_id=_CORRELATION_ID,
+            task_type=task_type,
+            llm_response_content=(
+                "import pytest\npytestmark = pytest.mark.unit\n"
+                "def test_ready():\n    assert ' READY '.strip().lower() == 'ready'"
+            ),
+            dod_deterministic=deterministic,
+            dod_heuristic=heuristic,
+        ),
+        finish_reason=EnumProviderFinishReason.LENGTH,
+    )
+    assert not result.passed
+    assert any("finish_reason=length" in reason for reason in result.failure_reasons)

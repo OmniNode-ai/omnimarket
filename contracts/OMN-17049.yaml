@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17049"
+title: "build_loop_orchestrator declares DEPLOYING and POST_VERIFY and success and failure terminal_events"
+summary: "The node_build_loop_orchestrator contract declares the DEPLOYING and POST_VERIFY states with their transitions, and declares success and failure terminal_events. The node_readiness_gate_orchestrator contract declares terminal_events and a walker test pins its machine. AC1 to AC4 are bound to the tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-build-loop-orchestrator-machine"
+    statement: "The orchestrator contract's state machine covers every phase of the mode sequences and publishes a success and a failure terminal event. Each acceptance id is bound to the tests through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the state machine declares every phase of the mode sequences, including DEPLOYING and POST_VERIFY -- falsifier: uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k every_phase -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the contract walker reports no unreachable, dead or uncovered states for this node -- falsifier: uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k contract_walker -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: the contract declares success and failure terminal_events -- falsifier: uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k terminal_events -q in omnimarket"
+      - id: "AC4"
+        statement: "AC4: the readiness gate orchestrator contract declares terminal_events for success and failure and the walker finds no unreachable or dead state -- falsifier: uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 hosted probe. The machine tests pass at the head and fail at the merge base, where the contract lacks the states and terminal events."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -q"
+  - kind: "tests"
+    description: "AC4 hosted probe. The readiness gate walker test passes at the head and fails at the merge base with a terminal_events KeyError."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17049-ac1-every-phase"
+    description: "AC1 hosted probe. Every phase of the mode sequences is declared."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k every_phase -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn17049-ac2-walker-clean"
+    description: "AC2 hosted probe. The walker reports no unreachable, dead or uncovered states."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k contract_walker -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn17049-ac3-terminal-events"
+    description: "AC3 hosted probe. Success and failure terminal events are declared."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_build_loop_orchestrator_machine.py -k terminal_events -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn17049-ac4-readiness-gate-walker"
+    description: "AC4 hosted probe. The readiness gate walker test passes at the head and fails at the merge base with a terminal_events KeyError."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_readiness_gate_orchestrator_walker.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

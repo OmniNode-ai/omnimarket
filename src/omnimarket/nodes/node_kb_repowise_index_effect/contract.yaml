@@ -25,7 +25,7 @@ descriptor:
     - effects
 description: |
   Subscribes to kb-repowise-index-requested.v1 commands. Clones
-  OmniNode-ai/knowledge-base (or another kb_repo slug) into a temporary
+  OmniNode-ai/knowledge_base (or another kb_repo slug) into a temporary
   directory, reads the HEAD commit SHA via git, then shells out to the
   Repowise CLI (`repowise index <path>`) to trigger a full reindex.
   Parses the entry count from CLI stdout and emits

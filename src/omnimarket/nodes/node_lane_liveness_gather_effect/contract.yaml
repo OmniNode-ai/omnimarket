@@ -45,7 +45,7 @@ input_subscriptions:
 
 output_model:
   name: ModelLaneLivenessRequest
-  module: omnimarket.models.model_lane_liveness
+  module: omnimarket.models.liveness.model_lane_liveness
   description: The gathered window, or no output on a tick inside the interval.
 
 config:

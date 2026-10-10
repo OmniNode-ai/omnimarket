@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeRejectSkipTokenCompute
+#
+# Operating rule 10 as a pure definition-B compute:
+#
+#   handle(ModelSkipTokenScanRequest) -> ModelSkipTokenScanResult
+#
+# A text carrying a [skip-<letter> bypass token is refused unless it also carries
+# "# skip-token-allowed: <receipt-id>". Staged files are in scope by type (prose files and
+# committed session evidence); a commit message and a PR body always are. No clock, no I/O,
+# no model: the caller reads the text. The pre-commit export (.pre-commit-hooks.yaml) runs the
+# vendored shell script as its transport and tests hold it to this node's verdicts.
+name: "node_reject_skip_token_compute"
+contract_name: "node_reject_skip_token_compute"
+node_name: "node_reject_skip_token_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure scan of staged files, a commit message and a PR body for [skip-*] bypass
+  tokens. Blocks any text with a token that does not also carry a
+  skip-token-allowed approval receipt line. Deterministic.
+input_model:
+  name: "ModelSkipTokenScanRequest"
+  module: "omnimarket.nodes.node_reject_skip_token_compute.models.model_skip_token_scan"
+  description: "The texts to scan, each with its surface and its path or label."
+output_model:
+  name: "ModelSkipTokenScanResult"
+  module: "omnimarket.nodes.node_reject_skip_token_compute.models.model_skip_token_scan"
+  description: "PASS or BLOCK, the count scanned, the staged paths out of scope and each text that carried a token."
+handler:
+  module: "omnimarket.nodes.node_reject_skip_token_compute.handlers.handler_reject_skip_token"
+  class: "HandlerRejectSkipToken"
+  input_model: "omnimarket.nodes.node_reject_skip_token_compute.models.model_skip_token_scan.ModelSkipTokenScanRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_reject_skip_token_compute.handlers.handler_reject_skip_token:HandlerRejectSkipToken"
+  handlers:
+    - operation: "scan_skip_tokens"
+      handler:
+        name: "HandlerRejectSkipToken"
+        module: "omnimarket.nodes.node_reject_skip_token_compute.handlers.handler_reject_skip_token"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.reject-skip-token-scan-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.reject-skip-token-scan-completed.v1"
+    failure: "onex.evt.omnimarket.reject-skip-token-scan-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Reject [skip-*] bypass tokens (operating rule 10)."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - gate
+    - skip-token
+    - pure

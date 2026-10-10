@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19791"
+title: "Delegation eval sample manifests are deterministic and bus-routable"
+summary: "The sampler canonicalizes quota order and publishes its manifest through the contract-declared result topic."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-sample-manifest-deterministic"
+    statement: "The delegation eval sampler produces an identical manifest for the same rows, seed and quotas regardless of quota input order."
+    acceptance:
+      - id: "AC1"
+        statement: "Reversing the quota entries with unchanged values yields the same selected items, the same manifest_id and the same serialized manifest -- falsifier: uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k reordered_quotas"
+      - id: "AC2"
+        statement: "Candidates whose slash-delimited stratum labels collide stay in separate strata, so reversing the input rows yields the same manifest -- falsifier: uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k colliding_stratum_labels"
+  - id: "req-sample-manifest-runtime-publication"
+    statement: "The canonical runtime routes the sampler's returned manifest to its declared result topic."
+    acceptance:
+      - id: "AC3"
+        statement: "Two bus commands with unchanged rows, quotas, window and seed publish identical manifest payloads and retain each command's correlation id -- falsifier: uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k published_by_runtime"
+evidence_requirements:
+  - kind: "tests"
+    description: "Regression test for quota-order independence of the manifest."
+    command: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k reordered_quotas"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-reordered-quotas-same-manifest"
+    description: "Reordered quotas give the same manifest; the test fails at the merge base, which hashes quotas in input order."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k reordered_quotas"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-colliding-stratum-labels-same-manifest"
+    description: "Colliding slash-delimited stratum labels stay distinct and row order does not change the manifest; the test fails at the merge base, which merges the colliding strata."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k colliding_stratum_labels"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-sample-runtime-publication"
+    description: "Contract discovery and runtime dispatch publish two identical manifests; without the published_events mapping both commands are dead-lettered. This is an in-memory runtime regression, not the live dev-lane manifest comparison."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py -q -k published_by_runtime"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_routing_feedback
+version: "1.0.0"
+description: "Platform cumulative routing feedback by model and task type."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, routing, feedback, reducer]
+ownership:
+  delegation_routing_feedback:
+    ddl_owner: omnimarket.nodes.node_projection_routing_feedback
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_delegation_routing_feedback.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+pack: "data"
+display_name: "Projection: Routing Feedback"
+node_role: "effect"

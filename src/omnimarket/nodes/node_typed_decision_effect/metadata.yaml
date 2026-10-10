@@ -1,12 +1,13 @@
 name: node_typed_decision_effect
-version: "1.0.0"
-description: "One typed question to the contract-pinned typed-decision backend, public-repository work only, optional incumbent fallback; blind without an incumbent — EFFECT"
+version: "1.1.0"
+description: "Shadow-only typed decisions and adjudicated calibration reports; routing-resolved backend, incumbent decisions retained — EFFECT"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
-# No entry_points on purpose: runtime discovery walks the onex.nodes entry
-# points, so the node stays unwired until a decision contract composes it.
+entry_points:
+  onex.nodes:
+    node_typed_decision_effect: omnimarket.nodes.node_typed_decision_effect
 capabilities:
-  standalone: false
-  full_runtime: false
+  standalone: true
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: true
@@ -16,6 +17,8 @@ dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-spi>=0.20.0"
   - "httpx>=0.27.0"
+  - "pydantic>=2.11.0"
+  - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "typed-decision", "routing", "OMN-19432"]

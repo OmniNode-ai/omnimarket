@@ -559,8 +559,9 @@ async def test_the_routing_leg_answer_is_unchanged_by_the_generalization() -> No
         _boundary_terminal(correlation_id, origin_topic=_ROUTING_REQUEST_TOPIC)
     )
 
-    assert len(events) == 1
-    terminal = events[0]
+    terminals = [event for event in events if isinstance(event, ModelDelegationResult)]
+    assert len(terminals) == 1
+    terminal = terminals[0]
     assert type(terminal).__name__ == "ModelDelegationFailed"
     assert terminal.prompt_tokens == 0
     assert terminal.completion_tokens == 0
@@ -1083,3 +1084,329 @@ async def test_the_escalation_ladder_still_rides_inference_response_v1() -> None
         "the failed attempt must be banked into escalation history; an empty "
         "history means handle_inference_response never saw the response"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "final_outcome",
+    [
+        "exhausted",
+        "completed",
+        "routing_failure",
+        "inference_failure",
+        "inference_error",
+        "metered_inference_error",
+        "gate_failure",
+        "zero_token_exhausted",
+        "zero_token_gate_failure",
+    ],
+)
+@pytest.mark.parametrize(
+    "tiers", [("cheap_cloud", "claude"), ("free_local", "free_local")]
+)
+async def test_research_terminal_retains_real_usage_after_escalation(
+    monkeypatch: pytest.MonkeyPatch,
+    final_outcome: str,
+    tiers: tuple[str, str],
+) -> None:
+    from dataclasses import replace
+
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow_module,
+    )
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        _canonical_result_to_task_delegated_payload,
+    )
+    from omnimarket.pricing import recompute_actual_cost_and_savings
+    from omnimarket.routing.model_escalation_decision_result import (
+        ModelEscalationDecisionResult,
+    )
+
+    resolve_bar = workflow_module.resolve_required_bar_authority
+    monkeypatch.setattr(
+        workflow_module,
+        "resolve_required_bar_authority",
+        lambda **kwargs: replace(resolve_bar(**kwargs), required_bar=0.85),
+    )
+    # These are already-graded responses; isolate the independent rubric judge.
+    monkeypatch.setattr(
+        workflow_module, "apply_measured_rubric", lambda result, *_a, **_k: result
+    )
+    cid = uuid4()
+    handler = HandlerDelegationWorkflow(workflows={})
+    await handler.handle(
+        _make_request(cid).model_copy(
+            update={"prompt": "Research the evidence and explain the findings."}
+        )
+    )
+    monkeypatch.setattr(handler, "_maybe_retry_local", lambda *_a, **_k: None)
+
+    def decide(workflow: Any, **_kwargs: object) -> ModelEscalationDecisionResult:
+        if workflow.escalation_count < 2:
+            return ModelEscalationDecisionResult(
+                can_escalate=True, next_tier_name="claude"
+            )
+        return ModelEscalationDecisionResult(
+            can_escalate=False, terminal_failure_reason="max_escalations_reached"
+        )
+
+    monkeypatch.setattr(handler, "_decide_escalation", decide)
+    from omnimarket.nodes.node_delegation_orchestrator.state_codec import decode, encode
+
+    expected_cost = 0.0
+    for index, tier in enumerate(tiers):
+        await handler.handle(
+            _make_decision(cid).model_copy(
+                update={
+                    "selected_model": f"served-model-{index}",
+                    "tier_name": tier,
+                    "endpoint_url": f"https://served-{index}.invalid/v1/chat/completions",
+                }
+            )
+        )
+        await handler.handle(
+            _make_inference_response(cid).model_copy(
+                update={
+                    "model_used": f"served-model-{index}",
+                    "content": "### ANSWER\nEvidence from [1] supports the finding because the experiment reproduced it.",
+                    "prompt_tokens": 100 + index,
+                    "completion_tokens": 200 + index,
+                    "total_tokens": 300 + 2 * index,
+                }
+            )
+        )
+        events = await handler.handle(
+            ModelQualityGateResult(
+                correlation_id=cid,
+                passed=True,
+                quality_score=0.8,
+                failure_reasons=(),
+                fallback_recommended=True,
+            )
+        )
+        handler.workflows[cid] = decode(encode(handler.workflows[cid]))
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+        assert not any(isinstance(event, ModelDelegationResult) for event in events)
+        expected_cost += recompute_actual_cost_and_savings(
+            tier_name=tier,
+            prompt_tokens=100 + index,
+            completion_tokens=200 + index,
+            premium_counterfactual=None,
+        ).cash_cost_usd
+
+    if final_outcome == "routing_failure":
+        events = await handler.handle(
+            _boundary_terminal(cid, origin_topic=_ROUTING_REQUEST_TOPIC)
+        )
+        last_model, prompt_tokens, completion_tokens = "served-model-1", 101, 201
+    else:
+        await handler.handle(
+            _make_decision(cid).model_copy(
+                update={
+                    "selected_model": "final-model",
+                    "tier_name": tiers[-1],
+                }
+            )
+        )
+        if final_outcome == "inference_failure":
+            events = await handler.handle(
+                _boundary_terminal(cid, origin_topic=_INFERENCE_REQUEST_TOPIC)
+            )
+            last_model, prompt_tokens, completion_tokens = "served-model-1", 101, 201
+        elif final_outcome in {"inference_error", "metered_inference_error"}:
+            metered = final_outcome == "metered_inference_error"
+            events = await handler.handle(
+                _make_inference_response(
+                    cid, error_message="connection refused"
+                ).model_copy(
+                    update={
+                        "model_used": "final-model",
+                        "prompt_tokens": 102 if metered else 0,
+                        "completion_tokens": 202 if metered else 0,
+                        "total_tokens": 304 if metered else 0,
+                    }
+                )
+            )
+            if metered:
+                last_model, prompt_tokens, completion_tokens = "final-model", 102, 202
+                expected_cost += recompute_actual_cost_and_savings(
+                    tier_name=tiers[-1],
+                    prompt_tokens=102,
+                    completion_tokens=202,
+                    premium_counterfactual=None,
+                ).cash_cost_usd
+            else:
+                last_model, prompt_tokens, completion_tokens = (
+                    "served-model-1",
+                    101,
+                    201,
+                )
+        else:
+            zero_tokens = final_outcome.startswith("zero_token_")
+            await handler.handle(
+                _make_inference_response(cid).model_copy(
+                    update={
+                        "model_used": "final-model",
+                        "prompt_tokens": 0 if zero_tokens else 102,
+                        "content": "### ANSWER\nEvidence from [1] supports the finding because the experiment reproduced it.",
+                        "completion_tokens": 0 if zero_tokens else 202,
+                        "total_tokens": 0 if zero_tokens else 304,
+                    }
+                )
+            )
+            if final_outcome in {"gate_failure", "zero_token_gate_failure"}:
+                events = await handler.handle(
+                    _boundary_terminal(cid, origin_topic=_GATE_REQUEST_TOPIC)
+                )
+            else:
+                events = await handler.handle(
+                    ModelQualityGateResult(
+                        correlation_id=cid,
+                        passed=True,
+                        quality_score=0.9 if final_outcome == "completed" else 0.8,
+                        failure_reasons=(),
+                        fallback_recommended=True,
+                    )
+                )
+            if zero_tokens:
+                last_model, prompt_tokens, completion_tokens = (
+                    "served-model-1",
+                    101,
+                    201,
+                )
+            else:
+                last_model, prompt_tokens, completion_tokens = "final-model", 102, 202
+                expected_cost += recompute_actual_cost_and_savings(
+                    tier_name=tiers[-1],
+                    prompt_tokens=102,
+                    completion_tokens=202,
+                    premium_counterfactual=None,
+                ).cash_cost_usd
+
+    terminals = [event for event in events if isinstance(event, ModelDelegationResult)]
+    assert len(terminals) == 1
+    terminal = terminals[0]
+    assert type(terminal).__name__ == (
+        "ModelDelegationCompleted"
+        if final_outcome == "completed"
+        else "ModelDelegationFailed"
+    ), terminal.failure_reason
+    assert terminal.model_used == last_model
+    assert terminal.prompt_tokens == prompt_tokens
+    assert terminal.completion_tokens == completion_tokens
+    assert terminal.total_tokens == prompt_tokens + completion_tokens
+    if final_outcome == "inference_error":
+        assert terminal.endpoint_url == "https://served-1.invalid/v1/chat/completions"
+        assert terminal.terminal_failure_reason == "max_escalations_reached"
+        assert terminal.failure_reason == "connection refused"
+        assert terminal.escalation_history[-1]["model_used"] == "final-model"
+        assert terminal.escalation_history[-1]["prompt_tokens"] == 0
+    if final_outcome.startswith("zero_token_"):
+        assert terminal.endpoint_url == "https://served-1.invalid/v1/chat/completions"
+        if final_outcome == "zero_token_exhausted":
+            assert terminal.terminal_failure_reason == "max_escalations_reached"
+            assert terminal.quality_score == 0.8
+            assert terminal.required_quality_bar == 0.85
+            assert terminal.escalation_history[-1]["model_used"] == "final-model"
+            assert terminal.escalation_history[-1]["prompt_tokens"] == 0
+    assert terminal.cumulative_attempt_cost == pytest.approx(expected_cost)
+    assert terminal.cumulative_input_tokens == 201 + (
+        102 if last_model == "final-model" else 0
+    )
+    assert terminal.cumulative_output_tokens == 401 + (
+        202 if last_model == "final-model" else 0
+    )
+    projected = _canonical_result_to_task_delegated_payload(
+        terminal.model_dump(mode="json")
+    )
+    assert projected["model_name"] == last_model
+    assert projected["tokens_input"] == prompt_tokens
+    assert projected["tokens_output"] == completion_tokens
+    assert projected["cost_usd"] == pytest.approx(expected_cost)
+    assert projected["quality_gate_passed"] is (final_outcome == "completed")
+    assert (
+        await handler.handle(
+            _boundary_terminal(cid, origin_topic=_INFERENCE_REQUEST_TOPIC)
+        )
+        == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_sibling_handler_error_preserves_inference_without_a_republish_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnibase_infra.enums import EnumDispatchStatus
+    from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _raise_if_silent_dispatch_failure,
+    )
+    from omnibase_infra.runtime.service_dispatch_result_applier import (
+        DispatchResultApplier,
+    )
+
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as workflow_module,
+    )
+    from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
+        ModelQualityGateIntent,
+    )
+
+    cid = uuid4()
+    handler = HandlerDelegationWorkflow(workflows={})
+    await handler.handle(_make_request(cid))
+    await handler.handle(_make_decision(cid))
+    response = _make_inference_response(cid).model_copy(
+        update={"content": "### ANSWER\nalive"}
+    )
+    result = ModelDispatchResult(
+        status=EnumDispatchStatus.HANDLER_ERROR,
+        topic=_INFERENCE_REQUEST_TOPIC,
+        started_at=datetime.now(UTC),
+        correlation_id=cid,
+        dispatcher_id="sibling-test",
+        error_message="sibling handler failed",
+        output_events=[response],
+    )
+    _raise_if_silent_dispatch_failure(result, _INFERENCE_REQUEST_TOPIC)
+    bus = EventBusInmemory()
+    await bus.start()
+    outputs: list[object] = []
+
+    async def collect(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[object].model_validate_json(message.value)
+        outputs.extend(
+            await handler.handle(
+                ModelInferenceResponseData.model_validate(envelope.payload)
+            )
+        )
+
+    await bus.subscribe(
+        _INFERENCE_RESPONSE_TOPIC, group_id="sibling-regression", on_message=collect
+    )
+    applier = DispatchResultApplier(
+        event_bus=bus, output_topic=_INFERENCE_RESPONSE_TOPIC
+    )
+    try:
+        await applier.apply(result)
+        await applier.apply(result)  # at-least-once delivery must not reissue inference
+    finally:
+        await bus.close()
+    assert (
+        len([event for event in outputs if isinstance(event, ModelQualityGateIntent)])
+        == 1
+    )
+    assert handler.workflows[cid].state == EnumDelegationState.INFERENCE_COMPLETED
+    monkeypatch.setattr(
+        workflow_module, "apply_measured_rubric", lambda result, *_a, **_k: result
+    )
+    terminals = await handler.handle(
+        ModelQualityGateResult(correlation_id=cid, passed=True, quality_score=1.0)
+    )
+    canonical = [
+        event for event in terminals if isinstance(event, ModelDelegationResult)
+    ]
+    assert len(canonical) == 1
+    assert type(canonical[0]).__name__ == "ModelDelegationCompleted"
+    assert canonical[0].model_used == response.model_used
+    assert canonical[0].total_tokens == 300

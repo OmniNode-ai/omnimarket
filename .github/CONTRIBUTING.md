@@ -37,7 +37,7 @@ node you touched.
 - Root `README.md` is the human entrypoint and links out to the OmniNode
   knowledge base.
 - Current architecture, guides, and reference material live in the public
-  [OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge-base)
+  [OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge_base)
   (`architecture/`, `guides/`, `reference/`), not in this repo. Governance,
   runbook, and operator-facing content is not part of this repository. Open a
   docs PR against the knowledge base, not against `omnimarket/docs/`.

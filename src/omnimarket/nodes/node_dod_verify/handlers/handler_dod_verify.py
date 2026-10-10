@@ -24,6 +24,9 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
+    ModelDodContractSubject,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -116,6 +119,7 @@ class HandlerDodVerify:
         occ_governance_ref: str | None = None
         occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         occ_resolved_sha: str | None = None
+        contract_subject: ModelDodContractSubject | None = None
         # OMN-17022: the first PR/repo lookup failure of this run, as a typed
         # cause. None on the caller-supplied ``evidence_results`` path, which
         # never performed a lookup at all.
@@ -175,6 +179,7 @@ class HandlerDodVerify:
             # dozen suites replace with a stub; a stub that never derived
             # anything reads as "not measured", never as "no checks".
             acceptance_summary = getattr(collector, "acceptance_summary", None)
+            contract_subject = getattr(collector, "contract_subject", None)
             # OMN-17022: read the same way — typed provenance the collector
             # already holds, never a message string parsed back out.
             lookup_failure_cause = collector.lookup_failure_cause
@@ -470,6 +475,18 @@ class HandlerDodVerify:
             overall = EnumDodVerifyStatus.SKIPPED
             self_acceptance_demotion = True
 
+        # OMN-20070: a repo-owned contract binds every declared criterion, so
+        # a criterion no item binds is unproven. This rule used to live only
+        # in omnimarket's own contract-binds test.
+        unbound_demotion = False
+        if (
+            acceptance_summary is not None
+            and acceptance_summary.unbound_criteria
+            and overall == EnumDodVerifyStatus.VERIFIED
+        ):
+            overall = EnumDodVerifyStatus.SKIPPED
+            unbound_demotion = True
+
         error_message: str | None = None
         if occ_ref_failure_cause is not None:
             # OMN-17796: its own remedy text, because OMN-17022's below is the
@@ -527,6 +544,26 @@ class HandlerDodVerify:
                 f"that authored them, or by no one ({', '.join(bindings)}). A binding is "
                 "accepted by a second lane that re-runs the bound check, never "
                 "by its author; until then the criterion is unproven."
+            )
+            if acceptance_summary is not None and acceptance_summary.retired_bindings:
+                error_message += (
+                    " Retired bindings (not counted): "
+                    + "; ".join(acceptance_summary.retired_bindings)
+                    + "."
+                )
+        elif unbound_demotion:
+            unbound = (
+                acceptance_summary.unbound_criteria
+                if acceptance_summary is not None
+                else ()
+            )
+            n = len(unbound)
+            error_message = (
+                f"NO_ACCEPTANCE_CHECKS: {command.ticket_id} declares {n} acceptance "
+                f"{'criterion' if n == 1 else 'criteria'} that no dod_evidence item "
+                f"binds through binds_ac ({', '.join(unbound)}). Bind each criterion "
+                "to a check whose test fails without the change; an unbound "
+                "criterion is unproven."
             )
         elif no_acceptance_demotion:
             declared = (
@@ -614,6 +651,19 @@ class HandlerDodVerify:
                     f"verified for {command.ticket_id}"
                 )
 
+        if overall == EnumDodVerifyStatus.FAILED and error_message is None:
+            failures = [
+                f"{check.evidence_id}: "
+                + (
+                    check.failure.summary()
+                    if check.failure is not None
+                    else (check.message or "check failed")
+                )
+                for check in executable_checks
+                if check.status == EnumEvidenceCheckStatus.FAILED
+            ]
+            error_message = "EVIDENCE_CHECK_FAILED: " + " | ".join(failures)
+
         state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
@@ -624,6 +674,18 @@ class HandlerDodVerify:
             parent_goal_id=command.parent_goal_id,
             level=command.level,
             contract_revision=command.contract_revision,
+            contract_source=(
+                contract_subject.source if contract_subject is not None else None
+            ),
+            contract_repository=(
+                contract_subject.repository if contract_subject is not None else None
+            ),
+            contract_commit_sha=(
+                contract_subject.commit_sha if contract_subject is not None else None
+            ),
+            contract_repo_path=(
+                contract_subject.repo_path if contract_subject is not None else None
+            ),
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             checks=checks,
@@ -649,6 +711,15 @@ class HandlerDodVerify:
             ),
             acceptance_self_accepted_bindings=(
                 acceptance_summary.self_accepted_bindings if acceptance_summary else ()
+            ),
+            acceptance_retired_bindings=(
+                acceptance_summary.retired_bindings if acceptance_summary else ()
+            ),
+            acceptance_refused_retirements=(
+                acceptance_summary.refused_retirements if acceptance_summary else ()
+            ),
+            acceptance_unbound_criteria=(
+                acceptance_summary.unbound_criteria if acceptance_summary else ()
             ),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
@@ -698,6 +769,10 @@ class HandlerDodVerify:
             parent_goal_id=state.parent_goal_id,
             level=state.level,
             contract_revision=state.contract_revision,
+            contract_source=state.contract_source,
+            contract_repository=state.contract_repository,
+            contract_commit_sha=state.contract_commit_sha,
+            contract_repo_path=state.contract_repo_path,
             started_at=state.started_at,
             completed_at=state.completed_at,
             checks=state.checks,

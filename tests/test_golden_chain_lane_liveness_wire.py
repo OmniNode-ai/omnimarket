@@ -20,7 +20,7 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.models.model_lane_liveness import (
+from omnimarket.models.liveness.model_lane_liveness import (
     EnumEvidenceBasis,
     EnumLaneVerdict,
     EnumRelayState,

@@ -1,0 +1,787 @@
+{
+  "source_commit": "6cb6dc8342e6be91b773959909bc3f26d1ce4962",
+  "cases": [
+    {
+      "name": "all_pass_strict",
+      "conf": "alpha\nbeta\ngamma\n",
+      "strict": true,
+      "repos": {
+        "alpha": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "beta": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "gamma": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  alpha — check-handshake workflow passing\n  \u001b[0;32mPASS\u001b[0m  beta — check-handshake workflow passing\n  \u001b[0;32mPASS\u001b[0m  gamma — check-handshake workflow passing\n\n==========================================\nResults: 3 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 3 repos...\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/alpha",
+          "repos/OmniNode-ai/alpha/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/beta",
+          "repos/OmniNode-ai/beta/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/gamma",
+          "repos/OmniNode-ai/gamma/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "all_pass_report_only",
+      "conf": "alpha\nbeta\n",
+      "strict": false,
+      "repos": {
+        "alpha": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "beta": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  alpha — check-handshake workflow passing\n  \u001b[0;32mPASS\u001b[0m  beta — check-handshake workflow passing\n\n==========================================\nResults: 2 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 2 repos...\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/alpha",
+          "repos/OmniNode-ai/alpha/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/beta",
+          "repos/OmniNode-ai/beta/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "mixed_strict",
+      "conf": "p\nf\nnw\nnr\nerr\nretry_ok\n",
+      "strict": true,
+      "repos": {
+        "p": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "f": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 4, \"workflow_runs\": [{\"conclusion\": \"failure\"}]}"
+          ]
+        },
+        "nw": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 404: Not Found"
+          ]
+        },
+        "nr": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 0, \"workflow_runs\": []}"
+          ]
+        },
+        "err": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        },
+        "retry_ok": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 502 Bad Gateway",
+            "{\"total_count\": 3, \"workflow_runs\": []}",
+            "{\"total_count\": 3, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  p — check-handshake workflow passing\n  \u001b[0;31mFAIL\u001b[0m  f — check-handshake workflow failing\n  \u001b[0;31mFAIL\u001b[0m  nw — no check-handshake workflow found\n  \u001b[0;31mFAIL\u001b[0m  nr — check-handshake workflow exists but has no runs\n  \u001b[0;31mFAIL\u001b[0m  err — could not query workflow status (API error)\n  \u001b[0;32mPASS\u001b[0m  retry_ok — check-handshake workflow passing\n\n==========================================\nResults: 2 pass, 4 fail\n\nNon-compliant repos:\n  - f\n  - nw\n  - nr\n  - err\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 6 repos...\nINFO: Transient read for err (attempt 1/4), retrying in 2s\nINFO: Transient read for err (attempt 2/4), retrying in 4s\nINFO: Transient read for err (attempt 3/4), retrying in 8s\nINFO: Transient read for retry_ok (attempt 1/4), retrying in 2s\nINFO: Transient read for retry_ok (attempt 2/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/p",
+          "repos/OmniNode-ai/p/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/f",
+          "repos/OmniNode-ai/f/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/nw",
+          "repos/OmniNode-ai/nw/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/nr",
+          "repos/OmniNode-ai/nr/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/err",
+          "repos/OmniNode-ai/err/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/err/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/err/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/err/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/retry_ok",
+          "repos/OmniNode-ai/retry_ok/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/retry_ok/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/retry_ok/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          2,
+          4,
+          8,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "mixed_report_only",
+      "conf": "p\nf\nnr\n",
+      "strict": false,
+      "repos": {
+        "p": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "f": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 4, \"workflow_runs\": [{\"conclusion\": \"cancelled\"}]}"
+          ]
+        },
+        "nr": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 0, \"workflow_runs\": []}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  p — check-handshake workflow passing\n  \u001b[0;31mFAIL\u001b[0m  f — check-handshake workflow failing\n  \u001b[0;31mFAIL\u001b[0m  nr — check-handshake workflow exists but has no runs\n\n==========================================\nResults: 1 pass, 2 fail\n\nNon-compliant repos:\n  - f\n  - nr\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: WARNING (report-only mode, use --strict to enforce)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 3 repos...\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/p",
+          "repos/OmniNode-ai/p/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/f",
+          "repos/OmniNode-ai/f/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/nr",
+          "repos/OmniNode-ai/nr/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "not_found_wording_without_404",
+      "conf": "solo\n",
+      "strict": true,
+      "repos": {
+        "solo": {
+          "branch": "main",
+          "runs": [
+            "ERR:gh: Not Found"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  solo — no check-handshake workflow found\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - solo\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/solo",
+          "repos/OmniNode-ai/solo/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "persistent_empty_page_with_runs",
+      "conf": "thin\n",
+      "strict": true,
+      "repos": {
+        "thin": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 3, \"workflow_runs\": []}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  thin — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - thin\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for thin (attempt 1/4), retrying in 2s\nINFO: Transient read for thin (attempt 2/4), retrying in 4s\nINFO: Transient read for thin (attempt 3/4), retrying in 8s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/thin",
+          "repos/OmniNode-ai/thin/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/thin/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/thin/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/thin/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          2,
+          4,
+          8
+        ]
+      }
+    },
+    {
+      "name": "default_branch_lookup_fails",
+      "conf": "lost\n",
+      "strict": true,
+      "repos": {
+        "lost": {
+          "branch": "ERR:HTTP 403 Forbidden",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  lost — check-handshake workflow passing\n\n==========================================\nResults: 1 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Could not detect default branch for lost, falling back to main\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/lost",
+          "repos/OmniNode-ai/lost/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "default_branch_empty_output",
+      "conf": "blank\n",
+      "strict": true,
+      "repos": {
+        "blank": {
+          "branch": "",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  blank — check-handshake workflow passing\n\n==========================================\nResults: 1 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Could not detect default branch for blank, falling back to main\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/blank",
+          "repos/OmniNode-ai/blank/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "default_branch_needs_encoding",
+      "conf": "odd\n",
+      "strict": true,
+      "repos": {
+        "odd": {
+          "branch": "release/v1 beta+x#2",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  odd — check-handshake workflow passing\n\n==========================================\nResults: 1 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/odd",
+          "repos/OmniNode-ai/odd/actions/workflows/check-handshake.yml/runs?branch=release%2Fv1%20beta%2Bx%232&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "conf_with_comments_and_whitespace",
+      "conf": "# header\n\n  alpha  \t# trailing\nbeta#x\n\t\n   # only comment\ngamma\r\n",
+      "strict": true,
+      "repos": {
+        "alpha": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "beta": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        },
+        "gamma": {
+          "branch": "main",
+          "runs": [
+            "{\"total_count\": 5, \"workflow_runs\": [{\"conclusion\": \"success\"}]}"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;32mPASS\u001b[0m  alpha — check-handshake workflow passing\n  \u001b[0;32mPASS\u001b[0m  beta — check-handshake workflow passing\n  \u001b[0;32mPASS\u001b[0m  gamma — check-handshake workflow passing\n\n==========================================\nResults: 3 pass, 0 fail\n\nPOLICY GATE: PASSED — all active repos are compliant\n",
+        "stderr": "INFO: Checking handshake policy compliance for 3 repos...\n",
+        "exit_code": 0,
+        "endpoints": [
+          "repos/OmniNode-ai/alpha",
+          "repos/OmniNode-ai/alpha/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/beta",
+          "repos/OmniNode-ai/beta/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/gamma",
+          "repos/OmniNode-ai/gamma/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "conf_without_entries",
+      "conf": "# nothing\n\n",
+      "strict": true,
+      "repos": {},
+      "old": {
+        "stdout": "",
+        "stderr": "ERROR: repos.conf contains no repo entries\n",
+        "exit_code": 2,
+        "endpoints": [],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "attempts_two",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "2",
+        "POLICY_GATE_RETRY_BASE_DELAY": "5"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/2), retrying in 5s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          5
+        ]
+      }
+    },
+    {
+      "name": "attempts_one_never_retries",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": []
+      }
+    },
+    {
+      "name": "attempts_raw_zero",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "0",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 1s\nINFO: Transient read for r (attempt 2/4), retrying in 2s\nINFO: Transient read for r (attempt 3/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "attempts_raw_word",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "abc",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 1s\nINFO: Transient read for r (attempt 2/4), retrying in 2s\nINFO: Transient read for r (attempt 3/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "attempts_raw_negative",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "-3",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 1s\nINFO: Transient read for r (attempt 2/4), retrying in 2s\nINFO: Transient read for r (attempt 3/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "attempts_raw_empty",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 1s\nINFO: Transient read for r (attempt 2/4), retrying in 2s\nINFO: Transient read for r (attempt 3/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "attempts_raw_leading_zero",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "03",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 1s\nINFO: Transient read for r (attempt 2/4), retrying in 2s\nINFO: Transient read for r (attempt 3/4), retrying in 4s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "attempts_raw_three",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_ATTEMPTS": "3",
+        "POLICY_GATE_RETRY_BASE_DELAY": "1"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/3), retrying in 1s\nINFO: Transient read for r (attempt 2/3), retrying in 2s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "name": "base_delay_raw_zero",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_BASE_DELAY": "0"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 0s\nINFO: Transient read for r (attempt 2/4), retrying in 0s\nINFO: Transient read for r (attempt 3/4), retrying in 0s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "base_delay_raw_fraction",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_BASE_DELAY": "0.5"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 2s\nINFO: Transient read for r (attempt 2/4), retrying in 4s\nINFO: Transient read for r (attempt 3/4), retrying in 8s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          2,
+          4,
+          8
+        ]
+      }
+    },
+    {
+      "name": "base_delay_raw_word",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_BASE_DELAY": "x"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 2s\nINFO: Transient read for r (attempt 2/4), retrying in 4s\nINFO: Transient read for r (attempt 3/4), retrying in 8s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          2,
+          4,
+          8
+        ]
+      }
+    },
+    {
+      "name": "base_delay_raw_empty",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_BASE_DELAY": ""
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 2s\nINFO: Transient read for r (attempt 2/4), retrying in 4s\nINFO: Transient read for r (attempt 3/4), retrying in 8s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          2,
+          4,
+          8
+        ]
+      }
+    },
+    {
+      "name": "base_delay_raw_three",
+      "conf": "r\n",
+      "strict": true,
+      "env": {
+        "POLICY_GATE_RETRY_BASE_DELAY": "3"
+      },
+      "repos": {
+        "r": {
+          "branch": "main",
+          "runs": [
+            "ERR:HTTP 500 Server Error"
+          ]
+        }
+      },
+      "old": {
+        "stdout": "\nHandshake Policy Gate — Compliance Report\n==========================================\n\n  \u001b[0;31mFAIL\u001b[0m  r — could not query workflow status (API error)\n\n==========================================\nResults: 0 pass, 1 fail\n\nNon-compliant repos:\n  - r\n\nTo fix: install handshake and add CI workflow.\nSee: OMN-13291 for the handshake requirements this gate enforces\n\nPOLICY GATE: FAILED (strict mode)\n",
+        "stderr": "INFO: Checking handshake policy compliance for 1 repos...\nINFO: Transient read for r (attempt 1/4), retrying in 3s\nINFO: Transient read for r (attempt 2/4), retrying in 6s\nINFO: Transient read for r (attempt 3/4), retrying in 12s\n",
+        "exit_code": 1,
+        "endpoints": [
+          "repos/OmniNode-ai/r",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1",
+          "repos/OmniNode-ai/r/actions/workflows/check-handshake.yml/runs?branch=main&status=completed&per_page=1"
+        ],
+        "sleeps": [
+          3,
+          6,
+          12
+        ]
+      }
+    }
+  ]
+}

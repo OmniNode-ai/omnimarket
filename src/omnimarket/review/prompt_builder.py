@@ -126,6 +126,13 @@ _USER_PROMPT_TEMPLATE_PR: str = (
     "in unchanged code. Every finding must reference a specific change in "
     "the diff.\n"
     "\n"
+    # OMN-20287: routing decisions belong in a deployment overlay.
+    "A deployment fact added to packaged or shipped config (a backend, an "
+    "endpoint host or port, a model name, a secret reference, a provider "
+    "choice, or a per-class routing order) is a blocking finding of severity "
+    "critical: routing decisions belong in a deployment overlay, not in the "
+    "config the package ships.\n"
+    "\n"
     "Return your findings as a JSON array following the specified schema.\n"
     "\n"
     "---\n"

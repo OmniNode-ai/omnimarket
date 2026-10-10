@@ -26,6 +26,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -34,6 +36,7 @@ from uuid import UUID
 
 import httpx
 import yaml
+from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 
 from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
@@ -87,6 +90,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_observation import (
+    ModelLlmDelegationCallObservation,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
 )
@@ -96,16 +102,41 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     byok_declared_price_per_1m,
+    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
+
+#: Who is told about each provider call while the effect is still running. A
+#: caller that can cancel the effect (the delegation handler's execution
+#: budget) binds one so the calls already made survive the cancellation: on a
+#: customer route the effect may call a second model after a 429 on the first,
+#: and both calls exist only here until the effect returns. ``None`` (the
+#: default) reports nothing.
+current_call_observer: ContextVar[
+    Callable[[ModelLlmDelegationCallObservation], None] | None
+] = ContextVar("llm_delegation_call_observer", default=None)
+
+
+def _report_call(observation: ModelLlmDelegationCallObservation) -> None:
+    """Hand ``observation`` to the bound observer; a failing observer never fails the call."""
+    observer = current_call_observer.get()
+    if observer is None:
+        return
+    try:
+        observer(observation)
+    except Exception:  # evidence reporting must never change the call
+        logger.warning("delegation call observer failed", exc_info=True)
+
+
 _subscribe = contract_subscribe_topics(_CONTRACT)
 _publish = contract_publish_topics(_CONTRACT)
 
@@ -542,6 +573,18 @@ class HandlerLlmDelegationCall:
         byok = self._customer_byok_row(request, endpoint_url)
         if byok is None:
             return self._execute_call_once(request, endpoint_url, event_publisher)
+        if byok.customer_chooses_model:
+            # OMN-20844: the customer chooses this provider's model. A credential
+            # with none is refused rather than given a catalogue pick, and a
+            # model the customer named is called once and never swapped.
+            if request.model_id == BYOK_MODEL_UNRESOLVED:
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            if not catalogue_prefers_model(byok, request.model_id):
+                return self._execute_call_once(request, endpoint_url, event_publisher)
         configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:
             resolved = self._resolve_byok_model(request, byok, exclude=())
@@ -729,6 +772,27 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
+        """Make one provider call and report it to the bound observer when it ends."""
+        result = self._post_one_call(request, endpoint_url, event_publisher)
+        _report_call(
+            ModelLlmDelegationCallObservation(
+                phase="finished",
+                model_id=request.model_id,
+                secret_source=result.secret_source,
+                success=result.success,
+                failure_class=result.failure_class,
+                http_status=result.http_status,
+                error_message=result.error_message or "",
+            )
+        )
+        return result
+
+    def _post_one_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
         messages: list[dict[str, str]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
@@ -810,6 +874,13 @@ class HandlerLlmDelegationCall:
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
+            _report_call(
+                ModelLlmDelegationCallObservation(
+                    phase="started",
+                    model_id=request.model_id,
+                    secret_source=secret_source,
+                )
+            )
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
@@ -1051,6 +1122,9 @@ class HandlerLlmDelegationCall:
         # made a scratchpad score 1.0.
         finish_reason = finish_reason_from_choice(choices[0])
         content: str = choices[0].get("message", {}).get("content") or ""
+        raw_response = ModelDelegationRawResponse.from_provider_content(
+            content, source_field="choices[0].message.content"
+        )
         content, reasoning_stripped_chars = strip_leading_inline_reasoning(
             content, request.inline_reasoning_terminator
         )
@@ -1074,6 +1148,7 @@ class HandlerLlmDelegationCall:
             secret_source=secret_source,
             secret_ref=request.secret_ref,
             content=content,
+            raw_response=raw_response,
             reasoning_stripped_chars=reasoning_stripped_chars,
             output_hash=output_hash,
             tokens_in=tokens_in,

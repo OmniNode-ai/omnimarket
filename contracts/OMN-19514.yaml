@@ -1,0 +1,40 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19514"
+title: "Join a DoD verdict to its delegation through real projection writers and migrations"
+summary: "Replaces the stand-in delegation table in the real-Postgres join test with real delegation and DoD verdict producer payloads, projection writers and migrations, using a deterministic inference stub. Asserts the stored delegation ticket and a join matching both ticket and correlation ID, excluding verdicts that match only one. The test file also checks linked UUID and unlinked NULL storage. Tests: tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-verdict-delegation-join"
+    statement: |-
+      Real producer payloads written through the delegation and DoD verdict projection writers into migrated Postgres tables must join by both ticket ID and delegation correlation ID; linked verdicts must store the UUID and unlinked verdicts must store NULL.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: with a deterministic inference stub, the real delegation producer and projection writer store OMN-19514, the real DoD verdict producer and projection writer store verdicts, and joining the migrated tables returns only the matching ticket and delegation correlation ID, excluding verdicts matching just one; linked verdicts store the delegation UUID and unlinked verdicts store NULL -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -p no:cacheprovider
+evidence_requirements:
+  - kind: "tests"
+    description: "Real-Postgres tests assert linked UUID storage, unlinked NULL storage, and the exact ticket/correlation pair returned by the join through real producers, projection writers and migrations."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-verdict-delegation-join-ac1"
+    description: "The real-Postgres tests check delegation ticket storage, join matching on both ticket and correlation ID, and linked UUID versus unlinked NULL verdict storage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-verdict-storage-fixture-ac1"
+    description: "The linked-UUID and unlinked-NULL verdict storage tests run against the shared module-scoped Postgres fixture and execute rather than skip."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19514_dod_verdict_delegation_run_real_postgres.py -q -k 'linked_verdict or unlinked_verdict'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

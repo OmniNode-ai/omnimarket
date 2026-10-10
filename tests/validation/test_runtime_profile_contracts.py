@@ -12,6 +12,19 @@ LANE_SCOPED_MAIN_OWNED_NODES: dict[str, str] = {
         "OMN-19408 lane-scopes it to compose-dev; under OMN-19144 the effects "
         "runtime declares no lane, so the main runtime owns it."
     ),
+    "node_pr_handoff_ledger_effect": (
+        "The lab effects runtimes declare no ONEX_RUNTIME_LANE, so the main "
+        "runtime owns it, as node_pr_landing_github_effect."
+    ),
+    "node_branch_claim_check_effect": (
+        "OMN-17427: the lab effects runtimes declare no ONEX_RUNTIME_LANE, so "
+        "the main runtime owns it, as node_pr_landing_github_effect."
+    ),
+    "node_work_ledger_query_effect": (
+        "OMN-20738: the main runtime carries OMNINODE_INTERNAL_DB_URL and the "
+        "lab effects runtimes declare no ONEX_RUNTIME_LANE, so the main runtime "
+        "owns it, as node_pr_landing_github_effect."
+    ),
 }
 PENDING_RUNTIME_OWNERSHIP_NODES = {
     "node_build_loop_orchestrator",

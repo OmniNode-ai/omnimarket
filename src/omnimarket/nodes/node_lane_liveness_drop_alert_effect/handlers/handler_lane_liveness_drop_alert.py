@@ -19,7 +19,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
-from omnimarket.models.model_lane_liveness import ModelLaneLivenessReport
+from omnimarket.models.liveness.model_lane_liveness import ModelLaneLivenessReport
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_lane_liveness_drop_alert_effect.models import (
     ModelLaneDropSlackCommand,

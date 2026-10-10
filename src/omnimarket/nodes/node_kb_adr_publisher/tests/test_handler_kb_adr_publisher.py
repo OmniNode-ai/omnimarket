@@ -203,7 +203,7 @@ async def test_live_run_returns_success_with_pr_url(
             clone_dir.mkdir(parents=True, exist_ok=True)
             (clone_dir / ".git").mkdir(exist_ok=True)
         m = MagicMock()
-        m.stdout = "https://github.com/OmniNode-ai/knowledge-base/pull/42\n"
+        m.stdout = "https://github.com/OmniNode-ai/knowledge_base/pull/42\n"
         m.returncode = 0
         return m
 
@@ -222,7 +222,7 @@ async def test_live_run_returns_success_with_pr_url(
 
     assert result.success is True
     assert result.adr_count == 2
-    assert result.pr_url == "https://github.com/OmniNode-ai/knowledge-base/pull/42"
+    assert result.pr_url == "https://github.com/OmniNode-ai/knowledge_base/pull/42"
     assert result.branch is not None
     assert "canary-2026-05-23-001" in result.branch
 
@@ -240,7 +240,7 @@ async def test_live_run_calls_gh_clone(
             clone_dir.mkdir(parents=True, exist_ok=True)
             (clone_dir / ".git").mkdir(exist_ok=True)
         m = MagicMock()
-        m.stdout = "https://github.com/OmniNode-ai/knowledge-base/pull/99\n"
+        m.stdout = "https://github.com/OmniNode-ai/knowledge_base/pull/99\n"
         m.returncode = 0
         return m
 
@@ -526,7 +526,7 @@ async def test_unknown_destination_layout_rejects_before_subprocess(
         _KB_DESTINATION_LAYOUTS,
         EnumAdrKBDestination.public,
         ModelKBDestinationLayout(
-            repository="OmniNode-ai/knowledge-base",
+            repository="OmniNode-ai/knowledge_base",
             artifact_directory=PurePosixPath("adrs"),
             artifact_layout=cast(EnumKBArtifactLayout, "unknown"),
         ),
@@ -699,7 +699,7 @@ async def test_public_validator_runs_before_git_mutation_with_contract_timeout(
             clone_dir = Path(cmd[-1])
             clone_dir.mkdir(parents=True, exist_ok=True)
         response = MagicMock()
-        response.stdout = "https://github.com/OmniNode-ai/knowledge-base/pull/42\n"
+        response.stdout = "https://github.com/OmniNode-ai/knowledge_base/pull/42\n"
         response.returncode = 0
         return response
 

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_delegation_mirror
+version: "1.0.0"
+description: "Pure delegation terminal to STATUS append request mapping, hosted by the ledger serve process."
+pack: core
+node_role: compute
+display_name: "Delegation Ledger Mapping"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_delegation_mirror: omnimarket.nodes.node_work_ledger_delegation_mirror
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: MIT
+tags: [compute, delegation, work-ledger, deterministic]

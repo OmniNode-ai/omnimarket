@@ -1,0 +1,42 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-16652"
+title: "reject-deploy-gate-skip becomes an omnimarket COMPUTE node with a remote pre-commit export"
+summary: "First shard, the host side: the skip-token scan becomes a contract-declared COMPUTE node, and omnimarket exports two remote pre-commit hook ids (staged content and commit message) that run the one maintained script. No consumer is repointed and no vendored copy is deleted in this shard."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reject-skip-token-node-and-export"
+    statement: "The skip-token scan is a definition-B node with its topics declared in the contract, and omnimarket exports a pre-commit hook for each of the staged-content and commit-message stages that refuses exactly what the vendored script refuses."
+    acceptance:
+      - id: "AC1"
+        statement: "node_reject_skip_token_compute is a contract.yaml, a declarative node and a handle(ModelSkipTokenScanRequest) -> ModelSkipTokenScanResult handler with its command and terminal topics declared in the contract."
+      - id: "AC2"
+        statement: "The node and the exported script give the same verdict on every case of one fixture table, including committed .onex_state/evidence files and a skip-token-allowed receipt, and an approval receipt on the line after the marker does not approve."
+      - id: "AC3"
+        statement: "omnimarket/.pre-commit-hooks.yaml declares reject-skip-token (pre-commit stage) and reject-skip-token-commit-msg (commit-msg stage), and a real pre-commit try-repo run of each refuses a bypass token and accepts clean input."
+evidence_requirements:
+  - kind: "tests"
+    description: "Execute the reject-skip-token node, parity and export tests."
+    command: "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-node-contract-and-parity"
+    description: "The node's contract and signature hold and its verdicts equal the script's on the fixture table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-export-try-repo"
+    description: "The exported hook ids refuse and accept under a real pre-commit try-repo run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q -k try_repo"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

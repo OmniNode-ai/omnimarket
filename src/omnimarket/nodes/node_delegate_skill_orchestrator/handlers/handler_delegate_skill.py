@@ -57,6 +57,7 @@ from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
     caller_lane_refusal,
 )
+from omnimarket.models.delegation.delegation_lineage import resolve_lineage
 from omnimarket.models.delegation.delegation_ticket_id import (
     DELEGATION_TICKET_METADATA_KEY,
     ticket_id_refusal,
@@ -67,14 +68,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
-from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
-from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
-    current_dispatch_progress,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
@@ -83,10 +80,19 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
+from omnimarket.models.delegation.wire.model_response_source_attempt import (
+    ModelResponseSourceAttempt,
+)
+from omnimarket.models.model_delegation_split_recombine import EnumDelegationSizeBand
+from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
+    budget_cancelled_result,
+    current_dispatch_progress,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_reap_context import (
+    DELEGATION_RUNTIME_INSTANCE_ID,
     ModelDelegationReapContext,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_terminal_record import (
@@ -170,6 +176,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -191,6 +199,52 @@ def _no_escalation_dispatch_kwargs(
 ) -> _NoEscalationDispatchKwargs:
     if request.no_escalation:
         return {"no_escalation": True}
+    return {}
+
+
+class _AttributionDispatchKwargs(TypedDict, total=False):
+    """Who issued a delegation and what it follows, for the port (OMN-20606).
+
+    The in-process port writes its own evidence terminal and published it with
+    no caller lane, ticket or lineage, which is why every in-process fallback
+    row on the dev lane had an empty caller_lane. Passed only when the request
+    names any of them, so an anonymous request calls the port exactly as
+    before; a port must declare ``attribution`` before omnimarket pins a
+    release that passes it (omnibase_infra declares it from OMN-20606).
+    """
+
+    attribution: dict[str, str]
+
+
+def _request_attribution(request: ModelDelegateSkillRequest) -> dict[str, str]:
+    """The request's caller lane, ticket and lineage, each only when well formed."""
+    attribution: dict[str, str] = {}
+    caller_lane = _request_caller_lane(request)
+    if caller_lane is not None:
+        attribution[DELEGATION_CALLER_LANE_METADATA_KEY] = caller_lane
+    ticket_id = _request_ticket_id(request)
+    if ticket_id is not None:
+        attribution[DELEGATION_TICKET_METADATA_KEY] = ticket_id
+    lineage, refusal = resolve_lineage(
+        request.metadata, own_correlation_id=request.correlation_id
+    )
+    if refusal is not None:
+        logger.warning(
+            "delegate-skill request lineage refused (correlation_id=%s): %s",
+            request.correlation_id,
+            refusal,
+        )
+    elif lineage is not None:
+        attribution.update(lineage.as_columns())
+    return attribution
+
+
+def _attribution_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _AttributionDispatchKwargs:
+    attribution = _request_attribution(request)
+    if attribution:
+        return {"attribution": attribution}
     return {}
 
 
@@ -687,6 +741,32 @@ def _attempt_records(
     return records
 
 
+def _response_source_attempt(
+    result: dict[str, object], attempts: list[ModelDelegateSkillAttemptRecord]
+) -> ModelResponseSourceAttempt | None:
+    """Carry the workflow's response-source marker onto the caller's terminal."""
+    raw = result.get("attempts")
+    if not isinstance(raw, list):
+        raw = result.get("escalation_history")
+    if not isinstance(raw, list | tuple):
+        return None
+    records = [item for item in raw if isinstance(item, dict)]
+    sources = [
+        index
+        for index, item in enumerate(records)
+        if item.get("supplied_response") is True
+    ]
+    if not sources:
+        return None
+    if len(sources) != 1:
+        raise ValueError("response_source_attempt requires exactly one source marker")
+    index = sources[0]
+    attempt = attempts[index]
+    return ModelResponseSourceAttempt(
+        attempt_index=index, tier=attempt.tier, backend_id=attempt.backend_id
+    )
+
+
 def _preamble_rule(raw: dict[str, object]) -> str | None:
     """The reasoning-preamble rule a rung recorded, or None when no gate judged it.
 
@@ -814,7 +894,7 @@ def _response_from_result(
     tenant_id: str | None,
     queue_wait_ms: int | None,
     execution_duration_ms: int,
-    budget_evidence: ModelDelegationBudgetEvidence,
+    budget_evidence: ModelDelegationBudgetEvidence | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -863,7 +943,19 @@ def _response_from_result(
     # rung's 429 on ``6ce51f77``) is the last thing that went wrong, not what
     # decided the run, and the response model refuses that contradiction.
     # Otherwise an explicit cause stays authoritative, as before.
+    #
+    # Operator RULING 2026-10-10T00:27:40Z: a run the handler budget cancelled
+    # (``budget_cancelled_result``: status timeout, explicit cause timeout)
+    # names timeout, whatever its earlier rungs record. The budget stopped the
+    # ladder with a rung in flight, so the gate did not decide it; any earlier
+    # gate refusals stay on their own rungs in ``attempts``.
     if (
+        status_value == "timeout"
+        and explicit_terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.TIMEOUT
+    ):
+        terminal_failure_cause = EnumDelegationTerminalFailureCause.TIMEOUT
+    elif (
         terminal_failure_cause
         is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     ):
@@ -921,6 +1013,7 @@ def _response_from_result(
         )
     else:
         cost_savings_usd = 0.0
+    manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -962,7 +1055,11 @@ def _response_from_result(
         model_cloud_baseline=baseline.model,
         baseline_source=baseline.selection_case,
         baseline_state=baseline.state,
-        pricing_manifest_version=baseline.pricing_manifest_version,
+        pricing_manifest_version=(
+            baseline.pricing_manifest_version
+            if manifest_version is None
+            else manifest_version
+        ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,
@@ -1008,6 +1105,7 @@ def _response_from_result(
         escalation_count=_as_int(result.get("escalation_count")),
         attempts_count=_response_attempts_count(result, attempts),
         attempts=attempts,
+        response_source_attempt=_response_source_attempt(result, attempts),
         # OMN-18852: queue and execution as separate terminal facts. The
         # dispatch port reports neither -- both are measured by the handler,
         # which is the only party that knows when it picked the record up.
@@ -1237,6 +1335,8 @@ class HandlerDelegateSkill:
                     response_format=request.response_format,
                     # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
                     **_no_escalation_dispatch_kwargs(request),
+                    # OMN-20606: only when named -- see _AttributionDispatchKwargs.
+                    **_attribution_dispatch_kwargs(request),
                 ),
                 timeout=float(
                     execution_timeout_seconds
@@ -1295,24 +1395,32 @@ class HandlerDelegateSkill:
                     "(the budget is measured from pickup, not from publish)"
                 )
             )
-            return ModelDelegateSkillFailed(
-                status="timeout",
-                correlation_id=request.correlation_id,
-                task_type=request.task_type,
-                tenant_id=resolved_tenant_id,
-                provenance=request.provenance,
-                error_message=(
-                    f"delegation exceeded the handler execution budget of "
-                    f"{execution_timeout_seconds}s and was cancelled at "
-                    f"stage={progress.cancelled_stage or progress.stage}; "
-                    "the consumer commits "
-                    "this terminal instead of being evicted mid-handle "
-                    f"(OMN-15504){queue_clause}"
-                ),
-                terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
-                queue_wait_ms=queue_wait_ms,
-                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
-                budget_evidence=budget_evidence,
+            # OMN-17427: the terminal is built from what the dispatch already
+            # learned, not from nothing. Cancelled at stage=inference, a run had
+            # already been routed, had resolved its key and had made calls; C29
+            # run 37977092319 lost all of it and its receipt named no backend,
+            # model, key source or attempt.
+            cancelled_stage = progress.cancelled_stage or progress.stage
+            return delegate_skill_terminal_from_response(
+                _response_from_result(
+                    request,
+                    budget_cancelled_result(
+                        progress,
+                        cancel_message=(
+                            f"delegation exceeded the handler execution budget of "
+                            f"{execution_timeout_seconds}s and was cancelled at "
+                            f"stage={cancelled_stage}; "
+                            "the consumer commits "
+                            "this terminal instead of being evicted mid-handle "
+                            f"(OMN-15504){queue_clause}"
+                        ),
+                        cancelled_stage=cancelled_stage,
+                    ),
+                    tenant_id=resolved_tenant_id,
+                    queue_wait_ms=queue_wait_ms,
+                    execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+                    budget_evidence=budget_evidence,
+                )
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(
@@ -1435,10 +1543,10 @@ def _request_reap_context(
         caller_lane=_request_caller_lane(request),
         session_id=_request_session_id(request),
         provenance=request.provenance,
+        runtime_instance_id=DELEGATION_RUNTIME_INSTANCE_ID,
+        request=request,
+        # Grace is the whole recovery window after execution. Adding the
+        # caller's delivery margin again delays recovery beyond budget + grace.
         deadline_at=datetime.now(UTC)
-        + timedelta(
-            seconds=execution_seconds
-            + budget.terminal_delivery_margin_seconds
-            + config.grace_seconds
-        ),
+        + timedelta(seconds=execution_seconds + config.grace_seconds),
     )

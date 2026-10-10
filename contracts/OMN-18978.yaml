@@ -31,3 +31,27 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-local-watchdog-inference-stage"
+    description: "The local effect watchdog timeout after worker readiness names stage=inference; the test fails at the merge base, where the watchdog message carries no stage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_local_watchdog_timeout_names_inference_after_worker_boot -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-bus-deadline-stage"
+    description: "A bus subscribe or publish deadline reports its own stage and the underlying exception text; the test fails at the merge base, where a subscribe deadline is reported as stage=dispatch and a publish deadline as stage=terminal_wait."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_runtime_bus_deadline_preserves_the_stage_after_unwinding -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-stage-deadline-survives-cleanup"
+    description: "A stage's own TimeoutError names the innermost stage after terminal cleanup runs; the test fails at the merge base, where the stage is reset to the outer scope before cleanup."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_timeout_stage_omn18978.py -k test_stage_deadline_names_the_innermost_stage_after_cleanup -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

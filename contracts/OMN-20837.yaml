@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: 1.0.0
+ticket_id: OMN-20837
+title: Rename the knowledge-base GitHub repository to knowledge_base and update the config that names it
+summary: 'The public knowledge base repository is named OmniNode-ai/knowledge_base. This repository''s live surfaces (top-level documents, src/, scripts/ and .github/) name it by the new slug: the kb ADR publisher and kb repowise index nodes, their contracts, handlers and request model, the merge-sweep rules, the leaked-literals script, README and CONTRIBUTING. Captured fixtures under tests/fixtures are dated history and keep the old slug. AC1 (the rename) and AC3 (the workspace registry) are carried outside this repository.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-ac2
+  statement: No live config, script, workflow, node contract, handler or top-level document in omnimarket names the public knowledge base repository by its old slug.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: no live config, script or workflow in a canonical clone resolves the repo by the old slug -- falsifier: git grep -nP ''OmniNode-ai/knowledge-base(?!-internal)'' origin/dev origin/main in each registry clone prints a line outside dated history documents'
+evidence_requirements:
+- kind: tests
+  description: 'AC2 (omnimarket): no tracked top-level document or file under src/, scripts/ or .github/ names the public knowledge base by its old slug, and both kb node contracts name it by the underscore slug.'
+  command: uv run pytest tests/unit/test_public_kb_slug_omn20837.py -q -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20837-ac2-omnimarket
+  description: 'AC2 (omnimarket): no tracked top-level document or file under src/, scripts/ or .github/ names the public knowledge base by its old slug, and both kb node contracts name it by the underscore slug.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_public_kb_slug_omn20837.py -q -p no:randomly
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

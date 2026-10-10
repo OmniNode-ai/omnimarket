@@ -46,6 +46,7 @@ class ModelProjectionBackendReader(BaseModel):
     kind: Literal["projection_status_page"]
     route: str
     projection_slot: str
+    read_all_rows: bool = False
 
     @model_validator(mode="after")
     def _has_closed_reader_identity(self) -> ModelProjectionBackendReader:
@@ -180,6 +181,7 @@ class ProjectionTableConfig(BaseModel):
 
     topic: str
     table: str
+    route_aliases: tuple[str, ...] = ()
     schema_name: str = "public"
     # OMN-20152: the PHYSICAL schema of ``table`` in the dashboard database,
     # which the table read path (``projection/table_reader.py``) reads.
@@ -309,6 +311,10 @@ class ProjectionTableConfig(BaseModel):
 
     @model_validator(mode="after")
     def _backend_reader_ids_are_unique(self) -> ProjectionTableConfig:
+        if any(reader.read_all_rows for reader in self.backend_readers) and (
+            self.cursor_column is None or self.key_grain != "mutable"
+        ):
+            raise ValueError("read_all_rows requires a mutable exposure with a cursor")
         reader_ids = [reader.id for reader in self.backend_readers]
         if len(reader_ids) != len(set(reader_ids)):
             raise ValueError(

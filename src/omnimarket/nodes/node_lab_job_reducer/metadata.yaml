@@ -1,0 +1,25 @@
+name: node_lab_job_reducer
+version: "0.1.0"
+description: "Lab job reducer: pure transition function of the lab job supervisor"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_job_reducer: "omnimarket.nodes.node_lab_job_reducer"
+capabilities:
+  standalone: true
+  # false until the job orchestrator calls the handler in the runtime:
+  # auto-wiring prepares this node as SKIPPED, since it has no bus surface.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "lab-job", "fsm", "pure"]
+pack: "pipeline"
+display_name: "Lab Job Reducer"
+node_role: "reducer"

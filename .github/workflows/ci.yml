@@ -112,7 +112,7 @@ jobs:
   # there.
   route:
     name: Runner Route (OMN-18031)
-    uses: OmniNode-ai/omniclaude/.github/workflows/route-runner-reusable.yml@b6ba84ef6c9ba3f220204c3d672de1da5131132c
+    uses: OmniNode-ai/omnimarket/.github/workflows/route-runner-reusable.yml@01a0d1b3e7d7ba1a09012f9af245ba29afa000b5
     with:
       workflow_path: .github/workflows/ci.yml
     secrets:
@@ -305,6 +305,10 @@ jobs:
         run: uv run ruff check src/ tests/ benchmarks/
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
+      # OMN-18963: SYNC with the ci-summary-event-scope pre-commit hook.
+      # This strict lint job already gates CI Summary, including docs-only PRs.
+      - name: CI Summary external producer trigger parity
+        run: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
       - name: Stub implementation check
         run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
       - name: TODO format check
@@ -482,12 +486,44 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
+      - name: Typed decision shadow calibration (OMN-19136)
+        run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
+      # OMN-20838: dod_verify reads PR and commit facts from the canonical
+      # clone and the PR watcher's state; this fails when its read layer spawns
+      # gh for a read a local source holds. SYNC with pre-commit hook
+      # 'dod-verify-local-reads-guard'.
+      - name: dod_verify local reads guard (OMN-20838)
+        run: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
+      # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
+      - name: Same-model sibling quality gate (OMN-19215)
+        run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
+      # OMN-19032: paired with the non-dev-base-guard-regression pre-commit hook.
+      - name: Feature-base auto-merge refusal regression (OMN-19032)
+        run: uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit
+      # OMN-18932: keep the release bar paired with its pre-commit hook.
+      - name: D1 output-only release acceptance (OMN-18932)
+        run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-20282: paired with the work-ledger-principal-auth pre-commit hook.
+      - name: Work-ledger signature and operator-only consent
+        run: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
+      # OMN-20282: paired with the work-ledger-principal-cli pre-commit hook.
+      - name: Work-ledger signing configuration and bus round-trip
+        run: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.
       # SYNC with pre-commit hook 'omni-home-no-silent-default'.
       - name: OMNI_HOME no-silent-default gate (OMN-16856)
         run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
+      # OMN-19980: savings has one definition, in node_metering_summary_compute.
+      # Fails on a string literal feeding a baseline_model column, on a savings
+      # view whose live definition carries one, on 'claude-opus-4.1' outside the
+      # five frozen history migrations, and on SQL multiplying tokens by a price.
+      # Runs here, not only in the smart-selected suite, because it reads SQL and
+      # YAML that no import graph connects to the test.
+      - name: Single savings definition guard (OMN-19980)
+        run: uv run pytest tests/test_single_savings_definition.py -q -p no:randomly
       # OMN-19547 (golden-chain validation layer plan r4, Phase -1): every
       # contract that declares state_machine_version must carry only keys the
       # typed FSM models declare, load through ModelFSMSubcontract and pass
@@ -497,6 +533,17 @@ jobs:
       # SYNC with pre-commit hook 'walkable-state-machines'.
       - name: Walkable contract state machines gate (OMN-19547)
         run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
+      # OMN-17427: every node's derived dispatch ids fit the ModelDispatchRoute
+      # limits, and every contract auto-wires in-process through the infra
+      # runtime's real wire_from_manifest. omnimarket 0.4.308 shipped two nodes
+      # whose route ids exceeded route_id's max_length; the .201 dev lane runs
+      # ONEX_WIRING_STRICT_MODE=1 and crash-looped, while every CI boot ran
+      # non-strict and stayed green. Runs here, not only in the smart-selected
+      # suite, because a contract.yaml change has no import edge to the test.
+      # Shrink-only exception lists. SYNC with pre-commit hook
+      # 'node-auto-wiring-in-process' and the release workflows.
+      - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
+        run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,
@@ -780,6 +827,21 @@ jobs:
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
 
+      # OMN-19684: the full-suite shards run only the files `merge_test_durations.py
+      # plan` assigns them. This job already syncs the tree and finishes in about
+      # 100 s, so it also collects the whole tree once (86 s on a hosted runner),
+      # off the shards' critical path, and fails when the 20 plans are not an
+      # exact partition of the test files pytest collects: a file the planner's
+      # discovery missed would otherwise run in no shard and nothing else would
+      # notice. 20 is detect_test_paths._full_suite's split count; the partition
+      # property does not depend on it (tests/unit/test_ci_shard_plan_omn19684.py).
+      # It is not the integration-guard job: that job already runs 313-509 s and
+      # would become the slowest job of the run once the shards drop below it.
+      - name: Collect the whole tree once (OMN-19684)
+        run: uv run pytest tests/ --collect-only -q -m "not kafka" -p no:cacheprovider > collected.txt
+      - name: Prove the shard plans partition the collected files (OMN-19684)
+        run: python3 scripts/ci/merge_test_durations.py verify --splits 20 --collected collected.txt
+
   # ---------------------------------------------------------------------------
   # Detect Changes — emits matrix for test job (OMN-10759)
   # ---------------------------------------------------------------------------
@@ -945,11 +1007,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
@@ -1010,7 +1086,11 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
 
+      # OMN-19684: only the smart-selection step below still balances with
+      # pytest-split's `.test_durations`. The full-suite shards are planned from
+      # the committed config/test_file_durations.json and never read this cache.
       - name: Restore test durations cache
+        if: vars.ENABLE_SMART_TESTS == 'true' && needs.detect-changes.outputs.is_full_suite == 'false'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: .test_durations
@@ -1039,26 +1119,25 @@ jobs:
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml
 
-      # OMN-19684 follow-up: "Restore test durations cache" above restores the
-      # merged prior run's map to the unsuffixed `.test_durations`, but the
-      # balancer for THIS shard reads the split-scoped
-      # `--durations-path .test_durations.${{ matrix.split }}` below -- a path
-      # the restore step never wrote to. Without this copy every shard finds
-      # no durations file, pytest-split prints "No test durations found" and
-      # falls back to splitting by test count, so the balancer never actually
-      # balanced by duration. `--clean-durations` on the pytest step below
-      # then discards this copied-in full map before writing this shard's own
-      # results, so the uploaded `.test_durations.${{ matrix.split }}`
-      # artifact holds only the tests this shard ran -- matching
-      # merge_test_durations.py's one-shard-per-test-id invariant -- instead
-      # of a full copy of every other shard's stale timings that would raise
-      # a false collision there the next time a duration drifts.
-      - name: Seed shard durations file from merged cache (OMN-19684)
+      # OMN-19684: the full-suite shards are planned, not split by pytest-split.
+      # Live PR runs after the first duration-cache fix still spread 1.75-2.10x
+      # (job time, slowest over fastest of 20: runs 37932017787, 37933529792,
+      # 37934956505, 37940218989) for two reasons. The balancer input was a
+      # mutable cache a PR run may not see, and every shard collected the whole
+      # 40k-test tree (about 61 s on a lab host) before running its slice.
+      # `merge_test_durations.py plan` deals the test FILES to the shards
+      # longest-first from the committed config/test_file_durations.json, which
+      # is identical on every runner, and the shard hands pytest only its own
+      # files, so it also collects only those. The `Test Shard Plan`
+      # job proves against a real `pytest --collect-only` that the 20 plans are an
+      # exact partition of the collected files, so no file falls between shards.
+      - name: Plan this shard's test files (OMN-19684)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
         run: |
-          if [ -f .test_durations ]; then
-            cp .test_durations .test_durations.${{ matrix.split }}
-          fi
+          python3 scripts/ci/merge_test_durations.py plan \
+            --splits ${{ needs.detect-changes.outputs.split_count }} \
+            --group ${{ matrix.split }} > .shard_test_files
+          cat .shard_test_files
 
       - name: Run pytest (full suite)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
@@ -1066,9 +1145,9 @@ jobs:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
         run: |
-          uv run pytest tests/ \
-            --splits ${{ needs.detect-changes.outputs.split_count }} \
-            --group ${{ matrix.split }} \
+          mapfile -t shard_files < .shard_test_files
+          test "${#shard_files[@]}" -gt 0
+          uv run pytest "${shard_files[@]}" \
             --store-durations \
             --clean-durations \
             --durations-path .test_durations.${{ matrix.split }} \
@@ -1127,6 +1206,11 @@ jobs:
       # "no .test_durations.<split> files found" on every full-suite run. The
       # coverage-shard upload above (line ~1054) already sets this; mirrored
       # here for the same reason.
+      # Retention is 14 days so the committed config/test_file_durations.json can
+      # be refreshed from the artifacts of a recent full-suite run:
+      #   gh run download <run-id> -p 'test-durations-shard-*' -D <dir>
+      #   python3 scripts/ci/merge_test_durations.py record --artifacts-dir <dir> \
+      #     [--artifacts-dir <dir-of-another-run> ...]
       - name: Upload test durations artifact (OMN-19684)
         if: needs.detect-changes.outputs.is_full_suite == 'true' && success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -1135,7 +1219,7 @@ jobs:
           path: .test_durations.${{ matrix.split }}
           include-hidden-files: true
           if-no-files-found: warn
-          retention-days: 1
+          retention-days: 14
 
       - name: Upload test results
         if: always()
@@ -1175,7 +1259,7 @@ jobs:
           merge-multiple: true
       - name: Merge shard durations (OMN-19684)
         run: |
-          python3 scripts/ci/merge_test_durations.py \
+          python3 scripts/ci/merge_test_durations.py merge \
             --artifacts-dir .test-durations-artifacts \
             --output .test_durations
       - name: Save merged test durations cache
@@ -1377,11 +1461,25 @@ jobs:
       # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
       # matching server tools and fail before pytest if the required PG16
       # binaries are unavailable; a missing native proof must not self-skip.
+      # The runner image already ships PG16, so apt runs only when the tools are
+      # missing or not version 16, under network timeouts and a step timeout:
+      # an unbounded `apt-get update` once stalled a shard to the 90-minute job
+      # ceiling, so pytest never ran and its coverage artifact was lost.
       - name: Provision PostgreSQL 16 server tools for native migration proofs
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-16
           pg16_bin=/usr/lib/postgresql/16/bin
+          if test -x "${pg16_bin}/initdb" && \
+             test -x "${pg16_bin}/pg_ctl" && \
+             test -x "${pg16_bin}/psql" && \
+             "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'; then
+            echo "Using preinstalled PostgreSQL 16 server tools"
+          else
+            printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-ci-network-timeouts >/dev/null
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-16
+            echo "Installed PostgreSQL 16 server tools with apt"
+          fi
           for tool in initdb pg_ctl psql; do
             test -x "${pg16_bin}/${tool}"
           done
@@ -2398,6 +2496,35 @@ jobs:
           path: golden-chain-results.xml
 
   # ============================================================================
+  # GENERATED EVENT CHAINS (epic OMN-19546, golden-chain plan generation step)
+  # Fails when a contract change breaks a generated chain or adds a walker path
+  # with no chain. SYNC with pre-commit hook check-generated-event-chains.
+  # ============================================================================
+  event-chain-generation:
+    name: Generated Event Chains (walker paths)
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run generated event-chain gate
+        run: uv run pytest tests/chains/generated -v --tb=short -m unit -p no:cacheprovider
+
+  # ============================================================================
   # SEA ACCEPTANCE + SESSION-DEFECT ERROR CHAINS (OMN-12660)
   # Runs the SEA e2e acceptance chain and all session-defect error chains
   # (D3/D9/D1+D2/D4/F1) on every dev-targeting PR.
@@ -2984,7 +3111,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.65
+          ref: v0.38.69
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -3212,63 +3339,6 @@ jobs:
       - name: Census (informational)
         if: always()
         run: uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report || true
-
-  # ============================================================================
-  # OCC COMPANION MERGED GATE (OMN-15214 canary -> OMN-15221 omniclaude ->
-  # OMN-15427 omnimarket)
-  #
-  # omnimarket was the last CI repo without this gate, and the gap was observed
-  # live: omnimarket#1953's body cited `Evidence-Source: OCC#5487`, a companion
-  # CLOSED WITHOUT MERGING (superseded by the merged OCC#5497). The canonical
-  # arbiter returns FAIL for that body -- but omnimarket CI never ran it, so the
-  # PR looked green with a dead evidence citation and nothing noticed.
-  #
-  # This job polls the PR's LIVE body (not the event payload -- occ-autobind
-  # PATCHes Evidence-Source in after the trigger fires) and greens ONLY when
-  # EVERY cited OCC companion is MERGED, or every cited OCC commit SHA is an
-  # ancestor of onex_change_control dev/main. A companion CLOSED without merging
-  # fails immediately (that IS the incident state); an OPEN companion polls and
-  # converts to FAIL at the deadline (fail-closed).
-  #
-  # Enforcement, not detection: registered in STRICT_GATE_JOBS in
-  # scripts/ci/ci_summary_gate.py, so the REQUIRED `CI Summary` context cannot
-  # go green unless this job is present + completed + success (absent/skipped/
-  # cancelled all block). Deliberately NOT a new top-level required context: a
-  # context that does not report on every PR shape wedges merges indefinitely
-  # under branch protection (see CLAUDE.md, deploy-gate section); the umbrella's
-  # check-run always instantiates, so it has no such failure mode.
-  #
-  # Unconditional (no needs/if) so CI Summary always WAITS for it; internal
-  # event scoping no-ops on push/workflow_dispatch (mirrors occ-preflight).
-  # GitHub-hosted + pure gh-API polling against a PUBLIC repo
-  # (onex_change_control): zero self-hosted/LAN dependency and no cross-repo
-  # secret -- the default GITHUB_TOKEN reads public repos. The poll window
-  # absorbs autobind mint + companion auto-merge latency instead of converting
-  # them into instant reds.
-  # ============================================================================
-  occ-companion-merged:
-    name: OCC Companion Merged Gate (OMN-15214)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-      # Poll window (seconds) -- bounded well under ci-summary's 90m deadline so
-      # this gate reaches a terminal state first; PENDING converts to FAIL.
-      DEADLINE_SECONDS: "1500"
-      POLL_INTERVAL_SECONDS: "30"
-    steps:
-      - name: Checkout (gate script)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-        with:
-          persist-credentials: false
-      - name: Require every cited OCC companion to be merged before product merge
-        run: python3 scripts/ci/check_occ_companion_merged.py
 
   # ============================================================================
   # VERIFICATION HOLD GATE (OMN-15483)
@@ -3638,6 +3708,8 @@ jobs:
           # commit that never carries other workflows' check-runs.
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
           ACTOR: ${{ github.actor }}
+          # OMN-18963: external producers have different push branch filters.
+          REF_NAME: ${{ github.ref_name }}
           # Bounded poll window (minutes) — kept under the run-cancel window so
           # the required context always reaches a terminal state first.
           DEADLINE_MINUTES: "90"
@@ -3696,7 +3768,7 @@ jobs:
                 rm -f workflow_runs.json
               fi
             fi
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
@@ -3706,7 +3778,7 @@ jobs:
             esac
             if [ "$(date +%s)" -ge "${deadline}" ]; then
               echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
-              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}" --report-only || true
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}" --ref-name "${REF_NAME}" --report-only || true
               exit 1
             fi
             sleep "${POLL_INTERVAL_SECONDS}"

@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,19 @@ logger = logging.getLogger(__name__)
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {"tenant_inference_credentials", "delegation_routing_tenant_overlay"}
 )
+
+
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _optional_timestamp(value: object) -> datetime | None:
+    """``set_at`` as asyncpg binds a TIMESTAMPTZ: the event carries ISO text."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
 
 
 def _registered_plan(data: dict[str, Any]) -> str | None:
@@ -250,20 +264,27 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         rows = await self.db_for(self._table_credentials, operation="write").execute(
             f"""
             INSERT INTO {self._table_credentials} (
-              api_key_ref, tenant_id, name, provider, created_at
+              api_key_ref, tenant_id, name, provider, created_at,
+              fingerprint, set_at
             ) VALUES (
-              $1, $2, $3, $4, NOW()
+              $1, $2, $3, $4, NOW(), $5, $6
             )
             ON CONFLICT (api_key_ref) DO UPDATE SET
               tenant_id = EXCLUDED.tenant_id,
               name = EXCLUDED.name,
-              provider = EXCLUDED.provider
+              provider = EXCLUDED.provider,
+              fingerprint = COALESCE(EXCLUDED.fingerprint, {self._table_credentials}.fingerprint),
+              set_at = COALESCE(EXCLUDED.set_at, {self._table_credentials}.set_at)
             RETURNING api_key_ref, tenant_id, name, provider, created_at, revoked_at
             """,
             str(api_key_ref),
             str(tenant_id),
             str(name),
             str(provider),
+            # A locally set key carries both (0005); a hosted event does not,
+            # and COALESCE keeps a stored value rather than erasing it.
+            _optional_text(data.get("fingerprint")),
+            _optional_timestamp(data.get("set_at")),
             # OMN-15919: bind app.tenant_id to the tenant this statement
             # actually names. The adapter previously derived the GUC on its
             # own from resolve_read_tenant(None) -- a second resolver that

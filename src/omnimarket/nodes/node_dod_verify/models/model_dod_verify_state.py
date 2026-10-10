@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
+from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -352,6 +353,21 @@ class ModelProductClonePinSet(BaseModel):
     pins: tuple[ModelProductClonePin, ...] = Field(default=())
 
 
+class ModelCommandCheckFailure(BaseModel):
+    """Diagnostics observed from a completed nonzero command check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    exit_code: int
+    failing_test_ids: tuple[str, ...] = ()
+    first_error_line: str | None = None
+
+    def summary(self) -> str:
+        tests = ", ".join(self.failing_test_ids) or "<no test ids reported>"
+        error = self.first_error_line or "<no error line reported>"
+        return f"exit_code={self.exit_code}; tests={tests}; first_error={error}"
+
+
 class ModelEvidenceCheckResult(BaseModel):
     """Result of a single DoD evidence check."""
 
@@ -361,6 +377,9 @@ class ModelEvidenceCheckResult(BaseModel):
     description: str = Field(..., description="What was checked.")
     status: EnumEvidenceCheckStatus = Field(...)
     message: str | None = Field(default=None, description="Detail or error message.")
+    failure: ModelCommandCheckFailure | None = Field(
+        default=None, description="Nonzero command exit and test diagnostics."
+    )
     # OMN-16788: set ONLY on a SKIPPED result, and only when the skip is a
     # credential-reachability fact rather than a deliberate one. It is the
     # machine-checkable discriminator between the two kinds of SKIPPED that
@@ -568,6 +587,20 @@ class ModelDodVerifyState(BaseModel):
     contract_revision: UUID | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # OMN-20696: the contract the verdict was evaluated against. Omitted
+    # when unset so older consumers see the shape they saw before.
+    contract_source: EnumDodContractSource | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repository: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_commit_sha: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    contract_repo_path: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     # OMN-18901. When the run began and when its verdict was sealed.
     #
     # These are on the STATE, not only on the completed-event twin, because the
@@ -650,6 +683,10 @@ class ModelDodVerifyState(BaseModel):
     acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
     # OMN-17427: self-accepted bindings still awaiting acceptance by a second lane.
     acceptance_self_accepted_bindings: tuple[str, ...] = Field(default=())
+    acceptance_retired_bindings: tuple[str, ...] = Field(default=())
+    acceptance_refused_retirements: tuple[str, ...] = Field(default=())
+    # OMN-20070: declared criteria no evidence item binds through binds_ac.
+    acceptance_unbound_criteria: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was

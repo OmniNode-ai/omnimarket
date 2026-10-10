@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20738"
+title: "a typed read node for the database work ledger"
+summary: "node_work_ledger_query_effect reads omninode_internal.work_ledger_rows read-only and replays raw rows with the markdown ledger read verbs' rules. Every answer carries freshness and parity status, and a database error is returned in the error field, never as an empty answer."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1-replay"
+    statement: "The handler replays raw ledger rows with the markdown read verbs' rules over a synthetic fixture ledger."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The handler replays raw ledger rows with the markdown read verbs' rules over a synthetic fixture ledger."
+  - id: "req-ac2-freshness-parity"
+    statement: "Every answer carries freshness and the window's parity status."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: Every answer carries freshness and the window's parity status."
+  - id: "req-ac3-database-error"
+    statement: "A database error or reader error is returned once in the error field and never reads as no rows."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: A database error or reader error is returned once in the error field and never reads as no rows."
+  - id: "req-ac4-contract-dispatch"
+    statement: "The contract declares the command and terminal topics and the node dispatches through the real runtime."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: The contract declares the command and terminal topics and the node dispatches through the real runtime."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: The handler replays raw ledger rows with the markdown read verbs' rules over a synthetic fixture ledger."
+    command: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"work_ledger_query_golden_chain and not rulings and not newest and not freshness and not not_exact and not database_error and not continuation and not contract_topics and not real_runtime and not prefixed\" -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: Every answer carries freshness and the window's parity status."
+    command: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"freshness_and_parity or not_exact_receipt_wins\" -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: A database error or reader error is returned once in the error field and never reads as no rows."
+    command: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"database_error_is_not_an_empty_answer or reader_error_is_not_prefixed_twice\" -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: The contract declares the command and terminal topics and the node dispatches through the real runtime."
+    command: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"contract_topics or real_runtime_typed_dispatch\" -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20738-ac1-replay"
+    description: "AC1: The handler replays raw ledger rows with the markdown read verbs' rules over a synthetic fixture ledger."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"work_ledger_query_golden_chain and not rulings and not newest and not freshness and not not_exact and not database_error and not continuation and not contract_topics and not real_runtime and not prefixed\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20738-ac2-freshness-parity"
+    description: "AC2: Every answer carries freshness and the window's parity status."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"freshness_and_parity or not_exact_receipt_wins\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20738-ac3-database-error"
+    description: "AC3: A database error or reader error is returned once in the error field and never reads as no rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"database_error_is_not_an_empty_answer or reader_error_is_not_prefixed_twice\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20738-ac4-contract-dispatch"
+    description: "AC4: The contract declares the command and terminal topics and the node dispatches through the real runtime."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_work_ledger_query.py -k \"contract_topics or real_runtime_typed_dispatch\" -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

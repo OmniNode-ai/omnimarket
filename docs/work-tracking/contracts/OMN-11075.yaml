@@ -32,4 +32,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import HandlerDelegateSkill; from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import ModelDelegateSkillResponse; from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import PortRuntimeDelegationDispatch; print(HandlerDelegateSkill.__name__, ModelDelegateSkillResponse.__name__, PortRuntimeDelegationDispatch.__name__)\""
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import HandlerDelegateSkill; from omnimarket.models.delegation.wire.model_delegate_skill_response import ModelDelegateSkillResponse; from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import PortRuntimeDelegationDispatch; print(HandlerDelegateSkill.__name__, ModelDelegateSkillResponse.__name__, PortRuntimeDelegationDispatch.__name__)\""

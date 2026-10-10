@@ -4,14 +4,18 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 from typing import Any, get_args
 
 import pytest
 import yaml
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     load_runtime_delegation_dispatch_config,
@@ -26,6 +30,36 @@ _NODE_DIR = (
 )
 _CONTRACT_PATH = _NODE_DIR / "contract.yaml"
 _METADATA_PATH = _NODE_DIR / "metadata.yaml"
+
+
+@pytest.mark.unit
+def test_contract_resolves_canonical_wire_models_without_shims() -> None:
+    contract = _load_contract()
+    for declaration, model in (
+        (contract["input_model"], ModelDelegateSkillRequest),
+        (contract["output_model"], ModelDelegateSkillResponse),
+        (
+            contract["handler_routing"]["handlers"][0]["event_model"],
+            ModelDelegateSkillRequest,
+        ),
+    ):
+        assert declaration["module"] == model.__module__
+        assert (
+            getattr(import_module(declaration["module"]), declaration["name"]) is model
+        )
+
+    assert contract["handler"]["input_model"] == (
+        f"{ModelDelegateSkillRequest.__module__}.{ModelDelegateSkillRequest.__name__}"
+    )
+    for module_name in (
+        "model_delegate_skill_request",
+        "model_delegate_skill_response",
+    ):
+        assert not (_NODE_DIR / "models" / f"{module_name}.py").exists()
+        with pytest.raises(ModuleNotFoundError):
+            import_module(
+                f"omnimarket.nodes.node_delegate_skill_orchestrator.models.{module_name}"
+            )
 
 
 def _load_contract() -> dict[str, Any]:
@@ -77,8 +111,12 @@ def test_contract_declares_delegation_runtime_dispatch_config() -> None:
     config = load_runtime_delegation_dispatch_config(_CONTRACT_PATH)
 
     assert config.topics.command == "onex.cmd.omnibase-infra.delegation-request.v1"
-    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v1"
-    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed.v1"
+    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v2"
+    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed-routed.v2"
+    assert (
+        config.topics.failed_unrouted
+        == "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
+    )
     assert config.request_message_type == "omnibase-infra.delegation-request"
     assert config.source_tool == "delegate-skill-runtime-port"
     assert config.consumer_group_prefix == "delegate-skill-runtime-port"
@@ -167,8 +205,14 @@ def test_contract_declares_cross_repo_dependencies() -> None:
     assert dep["node"] == "node_delegation_orchestrator"
     assert dep["contract_name"] == "node_delegation_orchestrator"
     assert "onex.cmd.omnibase-infra.delegation-request.v1" in dep["required_topics"]
-    assert "onex.evt.omnibase-infra.delegation-completed.v1" in dep["terminal_events"]
-    assert "onex.evt.omnibase-infra.delegation-failed.v1" in dep["terminal_events"]
+    assert "onex.evt.omnibase-infra.delegation-completed.v2" in dep["terminal_events"]
+    assert (
+        "onex.evt.omnibase-infra.delegation-failed-routed.v2" in dep["terminal_events"]
+    )
+    assert (
+        "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
+        in dep["terminal_events"]
+    )
     model_names = {m["name"] for m in dep["required_models"]}
     assert "ModelDelegationRequest" in model_names
 

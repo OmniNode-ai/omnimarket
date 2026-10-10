@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Re-export of the shared lane-liveness models.
+"""Re-export of the shared lane-liveness models (OMN-20604).
 
-The models moved to ``omnimarket.models.model_lane_liveness`` so the gather and
-alert nodes can share them without importing this node's package. This module
-keeps the path the contract's ``input_model`` names.
+The models live in ``omnimarket.models.liveness``. This path stays because the
+node's contract names it; other nodes import from the shared package.
 """
 
-from omnimarket.models.model_lane_liveness import (
+from omnimarket.models.liveness.model_lane_liveness import (
     EnumEvidenceBasis,
     EnumLaneVerdict,
     EnumRelayState,

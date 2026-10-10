@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17122"
+title: "The delegate-skill node resolves canonical delegation wire models without shims"
+summary: "The delegate-skill request and response shim modules are deleted and the node contract resolves the canonical omnimarket.models.delegation.wire models. AC1 is bound to the node contract tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-canonical-wire-models-without-shims"
+    statement: "The node contract references canonical wire models and the deleted shim modules no longer import. The criterion below is the one the contract tests cover; its id is the label the binding item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the delegate-skill node contract resolves the canonical wire models and the deleted shim modules fail to import -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: no module under src/ or tests/ imports the removed delegate-skill shim modules -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_removed_shim_imports_omn17122.py -q in omnimarket"
+      - id: "AC3"
+        statement: "AC3: platform backend UUIDs hash the backend reference, so two local rungs sharing a model id get distinct selected_backend_id values -- falsifier: uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The node contract tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17122-ac1-canonical-wire-models"
+    description: "AC1 hosted probe. The node contract resolves the canonical wire models without shims."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn17122-ac2-no-removed-shim-imports"
+    description: "AC2 hosted probe. An AST scan of src/ and tests/ finds no import of the removed delegate-skill shim modules."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_removed_shim_imports_omn17122.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn17122-ac3-distinct-backend-uuids"
+    description: "AC3 hosted probe. Backend UUIDs for rungs sharing a model id are distinct, repeated requests are stable, and tenant-qualified UUIDs are unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

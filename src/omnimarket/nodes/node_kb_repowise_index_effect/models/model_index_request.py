@@ -12,7 +12,7 @@ class ModelKBRepoIndexRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kb_repo: str = Field(
-        default="OmniNode-ai/knowledge-base",
+        default="OmniNode-ai/knowledge_base",
         description="GitHub repo slug for the knowledge-base repo",
     )
     dry_run: bool = Field(

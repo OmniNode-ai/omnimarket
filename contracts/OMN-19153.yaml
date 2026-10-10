@@ -1,0 +1,30 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19153"
+title: "Prevent the retired DoD verify-completed topic from bypassing drift checks"
+summary: "The event-registry drift baseline no longer exempts the retired duplicate DoD verify-completed topic and event type, and the validator CLI is proven to reject a reintroduced retired event while accepting the surviving spelling. AC1 is bound to the focused regression test. The ticket is partial: AC2 live projection readback is not claimed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-retired-dod-topic-drift-gate"
+    statement: "The retired duplicate DoD verify-completed spelling is not exempted in the drift baseline, and the drift validator reports both its topic and event type when it is reintroduced. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the retirement regression tests pass at the head -- falsifier: uv run pytest tests/test_omn19153_emit_daemon_drops_duplicate_dod_verify_topic.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The retirement regression tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn19153_emit_daemon_drops_duplicate_dod_verify_topic.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19153-ac1-retirement-tests"
+    description: "AC1 hosted probe. The retirement regression tests pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19153_emit_daemon_drops_duplicate_dod_verify_topic.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

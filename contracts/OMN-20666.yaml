@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20666"
+title: "Readiness probes on a reused projection connection no longer fail on an empty tenant setting"
+summary: "A reused projection read connection keeps an empty app.tenant_id after its scoped transaction ends. The readiness probe runs in a read-only transaction and sets a valid transaction-local tenant UUID for tenant-bound zero-row schema probes, so /ready stays 200 when the table and migration exist."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-readiness-probe-survives-connection-reuse"
+    statement: "A zero-row readiness probe on a connection that already served a scoped transaction does not raise InvalidTextRepresentationError and does not leave a tenant context behind. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a readiness probe issued on a reused connection after a scoped transaction reports the acceptance-eval relation ready and leaves no tenant setting behind -- falsifier: uv run pytest tests/unit/projection/test_readiness_reused_tenant_context.py -q in omnimarket fails at the merge base with projection_database_unavailable"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The reused-connection readiness regression passes at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/projection/test_readiness_reused_tenant_context.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20666-ac1-readiness-reused-connection"
+    description: "AC1 hosted probe. The reused-connection readiness regression passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_readiness_reused_tenant_context.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

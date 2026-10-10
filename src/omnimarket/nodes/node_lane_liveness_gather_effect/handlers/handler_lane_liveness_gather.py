@@ -24,7 +24,7 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_lane_liveness import (
+from omnimarket.models.liveness.model_lane_liveness import (
     ModelLaneLivenessRequest,
     ModelLaneObservation,
 )

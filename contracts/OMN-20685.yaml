@@ -1,0 +1,58 @@
+schema_version: "1.0.0"
+ticket_id: OMN-20685
+title: "Decide the plugin hook refusal row in a canonical compute node"
+summary: >
+  Shard 2a of the hook guard family: the refusal recorder's pure decision
+  (redaction, reason normalisation, dedupe key, ledger row) becomes
+  node_hook_refusal_row_compute, a contract-declared compute node with a
+  definition-B handler, ported without a behaviour change and proven against a
+  golden captured from the recorder it replaces. The recorder itself, its
+  callers and its state and ledger effects are unchanged in this shard; the
+  effect node, the caller repoint and the deletion of the old entry point are
+  later shards.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-row-parity"
+    statement: |-
+      The hook refusal row compute node decides the same redacted, deduplicated ledger row as the recorder it ports.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: For every one of the 144 golden cases captured from the recorder, node_hook_refusal_row_compute returns the recorded guard, reason, detail, key and row -- falsifier: the golden and error chain tests fail when the handler is absent or any field differs
+  - id: "req-claim-registry-parity"
+    statement: |-
+      The PR claim registry effect node takes, keeps, refreshes and releases the same claims, and reports the same lines, as the hook library module it ports.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: For every one of the 841 golden cases captured from the pr_claim_registry module, node_pr_claim_registry_effect returns the recorded outcome and messages and leaves the claims directory as recorded -- falsifier: the golden test fails when the handler is absent or any case differs
+evidence_requirements:
+  - kind: tests
+    description: "The node decides the same row as the recorder for every golden case, and its golden and error chains pass"
+    command: "uv run pytest tests/test_hook_refusal_row_compute.py tests/test_golden_chain_hook_refusal_row.py -q"
+  - kind: tests
+    description: "The registry effect leaves the same claims directory and reports the same lines as the module for every golden case, and its golden and error chains pass"
+    command: "uv run pytest tests/test_pr_claim_registry_effect.py tests/test_golden_chain_pr_claim_registry.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-hook-refusal-row-parity
+    description: "node_hook_refusal_row_compute returns the recorder's recorded guard, reason, detail, key and row for every golden case"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_hook_refusal_row_compute.py tests/test_golden_chain_hook_refusal_row.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: dod-pr-claim-registry-parity
+    description: "node_pr_claim_registry_effect matches the recorded outcome, messages and claims directory of the pr_claim_registry module for every golden case"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_pr_claim_registry_effect.py tests/test_golden_chain_pr_claim_registry.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

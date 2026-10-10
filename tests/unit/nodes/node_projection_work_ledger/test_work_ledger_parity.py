@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
     apply_ops,
     fold_row,
@@ -24,7 +25,6 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parit
 from omnimarket.nodes.node_projection_work_ledger.parity import (
     compare,
     main,
-    split_rows,
 )
 
 pytestmark = pytest.mark.unit
@@ -60,13 +60,13 @@ def _canonical(rows: list[str]) -> list[str]:
 
 
 def test_split_rows_groups_continuation_lines() -> None:
-    rows = split_rows(LEDGER)
+    rows = split_ledger_rows(LEDGER)
     assert len(rows) == 5
     assert rows[3].endswith("with a continuation line")
 
 
 def test_a_faithful_projection_has_zero_mismatches() -> None:
-    file_rows = split_rows(LEDGER)
+    file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     report = compare(
         file_rows=file_rows,
@@ -83,7 +83,7 @@ def test_a_faithful_projection_has_zero_mismatches() -> None:
 
 
 def test_a_row_deleted_from_the_projection_is_named() -> None:
-    file_rows = split_rows(LEDGER)
+    file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     lost = next(k for k in log if k)
     del log[lost]
@@ -101,7 +101,7 @@ def test_a_row_deleted_from_the_projection_is_named() -> None:
 
 
 def test_a_row_only_in_the_projection_is_named() -> None:
-    file_rows = split_rows(LEDGER)
+    file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     log["f" * 64] = "2026-09-28T12:00:00Z"
     report = compare(
@@ -117,7 +117,7 @@ def test_a_row_only_in_the_projection_is_named() -> None:
 
 
 def test_a_wrong_close_time_is_a_state_mismatch() -> None:
-    file_rows = split_rows(LEDGER)
+    file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     state["claim:alpha"]["closed_at"] = datetime(2026, 9, 28, 10, 45, tzinfo=UTC)
     report = compare(
@@ -144,7 +144,7 @@ def test_cli_exit_codes_and_typed_json(
 ) -> None:
     ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
     ledger.write_text(LEDGER)
-    file_rows = split_rows(LEDGER)
+    file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     export = tmp_path / "projection.json"
     export.write_text(

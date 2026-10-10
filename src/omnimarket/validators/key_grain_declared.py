@@ -70,6 +70,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
+from omnimarket.projection.discovery import build_projection_topic_map
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -80,12 +82,16 @@ DEFAULT_NODES_ROOT = Path("src/omnimarket/nodes")
 #: alongside that node's in-package ``tests/`` directory.
 DEFAULT_TESTS_ROOT = Path("tests")
 
-#: Exposures the scan must find before a verdict means anything. Measured at
-#: 65 on dev when this gate was written; the floor sits below that so that
-#: honest removals do not trip it, and far above the handful a mis-rooted run
-#: would enumerate. A gate over a collapsed set proves nothing, and reporting
-#: green over one is the failure class epic OMN-18906 exists to close.
-DEFAULT_MIN_EXPECTED_EXPOSURES = 55
+#: Measured through the runtime loader after integrating the serving repair:
+#: 71 served exposures at 2754b4b11. The removal margin is 10 exposures,
+#: preserving the original 65 - 55 margin while measuring the served set.
+#: Re-measure this count and derive the floor when the serving set changes;
+#: a collapsed scan must never become a clean verdict.
+DEFAULT_MEASURED_EXPOSURES = 71
+DEFAULT_EXPOSURE_REMOVAL_MARGIN = 10
+DEFAULT_MIN_EXPECTED_EXPOSURES = (
+    DEFAULT_MEASURED_EXPOSURES - DEFAULT_EXPOSURE_REMOVAL_MARGIN
+)
 
 #: The keyword whose constancy is the defect: the ORDERING component of the
 #: source coordinate.
@@ -167,8 +173,8 @@ def _exposure_sections(projection_api: object) -> list[dict[str, object]]:
     return [projection_api]
 
 
-def collect_exposures(nodes_root: Path) -> list[Exposure]:
-    """Every exposed projection exposure declared under ``nodes_root``."""
+def _collect_declared_exposures(nodes_root: Path) -> list[Exposure]:
+    """Declarations, including exposures the runtime loader will reject."""
     exposures: list[Exposure] = []
     for contract in sorted(nodes_root.glob("*/contract.yaml")):
         try:
@@ -189,6 +195,64 @@ def collect_exposures(nodes_root: Path) -> list[Exposure]:
                 )
             )
     return exposures
+
+
+@dataclass
+class _Contract:
+    """Directory identity keeps loader results tied to their writer corpus."""
+
+    name: str
+    contract_path: Path
+
+
+@dataclass(frozen=True)
+class _Manifest:
+    contracts: tuple[_Contract, ...]
+
+
+def collect_exposures(nodes_root: Path) -> list[Exposure]:
+    """The serving loader's exposure set, with the gate's directory identity.
+
+    Supply the same contract files runtime discovery reads to its public topic
+    map builder. Only the tracing name is the directory name, so findings still
+    locate the writer and its tests. The loader owns schema validation, both
+    exposure shapes and duplicate-topic selection; this gate duplicates none
+    of those serving decisions.
+    """
+    manifest = _Manifest(
+        contracts=tuple(
+            _Contract(path.parent.name, path)
+            for path in sorted(nodes_root.glob("*/contract.yaml"))
+        )
+    )
+    return [
+        Exposure(
+            node=cfg.source_contract,
+            topic=topic,
+            key_grain=cfg.key_grain,
+            contract_path=str(nodes_root / cfg.source_contract / "contract.yaml"),
+        )
+        for topic, cfg in build_projection_topic_map(manifest).items()
+    ]
+
+
+def _dropped_exposure_findings(
+    nodes_root: Path, exposures: Sequence[Exposure]
+) -> list[Finding]:
+    """A declaration the loader dropped is a refusal, never a smaller scan."""
+    served = {(exposure.node, exposure.topic) for exposure in exposures}
+    return [
+        Finding(
+            exposure.node,
+            exposure.topic,
+            "declared_exposure_not_loaded",
+            f"declares a projection exposure in {exposure.contract_path} "
+            "that the runtime loader does not serve. Reconcile the contract "
+            "with the loader; its exclusion is not a grain exemption.",
+        )
+        for exposure in _collect_declared_exposures(nodes_root)
+        if (exposure.node, exposure.topic) not in served
+    ]
 
 
 def _constant_coordinate_sites(node_dir: Path) -> list[str]:
@@ -349,7 +413,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     tests_root = Path(args[1]) if len(args) > 1 else DEFAULT_TESTS_ROOT
     minimum = int(args[2]) if len(args) > 2 else DEFAULT_MIN_EXPECTED_EXPOSURES
 
-    exposures = collect_exposures(nodes_root)
+    try:
+        exposures = collect_exposures(nodes_root)
+    except ValueError as exc:
+        sys.stderr.write(f"[key-grain-declared] FAIL (runtime loader): {exc}\n")
+        return 1
+    dropped = _dropped_exposure_findings(nodes_root, exposures)
 
     if len(exposures) < minimum:
         sys.stderr.write(
@@ -359,6 +428,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"nothing, so this is read as a broken scan rather than a clean "
             f"tree.\n"
         )
+        for finding in dropped:
+            sys.stderr.write(
+                f"  - [{finding.code}] {finding.node} {finding.topic}\n"
+                f"      {finding.detail}\n"
+            )
+        return 1
+
+    # Loader omissions cannot be fenced: set parity is a precondition of the
+    # grain checks, not another exemption that can be added to their table.
+    if dropped:
+        sys.stderr.write(
+            f"[key-grain-declared] FAIL: {len(dropped)} declared projection "
+            f"exposure(s) not loaded, of {len(exposures)} served.\n"
+        )
+        for finding in dropped:
+            sys.stderr.write(
+                f"  - [{finding.code}] {finding.node} {finding.topic}\n"
+                f"      {finding.detail}\n"
+            )
         return 1
 
     findings = evaluate(exposures, nodes_root=nodes_root, tests_root=tests_root)

@@ -35,6 +35,13 @@ class ModelMeteringSummaryRow(BaseModel):
     spend_usd: str | None
     counterfactual_usd: str | None
     savings_usd: str | None
+    # savings_usd over runs_measured, to the millionth; null when savings_usd is.
+    savings_per_measured_run_usd: str | None
+    # OMN-20226: raw over compressed input tokens, and runs answered from the
+    # semantic cache over runs_total. Null until a producer measures them.
+    compression_ratio: str | None
+    cache_hit_rate: str | None
+    runs_cache_answered: int | None
     summary_json: str
 
     @model_validator(mode="after")

@@ -30,7 +30,6 @@ from types import ModuleType
 from uuid import uuid4
 
 import pytest
-import yaml
 from click.testing import CliRunner
 
 from omnimarket.events.occ_companion import EnumOccBatchMode
@@ -41,7 +40,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
 _ROOT = Path(__file__).resolve().parents[4]
 _PUBLISHER = _ROOT / "scripts" / "publish_occ_autobind_command.py"
 _REMINT = _ROOT / "scripts" / "ci" / "occ_conflicted_companion_remint.py"
-_AUTOBIND_WORKFLOW = _ROOT / ".github" / "workflows" / "call-occ-autobind.yml"
 _REPO = "OmniNode-ai/omnimarket"
 _TICKET = "OMN-16336"
 _ENV = {
@@ -135,29 +133,6 @@ def test_explicit_off_flag_is_loud() -> None:
     assert result.exit_code == 0, result.output
     assert "::warning::" in result.output
     assert '"occ_batch_mode": "off"' in result.output
-
-
-@pytest.mark.unit
-def test_autobind_workflow_hands_the_flag_through_with_no_default() -> None:
-    text = _AUTOBIND_WORKFLOW.read_text(encoding="utf-8")
-    code = "\n".join(
-        line for line in text.splitlines() if not line.lstrip().startswith("#")
-    )
-    assert "OMNI_OCC_COMPANION_BATCH_MODE ||" not in code
-    assert "--batch-mode" not in code
-    workflow = yaml.safe_load(text)
-    publish_env = next(
-        step["env"]
-        for step in workflow["jobs"]["publish-occ-autobind"]["steps"]
-        if "OCC_COMPANION_BATCH_MODE" in (step.get("env") or {})
-    )
-    assert publish_env["OCC_COMPANION_BATCH_MODE"] == (
-        "${{ vars.OMNI_OCC_COMPANION_BATCH_MODE }}"
-    )
-    assert "closed" in workflow[True]["pull_request"]["types"]
-    gate = workflow["jobs"]["publish-occ-autobind"]["if"]
-    assert "vars." not in gate
-    assert "!github.event.pull_request.merged" in gate
 
 
 @pytest.mark.unit

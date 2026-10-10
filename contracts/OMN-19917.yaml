@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19917"
+title: "onex dashboard serves the OmniDash pages from a checksum-pinned bundle"
+summary: "`onex dashboard` downloads the prebuilt OmniDash bundle named by [tool.onex.dashboard_bundle], refuses any copy whose sha256 is not the pinned one, and serves the pages next to the projection routes so the served root returns 200. Plan task T2.9, decision D8 ruled (a). The bundle is published by OmniNode-ai/omnidash's publish-dashboard-bundle.yml on a vX.Y.Z tag; the pin lives in this repository because the asset's own published .sha256 is replaceable by anyone able to replace the asset."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pinned-bundle-served-and-verified"
+    statement: "The serving path downloads the pinned bundle once, re-verifies its digest on every start, refuses a copy that does not match instead of repairing it, and registers the page routes so they cannot shadow the projection API. The criteria below are labeled so the binding items can claim them through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the repository pins a bundle whose digest is a sha256 and whose pin travels inside the wheel, and a pin that is absent, malformed or incomplete is refused with a sentence naming what is missing -- falsifier: env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q in omnimarket, which at the merge base cannot collect because the module does not exist there"
+      - id: "AC2"
+        statement: "AC2: a bundle whose bytes do not match the pin is refused rather than re-downloaded, and a member that escapes the extraction directory or is a link is refused even when the digest matches -- falsifier: the same suite, whose tamper and escaping-member cases fail if the digest is trusted once instead of on every start"
+      - id: "AC3"
+        statement: "AC3: the served root returns the bundle's index.html, a client route falls back to index.html, a missing suffixed asset is a 404 rather than HTML, and a page route cannot shadow /projection -- falsifier: the same suite, whose route-order case fails if the catch-all registers before the projection routes"
+evidence_requirements:
+  - kind: "tests"
+    description: "The pin, the refusals and the route order, proven by the suite this PR adds."
+    command: "env -u PYTHONPATH uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19917-pin-shape-and-wheel"
+    description: "AC1 hosted probe. The pin is well formed, ships inside the wheel, and an unusable pin is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19917-refuses-wrong-bytes"
+    description: "AC2 hosted probe. A tampered cache and an escaping member are both refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q -k 'tamper or escap or cache'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19917-pages-beside-api"
+    description: "AC3 hosted probe. The root serves the page, a client route falls back, a missing asset is a 404, and the API is not shadowed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_omn19917.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

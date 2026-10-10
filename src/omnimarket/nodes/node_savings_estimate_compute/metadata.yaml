@@ -1,0 +1,25 @@
+name: node_savings_estimate_compute
+version: "1.0.0"
+description: "Pure estimate of historical prompts' savings through the delegate — rows typed ESTIMATED, never summed with measured savings"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_savings_estimate_compute: "omnimarket.nodes.node_savings_estimate_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "savings", "estimate", "deterministic"]
+pack: "core"
+display_name: "Savings Estimate"
+node_role: "compute"
+tickets: ["OMN-19979"]

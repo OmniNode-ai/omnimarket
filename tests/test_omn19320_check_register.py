@@ -38,10 +38,12 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 from omnimarket.ranges import (
     DEFAULT_CHECK_REGISTER_PATH,
     FALSE_PASS_ID_PREFIX,
+    FALSE_REFUSAL_ID_PREFIX,
     GATE_ID_PREFIX,
     REQUIRED_FALSE_PASS_CLASSES,
     REQUIRED_GATE_CHECKS,
     required_check_ids,
+    required_sample_size,
     validate_check_register,
 )
 
@@ -228,13 +230,15 @@ class TestRequiredDelegationAcceptanceEntries:
         assert completed.returncode != 0
         output = completed.stdout + completed.stderr
         assert "delegation.acceptance.false_pass.test" in output
+        assert "delegation.acceptance.false_refusal.test" in output
         assert "delegation.acceptance.gate.numbers_grounded" in output
 
+    @pytest.mark.parametrize("prefix", [FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX])
     @pytest.mark.parametrize("class_name", REQUIRED_FALSE_PASS_CLASSES)
     def test_a_required_false_pass_range_may_not_be_not_set(
-        self, class_name: str
+        self, prefix: str, class_name: str
     ) -> None:
-        check_id = FALSE_PASS_ID_PREFIX + class_name
+        check_id = prefix + class_name
         document = _register(
             {
                 "check_id": check_id,
@@ -259,8 +263,9 @@ class TestRequiredDelegationAcceptanceEntries:
         errors = validate_check_register(document, required=(check_id,))
         assert any(check_id in error and "must be a gate" in error for error in errors)
 
-    def test_a_required_false_pass_entry_may_not_be_a_gate(self) -> None:
-        check_id = FALSE_PASS_ID_PREFIX + "test"
+    @pytest.mark.parametrize("prefix", [FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX])
+    def test_a_required_false_pass_entry_may_not_be_a_gate(self, prefix: str) -> None:
+        check_id = prefix + "test"
         document = _register(_gate(check_id))
         assert validate_check_register(document) == []
         errors = validate_check_register(document, required=(check_id,))
@@ -269,8 +274,12 @@ class TestRequiredDelegationAcceptanceEntries:
     def test_required_ids_are_gates_then_false_pass_ranges(self) -> None:
         assert required_check_ids() == tuple(
             GATE_ID_PREFIX + name for name in REQUIRED_GATE_CHECKS
-        ) + tuple(FALSE_PASS_ID_PREFIX + name for name in REQUIRED_FALSE_PASS_CLASSES)
-        assert len(required_check_ids()) == 41
+        ) + tuple(
+            prefix + name
+            for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
+            for name in REQUIRED_FALSE_PASS_CLASSES
+        )
+        assert len(required_check_ids()) == 49
 
     def test_the_committed_register_passes_with_all_required_entries(self) -> None:
         document = yaml.safe_load(
@@ -305,6 +314,89 @@ class TestRequiredDelegationAcceptanceEntries:
                 "incomplete_run_treatment": "count_as_failure",
             }, check_id
 
+    def test_the_committed_false_refusal_ranges_have_the_full_declared_line(
+        self,
+    ) -> None:
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        entries = {
+            entry["check_id"]: entry
+            for entry in document["checks"]
+            if entry["check_id"].startswith(FALSE_REFUSAL_ID_PREFIX)
+        }
+        assert set(entries) == {
+            FALSE_REFUSAL_ID_PREFIX + name for name in REQUIRED_FALSE_PASS_CLASSES
+        }
+        for check_id, entry in entries.items():
+            assert entry["check_class"] == "range", check_id
+            assert entry["range_status"] == "declared", check_id
+            line = entry["acceptance_line"]
+            assert line["check_id"] == check_id
+            assert line["floor"] == 0.80, check_id
+            assert line["window"] == "trailing 30 days", check_id
+            assert "refused delegation gate decisions" in line["case_set"], check_id
+            assert "excluding ruled no-target refusals" in line["case_set"], check_id
+            assert entry["blocks"] == [
+                f"routing read of the {check_id.removeprefix(FALSE_REFUSAL_ID_PREFIX)} acceptance eval"
+            ]
+            assert line["method"] == {
+                "sample_size": required_sample_size(
+                    floor=0.80, confidence=0.95, power=0.8, margin=0.12
+                ),
+                "confidence": 0.95,
+                "power": 0.8,
+                "margin": 0.12,
+                "incomplete_run_treatment": "count_as_failure",
+            }, check_id
+
+    @pytest.mark.parametrize("check_id", required_check_ids())
+    def test_removing_any_required_entry_is_refused(self, check_id: str) -> None:
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        document["checks"] = [
+            entry for entry in document["checks"] if entry["check_id"] != check_id
+        ]
+        assert validate_check_register(document, required=required_check_ids()) == [
+            f"{check_id}: required delegation-acceptance check has no register entry"
+        ]
+
+    def test_underpowered_acceptance_ranges_fail_naming_every_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Synthetic mutant of the register; no lab content enters the fixture."""
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        expected_errors = []
+        for entry in document["checks"]:
+            check_id = entry["check_id"]
+            if not check_id.startswith((FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)):
+                continue
+            line = entry["acceptance_line"]
+            method = line["method"]
+            required_n = required_sample_size(
+                floor=line["floor"],
+                margin=method["margin"],
+                confidence=method["confidence"],
+                power=method["power"],
+            )
+            method["sample_size"] = required_n - 1
+            expected_errors.append(
+                f"{check_id}: declared n={required_n - 1} was not sized by "
+                f"the power analysis: required n={required_n}"
+            )
+        assert len(expected_errors) == 14
+        assert validate_check_register(document, required=required_check_ids()) == (
+            expected_errors
+        )
+        completed = _cli(tmp_path, document)
+        assert completed.returncode != 0
+        output = completed.stdout + completed.stderr
+        for error in expected_errors:
+            assert error in output
+
 
 class TestRequiredDelegationAcceptanceInventory:
     def test_gate_checks_match_the_quality_gate_inventory(self) -> None:
@@ -320,7 +412,7 @@ class TestRequiredDelegationAcceptanceInventory:
             }
         )
         assert gate_checks
-        assert len(gate_checks) == 34
+        assert len(gate_checks) == 35
         assert tuple(sorted(gate_checks)) == REQUIRED_GATE_CHECKS
 
     def test_false_pass_classes_match_the_seven_acceptance_classes(self) -> None:

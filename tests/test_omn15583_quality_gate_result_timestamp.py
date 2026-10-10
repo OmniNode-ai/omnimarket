@@ -80,6 +80,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.envelope import envelope_event_timestamp, unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    mock_tenant_registry,
+)
 
 _TopicOf = Callable[["DelegationProjectionRunner"], str]
 _Builder = Callable[..., dict[str, Any]]
@@ -163,6 +167,7 @@ def _delegation_completed_delivery(*, correlation_id: str) -> dict[str, Any]:
 
 def _delegate_skill_terminal_delivery(*, correlation_id: str) -> dict[str, Any]:
     return {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "status": "completed",
         "correlation_id": correlation_id,
         "task_type": "code-review",
@@ -176,7 +181,7 @@ def _delegate_skill_terminal_delivery(*, correlation_id: str) -> dict[str, Any]:
 def _mock_db() -> AsyncMock:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=[])
-    db.fetchval = AsyncMock(return_value=None)
+    mock_tenant_registry(db)
     return db
 
 

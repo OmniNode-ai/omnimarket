@@ -37,6 +37,7 @@ import httpx
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
     ModelDelegationContractEvidence,
+    ModelDelegationRawResponse,
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
@@ -49,11 +50,15 @@ from omnimarket.inference.provider_finish_reason import (
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.provider_response_error import (
+    IN_BODY_ERROR_MESSAGE_PREFIX,
     describe_provider_refusal,
     failure_class_for_status,
     provider_error_from_body,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    resolve_api_key,
+)
 from omnimarket.models.model_call_correlation import (
     SELF_HOSTED_CORRELATION_HEADER,
     SELF_HOSTED_CORRELATION_QUERY_PARAM,
@@ -69,10 +74,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_cal
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
+    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -227,6 +234,10 @@ class ProviderRefusalError(RuntimeError):
         super().__init__(
             message if marker.lower() in message.lower() else f"{marker}: {message}"
         )
+
+
+class ProviderThrottledError(RuntimeError):
+    """The provider answered HTTP 429, keeping its existing error text (OMN-20555)."""
 
 
 class ModelListUnavailableError(RuntimeError):
@@ -489,9 +500,9 @@ def _provenance_stamp_fields(
     passed in by the caller from the resolution it performed.
 
     ``credential_source`` is ``None`` only when resolution itself never
-    completed, and it is then omitted rather than guessed: a boundary that
-    never resolved a binding has no credential fact to report, and ``NONE``
-    would be a claim that a call ran unauthenticated.
+    completed, and it is then omitted rather than guessed. A confirmed
+    missing or empty binding reports ``NONE``, including when that finding
+    refused the call before any provider request.
 
     Guarded on the response model exposing each field, mirroring
     ``_tenant_round_trip_fields``, so the effect degrades cleanly against a
@@ -596,6 +607,7 @@ def _re_aim_intent(
     api_key: str,
     *,
     exclude: tuple[str, ...],
+    exclude_families_of: tuple[str, ...] = (),
 ) -> ModelInferenceIntent:
     """``intent`` re-aimed at the best model the key's provider list offers.
 
@@ -605,7 +617,9 @@ def _re_aim_intent(
     same class with ``PROVIDER_AUTH_FAILED``'s wording, which the orchestrator
     already classifies as an auth failure.
     """
-    discovery = discover_byok_model_sync(byok, api_key, exclude=exclude)
+    discovery = discover_byok_model_sync(
+        byok, api_key, exclude=exclude, exclude_families_of=exclude_families_of
+    )
     if discovery.model is not None:
         logger.info(
             "byok model resolved from the provider's list provider=%s plan=%s "
@@ -632,6 +646,24 @@ def _re_aim_intent(
     raise ModelListUnavailableError(
         f"model list unavailable: could not read {byok.provider}'s model list at "
         f"{byok.models_url} to resolve this route's model; no request was sent"
+    )
+
+
+def _attempt_failure_class(exc: Exception) -> EnumDelegationFailureClass:
+    """The class an attempt on the key's own list failed with (OMN-20555)."""
+    if isinstance(exc, ProviderThrottledError):
+        return EnumDelegationFailureClass.RATE_LIMITED
+    if isinstance(exc, ProviderRefusalError):
+        return exc.failure_class
+    if _is_upstream_unavailable(exc):
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    return EnumDelegationFailureClass.UNKNOWN
+
+
+def _is_upstream_unavailable(exc: Exception) -> bool:
+    """An aggregator's in-body upstream error in a 200 (OMN-18265, OMN-19205)."""
+    return isinstance(exc, InferenceUsageError) and str(exc).startswith(
+        IN_BODY_ERROR_MESSAGE_PREFIX
     )
 
 
@@ -767,12 +799,17 @@ class HandlerInferenceIntent:
         # It stays inside the try: a declared reference with no stored value
         # fails closed in the resolver, and that failure must be returned as an
         # error response like any other so the orchestrator can escalate.
-        # ``credential_source`` remains None on that path on purpose -- no
-        # binding was resolved, so the boundary reports no credential fact
-        # rather than guessing one.
+        # A confirmed missing binding reports NONE even when it refuses the
+        # call. An unreadable store leaves the credential fact unknown.
         credential_source: EnumCredentialSource | None = None
         try:
-            api_key = _resolve_api_key(intent.api_key_ref)
+            try:
+                api_key = _resolve_api_key(intent.api_key_ref)
+            except SecretResolutionError:
+                # The resolver completed a store read and found no value.
+                # Other failures leave the credential fact unknown.
+                credential_source = EnumCredentialSource.NONE
+                raise
             credential_source = _credential_source_for(intent.api_key_ref, api_key)
             # OMN-18201: fail closed BEFORE the request when the routing
             # authority said a credential was required and none resolved. The
@@ -857,14 +894,33 @@ class HandlerInferenceIntent:
         resolved from the provider's own model list at registration. The
         unresolved marker is resolved here, before the call; a 404
         model-not-found is re-resolved ONCE from the same list excluding the
-        failed model, and the call re-issued. Anything else, and every house
-        route, is the single call it always was.
+        failed model, and the call re-issued. OMN-20555 also re-aims a 429 or
+        an aggregator's in-body upstream error ONCE, excluding the failed
+        model's whole preference family. The backend and key stay the same.
+        With no other listed family the first failure stands unchanged; a
+        second failure names both attempts. Every house route stays one call.
         """
         byok = _customer_byok_row(intent)
         if byok is None or not api_key:
             return self._call_llm(
                 intent, call_id, api_key=api_key, credential_source=credential_source
             )
+        if byok.customer_chooses_model:
+            # OMN-20844: the customer chooses this provider's model. A credential
+            # with none is refused rather than given a catalogue pick, and a
+            # model the customer named is called once and never swapped.
+            if intent.model == BYOK_MODEL_UNRESOLVED:
+                raise ProviderRefusalError(
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            if not catalogue_prefers_model(byok, intent.model):
+                return self._call_llm(
+                    intent,
+                    call_id,
+                    api_key=api_key,
+                    credential_source=credential_source,
+                )
         if intent.model == BYOK_MODEL_UNRESOLVED:
             intent = _re_aim_intent(intent, byok, api_key, exclude=())
         try:
@@ -885,6 +941,38 @@ class HandlerInferenceIntent:
             return self._call_llm(
                 retry, call_id, api_key=api_key, credential_source=credential_source
             )
+        except (ProviderThrottledError, InferenceUsageError) as first:
+            # OMN-19205 on the bus path: the throttle belongs to the slug's
+            # upstream, which its preference-family siblings share, so the one
+            # switch leaves the whole family.
+            if not isinstance(first, ProviderThrottledError) and not (
+                _is_upstream_unavailable(first)
+            ):
+                raise
+            try:
+                retry = _re_aim_intent(
+                    intent,
+                    byok,
+                    api_key,
+                    exclude=(intent.model,),
+                    exclude_families_of=(intent.model,),
+                )
+            except (ProviderRefusalError, ModelListUnavailableError):
+                # Nothing else to aim at: the original provider failure stands.
+                raise first from None
+            try:
+                return self._call_llm(
+                    retry, call_id, api_key=api_key, credential_source=credential_source
+                )
+            except Exception as second:
+                # Keep the exception's type and served usage; only the text
+                # gains the attempt history.
+                second.args = (
+                    f"{second} | models tried on this key's own list: "
+                    f"{intent.model} ({_attempt_failure_class(first).value}), "
+                    f"{retry.model} ({_attempt_failure_class(second).value})",
+                )
+                raise
 
     def _call_llm(
         self,
@@ -1016,6 +1104,10 @@ class HandlerInferenceIntent:
                 refusal = failure_class_for_status(
                     exc.response.status_code, exc.response.text
                 )
+                if refusal is EnumDelegationFailureClass.RATE_LIMITED:
+                    raise ProviderThrottledError(
+                        _provider_http_error_message(exc)
+                    ) from exc
                 if refusal in (
                     EnumDelegationFailureClass.PROVIDER_BILLING,
                     EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
@@ -1082,6 +1174,14 @@ class HandlerInferenceIntent:
             )
 
         content_raw = choice.get("message", {}).get("content")
+        if response_contract_evidence is not None and isinstance(content_raw, str):
+            response_contract_evidence = response_contract_evidence.model_copy(
+                update={
+                    "raw_response": ModelDelegationRawResponse.from_provider_content(
+                        content_raw, source_field="choices[0].message.content"
+                    )
+                }
+            )
         content = content_raw.strip() if isinstance(content_raw, str) else ""
         if not content:
             raise InferenceUsageError(

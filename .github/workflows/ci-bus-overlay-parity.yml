@@ -106,7 +106,7 @@ jobs:
           # The omnibase_infra release this repo's uv.lock pins : a merge
           # in omnibase_infra cannot turn this repo's check red. Bump it with the
           # omnibase-infra lock pin, after an integration run against the new tag.
-          ref: v0.38.65
+          ref: v0.38.69
           path: .ci-bus-consumer
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           persist-credentials: false
@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           SHA="$(git -C .ci-bus-consumer rev-parse HEAD)"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "::notice::Consumer model resolved at omnibase_infra v0.38.65 ${SHA}"
+          echo "::notice::Consumer model resolved at omnibase_infra v0.38.69 ${SHA}"
 
       - name: Assert the consumer checkout produced the model
         shell: bash
@@ -157,7 +157,7 @@ jobs:
           uv run python scripts/ci/check_ci_bus_overlay_parity.py \
             --overlay config/ci_bus_lanes.yaml \
             --consumer-model .ci-bus-consumer/scripts/trigger_rebuild_on_merge.py \
-            --consumer-ref "omnibase_infra v0.38.65 ${{ steps.consumer.outputs.sha }}"
+            --consumer-ref "omnibase_infra v0.38.69 ${{ steps.consumer.outputs.sha }}"
 
       - name: Pin the gate's own behaviour
         run: |

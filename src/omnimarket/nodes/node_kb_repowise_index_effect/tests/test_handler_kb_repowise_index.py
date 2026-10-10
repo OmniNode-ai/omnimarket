@@ -75,7 +75,7 @@ async def test_dry_run_returns_success_without_subprocess() -> None:
 async def test_clone_failure_returns_error_result() -> None:
     import subprocess
 
-    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base")
+    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base")
 
     def fake_run(cmd: list[str], **kwargs: Any) -> MagicMock:
         if "clone" in cmd:
@@ -101,7 +101,7 @@ async def test_clone_failure_returns_error_result() -> None:
 async def test_repowise_failure_returns_error_with_commit_sha(tmp_path: Any) -> None:
     import subprocess
 
-    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base")
+    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base")
 
     def fake_run(cmd: list[str], **kwargs: Any) -> MagicMock:
         if "clone" in cmd:
@@ -139,7 +139,7 @@ async def test_repowise_failure_returns_error_with_commit_sha(tmp_path: Any) -> 
 
 @pytest.mark.unit
 async def test_successful_index_returns_commit_sha_and_entry_count() -> None:
-    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base")
+    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base")
 
     calls: list[list[str]] = []
 
@@ -172,7 +172,7 @@ async def test_successful_index_returns_commit_sha_and_entry_count() -> None:
 
 @pytest.mark.unit
 async def test_successful_index_calls_gh_clone_and_repowise() -> None:
-    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base")
+    request = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base")
 
     calls: list[list[str]] = []
 
@@ -200,6 +200,6 @@ async def test_successful_index_calls_gh_clone_and_repowise() -> None:
     clone_calls = [c for c in calls if "clone" in c]
     index_calls = [c for c in calls if "index" in c]
     assert len(clone_calls) == 1
-    assert "OmniNode-ai/knowledge-base" in clone_calls[0]
+    assert "OmniNode-ai/knowledge_base" in clone_calls[0]
     assert len(index_calls) == 1
     assert "repowise" in index_calls[0]

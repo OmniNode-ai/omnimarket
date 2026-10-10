@@ -368,9 +368,11 @@ class TestStructuredTerminalQualityEvidence:
             )
         )
 
-        assert len(events) == 1
-        terminal = events[0]
-        assert isinstance(terminal, ModelDelegationCompleted)
+        terminals = [
+            event for event in events if isinstance(event, ModelDelegationCompleted)
+        ]
+        assert len(terminals) == 1
+        terminal = terminals[0]
         assert terminal.required_quality_bar == pytest.approx(OBSERVED_BAR)
         assert (
             terminal.score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR

@@ -32,6 +32,10 @@ from omnimarket.projection.protocol_database import (
     InmemoryDatabaseAdapter,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _NODE = (
     Path(__file__).resolve().parents[3]
@@ -44,13 +48,17 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(params=["inmemory", "sqlite"])
 def db(request: pytest.FixtureRequest, tmp_path: Path) -> DatabaseAdapter:
     if request.param == "sqlite":
-        return SqliteDatabaseAdapter(tmp_path / "local.db")
-    return InmemoryDatabaseAdapter()
+        store: DatabaseAdapter = SqliteDatabaseAdapter(tmp_path / "local.db")
+    else:
+        store = InmemoryDatabaseAdapter()
+    seed_tenant_registry(store)
+    return store
 
 
 def _terminal(**fields: object) -> ModelDelegateSkillTerminalProjection:
     return ModelDelegateSkillTerminalProjection.from_payload(
         {
+            "tenant_id": PROJECTION_TENANT_SLUG,
             "status": "failed",
             "correlation_id": str(uuid4()),
             "task_type": "test",
@@ -181,6 +189,7 @@ def test_canonical_failed_terminal_carries_deciding_rung_stop_reason(
     db: DatabaseAdapter,
 ) -> None:
     payload = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_event_type": "delegation-failed",
         "correlation_id": str(uuid4()),
         "task_type": "test",

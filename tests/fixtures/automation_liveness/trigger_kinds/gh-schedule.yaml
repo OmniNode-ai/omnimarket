@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-20793): one overlay entry of trigger kind gh-schedule.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: github/example-repo/example-schedule
+  owner_repo: example-owner/example-repo
+  host: github
+  trigger:
+    kind: gh-schedule
+    native_id: .github/workflows/example-schedule.yml
+  expected_interval_seconds: 3600
+  alarm_deadline_seconds: 21600
+  max_runtime_seconds: 1800
+  emitter: observer
+  run_record: per-run
+  evidence:
+    source: workflow_runs
+    locator: example-owner/example-repo .github/workflows/example-schedule.yml
+    completion_record: run conclusion
+  real_work: published
+  demand: none
+  positive_control:
+    kind: class_drill
+    ref: disable a scheduled workflow on a scratch repository
+  state: active

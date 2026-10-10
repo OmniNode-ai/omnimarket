@@ -1,19 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CI wiring for the pytest-split durations cache (OMN-19684).
+"""CI wiring for the duration-balanced full-suite shards (OMN-19684).
 
-The `test` job's shard balancer (`--splits N --group G`) reads
-`.test_durations` to size shards by recorded per-test time. Before this
-ticket, the cache-save step only ran on ``matrix.split == 1``, so 19 of the
-20 full-suite shards' recorded durations were discarded every run and the
-balancer only ever saw one shard's worth of data. Shard suite times spread
-128-441s (3.4x) on a full-suite PR run (run 36186846950) as a result.
-
-The fix: every full-suite shard uploads its own per-split durations file as
-an artifact, and a downstream `merge-test-durations` job (mirroring the
-existing per-shard coverage-artifact pattern at the `coverage-sweep-gate`
-job) downloads all of them, merges the duration maps, and saves ONE cache
-entry from the merged result.
+First fix: every full-suite shard uploads its own per-split durations file and a
+downstream `merge-test-durations` job merges them. That kept the balancer's
+input in a mutable cache that a PR run may not see, and every shard still
+collected the whole tree, so live PR runs still spread 1.75-2.10x. The shards
+are now planned from the committed `config/test_file_durations.json` (see
+tests/unit/test_ci_shard_plan_omn19684.py for the planner); this file pins the
+workflow wiring around it: the per-shard export, the merge job and the CLI.
 """
 
 from __future__ import annotations
@@ -132,70 +127,77 @@ def test_durations_upload_step_includes_hidden_files() -> None:
     )
 
 
-def test_seed_step_copies_the_path_restore_writes_to_the_path_pytest_reads() -> None:
-    """The restore step's cache path must be seeded into pytest's per-shard path.
+def test_durations_artifacts_outlive_the_next_refresh() -> None:
+    """The committed per-file record is refreshed from these artifacts.
 
-    "Restore test durations cache" restores the merged prior run's map to
-    the unsuffixed `.test_durations`. The full-suite pytest step reads a
-    split-scoped `--durations-path .test_durations.<split>` to balance THIS
-    shard -- a path the restore step never wrote to. A seed step must copy
-    the exact restore path into the exact durations-path pytest reads,
-    positioned between the two, or every shard silently falls back to
-    splitting by test count (pytest-split's "No test durations found").
+    A one-day retention left no artifact to refresh from by the time anyone
+    looked; the record's refresh command downloads them from a recent run.
+    """
+    steps = _steps(_job(_load_workflow(), "test"))
+    upload = next(step for step in steps if step.get("name") == _UPLOAD_STEP_NAME)
+    assert upload["with"]["retention-days"] >= 14
+
+
+def test_full_suite_shard_runs_only_its_planned_files_not_a_pytest_split() -> None:
+    """The shard hands pytest its own files and no longer splits the tree itself.
+
+    `--splits/--group` make every shard collect the whole 40k-test tree before
+    running a slice. The plan step must come first, write the file list the
+    pytest step reads, and the pytest step must not carry the pytest-split
+    flags, while it still exports this shard's durations.
     """
     workflow = _load_workflow()
-    test_job = _job(workflow, "test")
-    steps = _steps(test_job)
+    steps = _steps(_job(workflow, "test"))
 
-    restore_steps = [
-        step for step in steps if "cache/restore" in str(step.get("uses", ""))
+    plan_steps = [
+        step
+        for step in steps
+        if step.get("name") == "Plan this shard's test files (OMN-19684)"
     ]
-    assert len(restore_steps) == 1, "expected exactly one durations cache restore step"
-    restore_path = str(restore_steps[0].get("with", {}).get("path", ""))
-    assert restore_path, "restore step must declare a cache path"
+    assert len(plan_steps) == 1
+    plan_run = str(plan_steps[0].get("run", ""))
+    assert f"{_MERGE_SCRIPT} plan" in plan_run
+    assert "--group ${{ matrix.split }}" in plan_run
+    assert "--splits ${{ needs.detect-changes.outputs.split_count }}" in plan_run
+    plan_file = re.search(r">\s*(\S+)", plan_run)
+    assert plan_file, "the plan step must write the shard's file list"
 
     pytest_step = next(
         step for step in steps if step.get("name") == "Run pytest (full suite)"
     )
     pytest_run = str(pytest_step.get("run", ""))
-    match = re.search(r"--durations-path\s+(\S+)", pytest_run)
-    assert match, "the full-suite pytest step must pass --durations-path"
-    pytest_durations_path = match.group(1)
-    assert pytest_durations_path != restore_path, (
-        "this test only guards the real bug when the pytest step's durations "
-        "path differs from the restore step's cache path -- if they match, "
-        "the seed step this test requires is unnecessary"
+    assert plan_file.group(1) in pytest_run, (
+        "the pytest step must read the file list the plan step wrote"
     )
-
-    seed_steps = [
-        step
-        for step in steps
-        if step.get("name") == "Seed shard durations file from merged cache (OMN-19684)"
-    ]
-    assert len(seed_steps) == 1, (
-        "expected one seed step copying the restored durations file into the "
-        "split-scoped path the full-suite pytest step reads"
-    )
-    seed_run = str(seed_steps[0].get("run", ""))
-    assert restore_path in seed_run, (
-        f"seed step must read from the restore step's exact cache path {restore_path!r}"
-    )
-    assert pytest_durations_path in seed_run, (
-        "seed step must write to the exact path the full-suite pytest step "
-        f"reads for splitting, {pytest_durations_path!r}"
-    )
-
-    # The seed step must run after the restore and before the pytest step.
-    assert steps.index(restore_steps[0]) < steps.index(seed_steps[0])
-    assert steps.index(seed_steps[0]) < steps.index(pytest_step)
-
+    assert "--splits" not in pytest_run
+    assert "--group" not in pytest_run
+    assert "tests/ " not in pytest_run, "the full tree must not be collected per shard"
     assert "--clean-durations" in pytest_run, (
-        "the full-suite pytest step must pass --clean-durations so each "
-        "shard's stored durations hold only the tests it ran, not the seeded "
-        "copy of every other shard's prior timings -- otherwise "
-        "merge_test_durations.py sees the same test id with two different "
-        "durations across shards and refuses on a false collision"
+        "each shard's stored durations must hold only the tests it ran, or the "
+        "merge sees one test id with two durations across shards"
     )
+    assert steps.index(plan_steps[0]) < steps.index(pytest_step)
+
+    # Same condition on both steps: a plan with no pytest, or the reverse, is a hole.
+    assert plan_steps[0].get("if") == pytest_step.get("if")
+
+
+def test_duration_cache_is_read_only_by_the_smart_selection_step() -> None:
+    """Only smart selection still balances from the cache; full suite must not."""
+    workflow = _load_workflow()
+    steps = _steps(_job(workflow, "test"))
+    restore_steps = [
+        step for step in steps if "cache/restore" in str(step.get("uses", ""))
+    ]
+    assert len(restore_steps) == 1
+    condition = str(restore_steps[0].get("if", ""))
+    assert "is_full_suite == 'false'" in condition
+    seed_names = [
+        step.get("name")
+        for step in steps
+        if "Seed shard durations" in str(step.get("name", ""))
+    ]
+    assert seed_names == [], "the seed step copied the cache into pytest-split's path"
 
 
 def test_merge_job_combines_every_shard_before_the_single_cache_save() -> None:
@@ -216,8 +218,10 @@ def test_merge_job_combines_every_shard_before_the_single_cache_save() -> None:
     assert "test-durations-shard-" in str(download_with.get("pattern", ""))
     assert download_with.get("merge-multiple") is True
 
-    merge_steps = [step for step in steps if _MERGE_SCRIPT in str(step.get("run", ""))]
-    assert len(merge_steps) == 1, f"expected a step invoking {_MERGE_SCRIPT}"
+    merge_steps = [
+        step for step in steps if f"{_MERGE_SCRIPT} merge" in str(step.get("run", ""))
+    ]
+    assert len(merge_steps) == 1, f"expected a step invoking {_MERGE_SCRIPT} merge"
 
     save_steps = [step for step in steps if "cache/save" in str(step.get("uses", ""))]
     assert len(save_steps) == 1, "expected exactly one cache/save step in the merge job"
@@ -257,6 +261,7 @@ def test_merge_script_exists_and_merges_disjoint_shard_duration_maps(
         [
             sys.executable,
             str(script),
+            "merge",
             "--artifacts-dir",
             str(artifacts_dir),
             "--output",

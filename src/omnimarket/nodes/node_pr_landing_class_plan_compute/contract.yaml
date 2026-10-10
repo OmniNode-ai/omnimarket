@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingClassPlanCompute
+#
+# The class actions of one landing-controller tick as a pure definition-B compute:
+#
+#   handle(ModelLandingClassPlanRequest) -> ModelLandingClassPlanResult
+#
+# The per-PR reading that finds a PR needing a class action (a CI Summary left red by cancelled siblings,
+# a PR based on main where its repository lands on dev, a stale copy of a required context) is done before
+# the tick's decision. From its outcome, the decision's acted-on subjects, the quota governor's per-tick cap
+# and the sidecar memories this node plans which actions the tick performs, which it defers to the next
+# tick, and what each performed action leaves in the sidecar. The live controller keeps planning its own
+# copy; the two are compared on recorded input before any caller moves. No clock (the tick's time is in
+# the request), no I/O, no model.
+name: "node_pr_landing_class_plan_compute"
+contract_name: "node_pr_landing_class_plan_compute"
+node_name: "node_pr_landing_class_plan_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B plan of one landing tick's class actions (stale CI Summary
+  reruns and refreshes, copy reruns, retargets and the author comment) inside the
+  quota governor's cap: the M4 delegation PRs first, a PR the decision acts on
+  left to its own action, the rest deferred, and the sidecar memories the
+  performed actions leave. Deterministic in any input order.
+input_model:
+  name: "ModelLandingClassPlanRequest"
+  module: "omnimarket.nodes.node_pr_landing_class_plan_compute.models.model_landing_class_plan"
+  description: "The class candidates of one tick, the decision's acted-on subjects, the quota cap, the memories and the clock."
+output_model:
+  name: "ModelLandingClassPlanResult"
+  module: "omnimarket.nodes.node_pr_landing_class_plan_compute.models.model_landing_class_plan"
+  description: "The actions to perform, the deferred ones, the next sidecar memories and the receipt summary."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_class_plan_compute.handlers.handler_pr_landing_class_plan"
+  class: "HandlerPrLandingClassPlan"
+  input_model: "omnimarket.nodes.node_pr_landing_class_plan_compute.models.model_landing_class_plan.ModelLandingClassPlanRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_class_plan_compute.handlers.handler_pr_landing_class_plan:HandlerPrLandingClassPlan"
+  handlers:
+    - operation: "plan_landing_classes"
+      handler:
+        name: "HandlerPrLandingClassPlan"
+        module: "omnimarket.nodes.node_pr_landing_class_plan_compute.handlers.handler_pr_landing_class_plan"
+# Addressable the way the other directly-invoked compute nodes are; the topics are
+# declared here and no caller publishes the command until the controller switches.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-class-plan-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-class-plan-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-class-plan-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Class actions of one landing tick inside the quota cap."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - quota
+    - pure

@@ -30,6 +30,7 @@ from omnibase_core.enums.enum_agent_protocol import EnumAgentProtocol
 from omnibase_core.enums.enum_agent_task_lifecycle_type import (
     EnumAgentTaskLifecycleType,
 )
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
 )
@@ -134,6 +135,7 @@ def _lifecycle(cid: UUID) -> ModelAgentTaskLifecycleEvent:
         task_id=uuid4(),
         correlation_id=cid,
         lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+        artifact={"answer": ModelSchemaValue.from_value("valid final artifact")},
         remote_task_handle="remote-123",
         occurred_at=datetime.now(UTC),
     )

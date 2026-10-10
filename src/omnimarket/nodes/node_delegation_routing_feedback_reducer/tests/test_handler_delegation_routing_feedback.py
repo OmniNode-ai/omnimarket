@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -22,6 +21,9 @@ from omnimarket.nodes.node_delegation_routing_feedback_reducer.handlers.handler_
 from omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_delegation_feedback_event import (
     EnumDelegationFeedbackEventType,
     ModelDelegationFeedbackEvent,
+)
+from omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_delegation_terminal_payload import (
+    ModelDelegationTerminalPayload,
 )
 from omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_routing_feedback import (
     ModelRoutingFeedback,
@@ -251,7 +253,7 @@ def _completed_payload(
 
 def _escalation_payload(
     *,
-    model_id: str = "ds-v4-flash",
+    model_id: str = "fixture-model-a",
     task_type: str = "codegen",
     correlation_id: str = "04d63eb7-be92-4f7a-b4c8-5bcdce043a9d",
     request_id: str = "req-esc",
@@ -273,7 +275,11 @@ def _escalation_payload(
 def _all_tiers_failed_payload(
     *,
     task_type: str = "codegen",
-    attempted_models: tuple[str, ...] = ("ds-v4-flash", "qwen3-coder-30b", "claude"),
+    attempted_models: tuple[str, ...] = (
+        "fixture-model-a",
+        "qwen3-coder-30b",
+        "claude",
+    ),
     correlation_id: str = "corr-failed",
     request_id: str = "req-failed",
 ) -> dict[str, Any]:
@@ -289,140 +295,74 @@ def _all_tiers_failed_payload(
 
 
 @pytest.mark.unit
-class TestHandlerRealDispatchPath:
-    """Drive handle() with the payload shapes the live auto-wiring dispatcher
-    delivers (OMN-13216): the raw terminal-event payload, flattened, with a
-    ``_topic`` marker — NOT a hand-crafted {"event": ..., "state": ...} wrapper.
-    """
-
+class TestHandlerTypedTerminalPayload:
     def test_empty_payload_is_noop_not_crash(self) -> None:
-        # Regression: ModelDelegationFeedbackEvent(**{}) used to raise a
-        # 7-field ValidationError out of the dispatcher and swallow the terminal.
-        handler = HandlerDelegationRoutingFeedback()
-        result = handler.handle({})
-        assert result["skipped"] is True
-        assert result["feedback"] is None
-        assert result["event"] is None
-        assert result["state"] == {}
+        assert (
+            HandlerDelegationRoutingFeedback().handle(
+                ModelDelegationTerminalPayload(**{})
+            )
+            is None
+        )
 
-    def test_completed_raw_payload_with_topic_marker(self) -> None:
-        handler = HandlerDelegationRoutingFeedback()
-        payload = _completed_payload(success=True, latency_ms=250)
-        payload["_topic"] = DELEGATION_CALL_COMPLETED_TOPIC_V1
-        result = handler.handle(payload)
-
-        assert result["skipped"] is False
-        assert result["feedback"]["success_count"] == 1
-        assert result["feedback"]["total_count"] == 1
-        assert result["feedback"]["avg_latency_ms"] == pytest.approx(250.0)
-        assert result["event"]["source_topic"] == DELEGATION_CALL_COMPLETED_TOPIC_V1
+    def test_completed_raw_payload(self) -> None:
+        result = HandlerDelegationRoutingFeedback().handle(
+            ModelDelegationTerminalPayload(
+                **_completed_payload(success=True, latency_ms=250)
+            )
+        )
+        assert result is not None
+        assert result.feedback.success_count == 1
+        assert result.feedback.total_count == 1
+        assert result.feedback.avg_latency_ms == pytest.approx(250.0)
+        assert result.source_topic == DELEGATION_CALL_COMPLETED_TOPIC_V1
 
     def test_escalation_raw_payload_emits_terminal_not_swallowed(self) -> None:
-        # The ticket's failing cell: an escalated request whose terminal was
-        # swallowed. With the normalizing handler it produces a feedback update.
-        handler = HandlerDelegationRoutingFeedback()
-        payload = _escalation_payload(model_id="ds-v4-flash", task_type="codegen")
-        payload["_topic"] = DELEGATION_ESCALATION_TRIGGERED_TOPIC_V1
-        result = handler.handle(payload)
-
-        assert result["skipped"] is False
-        assert result["feedback"]["escalation_count"] == 1
-        assert result["feedback"]["escalation_rate"] == pytest.approx(1.0)
-        assert (
-            result["event"]["source_topic"] == DELEGATION_ESCALATION_TRIGGERED_TOPIC_V1
+        result = HandlerDelegationRoutingFeedback().handle(
+            ModelDelegationTerminalPayload(
+                **_escalation_payload(model_id="fixture-model-a", task_type="codegen")
+            )
         )
+        assert result is not None
+        assert result.feedback.escalation_count == 1
+        assert result.feedback.escalation_rate == pytest.approx(1.0)
+        assert result.source_topic == DELEGATION_ESCALATION_TRIGGERED_TOPIC_V1
 
     def test_all_tiers_failed_attributes_to_last_attempted_model(self) -> None:
-        handler = HandlerDelegationRoutingFeedback()
-        payload = _all_tiers_failed_payload(
-            attempted_models=("ds-v4-flash", "qwen3-coder-30b", "claude"),
-            task_type="codegen",
+        result = HandlerDelegationRoutingFeedback().handle(
+            ModelDelegationTerminalPayload(**_all_tiers_failed_payload())
         )
-        payload["_topic"] = DELEGATION_ALL_TIERS_FAILED_TOPIC_V1
-        result = handler.handle(payload)
-
-        assert result["skipped"] is False
-        assert result["feedback"]["model_id"] == "claude"
-        assert result["feedback"]["failure_count"] == 1
-        assert result["feedback"]["success_count"] == 0
-
-    def test_model_event_envelope_input_is_unwrapped(self) -> None:
-        # The runtime delivers a ModelEventEnvelope when the handler's
-        # event_model is unset; the handler must unwrap envelope.payload.
-        from omnibase_core.models.events.model_event_envelope import (
-            ModelEventEnvelope,
-        )
-
-        handler = HandlerDelegationRoutingFeedback()
-        payload = _completed_payload(success=True, latency_ms=120)
-        payload["source_topic"] = DELEGATION_CALL_COMPLETED_TOPIC_V1
-        envelope = ModelEventEnvelope[dict[str, Any]](
-            payload=payload,
-            event_type=DELEGATION_CALL_COMPLETED_TOPIC_V1,
-            correlation_id=uuid4(),
-        )
-        result = handler.handle(envelope)
-
-        assert result["skipped"] is False
-        assert result["feedback"]["total_count"] == 1
-        assert result["feedback"]["success_count"] == 1
-
-    def test_transport_envelope_dict_is_unwrapped(self) -> None:
-        # Double-wrapped transport envelope: {"payload": {domain}, markers...}.
-        handler = HandlerDelegationRoutingFeedback()
-        domain = _completed_payload(success=False, latency_ms=0)
-        result = handler.handle(
-            {
-                "payload": domain,
-                "_topic": DELEGATION_CALL_COMPLETED_TOPIC_V1,
-                "partition_key": None,
-            }
-        )
-        assert result["skipped"] is False
-        assert result["feedback"]["failure_count"] == 1
+        assert result is not None
+        assert result.feedback.model_id == "claude"
+        assert result.feedback.failure_count == 1
+        assert result.feedback.success_count == 0
+        assert result.source_topic == DELEGATION_ALL_TIERS_FAILED_TOPIC_V1
 
     def test_state_accumulates_across_dispatch_invocations(self) -> None:
         handler = HandlerDelegationRoutingFeedback()
-        p1 = _completed_payload(
-            model_id="qwen3-30b",
-            task_type="test",
-            success=True,
-            latency_ms=100,
-            request_id="r1",
-        )
-        p1["_topic"] = DELEGATION_CALL_COMPLETED_TOPIC_V1
-        r1 = handler.handle(p1)
-
-        p2 = _completed_payload(
-            model_id="qwen3-30b",
-            task_type="test",
-            success=False,
-            latency_ms=0,
-            request_id="r2",
-        )
-        p2["_topic"] = DELEGATION_CALL_COMPLETED_TOPIC_V1
-        p2["_state"] = r1["state"]
-        r2 = handler.handle(p2)
-
-        assert r2["feedback"]["total_count"] == 2
-        assert r2["feedback"]["success_rate"] == pytest.approx(0.5)
-
-    def test_unknown_topic_payload_is_noop(self) -> None:
-        handler = HandlerDelegationRoutingFeedback()
-        result = handler.handle(
-            {"_topic": "onex.evt.omnimarket.something-else.v1", "model_id": "m"}
-        )
-        assert result["skipped"] is True
-        assert result["feedback"] is None
+        for success, latency in ((True, 100), (False, 0)):
+            result = handler.handle(
+                ModelDelegationTerminalPayload(
+                    **_completed_payload(
+                        model_id="qwen3-30b",
+                        task_type="test",
+                        success=success,
+                        latency_ms=latency,
+                    )
+                )
+            )
+        assert result is not None
+        assert result.feedback.total_count == 2
+        assert result.feedback.success_rate == pytest.approx(0.5)
 
     def test_missing_model_id_is_noop(self) -> None:
-        handler = HandlerDelegationRoutingFeedback()
-        result = handler.handle(
-            {
-                "_topic": DELEGATION_CALL_COMPLETED_TOPIC_V1,
-                "task_type": "test",
-                "success": True,
-            }
+        assert (
+            HandlerDelegationRoutingFeedback().handle(
+                ModelDelegationTerminalPayload(**{"task_type": "test", "success": True})
+            )
+            is None
         )
-        assert result["skipped"] is True
-        assert result["feedback"] is None
+
+    def test_terminal_payload_is_frozen(self) -> None:
+        request = ModelDelegationTerminalPayload(**_completed_payload())
+        with pytest.raises(ValidationError):
+            request.__setattr__("model_id", "changed")

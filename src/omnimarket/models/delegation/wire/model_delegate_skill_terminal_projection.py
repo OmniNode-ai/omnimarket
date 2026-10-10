@@ -13,6 +13,9 @@ from typing import Any, Protocol, Self
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_infra.models.delegation.model_delegation_cohort_key import (
+    ModelDelegationCohortKey,
+)
 from pydantic import (
     AliasChoices,
     AwareDatetime,
@@ -20,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -92,9 +96,8 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("session_id", "sessionId"),
     )
     # string-id-ok: tenant_id is a named tenant identifier, not a UUID
-    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the delegation FSM's
-    # ONEX_TENANT_ID-sourced tenant identity when present. None means the
-    # delegation_events row falls back to the 'omninode' column default.
+    # Carried from the delegation FSM's declared tenant identity. A missing
+    # value is refused by the terminal writer before SQL (OMN-20651).
     tenant_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("tenant_id", "tenantId"),
@@ -184,7 +187,32 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("caller_lane", "callerLane"),
     )
 
-    @field_validator("ticket_id", "caller_lane", mode="before")
+    # OMN-20606: the delegation this one falls back or escalates from, the kind
+    # of relation, and why the parent failed (delegation_lineage.py). Declared
+    # here, on the consumer, as text decoded like ``caller_lane``: a malformed
+    # value is refused by the projection's lineage fold and never dead-letters
+    # the delegation's own row.
+    parent_correlation_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_correlation_id", "parentCorrelationId"),
+    )
+    lineage_kind: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("lineage_kind", "lineageKind"),
+    )
+    parent_failure_cause: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parent_failure_cause", "parentFailureCause"),
+    )
+
+    @field_validator(
+        "ticket_id",
+        "caller_lane",
+        "parent_correlation_id",
+        "lineage_kind",
+        "parent_failure_cause",
+        mode="before",
+    )
     @classmethod
     def _attribution_as_text(cls, value: object) -> str | None:
         if value is None or isinstance(value, str):
@@ -238,6 +266,25 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     @classmethod
     def _blank_baseline_to_empty(cls, value: str) -> str:
         return value.strip()
+
+    def cohort_key_validation_refusal(self) -> str | None:
+        """Validate carried cohort evidence without rejecting its terminal.
+
+        An invalid key is persisted as a named refusal by the cohort fold.
+        It must not dead-letter an otherwise valid delegation event, and the
+        original wire value must not be normalized or filled from defaults.
+        """
+        if self.cohort_key is None:
+            return None
+        try:
+            ModelDelegationCohortKey.model_validate(self.cohort_key)
+        except ValidationError as exc:
+            error = exc.errors(
+                include_url=False, include_context=False, include_input=False
+            )[0]
+            path = ".".join(str(part) for part in error["loc"])
+            return f"invalid cohort_key: {path} ({error['type']})"
+        return None
 
     @classmethod
     def from_payload(

@@ -72,6 +72,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
+    HandlerDelegationLineageFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run_attribution_fold import (
     HandlerDelegationRunAttributionFold,
     ModelDelegationRunAttributionFoldRequest,
@@ -92,6 +95,7 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     DATA_SOURCES,
+    envelope_data_source,
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
@@ -332,6 +336,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     # OMN-19448: the deciding terminal's stop reason and output truncation.
     finish_reason: str | None = Field(default=None)
     truncated: bool | None = Field(default=None)
+    # OMN-19448: the first requested model and measured terminal timings (0058).
+    requested_model: str | None = Field(default=None)
+    queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
+    execution_ms: int | None = Field(default=None, ge=0, strict=True)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -471,14 +479,9 @@ class HandlerProjectionDelegation:
             and exposure.table == TABLE
             and tuple(exposure.key_columns) == (CONFLICT_KEY,)
         ]
-        if len(rows) > 1:
-            raise RuntimeError(
-                f"contract declares {len(rows)} bus_backed per-row exposures over "
-                f"{TABLE!r} ({[exposure.topic for exposure in rows]!r}); this "
-                "handler republishes the written row to exactly one, and serving "
-                "only the first would leave the others a confident empty page"
-            )
-        self._row_exposure: ProjectionTableConfig | None = rows[0] if rows else None
+        # Every per-row exposure is republished from the one returned row, so
+        # none is left a confident empty page.
+        self._row_exposures: tuple[ProjectionTableConfig, ...] = tuple(rows)
         # OMN-18159 Phase 1b(ii). The four singleton aggregates, each a SQL
         # view this node's own migration 0039 grouped on tenant_id. Matched on
         # the aggregate key rather than on the topic name, for the reason the
@@ -500,7 +503,7 @@ class HandlerProjectionDelegation:
             for exposure in exposures
             if exposure.bus_backed
             and exposure not in aggregates
-            and exposure is not (rows[0] if rows else None)
+            and exposure not in rows
         ]
         if unservable:
             raise RuntimeError(
@@ -575,14 +578,15 @@ class HandlerProjectionDelegation:
                 "writer. Implement ProtocolProjectionAttestedWrite on this "
                 "adapter (OMN-18159 AC5)."
             )
-        exposure = self._row_exposure
         written = db.upsert_returning(
             TABLE,
             CONFLICT_KEY,
             row,
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
-            returning=tuple(exposure.columns) if exposure is not None else (),
+            returning=tuple(
+                dict.fromkeys(c for e in self._row_exposures for c in e.columns)
+            ),
         )
         self._publish_row_snapshot(written)
         self._publish_aggregate_snapshots(db, written)
@@ -679,31 +683,35 @@ class HandlerProjectionDelegation:
         rather than the process-local counter an earlier revision of the
         snapshot seam removed.
         """
-        exposure = self._row_exposure
-        if exposure is None or not written:
+        if not self._row_exposures or not written:
             return False
-        row = dict(written[0])
-        tenant = (
-            row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
-        )
-        message = encode_snapshot_delta(
-            exposure,
-            op="upsert",
-            row=row,
-            source_event_id=str(row.get(CONFLICT_KEY) or ""),
-            # The exposure's own topic, because the source event's topic is
-            # not reachable from every one of the three write paths and an
-            # inconsistent value across them would partition the ordering
-            # comparison by which path happened to write the row.
-            source_topic=exposure.topic,
-            source_partition=0,
-            source_offset=_write_ordering_token(row.get("written_at")),
-            observed_at=datetime.now(tz=UTC).isoformat(),
-            tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
-        )
-        if message is None:
-            return False
-        return self._resolve_publisher().publish(message)
+        stored = dict(written[0])
+        published = False
+        for exposure in self._row_exposures:
+            # Each topic carries only its own declared columns, so the lean
+            # decisions list does not pick up the heavy detail columns.
+            row = {c: stored[c] for c in exposure.columns if c in stored}
+            tenant = (
+                row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
+            )
+            message = encode_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(row.get(CONFLICT_KEY) or ""),
+                # The exposure's own topic, because the source event's topic is
+                # not reachable from every one of the three write paths and an
+                # inconsistent value across them would partition the ordering
+                # comparison by which path happened to write the row.
+                source_topic=exposure.topic,
+                source_partition=0,
+                source_offset=_write_ordering_token(stored.get("written_at")),
+                observed_at=datetime.now(tz=UTC).isoformat(),
+                tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
+            )
+            if message is not None:
+                published = self._resolve_publisher().publish(message) or published
+        return published
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
@@ -769,12 +777,14 @@ class HandlerProjectionDelegation:
             or _is_delegate_skill_terminal_payload(payload)
         ):
             terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
-            result = self.project_delegate_skill_terminal(terminal, db_raw)
+            result = self.project_delegate_skill_terminal(
+                terminal, db_raw, data_source=envelope_data_source(input_data)
+            )
             return result.model_dump(mode="json")
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
             payload = _canonical_result_to_task_delegated_payload(payload)
 
-        event = ModelTaskDelegatedEvent(**payload)
+        event = ModelTaskDelegatedEvent.model_validate(payload)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
@@ -848,36 +858,14 @@ class HandlerProjectionDelegation:
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
-        # OMN-14898: refuse the write before it is ever built out further when
-        # isolation enforcement is on and no tenant was resolved (raises
-        # TenantRequiredError -- no row, no fall-through to the column
-        # default). No-op while ENFORCE_TENANT_ISOLATION is False, so the
-        # OMN-14058 interim fallback below is unchanged by default.
+        # Resolve only the event's declared tenant against the registry.
+        # Missing attribution is refused by terminal_write_tenant regardless
+        # of enforcement or the writer's configured tenant (OMN-20651).
         require_tenant_id(event.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source event carried one — omitting the key (rather than writing
-        # None) lets the delegation_events column DEFAULT apply on INSERT and
-        # leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) —
-        # event.tenant_id is the verified SLUG (stamp_verified_tenant_slug);
-        # resolve it to the canonical UUID before it reaches the row/column.
-        # Stamping the raw slug here would either fail the INSERT (unmapped
-        # value) or, worse, silently key the row under a representation the
-        # gateway's UUID-keyed reader can never join against again.
-        # OMN-16804: resolved against tenant_registry_mirror -- the relation
-        # node_projection_tenant_registry materializes from onex.tenant.events
-        # -- rather than a three-entry dict compiled into this source tree, so
-        # every provisioned tenant resolves rather than only the three that
-        # were hardcoded when the column was converted.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             event.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
-        # column DEFAULT this used to fall through to is removed by 0042, and
-        # the insert-only arm it returns when nothing resolved is not a policy
-        # bypass: row-level security evaluates USING against the pre-existing
-        # row, not the SET clause.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1025,6 +1013,13 @@ class HandlerProjectionDelegation:
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
         _stamp_accepting_attempt(row, reduction.attempt_history)
+        _stamp_terminal_timing_and_requested_model(
+            row,
+            event.attempts[0].model_id if event.attempts else None,
+            event.queue_wait_ms,
+            event.execution_duration_ms,
+        )
+        _stamp_routing_tier(row, reduction.attempt_history)
         # OMN-18889: how many up-tier re-dispatches this terminal took. The
         # terminal model has always carried it (inherited from the response
         # model) and the local port has always sent it; it was dropped here,
@@ -1074,23 +1069,27 @@ class HandlerProjectionDelegation:
                 caller_lane.caller_lane_refusal,
             )
         row.update(caller_lane.row_columns())
+        # OMN-20606: the delegation this one falls back or escalates from, as
+        # the pure fold returns it. No lineage, or a malformed one, names no
+        # column, so a lineage-less re-emit leaves stored lineage untouched and
+        # a bad value never dead-letters the row.
+        lineage = HandlerDelegationLineageFold().handle(event)
+        if lineage.lineage_refusal is not None:
+            logger.warning(
+                "delegation terminal lineage refused (correlation_id=%s): %s",
+                event.correlation_id,
+                lineage.lineage_refusal,
+            )
+        row.update(lineage.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
-        # OMN-14898: same fail-closed guard as project() -- no-op unless
-        # ENFORCE_TENANT_ISOLATION is set.
+        # Same declared-tenant boundary as the canonical terminal path.
         require_tenant_id(row_model.tenant_id, table=TABLE)
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
-        # present — omitting the key lets the column DEFAULT apply on INSERT
-        # and leaves an already-known tenant untouched on UPDATE.
-        # OMN-15683: same UUID resolution as project() above — see that
-        # call site's comment for why the raw slug must never reach the row.
-        # OMN-16804: see the registry-resolution note on project() above.
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             row_model.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
         )
-        # OMN-18565: NAMED UNCONDITIONALLY, same reason as project() above.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )
@@ -1727,6 +1726,11 @@ def _canonical_result_to_task_delegated_payload(
         "host": _blank_to_none(payload.get("host")),
         "finish_reason": finish_reason,
         "truncated": truncated,
+        # Canonical escalation rungs name model_used, not model_id; only an
+        # explicit requested_model identifies the requested model on this wire.
+        "requested_model": _blank_to_none(payload.get("requested_model")),
+        "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
+        "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1975,7 +1979,13 @@ def _preserve_existing_evidence(
     correlation_id = row.get(CONFLICT_KEY)
     if not correlation_id:
         return
-    existing_rows = db.query(TABLE, {CONFLICT_KEY: correlation_id})
+    # Read under the declared row tenant, matching the async writer. Using
+    # the writer's configured tenant here can blind the merge or fail its UUID
+    # policy cast even though the terminal carries a valid tenant (OMN-20651).
+    filters = {CONFLICT_KEY: correlation_id}
+    if row.get("tenant_id"):
+        filters["tenant_id"] = row["tenant_id"]
+    existing_rows = db.query(TABLE, filters)
     if not existing_rows:
         apply_terminal_precedence({}, row)
         return
@@ -2031,11 +2041,16 @@ def _preserve_existing_evidence(
         "backend_id",
         "host",
         "finish_reason",
+        "requested_model",
     ):
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
             if key == "finish_reason" and row.get("truncated") is None:
                 row["truncated"] = existing.get("truncated")
+    # A measured zero is evidence, so only None may inherit a stored timing.
+    for key in ("queue_wait_ms", "execution_ms"):
+        if row.get(key) is None and existing.get(key) is not None:
+            row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
         row["request_override_applied"] = True
     if existing.get("override_within_bounds") is False:
@@ -2105,6 +2120,34 @@ def _stamp_terminal_trace_and_routing(
         if not _is_blank(value):
             row[key] = str(value).strip()
 
+    _stamp_terminal_timing_and_requested_model(
+        row, event.requested_model, event.queue_wait_ms, event.execution_ms
+    )
+
+
+def _nonnegative_int_or_none(value: object) -> int | None:
+    """Accept measured non-negative integers without coercing booleans."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _stamp_terminal_timing_and_requested_model(
+    row: dict[str, object],
+    requested_model: str | None,
+    queue_wait_ms: int | None,
+    execution_ms: int | None,
+) -> None:
+    """Name only the terminal's requested model and measured timings (0058)."""
+    if not _is_blank(requested_model):
+        row["requested_model"] = requested_model
+    for key, value in (
+        ("queue_wait_ms", queue_wait_ms),
+        ("execution_ms", execution_ms),
+    ):
+        if value is not None:
+            row[key] = value
+
 
 def _blank_to_none(value: object) -> str | None:
     """Return a stripped string, or None for a missing or blank value."""
@@ -2131,6 +2174,38 @@ def _stamp_accepting_attempt(
             if text is not None:
                 row[key] = text
         return
+
+
+def _stamp_routing_tier(
+    row: dict[str, object],
+    attempts: Iterable[ModelDelegateSkillAttemptRecord],
+) -> None:
+    """Name the routing tier the run was served on (OMN-20755).
+
+    The tier the delegate's receipt reports as ``routing_tier``: the accepting
+    attempt's ``tier`` (the first rung whose gate passed with no failure class,
+    the same rung :func:`_stamp_accepting_attempt` reads), else the last rung
+    the run reached, because a run that was refused everywhere was still routed
+    there. A terminal with no attempts names no column, so a tier an earlier
+    terminal recorded for the same correlation is not overwritten.
+
+    Before this the delegate-skill terminal named no ``cost_tier_name`` at all,
+    so a local install stored NULL on every run and the Tier mix showed every
+    run as not tier-routed while each receipt named its tier.
+    """
+    ladder = list(attempts)
+    accepted = next(
+        (
+            attempt
+            for attempt in ladder
+            if attempt.quality_gate_passed and not (attempt.failure_class or "").strip()
+        ),
+        None,
+    )
+    serving = accepted if accepted is not None else (ladder[-1] if ladder else None)
+    tier = _blank_to_none(serving.tier) if serving is not None else None
+    if tier is not None:
+        row["cost_tier_name"] = tier
 
 
 def _stamp_declared_failure_cause(

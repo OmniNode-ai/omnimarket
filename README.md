@@ -35,18 +35,18 @@ hardcode topic strings or construct their own collaborators.
 ## Documentation
 
 Architecture, guides, and reference documentation for this repo live in the
-[OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge-base), not in
+[OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge_base), not in
 this repository:
 
-- [Package model](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-package-model.md) — layers, node package shape, contract rules
-- [Skill, package, and node boundaries](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-skill-package-node-boundaries.md)
-- [Dependency boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-dependency-boundary.md)
-- [Event registry](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-event-registry.md)
-- [Build-loop migration boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-build-loop-boundary.md)
-- [Node catalog](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-catalog.md)
-- [Node metadata reference](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-metadata.md)
-- [Node testing pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-node-testing.md) — including how to add a node to the harness
-- [Skill-backing node pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-skill-backing-node-pattern.md)
+- [Package model](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-package-model.md) — layers, node package shape, contract rules
+- [Skill, package, and node boundaries](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-skill-package-node-boundaries.md)
+- [Dependency boundary](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-dependency-boundary.md)
+- [Event registry](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-event-registry.md)
+- [Build-loop migration boundary](https://github.com/OmniNode-ai/knowledge_base/blob/main/architecture/omnimarket-build-loop-boundary.md)
+- [Node catalog](https://github.com/OmniNode-ai/knowledge_base/blob/main/reference/omnimarket-node-catalog.md)
+- [Node metadata reference](https://github.com/OmniNode-ai/knowledge_base/blob/main/reference/omnimarket-node-metadata.md)
+- [Node testing pattern](https://github.com/OmniNode-ai/knowledge_base/blob/main/guides/omnimarket-node-testing.md) — including how to add a node to the harness
+- [Skill-backing node pattern](https://github.com/OmniNode-ai/knowledge_base/blob/main/guides/omnimarket-skill-backing-node-pattern.md)
 
 Governance policy and operator runbooks are not part of this repository.
 
@@ -165,3 +165,36 @@ Test markers: `unit` (isolated), `integration` (multi-component), `slow` (>1s),
 
 - [Contributing](.github/CONTRIBUTING.md)
 - [License](LICENSE)
+
+## Retention Effect Bindings
+
+The consumer-flow and dead-letter prune effects resolve their archive and
+DB bindings at the effect boundary, after the scheduled interval gate. Shared
+overlay and secret-store resolution lives in `node_prune_binding_effect`, a
+library-style effect invoked in process without topics or subscriptions.
+`config.<kind>_prune.binding` accepts an absolute `archive_dir` and either
+`database_url` or `database_secret_ref`. The shipped bindings are unconfigured;
+a missing key returns a typed `refused` result with zero pruning. Skipped ticks
+resolve neither binding and return `sink_location: null`.
+
+Runtime instances also read the normal typed `~/.omnibase/overlay.yaml`, or the
+file selected by the bootstrap pointer `OMNIMARKET_PRUNE_BINDING_OVERLAY`.
+The file must be owner-only (`chmod 600`); an explicitly selected missing or
+invalid file refuses. Configure its `services.prune` section, for example:
+
+```yaml
+services:
+  prune:
+    consumer_flow.archive_dir: /var/lib/onex/archive/consumer-flow
+    consumer_flow.database_secret_ref: database.consumer_flow.retention_url
+    dead_letter.archive_dir: /var/lib/onex/archive/dead-letter
+    dead_letter.database_secret_ref: database.dead_letter.retention_url
+```
+
+These keys override contract bindings. A database reference replaces a
+contract URL, and a URL replaces a contract reference. References resolve
+through an injected secret store, the configured lane mapping, or the existing
+local credential store; no ambient DB-value environment fallback is used.
+Manual CLI archive options remain explicit, and its DB uses the same boundary.
+Archive verification, encryption, source drift, retention bounds, and exact-key
+deletes continue to govern every pruning run.

@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Migration Sync Plan Compute (OMN-20687)
+#
+# The decision half of vendoring omnimarket node migrations into omnibase_infra's
+# forward-migration tree. It answers what sync-node-migrations.sh answered - which
+# files are copied, kept as declared history, removed as stale, or drift - from an
+# inventory the effect node read. No filesystem, clock or environment.
+name: node_migration_sync_plan_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide one migration-sync run from supplied facts without I/O: the omnimarket
+  source migrations, the vendored copies and the application-migrations manifest
+  become a verdict, the old script's message lines and exit code, and the ordered
+  copy and remove actions that clear the drift.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: plan_migration_sync
+    handler:
+      name: HandlerMigrationSyncPlan
+      module: omnimarket.nodes.node_migration_sync_plan_compute.handlers.handler_migration_sync_plan
+    input_model: omnimarket.nodes.node_migration_sync_plan_compute.models.model_migration_sync_plan.ModelMigrationSyncPlanRequest
+    output_model: omnimarket.nodes.node_migration_sync_plan_compute.models.model_migration_sync_plan.ModelMigrationSyncPlanResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.migration-sync-plan-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.migration-sync-planned.v1
+terminal_event: onex.evt.omnimarket.migration-sync-planned.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.migration-sync-plan-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.migration-sync-planned.v1
+metadata:
+  ticket: OMN-20687
+  transport_type: kafka
+lifecycle: experimental

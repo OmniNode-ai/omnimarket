@@ -26,8 +26,7 @@ What this module pins:
 * ``tree_sha`` is written only when the caller supplies it. ``ModelDodReceipt``
   is ``extra="forbid"``, so a record that carries the field is rejected by
   every reader still on an ``omnibase_core`` without it. That includes the
-  receipt-gate core ref every repository pins. The workflow therefore does not
-  pass it yet, and a test here keeps it that way until the readers have moved.
+  receipt-gate core ref every repository pins.
 """
 
 from __future__ import annotations
@@ -303,23 +302,6 @@ def test_a_new_tree_is_re_executed(tmp_path: Path) -> None:
     again = _execute(occ_root, tmp_path, head_sha=FIXED_HEAD, tree_sha=FIXED_TREE)
 
     assert again.executed == 1
-
-
-@pytest.mark.unit
-def test_the_workflow_does_not_pass_tree_sha_yet() -> None:
-    """Rollout guard. Delete this test in the change that enables the flag.
-
-    Enable it only once every reader that parses runner records runs an
-    omnibase_core whose ModelDodReceipt declares tree_sha. That means OCC's
-    lock and gates, this repository's lock and receipt-gate pin, and the
-    receipt-gate core ref in every repository whose tickets share a contract
-    with an omnimarket PR.
-    """
-    workflow = (
-        _REPO_ROOT / ".github" / "workflows" / "occ-receipt-runner.yml"
-    ).read_text(encoding="utf-8")
-
-    assert "--tree-sha" not in workflow
 
 
 # --------------------------------------------------------------------------- #

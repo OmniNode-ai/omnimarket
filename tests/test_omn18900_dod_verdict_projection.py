@@ -150,6 +150,11 @@ def _bound(db: _RecordingDb) -> dict[str, Any]:
         "parent_goal_id",
         "level",
         "contract_revision",
+        # OMN-20696: the subject of the contract the verdict evaluated.
+        "contract_source",
+        "contract_repository",
+        "contract_commit_sha",
+        "contract_repo_path",
     )
     assert len(args) == len(names), f"bind count moved: {len(args)} vs {len(names)}"
     return dict(zip(names, args, strict=True))
