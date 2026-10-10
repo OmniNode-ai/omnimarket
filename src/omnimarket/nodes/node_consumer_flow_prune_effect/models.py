@@ -107,9 +107,6 @@ class EnumConsumerFlowPruneVerdict(StrEnum):
     FAILED = "failed"
     REFUSED = "refused"  # a precondition failed; nothing was read or written
     NOTHING_TO_PRUNE = "nothing_to_prune"
-    # A runtime tick arrived before schedule.run_interval_seconds had elapsed
-    # since the last scheduled run: nothing was read, written or deleted.
-    SKIPPED_INTERVAL_NOT_ELAPSED = "skipped_interval_not_elapsed"
 
 
 class ModelConsumerFlowDayResult(BaseModel):

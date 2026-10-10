@@ -3,14 +3,15 @@
 """HandlerAuditTrailCompactSchedule: the daily producer of the compactor command.
 
 The runtime tick arrives every ``tick_interval_ms``. The one tick whose clock
-falls in ``[slot, slot + tick_interval)`` on a UTC day returns the compactor's
-command; every other tick returns None, which the runtime treats as no output.
-The decision reads only the tick, so the handler holds no state.
+falls in ``[slot, slot + tick_interval + lateness)`` on a UTC day returns the
+compactor's command; every other tick returns None, which the runtime treats as
+no output. The decision reads only the tick, so the handler holds no state. The
+daily slot is the one-day interval of the shared runtime-tick gate, so a tick
+that ran late past its ``scheduled_at`` still opens the slot (OMN-20867).
 """
 
 from __future__ import annotations
 
-import datetime as dt
 from functools import lru_cache
 from pathlib import Path
 
@@ -19,8 +20,12 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_audit_trail_compactor_command import ModelCompactorCommand
+from omnimarket.models.model_runtime_tick_schedule import (
+    ModelRuntimeTickScheduleConfig,
+)
 
 _CONTRACT = Path(__file__).parents[1] / "contract.yaml"
+_DAY_SECONDS = 86400
 
 
 class ModelAuditTrailCompactScheduleConfig(BaseModel):
@@ -51,23 +56,24 @@ class HandlerAuditTrailCompactSchedule:
         self._cfg = config or schedule_config()
 
     def handle(self, request: ModelRuntimeTick) -> ModelCompactorCommand | None:
-        now = request.now.astimezone(dt.UTC)
-        slot = now.replace(
-            hour=self._cfg.run_hour_utc,
-            minute=self._cfg.run_minute_utc,
-            second=0,
-            microsecond=0,
+        daily = ModelRuntimeTickScheduleConfig(
+            workflow="audit-trail-compact",
+            interval_seconds=_DAY_SECONDS,
+            offset_seconds=self._cfg.run_hour_utc * 3600
+            + self._cfg.run_minute_utc * 60,
         )
-        elapsed = now - slot
         if (
-            dt.timedelta(0)
-            <= elapsed
-            < dt.timedelta(milliseconds=request.tick_interval_ms)
-        ):
-            return ModelCompactorCommand(
-                lookback_days=self._cfg.lookback_days, dry_run=self._cfg.dry_run
+            daily.due_window(
+                request.now,
+                request.tick_interval_ms,
+                scheduled_at=request.scheduled_at,
             )
-        return None
+            is None
+        ):
+            return None
+        return ModelCompactorCommand(
+            lookback_days=self._cfg.lookback_days, dry_run=self._cfg.dry_run
+        )
 
 
 __all__: list[str] = [
